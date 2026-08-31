@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { supabase } from '@/lib/supabase'
@@ -9,8 +9,21 @@ import { roomGameStatusLabel } from '@/components/rooms/room-game-display'
 import { readHostToken } from '@/lib/host-session'
 import { getPlayerSession } from '@/lib/utils'
 import type { PublicGame } from '@/lib/game-browse'
+import {
+  applyBrowseGamesRealtimeEvent,
+  PUBLIC_GAMES_REALTIME_FILTER,
+  type GamesRealtimeRow,
+} from '@/lib/browse-games-realtime'
 
 const POLL_FALLBACK_MS = 15_000
+/**
+ * Slow safety refetch that still runs while the realtime channel is SUBSCRIBED. Realtime can
+ * go quiet without the socket reporting an error, so we never trust it completely — but at 60s
+ * instead of 15s the healthy-channel case costs a quarter of the reads it used to.
+ */
+const HEALTHY_REFRESH_MS = 60_000
+/** Coalesce a burst of realtime events that each need a refetch into a single read. */
+const RELOAD_DEBOUNCE_MS = 400
 
 type Tab = 'live' | 'upcoming'
 
@@ -33,6 +46,9 @@ export function BrowseGamesPage() {
   // (set on join via setPlayerSession, cleared on leave). Powers the "Continue"
   // CTA on games the viewer has already joined.
   const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
+  // Timestamp of the last completed list read. The poll fallback uses it to skip work while
+  // the realtime channel is healthy and the list is already fresh.
+  const lastLoadAtRef = useRef(0)
 
   const loadGames = useCallback(
     async (nextCursor?: string | null, silent = false) => {
@@ -62,6 +78,7 @@ export function BrowseGamesPage() {
           setCursor(null)
         }
       } finally {
+        lastLoadAtRef.current = Date.now()
         if (loadingMore) setLoadingMore(false)
         else if (!silent) setLoading(false)
       }
@@ -155,33 +172,87 @@ export function BrowseGamesPage() {
     }
   }, [tab, games])
 
-  // Freshness: Realtime is primary; visibility + slow poll are fallbacks. Any change to a
-  // game (new public game, status flip, finish) reloads the first page — cheap and simple.
+  // Freshness: Realtime is primary; visibility + slow poll are fallbacks.
+  //
+  // Every part of this used to be maximally expensive: the subscription was an unfiltered
+  // `event: '*'` on `games`, so an idle viewer here received a (measured) 12,275 byte frame
+  // for every games write anywhere on the platform, threw the payload away, and ran a full
+  // list refetch for each one — on top of an unconditional 15s poll.
   useEffect(() => {
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null
+    // Coalesce the refetches that a payload genuinely cannot satisfy (see
+    // applyBrowseGamesRealtimeEvent) so an event burst is one read, not N.
+    const scheduleReload = () => {
+      if (reloadTimer) return
+      reloadTimer = setTimeout(() => {
+        reloadTimer = null
+        void loadGames(null, true)
+      }, RELOAD_DEBOUNCE_MS)
+    }
+
+    const onUpsert = (eventType: 'INSERT' | 'UPDATE', row: GamesRealtimeRow) => {
+      setGames((prev) => {
+        const { games: next, reload } = applyBrowseGamesRealtimeEvent(prev, { eventType, row }, tab)
+        if (reload) scheduleReload()
+        return next
+      })
+    }
+
+    // Realtime health, tracked locally off the channel's own subscribe callback so the poll
+    // below can stand down while the socket is delivering. This deliberately does NOT use
+    // src/lib/realtime-health.ts from PR #1134 (unmerged) — see the PR description; this
+    // interval should become `usePolling({ gateOnRealtime: true })` once #1134 lands.
+    let realtimeHealthy = false
+
     // Per-mount channel name — supabase-js caches channels by name and
     // removeChannel is async, so a stale-then-remounted page could otherwise
     // hit "cannot add postgres_changes callbacks … after subscribe()".
     const channel = supabase
       .channel(`public_games_browse_${Math.random().toString(36).slice(2, 10)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
-        void loadGames(null, true)
+      // Server-side filter. `is_public` defaults to false, so this alone drops the large
+      // majority of `games` events before they ever reach the wire.
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'games', filter: PUBLIC_GAMES_REALTIME_FILTER },
+        (payload) => onUpsert('INSERT', payload.new as GamesRealtimeRow)
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: PUBLIC_GAMES_REALTIME_FILTER },
+        (payload) => onUpsert('UPDATE', payload.new as GamesRealtimeRow)
+      )
+      // DELETE is intentionally UNFILTERED. `games` has REPLICA IDENTITY DEFAULT, so its
+      // DELETE payload carries ONLY the primary key — a filter on `is_public` could never
+      // match one, and deleted games would linger in every browser's list until a reload.
+      // An id-only DELETE frame is tiny and game deletion is rare next to the UPDATE volume
+      // the filter above removes.
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'games' }, (payload) => {
+        const id = (payload.old as { id?: string })?.id
+        setGames((prev) => applyBrowseGamesRealtimeEvent(prev, { eventType: 'DELETE', id }, tab).games)
       })
-      .subscribe()
+      .subscribe((status) => {
+        realtimeHealthy = status === 'SUBSCRIBED'
+      })
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') void loadGames(null, true)
     }
     document.addEventListener('visibilitychange', onVisible)
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') void loadGames(null, true)
+      if (document.visibilityState !== 'visible') return
+      // Gated: while the channel is subscribed, realtime is carrying the updates and this
+      // drops to a slow safety net rather than a 15s unconditional refetch.
+      if (realtimeHealthy && Date.now() - lastLoadAtRef.current < HEALTHY_REFRESH_MS) return
+      void loadGames(null, true)
     }, POLL_FALLBACK_MS)
 
     return () => {
+      if (reloadTimer) clearTimeout(reloadTimer)
       supabase.removeChannel(channel)
       document.removeEventListener('visibilitychange', onVisible)
       clearInterval(interval)
     }
-  }, [loadGames])
+  }, [loadGames, tab])
 
   return (
     <>
