@@ -16,6 +16,7 @@
  * the report for what that costs per poke.
  */
 import { renderHook } from '@testing-library/react'
+import { useEffect, useState } from 'react'
 import { createServer, type Server } from 'node:http'
 import { afterAll, beforeAll, describe, it } from 'vitest'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
@@ -27,6 +28,8 @@ import { startTally, summarize } from './tally'
 const GAME = 'BNCBIN'
 const PORT = 3199
 const WINDOW_MS = Number(process.env.BENCH_BINGO_WINDOW_MS ?? 60_000)
+/** `src/lib/game-tick.ts` default — the production in-process ticker's period. */
+const SERVER_TICK_MS = 2_500
 /** `dev` drives a bingo game from three clients: the host plus a two-player elected quorum. */
 const DRIVERS = 3
 
@@ -67,7 +70,37 @@ describe('#1137 bingo auto-call driver', () => {
     await cleanupGame(GAME)
   })
 
-  it(`counts /api/bingo/sync pokes from ${DRIVERS} clients over ${WINDOW_MS}ms`, async () => {
+  /**
+   * One driver client. `tickerAlive` decides whether a server-side ticker is calling numbers.
+   *
+   * This distinction is the whole measurement. PR #1137 claims zero pokes IN STEADY STATE — that
+   * is, while the production ticker is doing its job and nothing is ever overdue. Measuring only
+   * the ticker-dead case would show the branch still polling and read as a refutation, when in
+   * fact that traffic is the failover the PR deliberately keeps. Both are measured, separately.
+   */
+  function useDriver(role: 'host' | 'player', tickerAlive: boolean, game: Game) {
+    const [lastCalledAt, setLastCalledAt] = useState<string | null>(
+      tickerAlive ? new Date().toISOString() : null
+    )
+    useEffect(() => {
+      if (!tickerAlive) return
+      const id = setInterval(() => setLastCalledAt(new Date().toISOString()), SERVER_TICK_MS)
+      return () => clearInterval(id)
+    }, [tickerAlive])
+
+    useBingoAutoCall({
+      gameCode: GAME,
+      game,
+      enabled: true,
+      // Baseline ignores these; the branch requires them.
+      role,
+      lastCalledAt,
+      onSynced: () => {},
+      onCalled: () => {},
+    } as LooseBingoProps)
+  }
+
+  async function measure(scenario: string, tickerAlive: boolean) {
     const game = {
       id: GAME,
       status: 'active',
@@ -79,23 +112,12 @@ describe('#1137 bingo auto-call driver', () => {
     const tally = startTally()
     pokes = 0
     try {
-      const mounted = Array.from({ length: DRIVERS }, (_, i) =>
-        renderHook(() =>
-          useBingoAutoCall({
-            gameCode: GAME,
-            game,
-            enabled: true,
-            // Baseline ignores these; the branch requires them. The host tier is the one that
-            // fires first, so modelling every driver as 'host' measures the branch's BEST case
-            // for request volume — i.e. it cannot flatter the PR.
-            role: i === 0 ? 'host' : 'player',
-            lastCalledAt: null,
-            onSynced: () => {},
-            onCalled: () => {},
-          } as LooseBingoProps)
-        )
-      )
-
+      // `dev` drives from three clients: the host plus a two-player elected quorum.
+      const mounted = [
+        renderHook(() => useDriver('host', tickerAlive, game)),
+        renderHook(() => useDriver('player', tickerAlive, game)),
+        renderHook(() => useDriver('player', tickerAlive, game)),
+      ]
       const started = Date.now()
       await sleep(WINDOW_MS)
       const elapsed = Date.now() - started
@@ -103,20 +125,36 @@ describe('#1137 bingo auto-call driver', () => {
 
       const syncCalls = tally.rest.filter((c) => c.url.includes('/api/bingo/sync'))
       const s = summarize(syncCalls)
+      // The stub is reached over a real socket; if the client and server disagree about how many
+      // requests happened, neither number can be trusted.
+      if (s.requests !== pokes) {
+        throw new Error(`client counted ${s.requests} pokes but the stub served ${pokes}`)
+      }
       record({
         claim: '#1137 bingo /api/bingo/sync pokes',
-        scenario: `${DRIVERS} driver clients, ${Math.round(elapsed / 1000)}s window, steady state (nothing overdue)`,
+        scenario,
         requests: s.requests,
         bytes: s.bytes,
         extra: {
           windowMs: elapsed,
           reqPerSec: Number((s.requests / (elapsed / 1000)).toFixed(3)),
-          serverSidePokesObserved: pokes,
-          note: 'request rate measured by execution against a local stub; route Supabase cost not included',
+          driverClients: DRIVERS,
+          note:
+            'request RATE measured by execution against a local stub. Does NOT include the ' +
+            'baseline`s onSynced reload (4 PostgREST GETs per poke) nor the route`s own ' +
+            'per-poke Supabase reads — both are additional baseline cost, not branch cost.',
         },
       })
     } finally {
       tally.restore()
     }
+  }
+
+  it(`steady state: ${DRIVERS} clients, server ticker ALIVE`, async () => {
+    await measure(`${DRIVERS} drivers, ${Math.round(WINDOW_MS / 1000)}s, server ticker ALIVE (steady state)`, true)
+  })
+
+  it(`failover: ${DRIVERS} clients, server ticker DEAD`, async () => {
+    await measure(`${DRIVERS} drivers, ${Math.round(WINDOW_MS / 1000)}s, server ticker DEAD (failover)`, false)
   })
 })
