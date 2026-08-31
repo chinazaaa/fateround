@@ -26,6 +26,14 @@ function normalizeMessage(row: RawAnonymousMessage, nameById: Map<string, string
   }
 }
 
+/**
+ * Only the most recent slice of the room is fetched on load and on every poll tick.
+ * Without this the whole history (up to ANONYMOUS_ROOM_MAX_MESSAGES = 1000 rows) was
+ * refetched every 15s per client. Mirrors the `.limit(50)` in
+ * `src/app/api/rooms/[code]/messages/route.ts`.
+ */
+export const ANONYMOUS_MESSAGES_HISTORY_LIMIT = 50
+
 export function useAnonymousMessages(gameCode: string, enabled: boolean, players: Pick<Player, 'id' | 'name'>[] = []) {
   const [messages, setMessages] = useState<AnonymousMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,11 +59,15 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean, players
         'id, game_id, player_id, text, created_at, reply_to_id, reply_to_text, message_type, media_url, players(name)'
       )
       .eq('game_id', gameCode)
-      .order('created_at', { ascending: true })
+      // Descending + limit gives the NEWEST N rows; reversed below so the feed still
+      // renders oldest-first. Ascending + limit would return the OLDEST N and new
+      // messages would never appear.
+      .order('created_at', { ascending: false })
+      .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
 
     if (!supabasePollOk(res)) return false
     const names = nameById()
-    setMessages((res.data ?? []).map((row) => normalizeMessage(row as RawAnonymousMessage, names)))
+    setMessages((res.data ?? []).map((row) => normalizeMessage(row as RawAnonymousMessage, names)).reverse())
     setLoading(false)
     return true
   }, [gameCode, nameById])
