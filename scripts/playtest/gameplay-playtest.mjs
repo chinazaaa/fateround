@@ -377,6 +377,7 @@ for (const g of GAMES) {
 
     // The revoke must still hold after all that state churn, and the counts must still be public.
     assertDenied(await get(`${REST}/${g.table}?game_id=eq.${code}&select=draw_pile`, ANON), `${g.type} draw_pile (post-reshuffle)`, fail)
+    assertDenied(await get(`${REST}/${g.table}?game_id=eq.${code}&select=discard_pile`, ANON), `${g.type} discard_pile (post-reshuffle)`, fail)
     assertReadableRows(await get(`${REST}/${g.table}?game_id=eq.${code}&select=draw_count`, ANON), `${g.type} draw_count (post-reshuffle)`, fail)
 
     // ── Requirement 4: a separate table, played greedily, so somebody actually goes out.
@@ -395,6 +396,10 @@ for (const g of GAMES) {
       finishSession = await readSession(g, finishTable.code, fail, stats, `finish turn ${turn}`)
       if (!finishSession) break
     }
+
+    // The loop tests `phase === 'finished'` at the TOP, so a game that finishes on the final
+    // permitted turn exits without that test ever running again. Re-derive from the last read.
+    if (finishSession?.phase === 'finished') finished = true
 
     if (!finished) {
       fail.push(`${g.type}: greedy play did not finish a game in ${finishTurns} turns — nobody went out`)
