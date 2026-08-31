@@ -9,8 +9,11 @@ import { UI_ICONS } from '@/lib/game-glyphs'
 import { supabase } from '@/lib/supabase'
 import { formatRoomTimezone, getRoomTimezoneOptions, getUserTimezone, ROOM_DESCRIPTION_MAX } from '@/lib/room-timezones'
 import type { RoomRow } from '@/lib/room-api'
-
-type PublicRoom = RoomRow & { memberCount: number }
+import {
+  applyRoomsRealtimeEvent,
+  PUBLIC_ROOMS_REALTIME_FILTER,
+  type BrowsableRoom as PublicRoom,
+} from '@/lib/rooms-realtime'
 
 type Tab = 'create' | 'join' | 'browse'
 
@@ -74,35 +77,34 @@ export function RoomsPage() {
   useEffect(() => {
     if (tab !== 'browse') return
 
+    const onUpsert = (eventType: 'INSERT' | 'UPDATE', room: RoomRow) => {
+      setPublicRooms((prev) => {
+        const { rooms, reload } = applyRoomsRealtimeEvent(prev, { eventType, room })
+        if (reload) void loadPublicRooms()
+        return rooms
+      })
+    }
+
     const channel = supabase
       .channel('public_rooms_browse')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {
-        if (payload.eventType === 'DELETE') {
-          const id = (payload.old as { id?: string })?.id
-          if (id) setPublicRooms((prev) => prev.filter((room) => room.id !== id))
-          return
-        }
-
-        const room = (payload.eventType === 'INSERT' ? payload.new : payload.new) as RoomRow
-        const visible = room.is_public && !room.is_locked
-
-        if (!visible) {
-          setPublicRooms((prev) => prev.filter((r) => r.id !== room.id))
-          return
-        }
-
-        if (payload.eventType === 'UPDATE') {
-          setPublicRooms((prev) => {
-            if (!prev.some((r) => r.id === room.id)) {
-              void loadPublicRooms()
-              return prev
-            }
-            return prev.map((r) => (r.id === room.id ? { ...r, ...room } : r))
-          })
-          return
-        }
-
-        void loadPublicRooms()
+      // Server-side filter: without it every visitor on this tab received an event for
+      // every room change across the entire platform, and `is_public` defaults to false.
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'rooms', filter: PUBLIC_ROOMS_REALTIME_FILTER },
+        (payload) => onUpsert('INSERT', payload.new as RoomRow)
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rooms', filter: PUBLIC_ROOMS_REALTIME_FILTER },
+        (payload) => onUpsert('UPDATE', payload.new as RoomRow)
+      )
+      // DELETE is intentionally UNFILTERED: `rooms` has REPLICA IDENTITY DEFAULT, so a
+      // DELETE payload carries only the primary key. Filtering on `is_public` would make
+      // these events never match and deleted rooms would linger in the list forever.
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'rooms' }, (payload) => {
+        const id = (payload.old as { id?: string })?.id
+        setPublicRooms((prev) => applyRoomsRealtimeEvent(prev, { eventType: 'DELETE', id }).rooms)
       })
       .subscribe()
 
