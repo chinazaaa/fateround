@@ -103,7 +103,11 @@ must succeed — proving the client had access to begin with.
 - Migration versions must be unique — CI's Migrations Check fails the build on a
   duplicate `<version>_` prefix.
 
-## Phase 5 — Push and open the PR
+## Phase 5 — Review, then push and open the PR
+
+Review your own diff **before** pushing — `/code-review` over the branch diff.
+Fixing a finding now costs one commit; fixing it after CodeRabbit costs a review
+round trip and a thread to resolve.
 
 ```bash
 export GH_CONFIG_DIR=/Users/williamsmalachy/.config/gh-fateround
@@ -123,7 +127,7 @@ The description states, in order:
 
 No "draft"/"TBD" placeholders left in the body. No Claude signature.
 
-## Phase 6 — Code review
+## Phase 6 — CodeRabbit review
 
 CodeRabbit reviews every PR (config in `.coderabbit.yaml`). **A stuck or pending
 CodeRabbit check blocks the merge** under the base-branch policy — chase it
