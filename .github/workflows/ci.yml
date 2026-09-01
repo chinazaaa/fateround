@@ -373,7 +373,11 @@ jobs:
       - name: Export local credentials
         run: |
           set -euo pipefail
-          api_url=$(supabase status -o env | grep -E '^API_URL=' | cut -d= -f2- | tr -d '"')
+          # `|| true` is load-bearing. Under `set -euo pipefail` a grep that matches nothing exits 1,
+          # which fails the pipeline, which aborts the step at the assignment -- so the explanatory
+          # ::error:: below would never print and the job would fail with an opaque non-zero exit.
+          # A guard whose whole purpose is to say WHY it failed must not die before saying it.
+          api_url=$(supabase status -o env | { grep -E '^API_URL=' || true; } | cut -d= -f2- | tr -d '"')
           if [ -z "$api_url" ]; then
             echo "::error::supabase status reported no API_URL. Refusing to run a security gate against a half-started stack."
             exit 1
@@ -391,10 +395,12 @@ jobs:
       - name: Verify the local keys still authenticate
         run: |
           set -euo pipefail
+          # Same reasoning as the step above: a curl that cannot connect exits non-zero and would
+          # abort before the ::error:: prints. Default to 000 so the check reports the real problem.
           code=$(curl -s -o /tmp/probe.json -w '%{http_code}' \
             "${NEXT_PUBLIC_SUPABASE_URL}/rest/v1/games?select=id&limit=1" \
             -H "apikey: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
-            -H "Authorization: Bearer ${NEXT_PUBLIC_SUPABASE_ANON_KEY}")
+            -H "Authorization: Bearer ${NEXT_PUBLIC_SUPABASE_ANON_KEY}" || echo 000)
           if [ "$code" != "200" ]; then
             echo "::error::The anon key could not read games.id (HTTP $code). The Supabase CLI's local demo keys have probably changed -- update LOCAL_ANON_KEY / LOCAL_SERVICE_ROLE_KEY in this job. Response: $(head -c 300 /tmp/probe.json)"
             exit 1
