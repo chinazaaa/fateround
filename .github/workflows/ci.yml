@@ -337,6 +337,9 @@ jobs:
     # It does NOT replace the hosted job: only that one can catch a hosted project whose grants
     # diverge from the migrations (a hand-run GRANT in the dashboard). Keep both.
     runs-on: ubuntu-latest
+    # `supabase start` pulls and boots several containers; a hung pull or a wedged container would
+    # otherwise hold a runner for GitHub's 6-hour default. A healthy run is ~4 minutes.
+    timeout-minutes: 20
     permissions:
       contents: read
     env:
@@ -397,7 +400,7 @@ jobs:
           set -euo pipefail
           # Same reasoning as the step above: a curl that cannot connect exits non-zero and would
           # abort before the ::error:: prints. Default to 000 so the check reports the real problem.
-          code=$(curl -s -o /tmp/probe.json -w '%{http_code}' \
+          code=$(curl -s --max-time 30 -o /tmp/probe.json -w '%{http_code}' \
             "${NEXT_PUBLIC_SUPABASE_URL}/rest/v1/games?select=id&limit=1" \
             -H "apikey: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
             -H "Authorization: Bearer ${NEXT_PUBLIC_SUPABASE_ANON_KEY}" || echo 000)
