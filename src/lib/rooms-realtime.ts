@@ -29,6 +29,44 @@ export const PUBLIC_ROOMS_REALTIME_FILTER = 'is_public=eq.true'
  */
 export const ROOMS_DELETE_IS_UNFILTERABLE = true
 
+/**
+ * Supabase realtime `in` filters have a documented cap of 100 values; watched ids are
+ * chunked into multiple filters of at most this many ids each so every on-screen room gets
+ * its leave-the-list frame, no matter how far the viewer has paged.
+ */
+export const WATCHED_ROOM_IDS_MAX = 100
+
+/**
+ * UPDATE filters for the rooms currently rendered on the browse tab.
+ *
+ * `PUBLIC_ROOMS_REALTIME_FILTER` is matched against the POST-update row, so the UPDATE
+ * that takes a listed room private can never be delivered by the filtered channel — the
+ * moment the event exists, the row no longer matches `is_public=eq.true`. Without this,
+ * a room flipping public→private stayed visible to everyone already on the browse tab
+ * until the next refetch. This second subscription pins the ids actually on screen, so
+ * their UPDATEs always arrive and `applyRoomsRealtimeEvent` drops rows that stop
+ * qualifying.
+ *
+ * Egress stays negligible: it only matches rows already rendered, and for rooms that stay
+ * public it merely duplicates frames the filtered channel delivers (the reducer is
+ * idempotent). The incremental cost is just the rare going-private frame.
+ *
+ * Returns one `id=in.(…)` filter per chunk of `WATCHED_ROOM_IDS_MAX` ids (the documented
+ * per-filter cap) — the caller binds one postgres_changes handler per returned filter.
+ * Empty when there is nothing to watch. Room ids are human-facing codes minted by
+ * `generateGameCode()` from an uppercase A–Z/2–9 alphabet (and the DB primary key is that
+ * code), so ids are sanitized to `[A-Z0-9]` — anything else cannot be a real room id and
+ * must never reach the filter expression.
+ */
+export function watchedRoomsRealtimeFilters(ids: readonly string[]): string[] {
+  const safe = ids.filter((id) => /^[A-Z0-9]+$/.test(id))
+  const filters: string[] = []
+  for (let i = 0; i < safe.length; i += WATCHED_ROOM_IDS_MAX) {
+    filters.push(`id=in.(${safe.slice(i, i + WATCHED_ROOM_IDS_MAX).join(',')})`)
+  }
+  return filters
+}
+
 export type BrowsableRoom = RoomRow & { memberCount: number }
 
 /** The browse tab shows public, unlocked rooms only. */

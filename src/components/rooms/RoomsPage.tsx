@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Clock01Icon, LockIcon } from '@hugeicons/core-free-icons'
 import { SiteChrome } from '@/components/SiteChrome'
@@ -12,6 +12,7 @@ import type { RoomRow } from '@/lib/room-api'
 import {
   applyRoomsRealtimeEvent,
   PUBLIC_ROOMS_REALTIME_FILTER,
+  watchedRoomsRealtimeFilters,
   type BrowsableRoom as PublicRoom,
 } from '@/lib/rooms-realtime'
 
@@ -39,6 +40,13 @@ export function RoomsPage() {
   const [browseCursor, setBrowseCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // "A realtime frame landed that needs a full refetch." Set (idempotently) inside the
+  // setPublicRooms updater — which must stay PURE, because React Strict Mode invokes
+  // updaters twice; firing the fetch from inside it risked a duplicate request and an
+  // out-of-order overwrite of publicRooms. The fetch itself runs from the tick-keyed
+  // effect below, once per commit.
+  const browseReloadPendingRef = useRef(false)
+  const [browseReloadTick, setBrowseReloadTick] = useState(0)
   const timezoneOptions = getRoomTimezoneOptions()
 
   useEffect(() => {
@@ -80,9 +88,14 @@ export function RoomsPage() {
     const onUpsert = (eventType: 'INSERT' | 'UPDATE', room: RoomRow) => {
       setPublicRooms((prev) => {
         const { rooms, reload } = applyRoomsRealtimeEvent(prev, { eventType, room })
-        if (reload) void loadPublicRooms()
+        // The updater must stay pure (Strict Mode invokes it twice), so the refetch is NOT
+        // fired from here: marking the ref is idempotent, and the tick-keyed effect below
+        // runs the fetch once per commit.
+        if (reload) browseReloadPendingRef.current = true
         return rooms
       })
+      // Bump outside the updater so the reload effect gets a commit to react to.
+      setBrowseReloadTick((t) => t + 1)
     }
 
     const channel = supabase
@@ -118,6 +131,68 @@ export function RoomsPage() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [tab, loadPublicRooms])
+
+  // Keyed on MEMBERSHIP only (sorted ids), so in-place field updates don't churn the
+  // watched channel — it re-subscribes only when a room enters or leaves the list.
+  const watchedIdsKey = useMemo(
+    () =>
+      publicRooms
+        .map((room) => room.id)
+        .sort()
+        .join(','),
+    [publicRooms]
+  )
+
+  // Closes the public→private hole in the filtered channel above: postgres_changes
+  // evaluates `is_public=eq.true` against the POST-update row, so the UPDATE that takes a
+  // listed room private never reaches the filtered subscription and the now-private room
+  // would stay visible to everyone already browsing until the next refetch. This channel
+  // watches UPDATEs for exactly the ids on screen (`id=in.(…)`), so that frame still
+  // arrives and the reducer drops the row immediately. Realtime `in` filters cap at 100
+  // values, so the ids are chunked into one postgres_changes binding per 100 — a list that
+  // has paged past 100 rooms still gets every row's frame. Egress stays negligible: it
+  // only matches rows already rendered, and for rooms that remain public it merely
+  // duplicates frames the filtered channel delivers (the reducer is idempotent).
+  useEffect(() => {
+    if (tab !== 'browse') return
+    const filters = watchedRoomsRealtimeFilters(watchedIdsKey ? watchedIdsKey.split(',') : [])
+    if (filters.length === 0) return
+
+    const onWatchedUpdate = (payload: { new: unknown }) => {
+      setPublicRooms((prev) => {
+        const { rooms, reload } = applyRoomsRealtimeEvent(prev, {
+          eventType: 'UPDATE',
+          room: payload.new as RoomRow,
+        })
+        // Watched rows are by definition already in `prev`, so `reload` is a near-impossible
+        // race (row left the list between frames). Same pure-updater discipline as onUpsert.
+        if (reload) browseReloadPendingRef.current = true
+        return rooms
+      })
+      setBrowseReloadTick((t) => t + 1)
+    }
+
+    // Per-mount channel name — supabase-js caches channels by name and removeChannel is
+    // async, so a membership change that tears down and rebinds could otherwise hit
+    // "cannot add postgres_changes callbacks … after subscribe()".
+    const channel = supabase.channel(`public_rooms_watch_${Math.random().toString(36).slice(2, 10)}`)
+    for (const filter of filters) {
+      channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter }, onWatchedUpdate)
+    }
+    channel.subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [tab, watchedIdsKey])
+
+  // Runs the refetch requested by the realtime handlers above, outside any state updater.
+  // `browseReloadTick` only marks "a realtime frame landed"; the ref says whether that
+  // frame actually needs a reload.
+  useEffect(() => {
+    if (!browseReloadPendingRef.current) return
+    browseReloadPendingRef.current = false
+    void loadPublicRooms()
+  }, [browseReloadTick, loadPublicRooms])
 
   const createRoom = async () => {
     const name = roomName.trim()

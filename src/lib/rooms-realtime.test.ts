@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   applyRoomsRealtimeEvent,
   roomIsBrowsable,
+  watchedRoomsRealtimeFilters,
   PUBLIC_ROOMS_REALTIME_FILTER,
+  WATCHED_ROOM_IDS_MAX,
   type BrowsableRoom,
 } from './rooms-realtime'
 import type { RoomRow } from './room-api'
@@ -32,6 +34,46 @@ describe('PUBLIC_ROOMS_REALTIME_FILTER', () => {
     expect(PUBLIC_ROOMS_REALTIME_FILTER).toMatch(/^[a-z_]+=(eq|neq|gt|gte|lt|lte|in)\./)
     // `is_public AND NOT is_locked` is NOT expressible — is_locked stays client-side.
     expect(PUBLIC_ROOMS_REALTIME_FILTER).not.toContain('is_locked')
+  })
+})
+
+describe('watchedRoomsRealtimeFilters', () => {
+  it('builds an id=in.(…) filter over the listed room codes', () => {
+    expect(watchedRoomsRealtimeFilters(['ABC123', 'ZZZ999'])).toEqual(['id=in.(ABC123,ZZZ999)'])
+  })
+
+  it('returns no filters when there is nothing to watch', () => {
+    expect(watchedRoomsRealtimeFilters([])).toEqual([])
+  })
+
+  it('drops ids outside the room-code alphabet so they cannot corrupt the expression', () => {
+    // Room ids are generateGameCode() codes: uppercase A–Z / digits only. Anything else
+    // (injection attempts included) is not a real room id and must never reach the filter.
+    expect(watchedRoomsRealtimeFilters(['ABC123', 'evil),id=in.(X'])).toEqual(['id=in.(ABC123)'])
+    expect(watchedRoomsRealtimeFilters(['(', '', 'abc123'])).toEqual([])
+  })
+
+  it("chunks past Supabase realtime's documented in-filter limit instead of dropping ids", () => {
+    // A viewer who has paged past 100 rooms must still get the going-private frame for
+    // room #101 — a single truncated filter would silently drop it.
+    const ids = Array.from({ length: WATCHED_ROOM_IDS_MAX + 20 }, (_, i) => `R${i}`)
+    const filters = watchedRoomsRealtimeFilters(ids)
+    expect(filters).toHaveLength(2)
+    expect(filters[0].match(/,/g)).toHaveLength(WATCHED_ROOM_IDS_MAX - 1)
+    expect(filters[1]).toBe(`id=in.(${ids.slice(WATCHED_ROOM_IDS_MAX).join(',')})`)
+    // Every id appears in exactly one chunk.
+    for (const id of ids) {
+      expect(filters.filter((f) => f.includes(`${id},`) || f.includes(`${id})`)).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps every chunk within the 100-value cap', () => {
+    const ids = Array.from({ length: WATCHED_ROOM_IDS_MAX * 3 + 1 }, (_, i) => `R${i}`)
+    const filters = watchedRoomsRealtimeFilters(ids)
+    expect(filters).toHaveLength(4)
+    for (const filter of filters) {
+      expect(filter.slice('id=in.('.length, -1).split(',').length).toBeLessThanOrEqual(WATCHED_ROOM_IDS_MAX)
+    }
   })
 })
 
