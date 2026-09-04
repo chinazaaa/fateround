@@ -40,13 +40,20 @@ export function RoomsPage() {
   const [browseCursor, setBrowseCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  // "A realtime frame landed that needs a full refetch." Set (idempotently) inside the
-  // setPublicRooms updater — which must stay PURE, because React Strict Mode invokes
-  // updaters twice; firing the fetch from inside it risked a duplicate request and an
-  // out-of-order overwrite of publicRooms. The fetch itself runs from the tick-keyed
-  // effect below, once per commit.
+  // "A realtime frame landed that needs a full refetch." Set by the realtime handlers
+  // (outside any state updater, so React can never rebase the write away); the fetch
+  // itself runs from the tick-keyed effect below, once per commit.
   const browseReloadPendingRef = useRef(false)
   const [browseReloadTick, setBrowseReloadTick] = useState(0)
+  // Ref mirror of `publicRooms` so the realtime handlers can compute the reducer result
+  // OUTSIDE a setState updater (updaters must stay pure — Strict Mode invokes them twice,
+  // and React may rebase/discard an invocation, leaking or dropping a ref write made
+  // inside one). Kept in sync on every commit, and synchronously by the handlers so
+  // back-to-back frames in the same tick don't reduce from stale state.
+  const publicRoomsRef = useRef<PublicRoom[]>([])
+  useEffect(() => {
+    publicRoomsRef.current = publicRooms
+  }, [publicRooms])
   const timezoneOptions = getRoomTimezoneOptions()
 
   useEffect(() => {
@@ -86,16 +93,18 @@ export function RoomsPage() {
     if (tab !== 'browse') return
 
     const onUpsert = (eventType: 'INSERT' | 'UPDATE', room: RoomRow) => {
-      setPublicRooms((prev) => {
-        const { rooms, reload } = applyRoomsRealtimeEvent(prev, { eventType, room })
-        // The updater must stay pure (Strict Mode invokes it twice), so the refetch is NOT
-        // fired from here: marking the ref is idempotent, and the tick-keyed effect below
-        // runs the fetch once per commit.
-        if (reload) browseReloadPendingRef.current = true
-        return rooms
-      })
-      // Bump outside the updater so the reload effect gets a commit to react to.
-      setBrowseReloadTick((t) => t + 1)
+      // Compute from the ref mirror rather than inside a setPublicRooms updater (updaters
+      // must stay pure), then sync the mirror immediately so a back-to-back frame in the
+      // same tick reduces from this result instead of the not-yet-committed state.
+      const { rooms, reload } = applyRoomsRealtimeEvent(publicRoomsRef.current, { eventType, room })
+      publicRoomsRef.current = rooms
+      setPublicRooms(rooms)
+      // Only a frame that actually needs a refetch bumps the tick — locally-satisfied
+      // frames no longer force an extra commit just to run the (no-op) reload effect.
+      if (reload) {
+        browseReloadPendingRef.current = true
+        setBrowseReloadTick((t) => t + 1)
+      }
     }
 
     const channel = supabase
@@ -117,7 +126,9 @@ export function RoomsPage() {
       // these events never match and deleted rooms would linger in the list forever.
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'rooms' }, (payload) => {
         const id = (payload.old as { id?: string })?.id
-        setPublicRooms((prev) => applyRoomsRealtimeEvent(prev, { eventType: 'DELETE', id }).rooms)
+        const { rooms } = applyRoomsRealtimeEvent(publicRoomsRef.current, { eventType: 'DELETE', id })
+        publicRoomsRef.current = rooms
+        setPublicRooms(rooms)
       })
       .subscribe()
 
@@ -159,17 +170,20 @@ export function RoomsPage() {
     if (filters.length === 0) return
 
     const onWatchedUpdate = (payload: { new: unknown }) => {
-      setPublicRooms((prev) => {
-        const { rooms, reload } = applyRoomsRealtimeEvent(prev, {
-          eventType: 'UPDATE',
-          room: payload.new as RoomRow,
-        })
-        // Watched rows are by definition already in `prev`, so `reload` is a near-impossible
-        // race (row left the list between frames). Same pure-updater discipline as onUpsert.
-        if (reload) browseReloadPendingRef.current = true
-        return rooms
+      // Same ref-mirror discipline as onUpsert: compute outside the updater, sync the
+      // mirror synchronously, and bump the tick only for frames that need a refetch.
+      const { rooms, reload } = applyRoomsRealtimeEvent(publicRoomsRef.current, {
+        eventType: 'UPDATE',
+        room: payload.new as RoomRow,
       })
-      setBrowseReloadTick((t) => t + 1)
+      publicRoomsRef.current = rooms
+      setPublicRooms(rooms)
+      // Watched rows are by definition already in the list, so `reload` is a
+      // near-impossible race (row left the list between frames).
+      if (reload) {
+        browseReloadPendingRef.current = true
+        setBrowseReloadTick((t) => t + 1)
+      }
     }
 
     // Per-mount channel name — supabase-js caches channels by name and removeChannel is
@@ -186,8 +200,9 @@ export function RoomsPage() {
   }, [tab, watchedIdsKey])
 
   // Runs the refetch requested by the realtime handlers above, outside any state updater.
-  // `browseReloadTick` only marks "a realtime frame landed"; the ref says whether that
-  // frame actually needs a reload.
+  // The tick bumps only when a frame actually needs a reload; the ref guard keeps the
+  // effect idempotent (Strict Mode re-runs, dep changes) — one refetch per request,
+  // zero otherwise.
   useEffect(() => {
     if (!browseReloadPendingRef.current) return
     browseReloadPendingRef.current = false

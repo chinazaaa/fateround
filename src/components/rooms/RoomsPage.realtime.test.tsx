@@ -231,4 +231,28 @@ describe('RoomsPage realtime reload under Strict Mode', () => {
     await waitFor(() => expect(screen.queryByText('Fun Room')).toBeNull())
     expect(fetchMock.mock.calls.length).toBe(calls)
   })
+
+  it('applies back-to-back watched frames in the same tick without one clobbering the other', async () => {
+    // The handlers compute from a ref mirror instead of a setState updater; the mirror is
+    // synced synchronously in the handler so a second frame arriving before React commits
+    // must not reduce from stale state and resurrect the first frame's removal.
+    const other = { ...ROOM, id: 'DEF456', name: 'Other Room' }
+    fetchMock.mockImplementation(async () => ({
+      ok: true,
+      json: async () => ({ rooms: [ROOM, other], hasMore: false, nextCursor: null }),
+    }))
+    await openBrowseTab(true)
+    await screen.findByText('Other Room')
+    await waitFor(() => expect(handlerFor('UPDATE', 'id=in.(ABC123,DEF456)')).toBeTruthy())
+
+    const calls = fetchMock.mock.calls.length
+    act(() => {
+      const handler = handlerFor('UPDATE', 'id=in.(ABC123,DEF456)')
+      handler?.({ new: { ...ROOM, is_public: false } })
+      handler?.({ new: { ...other, is_public: false } })
+    })
+    await waitFor(() => expect(screen.queryByText('Fun Room')).toBeNull())
+    expect(screen.queryByText('Other Room')).toBeNull()
+    expect(fetchMock.mock.calls.length).toBe(calls)
+  })
 })
