@@ -42,14 +42,18 @@ read through the curated lists. `src/lib/supabase-selects.ts` documents this in 
 | `mafia_advanced_mode`      | `src/components/host-lobby/HostMafiaLobbyPanel.tsx:96`          | reads off the `game` prop |
 | `mafia_day_seconds`        | `HostMafiaLobbyPanel.tsx:93`                                    | ditto                     |
 | `mafia_voting_seconds`     | `HostMafiaLobbyPanel.tsx:94`                                    | ditto                     |
+| `mafia_anonymous_votes`    | `HostMafiaLobbyPanel.tsx:95`                                    | ditto; also named by mobile `GAME_SELECT` |
 | `host_user_id`             | `LiveGamesStrip.tsx`, `HostThemePicker.tsx`, `useHostToken.ts`  | client-side               |
 | `elimination_config`       | `src/app/tournament/[code]/page.tsx`, `src/app/create/page.tsx` | client-side               |
 | `wordle_room_custom_words` | `HostWordleRoomLobbyPanel.tsx`                                  | client-side               |
 
 **The `HostMafiaLobbyPanel` case is the one worth understanding**, because it is invisible from
-the select lists. Those columns are in _neither_ list, so REST never returns them — the panel's
-only source is the **realtime payload**, which today carries all 155 granted columns regardless of
-what any select asks for. Revoke them and the panel silently falls back to its defaults
+the select lists. Three of its four settings (`mafia_advanced_mode`, `mafia_day_seconds`,
+`mafia_voting_seconds`) are in _neither_ list, so REST never returns them — the panel's only
+source is the **realtime payload**, which today carries all 155 granted columns regardless of
+what any select asks for. The fourth, `mafia_anonymous_votes`, is named by mobile `GAME_SELECT`
+(so it never entered the 34-column candidate pool and is not one of the 6 rejected candidates
+counted above), but on web it too arrives only via realtime. Revoke them and the panel silently falls back to its defaults
 (`?? 90`, `?? 45`) instead of showing saved settings. No error, no test failure, just wrong
 numbers in the host's lobby.
 
@@ -88,8 +92,11 @@ state — the behaviour was designed for exactly this shape.
 
 ## Expected saving
 
-28 of 155 delivered columns ≈ **18%** of the frame, roughly **2.2 KB off 12.3 KB** per subscriber
-per update. Not re-measured after the final list was chosen — see below.
+Removing 28 of 155 delivered columns cuts the column count by ≈18% — a share of the column
+list, not of the frame itself. Extrapolating per-column from the measured 29-column revoke
+(12,305 → 9,930 bytes, −2,375 bytes), a 28-column set should save roughly **2.3 KB off
+12.3 KB (≈19%)** per subscriber per update. This is an unmeasured extrapolation from a
+different column set, not a measurement of the final list — see below.
 
 ## Not verified
 
