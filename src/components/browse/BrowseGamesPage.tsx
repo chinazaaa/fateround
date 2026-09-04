@@ -50,11 +50,18 @@ export function BrowseGamesPage() {
   // Timestamp of the last completed list read. The poll fallback uses it to skip work while
   // the realtime channel is healthy and the list is already fresh.
   const lastLoadAtRef = useRef(0)
-  // "The watched-ids channel saw a frame that needs a full refetch." Set (idempotently)
-  // inside the setGames updater — which must stay pure, so the fetch itself is deferred to
-  // an effect keyed on the tick below rather than fired from inside the updater.
+  // "The watched-ids channel saw a frame that needs a full refetch." Set by the watched
+  // handler (outside any state updater, so React can never rebase the write away); the
+  // fetch itself runs in the effect keyed on the tick below.
   const watchReloadPendingRef = useRef(false)
   const [watchReloadTick, setWatchReloadTick] = useState(0)
+  // Ref mirror of `games` so the watched-frame handler can compute the reducer result
+  // OUTSIDE a setState updater (updaters must stay pure). Kept in sync on every commit,
+  // and synchronously by the handler itself so back-to-back frames don't read stale state.
+  const gamesRef = useRef<PublicGame[]>([])
+  useEffect(() => {
+    gamesRef.current = games
+  }, [games])
 
   const loadGames = useCallback(
     async (nextCursor?: string | null, silent = false) => {
@@ -289,22 +296,26 @@ export function BrowseGamesPage() {
     const filters = watchedGamesRealtimeFilters(watchedIdsKey ? watchedIdsKey.split(',') : [])
     if (filters.length === 0) return
     const onWatchedUpdate = (payload: { new: unknown }) => {
-      setGames((prev) => {
-        const { games: next, reload } = applyBrowseGamesRealtimeEvent(
-          prev,
-          { eventType: 'UPDATE', row: payload.new as GamesRealtimeRow },
-          tab
-        )
-        // Watched rows are by definition already in `prev`, so `reload` is a
-        // near-impossible race (row left the list between frames). The updater must stay
-        // PURE (React can invoke it twice under Strict Mode), so the fetch itself runs in
-        // the tick-keyed effect below: marking the ref is idempotent, and the effect body
-        // executes once per commit — no duplicate refetch. No debounce needed either way.
-        if (reload) watchReloadPendingRef.current = true
-        return next
-      })
-      // Bump outside the updater so the effect below gets a commit to react to.
-      setWatchReloadTick((t) => t + 1)
+      // Compute from the ref mirror rather than inside a setGames updater: updaters must
+      // stay pure (React may invoke one twice under Strict Mode, or rebase/discard an
+      // invocation entirely, which would leak or drop a ref write from inside it).
+      const { games: next, reload } = applyBrowseGamesRealtimeEvent(
+        gamesRef.current,
+        { eventType: 'UPDATE', row: payload.new as GamesRealtimeRow },
+        tab
+      )
+      // Sync the mirror immediately so a back-to-back frame in the same tick reduces from
+      // this result instead of the not-yet-committed previous state.
+      gamesRef.current = next
+      setGames(next)
+      // Watched rows are by definition already in the list, so `reload` is a
+      // near-impossible race (row left the list between frames). Only such a frame bumps
+      // the tick — locally-satisfied frames no longer force an extra commit just to run
+      // the (no-op) reload effect.
+      if (reload) {
+        watchReloadPendingRef.current = true
+        setWatchReloadTick((t) => t + 1)
+      }
     }
     const channel = supabase.channel(`public_games_watch_${Math.random().toString(36).slice(2, 10)}`)
     for (const filter of filters) {
@@ -317,8 +328,9 @@ export function BrowseGamesPage() {
   }, [watchedIdsKey, tab])
 
   // Runs the silent refetch requested by the watched-ids handler above, outside any state
-  // updater. `watchReloadTick` only marks "a watched frame landed"; the ref says whether
-  // that frame actually needs a reload.
+  // updater. The tick bumps only when a frame actually needs a reload; the ref guard
+  // keeps the effect idempotent (Strict Mode re-runs, dep changes) — one refetch per
+  // request, zero otherwise.
   useEffect(() => {
     if (!watchReloadPendingRef.current) return
     watchReloadPendingRef.current = false

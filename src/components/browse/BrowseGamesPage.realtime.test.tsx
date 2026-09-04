@@ -255,6 +255,35 @@ describe('BrowseGamesPage watched-channel reload under Strict Mode', () => {
     await waitFor(() => expect(screen.queryByText('Game night')).toBeNull())
     expect(fetchMock.mock.calls.length).toBe(calls)
   })
+
+  it('applies back-to-back watched frames in the same tick without one clobbering the other', async () => {
+    // The handler computes from a ref mirror instead of a setState updater; the mirror is
+    // synced synchronously in the handler so a second frame arriving before React commits
+    // must not reduce from stale state and resurrect the first frame's removal.
+    const other = { ...GAME, id: 'DEF456', title: 'Other night' }
+    fetchMock.mockImplementation(async () => ({
+      ok: true,
+      json: async () => ({ games: [GAME, other], hasMore: false, nextCursor: null }),
+    }))
+    render(
+      <StrictMode>
+        <BrowseGamesPage />
+      </StrictMode>
+    )
+    await screen.findByText('Game night')
+    await screen.findByText('Other night')
+    await waitFor(() => expect(handlerFor('UPDATE', 'id=in.(ABC123,DEF456)')).toBeTruthy())
+
+    const calls = fetchMock.mock.calls.length
+    act(() => {
+      const handler = handlerFor('UPDATE', 'id=in.(ABC123,DEF456)')
+      handler?.({ new: { ...GAME, is_public: false } })
+      handler?.({ new: { ...other, is_public: false } })
+    })
+    await waitFor(() => expect(screen.queryByText('Game night')).toBeNull())
+    expect(screen.queryByText('Other night')).toBeNull()
+    expect(fetchMock.mock.calls.length).toBe(calls)
+  })
 })
 
 describe('BrowseGamesPage poll fallback', () => {
