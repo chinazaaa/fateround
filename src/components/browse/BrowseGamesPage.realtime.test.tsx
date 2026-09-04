@@ -17,8 +17,7 @@ type Sub = { event: string; schema: string; table: string; filter?: string }
 type Handler = (payload: any) => void
 
 const rt = vi.hoisted(() => ({
-  subs: [] as Sub[],
-  handlers: new Map<string, Handler>(),
+  subs: [] as (Sub & { handler: Handler })[],
   onStatus: null as ((status: string) => void) | null,
 }))
 
@@ -28,22 +27,27 @@ vi.mock('@/lib/supabase', () => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const c: any = {}
       c.on = (_type: string, config: Sub, handler: Handler) => {
-        rt.subs.push(config)
-        rt.handlers.set(config.event, handler)
+        rt.subs.push({ ...config, handler })
         return c
       }
       c.subscribe = (cb?: (status: string) => void) => {
-        rt.onStatus = cb ?? null
+        // Only the main filtered channel passes a status callback; keep it.
+        if (cb) rt.onStatus = cb
         return c
       }
       return c
     },
-    removeChannel: () => {},
+    removeChannel: (c: unknown) => c,
   },
 }))
 
 import { BrowseGamesPage } from './BrowseGamesPage'
 import { PUBLIC_GAMES_REALTIME_FILTER } from '@/lib/browse-games-realtime'
+
+/** The page now holds several `games` subscriptions; address them by event AND filter. */
+function handlerFor(event: string, filter: string | undefined): Handler | undefined {
+  return rt.subs.filter((s) => s.event === event && s.filter === filter).at(-1)?.handler
+}
 
 const GAME = {
   id: 'ABC123',
@@ -62,7 +66,6 @@ let fetchMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   rt.subs = []
-  rt.handlers = new Map()
   rt.onStatus = null
   fetchMock = vi.fn(async () => ({
     ok: true,
@@ -93,11 +96,24 @@ describe('BrowseGamesPage realtime subscription', () => {
   it('filters INSERT and UPDATE on is_public server-side', async () => {
     await mount()
     for (const event of ['INSERT', 'UPDATE']) {
-      const sub = rt.subs.find((s) => s.table === 'games' && s.event === event)
-      expect(sub, `missing ${event} subscription`).toBeTruthy()
+      const sub = rt.subs.find(
+        (s) => s.table === 'games' && s.event === event && s.filter === PUBLIC_GAMES_REALTIME_FILTER
+      )
+      expect(sub, `missing is_public-filtered ${event} subscription`).toBeTruthy()
       expect(sub?.schema).toBe('public')
-      expect(sub?.filter).toBe(PUBLIC_GAMES_REALTIME_FILTER)
     }
+  })
+
+  it('also watches UPDATEs for the ids on screen (the going-private frame the is_public filter drops)', async () => {
+    // postgres_changes evaluates `is_public=eq.true` against the POST-update row, so the
+    // UPDATE that flips a listed game private never reaches the filtered subscription.
+    // A second id-scoped channel must exist to deliver it.
+    await mount()
+    await waitFor(() => {
+      const sub = rt.subs.find((s) => s.table === 'games' && s.event === 'UPDATE' && s.filter?.startsWith('id=in.('))
+      expect(sub?.filter).toBe('id=in.(ABC123)')
+      expect(sub?.schema).toBe('public')
+    })
   })
 
   it('leaves DELETE unfiltered so id-only payloads still arrive', async () => {
@@ -115,7 +131,10 @@ describe('BrowseGamesPage realtime payload handling', () => {
     await mount()
     const calls = fetchMock.mock.calls.length
     act(() => {
-      rt.handlers.get('UPDATE')?.({ new: { ...GAME, is_public: true, title: 'Renamed night' } })
+      handlerFor(
+        'UPDATE',
+        PUBLIC_GAMES_REALTIME_FILTER
+      )?.({ new: { ...GAME, is_public: true, title: 'Renamed night' } })
     })
     await screen.findByText('Renamed night')
     expect(fetchMock.mock.calls.length).toBe(calls)
@@ -125,7 +144,21 @@ describe('BrowseGamesPage realtime payload handling', () => {
     await mount()
     const calls = fetchMock.mock.calls.length
     act(() => {
-      rt.handlers.get('UPDATE')?.({ new: { ...GAME, is_public: true, status: 'finished' } })
+      handlerFor('UPDATE', PUBLIC_GAMES_REALTIME_FILTER)?.({ new: { ...GAME, is_public: true, status: 'finished' } })
+    })
+    await waitFor(() => expect(screen.queryByText('Game night')).toBeNull())
+    expect(fetchMock.mock.calls.length).toBe(calls)
+  })
+
+  it('removes a listed game the moment it flips public→private, via the watched-ids channel', async () => {
+    // Regression: the `is_public=eq.true` UPDATE subscription can never deliver this frame
+    // (the filter is matched against the post-update row), so without the id-scoped channel
+    // the now-private game stayed visible for up to 60s.
+    await mount()
+    await waitFor(() => expect(handlerFor('UPDATE', 'id=in.(ABC123)')).toBeTruthy())
+    const calls = fetchMock.mock.calls.length
+    act(() => {
+      handlerFor('UPDATE', 'id=in.(ABC123)')?.({ new: { ...GAME, is_public: false } })
     })
     await waitFor(() => expect(screen.queryByText('Game night')).toBeNull())
     expect(fetchMock.mock.calls.length).toBe(calls)
@@ -134,7 +167,7 @@ describe('BrowseGamesPage realtime payload handling', () => {
   it('removes a deleted game from the id-only DELETE payload', async () => {
     await mount()
     act(() => {
-      rt.handlers.get('DELETE')?.({ old: { id: 'ABC123' } })
+      handlerFor('DELETE', undefined)?.({ old: { id: 'ABC123' } })
     })
     await waitFor(() => expect(screen.queryByText('Game night')).toBeNull())
   })
@@ -152,6 +185,30 @@ describe('BrowseGamesPage poll fallback', () => {
       await vi.advanceTimersByTimeAsync(16_000)
     })
     expect(fetchMock.mock.calls.length).toBe(calls)
+  })
+
+  it('does not treat a FAILED refetch as fresh — the next poll tick retries', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    await mount()
+    act(() => {
+      rt.onStatus?.('SUBSCRIBED')
+    })
+    // Let the healthy-refresh window lapse so the poll fires, and make that load fail.
+    fetchMock.mockImplementation(async () => {
+      throw new Error('network down')
+    })
+    const before = fetchMock.mock.calls.length
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(61_000)
+    })
+    const afterFailure = fetchMock.mock.calls.length
+    expect(afterFailure).toBeGreaterThan(before)
+    // The failure must NOT have recorded freshness (that would gate recovery for another
+    // 60s): the very next 15s tick retries.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_000)
+    })
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(afterFailure)
   })
 
   it('still polls when the channel is not subscribed', async () => {

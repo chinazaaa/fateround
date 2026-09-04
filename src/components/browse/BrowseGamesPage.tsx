@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { supabase } from '@/lib/supabase'
@@ -12,6 +12,7 @@ import type { PublicGame } from '@/lib/game-browse'
 import {
   applyBrowseGamesRealtimeEvent,
   PUBLIC_GAMES_REALTIME_FILTER,
+  watchedGamesRealtimeFilter,
   type GamesRealtimeRow,
 } from '@/lib/browse-games-realtime'
 
@@ -71,6 +72,11 @@ export function BrowseGamesPage() {
         setGames((prev) => (loadingMore ? [...prev, ...rows] : rows))
         setHasMore(!!d.hasMore)
         setCursor(d.nextCursor ?? null)
+        // Freshness is recorded ONLY after a successful, parsed response. Doing it in
+        // `finally` would let a FAILED silent load mark the list fresh and gate the poll
+        // fallback below for another HEALTHY_REFRESH_MS — exactly the recovery path the
+        // poll exists to provide.
+        lastLoadAtRef.current = Date.now()
       } catch {
         if (!loadingMore && !silent) {
           setGames([])
@@ -78,7 +84,6 @@ export function BrowseGamesPage() {
           setCursor(null)
         }
       } finally {
-        lastLoadAtRef.current = Date.now()
         if (loadingMore) setLoadingMore(false)
         else if (!silent) setLoading(false)
       }
@@ -253,6 +258,50 @@ export function BrowseGamesPage() {
       clearInterval(interval)
     }
   }, [loadGames, tab])
+
+  // Keyed on MEMBERSHIP only (sorted ids), so in-place field updates don't churn the
+  // watched channel — it re-subscribes only when a game enters or leaves the list.
+  const watchedIdsKey = useMemo(
+    () =>
+      games
+        .map((g) => g.id)
+        .sort()
+        .join(','),
+    [games]
+  )
+
+  // Closes the public→private hole in the filtered channel above: postgres_changes
+  // evaluates `is_public=eq.true` against the POST-update row, so the UPDATE that takes a
+  // listed game private never reaches the filtered subscription and the now-private game
+  // would sit visible to everyone already on /browse until the slow safety refetch. This
+  // channel watches UPDATEs for exactly the ids on screen (`id=in.(…)`), so that frame
+  // still arrives and the reducer drops the row immediately. Egress stays negligible — it
+  // only ever matches rows already rendered, and for games that remain public it merely
+  // duplicates frames the filtered channel delivers (the reducer is idempotent).
+  useEffect(() => {
+    const filter = watchedGamesRealtimeFilter(watchedIdsKey ? watchedIdsKey.split(',') : [])
+    if (!filter) return
+    const channel = supabase
+      .channel(`public_games_watch_${Math.random().toString(36).slice(2, 10)}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter }, (payload) => {
+        setGames((prev) => {
+          const { games: next, reload } = applyBrowseGamesRealtimeEvent(
+            prev,
+            { eventType: 'UPDATE', row: payload.new as GamesRealtimeRow },
+            tab
+          )
+          // Watched rows are by definition already in `prev`, so `reload` is a
+          // near-impossible race (row left the list between frames) — a single silent
+          // refetch is fine without the main channel's debounce.
+          if (reload) void loadGames(null, true)
+          return next
+        })
+      })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [watchedIdsKey, tab, loadGames])
 
   return (
     <>

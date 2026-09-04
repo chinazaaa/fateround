@@ -4,6 +4,8 @@ import {
   gameIsBrowsable,
   pickBrowseFields,
   PUBLIC_GAMES_REALTIME_FILTER,
+  WATCHED_GAME_IDS_MAX,
+  watchedGamesRealtimeFilter,
   type GamesRealtimeRow,
 } from './browse-games-realtime'
 import type { PublicGame } from './game-browse'
@@ -30,6 +32,27 @@ function listed(over: Partial<PublicGame> = {}): PublicGame {
 describe('PUBLIC_GAMES_REALTIME_FILTER', () => {
   it('is a single-column equality filter realtime can actually express', () => {
     expect(PUBLIC_GAMES_REALTIME_FILTER).toBe('is_public=eq.true')
+  })
+})
+
+describe('watchedGamesRealtimeFilter', () => {
+  it('builds an id=in.(…) filter over the listed ids', () => {
+    expect(watchedGamesRealtimeFilter(['ABC123', 'ZZZ999'])).toBe('id=in.(ABC123,ZZZ999)')
+  })
+
+  it('returns null when there is nothing to watch', () => {
+    expect(watchedGamesRealtimeFilter([])).toBeNull()
+  })
+
+  it('drops ids outside the game-code alphabet so they cannot corrupt the expression', () => {
+    expect(watchedGamesRealtimeFilter(['ABC123', 'evil),id=in.(X'])).toBe('id=in.(ABC123)')
+    expect(watchedGamesRealtimeFilter(['(', ''])).toBeNull()
+  })
+
+  it("caps at Supabase realtime's documented in-filter limit", () => {
+    const ids = Array.from({ length: WATCHED_GAME_IDS_MAX + 20 }, (_, i) => `G${i}`)
+    const filter = watchedGamesRealtimeFilter(ids)
+    expect(filter?.match(/,/g)).toHaveLength(WATCHED_GAME_IDS_MAX - 1)
   })
 })
 

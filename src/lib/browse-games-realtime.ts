@@ -15,10 +15,44 @@ import type { BrowseGameRow, PublicGame } from '@/lib/game-browse'
  * filter on `is_public`, which is by far the most selective of the three: it defaults to
  * false and the overwhelming majority of games on the platform are private, so this drops
  * nearly all of the firehose. The `max_players` and `status` checks stay client-side in
- * `gameIsBrowsable` — and they have to, because a game leaving the list (finishing, going
- * private) must still deliver the event that removes it.
+ * `gameIsBrowsable` — and they have to, because a game leaving the list by finishing must
+ * still deliver the event that removes it (`is_public` stays true, so the frame passes).
+ *
+ * The one transition this filter can NEVER deliver is a listed game flipping
+ * public→private: postgres_changes evaluates the filter against the POST-update row, and
+ * the moment the event exists the row no longer matches. `watchedGamesRealtimeFilter`
+ * below closes that gap with a second, id-scoped subscription.
  */
 export const PUBLIC_GAMES_REALTIME_FILTER = 'is_public=eq.true'
+
+/**
+ * Supabase realtime `in` filters have a documented cap of 100 values; ids past the cap fall
+ * back to the slow safety poll for their leave-the-list events.
+ */
+export const WATCHED_GAME_IDS_MAX = 100
+
+/**
+ * UPDATE filter for the games currently rendered on /browse.
+ *
+ * Because `PUBLIC_GAMES_REALTIME_FILTER` is matched against the new row, an UPDATE that
+ * takes a listed game private is silently dropped server-side and the now-private game
+ * would stay visible to everyone already on the page until the 60s safety refetch. This
+ * second subscription pins the ids that are actually on screen, so their UPDATEs always
+ * arrive and `applyBrowseGamesRealtimeEvent` removes rows that stop qualifying.
+ *
+ * Egress: this only matches rows already on screen (≤ WATCHED_GAME_IDS_MAX), and for games
+ * that stay public it duplicates frames the filtered channel already delivers — the
+ * incremental cost is just the rare going-private frame, versus reverting to the unfiltered
+ * firehose this PR exists to remove.
+ *
+ * Returns null when there is nothing to watch. Ids are sanitized to the game-code alphabet
+ * so a hostile/odd id can never corrupt the filter expression.
+ */
+export function watchedGamesRealtimeFilter(ids: readonly string[]): string | null {
+  const safe = ids.filter((id) => /^[A-Za-z0-9_-]+$/.test(id)).slice(0, WATCHED_GAME_IDS_MAX)
+  if (safe.length === 0) return null
+  return `id=in.(${safe.join(',')})`
+}
 
 /** Which browse tab the list is showing; decides which statuses qualify. */
 export type BrowseTab = 'live' | 'upcoming'
