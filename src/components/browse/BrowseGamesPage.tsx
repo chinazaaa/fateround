@@ -12,7 +12,7 @@ import type { PublicGame } from '@/lib/game-browse'
 import {
   applyBrowseGamesRealtimeEvent,
   PUBLIC_GAMES_REALTIME_FILTER,
-  watchedGamesRealtimeFilter,
+  watchedGamesRealtimeFilters,
   type GamesRealtimeRow,
 } from '@/lib/browse-games-realtime'
 
@@ -50,6 +50,11 @@ export function BrowseGamesPage() {
   // Timestamp of the last completed list read. The poll fallback uses it to skip work while
   // the realtime channel is healthy and the list is already fresh.
   const lastLoadAtRef = useRef(0)
+  // "The watched-ids channel saw a frame that needs a full refetch." Set (idempotently)
+  // inside the setGames updater — which must stay pure, so the fetch itself is deferred to
+  // an effect keyed on the tick below rather than fired from inside the updater.
+  const watchReloadPendingRef = useRef(false)
+  const [watchReloadTick, setWatchReloadTick] = useState(0)
 
   const loadGames = useCallback(
     async (nextCursor?: string | null, silent = false) => {
@@ -275,33 +280,50 @@ export function BrowseGamesPage() {
   // listed game private never reaches the filtered subscription and the now-private game
   // would sit visible to everyone already on /browse until the slow safety refetch. This
   // channel watches UPDATEs for exactly the ids on screen (`id=in.(…)`), so that frame
-  // still arrives and the reducer drops the row immediately. Egress stays negligible — it
-  // only ever matches rows already rendered, and for games that remain public it merely
+  // still arrives and the reducer drops the row immediately. Realtime `in` filters cap at
+  // 100 values, so the ids are chunked into one postgres_changes binding per 100 — a list
+  // that has paged past 100 games still gets every row's frame. Egress stays negligible —
+  // it only ever matches rows already rendered, and for games that remain public it merely
   // duplicates frames the filtered channel delivers (the reducer is idempotent).
   useEffect(() => {
-    const filter = watchedGamesRealtimeFilter(watchedIdsKey ? watchedIdsKey.split(',') : [])
-    if (!filter) return
-    const channel = supabase
-      .channel(`public_games_watch_${Math.random().toString(36).slice(2, 10)}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter }, (payload) => {
-        setGames((prev) => {
-          const { games: next, reload } = applyBrowseGamesRealtimeEvent(
-            prev,
-            { eventType: 'UPDATE', row: payload.new as GamesRealtimeRow },
-            tab
-          )
-          // Watched rows are by definition already in `prev`, so `reload` is a
-          // near-impossible race (row left the list between frames) — a single silent
-          // refetch is fine without the main channel's debounce.
-          if (reload) void loadGames(null, true)
-          return next
-        })
+    const filters = watchedGamesRealtimeFilters(watchedIdsKey ? watchedIdsKey.split(',') : [])
+    if (filters.length === 0) return
+    const onWatchedUpdate = (payload: { new: unknown }) => {
+      setGames((prev) => {
+        const { games: next, reload } = applyBrowseGamesRealtimeEvent(
+          prev,
+          { eventType: 'UPDATE', row: payload.new as GamesRealtimeRow },
+          tab
+        )
+        // Watched rows are by definition already in `prev`, so `reload` is a
+        // near-impossible race (row left the list between frames). The updater must stay
+        // PURE (React can invoke it twice under Strict Mode), so the fetch itself runs in
+        // the tick-keyed effect below: marking the ref is idempotent, and the effect body
+        // executes once per commit — no duplicate refetch. No debounce needed either way.
+        if (reload) watchReloadPendingRef.current = true
+        return next
       })
-      .subscribe()
+      // Bump outside the updater so the effect below gets a commit to react to.
+      setWatchReloadTick((t) => t + 1)
+    }
+    const channel = supabase.channel(`public_games_watch_${Math.random().toString(36).slice(2, 10)}`)
+    for (const filter of filters) {
+      channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter }, onWatchedUpdate)
+    }
+    channel.subscribe()
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [watchedIdsKey, tab, loadGames])
+  }, [watchedIdsKey, tab])
+
+  // Runs the silent refetch requested by the watched-ids handler above, outside any state
+  // updater. `watchReloadTick` only marks "a watched frame landed"; the ref says whether
+  // that frame actually needs a reload.
+  useEffect(() => {
+    if (!watchReloadPendingRef.current) return
+    watchReloadPendingRef.current = false
+    void loadGames(null, true)
+  }, [watchReloadTick, loadGames])
 
   return (
     <>

@@ -20,19 +20,20 @@ import type { BrowseGameRow, PublicGame } from '@/lib/game-browse'
  *
  * The one transition this filter can NEVER deliver is a listed game flipping
  * public→private: postgres_changes evaluates the filter against the POST-update row, and
- * the moment the event exists the row no longer matches. `watchedGamesRealtimeFilter`
+ * the moment the event exists the row no longer matches. `watchedGamesRealtimeFilters`
  * below closes that gap with a second, id-scoped subscription.
  */
 export const PUBLIC_GAMES_REALTIME_FILTER = 'is_public=eq.true'
 
 /**
- * Supabase realtime `in` filters have a documented cap of 100 values; ids past the cap fall
- * back to the slow safety poll for their leave-the-list events.
+ * Supabase realtime `in` filters have a documented cap of 100 values; watched ids are
+ * chunked into multiple filters of at most this many ids each so every on-screen game gets
+ * its leave-the-list frame, no matter how far the viewer has paged.
  */
 export const WATCHED_GAME_IDS_MAX = 100
 
 /**
- * UPDATE filter for the games currently rendered on /browse.
+ * UPDATE filters for the games currently rendered on /browse.
  *
  * Because `PUBLIC_GAMES_REALTIME_FILTER` is matched against the new row, an UPDATE that
  * takes a listed game private is silently dropped server-side and the now-private game
@@ -40,18 +41,24 @@ export const WATCHED_GAME_IDS_MAX = 100
  * second subscription pins the ids that are actually on screen, so their UPDATEs always
  * arrive and `applyBrowseGamesRealtimeEvent` removes rows that stop qualifying.
  *
- * Egress: this only matches rows already on screen (≤ WATCHED_GAME_IDS_MAX), and for games
+ * Egress: this only matches rows already on screen, and for games
  * that stay public it duplicates frames the filtered channel already delivers — the
  * incremental cost is just the rare going-private frame, versus reverting to the unfiltered
  * firehose this PR exists to remove.
  *
- * Returns null when there is nothing to watch. Ids are sanitized to the game-code alphabet
- * so a hostile/odd id can never corrupt the filter expression.
+ * Returns one `id=in.(…)` filter per chunk of `WATCHED_GAME_IDS_MAX` ids (the documented
+ * per-filter cap), so a list that has paged past 100 games still gets an UPDATE frame for
+ * every rendered row — the caller binds one postgres_changes handler per returned filter.
+ * Empty when there is nothing to watch. Ids are sanitized to the game-code alphabet so a
+ * hostile/odd id can never corrupt the filter expression.
  */
-export function watchedGamesRealtimeFilter(ids: readonly string[]): string | null {
-  const safe = ids.filter((id) => /^[A-Za-z0-9_-]+$/.test(id)).slice(0, WATCHED_GAME_IDS_MAX)
-  if (safe.length === 0) return null
-  return `id=in.(${safe.join(',')})`
+export function watchedGamesRealtimeFilters(ids: readonly string[]): string[] {
+  const safe = ids.filter((id) => /^[A-Za-z0-9_-]+$/.test(id))
+  const filters: string[] = []
+  for (let i = 0; i < safe.length; i += WATCHED_GAME_IDS_MAX) {
+    filters.push(`id=in.(${safe.slice(i, i + WATCHED_GAME_IDS_MAX).join(',')})`)
+  }
+  return filters
 }
 
 /** Which browse tab the list is showing; decides which statuses qualify. */

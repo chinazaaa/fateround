@@ -5,7 +5,7 @@ import {
   pickBrowseFields,
   PUBLIC_GAMES_REALTIME_FILTER,
   WATCHED_GAME_IDS_MAX,
-  watchedGamesRealtimeFilter,
+  watchedGamesRealtimeFilters,
   type GamesRealtimeRow,
 } from './browse-games-realtime'
 import type { PublicGame } from './game-browse'
@@ -35,24 +35,42 @@ describe('PUBLIC_GAMES_REALTIME_FILTER', () => {
   })
 })
 
-describe('watchedGamesRealtimeFilter', () => {
+describe('watchedGamesRealtimeFilters', () => {
   it('builds an id=in.(…) filter over the listed ids', () => {
-    expect(watchedGamesRealtimeFilter(['ABC123', 'ZZZ999'])).toBe('id=in.(ABC123,ZZZ999)')
+    expect(watchedGamesRealtimeFilters(['ABC123', 'ZZZ999'])).toEqual(['id=in.(ABC123,ZZZ999)'])
   })
 
-  it('returns null when there is nothing to watch', () => {
-    expect(watchedGamesRealtimeFilter([])).toBeNull()
+  it('returns no filters when there is nothing to watch', () => {
+    expect(watchedGamesRealtimeFilters([])).toEqual([])
   })
 
   it('drops ids outside the game-code alphabet so they cannot corrupt the expression', () => {
-    expect(watchedGamesRealtimeFilter(['ABC123', 'evil),id=in.(X'])).toBe('id=in.(ABC123)')
-    expect(watchedGamesRealtimeFilter(['(', ''])).toBeNull()
+    expect(watchedGamesRealtimeFilters(['ABC123', 'evil),id=in.(X'])).toEqual(['id=in.(ABC123)'])
+    expect(watchedGamesRealtimeFilters(['(', ''])).toEqual([])
   })
 
-  it("caps at Supabase realtime's documented in-filter limit", () => {
+  it("chunks past Supabase realtime's documented in-filter limit instead of dropping ids", () => {
+    // A viewer who has paged past 100 games must still get the going-private frame for
+    // game #101 — the old single-filter version silently truncated it.
     const ids = Array.from({ length: WATCHED_GAME_IDS_MAX + 20 }, (_, i) => `G${i}`)
-    const filter = watchedGamesRealtimeFilter(ids)
-    expect(filter?.match(/,/g)).toHaveLength(WATCHED_GAME_IDS_MAX - 1)
+    const filters = watchedGamesRealtimeFilters(ids)
+    expect(filters).toHaveLength(2)
+    expect(filters[0].match(/,/g)).toHaveLength(WATCHED_GAME_IDS_MAX - 1)
+    expect(filters[1]).toBe(`id=in.(${ids.slice(WATCHED_GAME_IDS_MAX).join(',')})`)
+    // Every id appears in exactly one chunk.
+    for (const id of ids) {
+      expect(filters.filter((f) => f.includes(`${id},`) || f.includes(`${id})`)).length).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps every chunk within the 100-value cap', () => {
+    const ids = Array.from({ length: WATCHED_GAME_IDS_MAX * 3 + 1 }, (_, i) => `G${i}`)
+    const filters = watchedGamesRealtimeFilters(ids)
+    expect(filters).toHaveLength(4)
+    for (const filter of filters) {
+      const values = filter.slice('id=in.('.length, -1).split(',')
+      expect(values.length).toBeLessThanOrEqual(WATCHED_GAME_IDS_MAX)
+    }
   })
 })
 

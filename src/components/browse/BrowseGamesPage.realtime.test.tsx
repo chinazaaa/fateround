@@ -10,6 +10,7 @@
  * down while the channel is subscribed.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { StrictMode } from 'react'
 import { act, render, screen, waitFor } from '@testing-library/react'
 
 type Sub = { event: string; schema: string; table: string; filter?: string }
@@ -42,7 +43,7 @@ vi.mock('@/lib/supabase', () => ({
 }))
 
 import { BrowseGamesPage } from './BrowseGamesPage'
-import { PUBLIC_GAMES_REALTIME_FILTER } from '@/lib/browse-games-realtime'
+import { PUBLIC_GAMES_REALTIME_FILTER, WATCHED_GAME_IDS_MAX } from '@/lib/browse-games-realtime'
 
 /** The page now holds several `games` subscriptions; address them by event AND filter. */
 function handlerFor(event: string, filter: string | undefined): Handler | undefined {
@@ -164,12 +165,95 @@ describe('BrowseGamesPage realtime payload handling', () => {
     expect(fetchMock.mock.calls.length).toBe(calls)
   })
 
+  it('watches every on-screen id past the 100-value in-filter cap via chunked subscriptions', async () => {
+    // Regression: `watchedGamesRealtimeFilter` used to silently truncate to the first 100
+    // ids, so with >100 loaded games the going-private frame for game #101+ never arrived
+    // and the row stayed visible until the 60s safety refetch.
+    const many = Array.from({ length: WATCHED_GAME_IDS_MAX + 20 }, (_, i) => ({
+      ...GAME,
+      id: `GAME${String(i).padStart(3, '0')}`,
+      title: `Game ${String(i).padStart(3, '0')}`,
+    }))
+    fetchMock.mockImplementation(async () => ({
+      ok: true,
+      json: async () => ({ games: many, hasMore: false, nextCursor: null }),
+    }))
+    render(<BrowseGamesPage />)
+    await screen.findByText('Game 110')
+
+    // Every id must be covered by some id=in.(…) subscription, and each within the cap.
+    await waitFor(() => {
+      const watched = rt.subs.filter((s) => s.event === 'UPDATE' && s.filter?.startsWith('id=in.('))
+      const coveredIds = new Set(watched.flatMap((s) => s.filter!.slice('id=in.('.length, -1).split(',')))
+      for (const g of many) expect(coveredIds.has(g.id), `id ${g.id} not watched`).toBe(true)
+      for (const s of watched) {
+        expect(s.filter!.slice('id=in.('.length, -1).split(',').length).toBeLessThanOrEqual(WATCHED_GAME_IDS_MAX)
+      }
+    })
+
+    // A game in the SECOND chunk flips private → its chunk's handler removes it immediately.
+    const sub = rt.subs
+      .filter((s) => s.event === 'UPDATE' && s.filter?.startsWith('id=in.(') && s.filter.includes('GAME110'))
+      .at(-1)
+    expect(sub).toBeTruthy()
+    expect(sub!.filter).not.toContain('GAME010') // genuinely the second chunk, not the first
+    act(() => {
+      sub!.handler({ new: { ...GAME, id: 'GAME110', title: 'Game 110', is_public: false } })
+    })
+    await waitFor(() => expect(screen.queryByText('Game 110')).toBeNull())
+    expect(screen.queryByText('Game 010')).not.toBeNull()
+  })
+
   it('removes a deleted game from the id-only DELETE payload', async () => {
     await mount()
     act(() => {
       handlerFor('DELETE', undefined)?.({ old: { id: 'ABC123' } })
     })
     await waitFor(() => expect(screen.queryByText('Game night')).toBeNull())
+  })
+})
+
+describe('BrowseGamesPage watched-channel reload under Strict Mode', () => {
+  it('issues exactly one refetch for a watched frame that needs one, even with double-invoked updaters', async () => {
+    // The reload used to be fired from INSIDE the setGames updater; React Strict Mode
+    // invokes updaters twice, so that could double-fetch (and race an out-of-order
+    // overwrite). It now goes through a ref + effect, which runs once per commit.
+    render(
+      <StrictMode>
+        <BrowseGamesPage />
+      </StrictMode>
+    )
+    await screen.findByText('Game night')
+    await waitFor(() => expect(handlerFor('UPDATE', 'id=in.(ABC123)')).toBeTruthy())
+
+    const calls = fetchMock.mock.calls.length
+    act(() => {
+      // Browsable but NOT in the list → the reducer requests a reload.
+      handlerFor('UPDATE', 'id=in.(ABC123)')?.({ new: { ...GAME, id: 'OFFLIST', title: 'Off list', is_public: true } })
+    })
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBe(calls + 1))
+    // Settle any stray microtasks/commits, then confirm no second fetch ever fired.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(fetchMock.mock.calls.length).toBe(calls + 1)
+  })
+
+  it('does not refetch for a watched frame the reducer satisfies locally', async () => {
+    render(
+      <StrictMode>
+        <BrowseGamesPage />
+      </StrictMode>
+    )
+    await screen.findByText('Game night')
+    await waitFor(() => expect(handlerFor('UPDATE', 'id=in.(ABC123)')).toBeTruthy())
+
+    const calls = fetchMock.mock.calls.length
+    act(() => {
+      handlerFor('UPDATE', 'id=in.(ABC123)')?.({ new: { ...GAME, is_public: false } })
+    })
+    await waitFor(() => expect(screen.queryByText('Game night')).toBeNull())
+    expect(fetchMock.mock.calls.length).toBe(calls)
   })
 })
 
