@@ -132,6 +132,10 @@ export function usePolling(
           MAX_BACKOFF_MS,
           backoffRef.current === 0 ? intervalMs * 2 : backoffRef.current * 2
         )
+        // Re-check suspension here too: if realtime recovered while this poll was in flight, the
+        // health callback's clearTimeout ran before this timer existed, so scheduling it anyway
+        // would keep the fallback retrying forever alongside a healthy channel.
+        if (suspended()) return
         schedule(backoffRef.current)
       }
     }

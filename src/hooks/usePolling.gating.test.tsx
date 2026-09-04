@@ -94,6 +94,32 @@ describe('usePolling realtime gating', () => {
     expect(poll).toHaveBeenCalledTimes(2) // and stops again on recovery
   })
 
+  it('does not schedule a backoff retry when realtime recovers during a failing in-flight poll', async () => {
+    const token = registerChannel()
+    noteChannelStatus(token, 'CHANNEL_ERROR')
+
+    // A poll we can settle manually, so realtime can recover while it is still in flight.
+    let settle!: (ok: boolean) => void
+    const poll = vi.fn().mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          settle = resolve
+        })
+    )
+    renderHook(() => usePolling(poll, [], { intervalMs: POLL_INTERVALS.realtimeFallback }))
+    expect(poll).toHaveBeenCalledTimes(1)
+
+    // Realtime recovers while the poll is pending — the health callback has no timer to clear
+    // yet, because the failure branch has not scheduled its backoff retry.
+    noteChannelStatus(token, 'SUBSCRIBED')
+    settle(false)
+    await vi.advanceTimersByTimeAsync(0)
+
+    // The failure branch must not schedule that retry now that realtime is healthy.
+    await vi.advanceTimersByTimeAsync(10 * 60_000) // well past MAX_BACKOFF_MS
+    expect(poll).toHaveBeenCalledTimes(1)
+  })
+
   it('honours an explicit gateOnRealtime override', async () => {
     realtimeUp()
     const poll = vi.fn().mockResolvedValue(undefined)
