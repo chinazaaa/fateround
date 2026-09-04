@@ -43,7 +43,12 @@ node scripts/playtest/word-holder-playtest.mjs    # describe_it / quick_draw: wo
 node scripts/playtest/two-truths-playtest.mjs     # submit → start → guess → reveal
 node scripts/playtest/codewords-playtest.mjs      # roles → start → key only to spymasters
 node scripts/playtest/late-join-playtest.mjs      # share-link joiner: own hand back, others counts-only
+node scripts/playtest/gameplay-playtest.mjs       # whot/uno/crazy_eights: PLAYED past an empty draw pile
 ```
+
+`gameplay-playtest.mjs` is the only one that takes turns. It needs `PLAYTEST_APP_URL` and
+`PLAYTEST_SUPABASE_URL` as well as the two keys, and takes a few minutes — UNO alone deals an
+86-card draw pile that has to be played down one turn at a time.
 
 Each script exits non-zero if any assertion fails, so they can be chained with `&&` or used in CI.
 
@@ -58,6 +63,15 @@ Both directions, always:
   created, and the rightful holder still receives the secret (break).
 
 A revoke that breaks the game fails these just as loudly as one that leaks.
+
+`gameplay-playtest.mjs` additionally, per game:
+
+- plays and draws through the real action routes until the **draw pile runs out**, then asserts
+  the reshuffle happened (`draw_count` recovered) and that the game kept accepting moves after it;
+- compares `anon`'s `draw_count`/`discard_count` against the service role's
+  `jsonb_array_length(draw_pile)`/`(discard_pile)` on **every turn** — the counts are all
+  `isDrawPileDepleted` has left to reason with, so a drift between them is the bug;
+- finishes a second game by greedy play, and requires a real `winner_player_id`.
 
 ## Gotchas found writing these
 
@@ -80,3 +94,13 @@ A revoke that breaks the game fails these just as loudly as one that leaks.
   redaction checks that followed passed against zero rows: vacuously true, proving nothing about
   any grant. Every harness now asserts the setup calls succeeded AND that the table has real rows
   before asserting `anon` cannot read them. When adding a check, ask what makes it fail.
+- **Whot's draw pile is not always observable at 0.** "General market" deals a card to every
+  player inside one request, so a pile of 2 can empty and be refilled between two reads. Asserting
+  `draw_count === 0` was seen at some point is flaky; the reshuffle (the count going *up*, which
+  nothing but a refill can do) is the sound proof that it ran out.
+- **UNO never ends unless the harness calls "UNO".** Without `callUno: true` on the play that
+  leaves a player on one card, the next move catches the missed call and penalises them back up.
+  A greedy-play run went 300 turns with nobody going out. The flag is ignored on every other play.
+- **Draw-only play cannot reach the reshuffle.** Cards only enter the discard by being *played*,
+  and the reshuffle refills the draw pile *from* the discard — so a run that only draws exhausts
+  the deck outright and exercises the opposite branch. `gameplay-playtest.mjs` alternates.
