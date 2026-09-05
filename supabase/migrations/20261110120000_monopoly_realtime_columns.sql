@@ -94,3 +94,27 @@ end $$;
 --   alter publication supabase_realtime drop table public.monopoly_boards;
 --   alter publication supabase_realtime add  table public.monopoly_boards;
 -- (DROP + ADD, NOT `set table` — that would replace the publication's whole table list.)
+
+-- ── CORRECTION (added later; NO SQL CHANGED — this migration is already applied) ─────────
+--
+-- The header above is WRONG about the mechanism. A publication column list does NOT narrow
+-- `postgres_changes` payloads.
+--
+-- Supabase Realtime decodes the WAL through wal2json. wal2json reads `pg_publication` only
+-- to decide (a) which tables to stream (`add-tables`) and (b) which actions to emit
+-- (`pubinsert` / `pubupdate` / `pubdelete`). It never reads `pg_publication_rel.prattrs` —
+-- the per-column list — so the columns named below have no effect on what is decoded, and
+-- every subscriber still receives the full row including the four decks.
+--
+-- The ONLY thing that narrows a postgres_changes payload is a COLUMN-LEVEL REVOKE: Realtime
+-- filters columns in `realtime.apply_rls` via `has_column_privilege(...)`, per subscriber.
+-- That is what the header calls "the stronger fix"; it is in fact the only fix.
+--
+-- This migration is nonetheless HARMLESS and is left in place: the four deck columns are
+-- separately protected from anon by a column-level revoke elsewhere, so the decks are not
+-- actually reaching browser clients. But do not copy this file as a pattern, and do not
+-- rely on a publication column list to hide anything.
+--
+-- Consequence for the ⚠️ warning above: it does not apply either. Adding a column to
+-- monopoly_boards without adding it to the list below will NOT make it arrive as undefined
+-- in payloads — the publication list is inert. Column-level grants are what matter.
