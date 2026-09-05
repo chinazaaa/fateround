@@ -63,7 +63,7 @@ describe('watchedRoomsRealtimeFilters', () => {
     expect(filters[1]).toBe(`id=in.(${ids.slice(WATCHED_ROOM_IDS_MAX).join(',')})`)
     // Every id appears in exactly one chunk.
     for (const id of ids) {
-      expect(filters.filter((f) => f.includes(`${id},`) || f.includes(`${id})`)).length).toBeGreaterThan(0)
+      expect(filters.filter((f) => f.includes(`${id},`) || f.includes(`${id})`)).length).toBe(1)
     }
   })
 
