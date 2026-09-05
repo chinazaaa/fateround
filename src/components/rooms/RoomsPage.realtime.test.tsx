@@ -232,6 +232,47 @@ describe('RoomsPage realtime reload under Strict Mode', () => {
     expect(fetchMock.mock.calls.length).toBe(calls)
   })
 
+  it('does not let a watched frame arriving before a load commits overwrite the loaded list', async () => {
+    // Regression: `loadPublicRooms` used to queue a functional setPublicRooms updater
+    // without updating `publicRoomsRef.current`. If a load response resolved and a watched
+    // UPDATE arrived in the same tick — before React committed the load — the watched
+    // handler reduced the STALE ref mirror and called setPublicRooms(next) directly,
+    // clobbering the freshly loaded list. All list writes now go through one dispatcher
+    // that syncs the ref synchronously.
+    await openBrowseTab(true)
+    await waitFor(() => expect(handlerFor('UPDATE', 'id=in.(ABC123)')).toBeTruthy())
+
+    // Next load (visibility refetch) returns the existing room PLUS a new one, but only
+    // when we say so.
+    const added = { ...ROOM, id: 'GHI789', name: 'New Room' }
+    let resolveLoad: (value: unknown) => void = () => {}
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveLoad = r
+        })
+    )
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    await act(async () => {
+      resolveLoad({ ok: true, json: async () => ({ rooms: [ROOM, added], hasMore: false, nextCursor: null }) })
+      // Drain just the microtasks so loadPublicRooms records its result, WITHOUT letting
+      // React commit (commits ride macrotasks) — then land the watched frame in the same
+      // tick.
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+      handlerFor('UPDATE', 'id=in.(ABC123)')?.({ new: { ...ROOM, is_public: false } })
+    })
+
+    // The final list must reflect BOTH writes: the load's new row survives, and the
+    // watched frame's removal of ABC123 sticks.
+    await waitFor(() => expect(screen.queryByText('New Room')).not.toBeNull())
+    expect(screen.queryByText('Fun Room')).toBeNull()
+  })
+
   it('applies back-to-back watched frames in the same tick without one clobbering the other', async () => {
     // The handlers compute from a ref mirror instead of a setState updater; the mirror is
     // synced synchronously in the handler so a second frame arriving before React commits

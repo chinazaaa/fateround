@@ -48,12 +48,18 @@ export function RoomsPage() {
   // Ref mirror of `publicRooms` so the realtime handlers can compute the reducer result
   // OUTSIDE a setState updater (updaters must stay pure — Strict Mode invokes them twice,
   // and React may rebase/discard an invocation, leaking or dropping a ref write made
-  // inside one). Kept in sync on every commit, and synchronously by the handlers so
-  // back-to-back frames in the same tick don't reduce from stale state.
+  // inside one). The mirror is synchronously authoritative: EVERY write to the list goes
+  // through `commitPublicRooms` below, which updates the ref before queueing the state
+  // update, so a handler firing in the same tick as a resolved load can never reduce from
+  // — and then re-commit — a stale snapshot. There is deliberately NO commit-keyed
+  // `useEffect` resync: with all writers funneled through the dispatcher it would be
+  // redundant, and worse, it could briefly regress the ref to an older committed value
+  // between a handler's write and that write's own commit.
   const publicRoomsRef = useRef<PublicRoom[]>([])
-  useEffect(() => {
-    publicRoomsRef.current = publicRooms
-  }, [publicRooms])
+  const commitPublicRooms = useCallback((next: PublicRoom[]) => {
+    publicRoomsRef.current = next
+    setPublicRooms(next)
+  }, [])
   const timezoneOptions = getRoomTimezoneOptions()
 
   useEffect(() => {
@@ -61,28 +67,34 @@ export function RoomsPage() {
     if (userTz) setTimezone(userTz)
   }, [])
 
-  const loadPublicRooms = useCallback(async (cursor?: string | null) => {
-    const loadingMore = !!cursor
-    if (loadingMore) setBrowseLoadingMore(true)
-    else setBrowseLoading(true)
-    try {
-      const params = new URLSearchParams({ limit: '20' })
-      if (cursor) params.set('cursor', cursor)
-      const res = await fetch(`/api/rooms?${params}`)
-      const d = await res.json()
-      const rooms: PublicRoom[] = d.rooms ?? []
-      setPublicRooms((prev) => (loadingMore ? [...prev, ...rooms] : rooms))
-      setBrowseHasMore(!!d.hasMore)
-      setBrowseCursor(d.nextCursor ?? null)
-    } catch {
-      if (!loadingMore) setPublicRooms([])
-      setBrowseHasMore(false)
-      setBrowseCursor(null)
-    } finally {
-      if (loadingMore) setBrowseLoadingMore(false)
-      else setBrowseLoading(false)
-    }
-  }, [])
+  const loadPublicRooms = useCallback(
+    async (cursor?: string | null) => {
+      const loadingMore = !!cursor
+      if (loadingMore) setBrowseLoadingMore(true)
+      else setBrowseLoading(true)
+      try {
+        const params = new URLSearchParams({ limit: '20' })
+        if (cursor) params.set('cursor', cursor)
+        const res = await fetch(`/api/rooms?${params}`)
+        const d = await res.json()
+        const rooms: PublicRoom[] = d.rooms ?? []
+        // Merge from the synchronously-authoritative ref (not a functional updater) and
+        // commit through the dispatcher, so a realtime frame landing between this resolve
+        // and React's commit reduces from THIS result instead of overwriting it.
+        commitPublicRooms(loadingMore ? [...publicRoomsRef.current, ...rooms] : rooms)
+        setBrowseHasMore(!!d.hasMore)
+        setBrowseCursor(d.nextCursor ?? null)
+      } catch {
+        if (!loadingMore) commitPublicRooms([])
+        setBrowseHasMore(false)
+        setBrowseCursor(null)
+      } finally {
+        if (loadingMore) setBrowseLoadingMore(false)
+        else setBrowseLoading(false)
+      }
+    },
+    [commitPublicRooms]
+  )
 
   useEffect(() => {
     if (tab !== 'browse') return
@@ -94,11 +106,11 @@ export function RoomsPage() {
 
     const onUpsert = (eventType: 'INSERT' | 'UPDATE', room: RoomRow) => {
       // Compute from the ref mirror rather than inside a setPublicRooms updater (updaters
-      // must stay pure), then sync the mirror immediately so a back-to-back frame in the
-      // same tick reduces from this result instead of the not-yet-committed state.
+      // must stay pure); the dispatcher syncs the mirror immediately so a back-to-back
+      // frame in the same tick reduces from this result instead of the not-yet-committed
+      // state.
       const { rooms, reload } = applyRoomsRealtimeEvent(publicRoomsRef.current, { eventType, room })
-      publicRoomsRef.current = rooms
-      setPublicRooms(rooms)
+      commitPublicRooms(rooms)
       // Only a frame that actually needs a refetch bumps the tick — locally-satisfied
       // frames no longer force an extra commit just to run the (no-op) reload effect.
       if (reload) {
@@ -127,8 +139,7 @@ export function RoomsPage() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'rooms' }, (payload) => {
         const id = (payload.old as { id?: string })?.id
         const { rooms } = applyRoomsRealtimeEvent(publicRoomsRef.current, { eventType: 'DELETE', id })
-        publicRoomsRef.current = rooms
-        setPublicRooms(rooms)
+        commitPublicRooms(rooms)
       })
       .subscribe()
 
@@ -141,7 +152,7 @@ export function RoomsPage() {
       supabase.removeChannel(channel)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [tab, loadPublicRooms])
+  }, [tab, loadPublicRooms, commitPublicRooms])
 
   // Keyed on MEMBERSHIP only (sorted ids), so in-place field updates don't churn the
   // watched channel — it re-subscribes only when a room enters or leaves the list.
@@ -170,14 +181,13 @@ export function RoomsPage() {
     if (filters.length === 0) return
 
     const onWatchedUpdate = (payload: { new: unknown }) => {
-      // Same ref-mirror discipline as onUpsert: compute outside the updater, sync the
-      // mirror synchronously, and bump the tick only for frames that need a refetch.
+      // Same ref-mirror discipline as onUpsert: compute outside the updater, commit
+      // through the dispatcher, and bump the tick only for frames that need a refetch.
       const { rooms, reload } = applyRoomsRealtimeEvent(publicRoomsRef.current, {
         eventType: 'UPDATE',
         room: payload.new as RoomRow,
       })
-      publicRoomsRef.current = rooms
-      setPublicRooms(rooms)
+      commitPublicRooms(rooms)
       // Watched rows are by definition already in the list, so `reload` is a
       // near-impossible race (row left the list between frames).
       if (reload) {
@@ -197,7 +207,7 @@ export function RoomsPage() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [tab, watchedIdsKey])
+  }, [tab, watchedIdsKey, commitPublicRooms])
 
   // Runs the refetch requested by the realtime handlers above, outside any state updater.
   // The tick bumps only when a frame actually needs a reload; the ref guard keeps the
