@@ -70,6 +70,9 @@ export function useCodewordsChat(
       // renders oldest-first. Ascending + limit would return the OLDEST N and new
       // messages would never appear.
       .order('created_at', { ascending: false })
+      // Secondary order breaks created_at ties at the window boundary so membership
+      // in the N-row window is deterministic across polls.
+      .order('id', { ascending: false })
       .limit(CODEWORDS_CHAT_HISTORY_LIMIT)
 
     if (!supabasePollOk(res)) return false

@@ -63,6 +63,9 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean, players
       // renders oldest-first. Ascending + limit would return the OLDEST N and new
       // messages would never appear.
       .order('created_at', { ascending: false })
+      // Secondary order breaks created_at ties at the window boundary so membership
+      // in the N-row window is deterministic across polls.
+      .order('id', { ascending: false })
       .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
 
     if (!supabasePollOk(res)) return false

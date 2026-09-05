@@ -12,6 +12,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 
 type QueryLog = {
   table: string
+  orders: Array<{ column: string; ascending?: boolean }>
   ascending?: boolean
   limit?: number
 }
@@ -26,14 +27,15 @@ const db = vi.hoisted(() => ({
 vi.mock('@/lib/supabase', () => ({
   supabase: {
     from(table: string) {
-      const log: QueryLog = { table }
+      const log: QueryLog = { table, orders: [] }
       db.queries.push(log)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const b: any = {}
       b.select = () => b
       b.eq = () => b
-      b.order = (_col: string, opts?: { ascending?: boolean }) => {
-        log.ascending = opts?.ascending
+      b.order = (col: string, opts?: { ascending?: boolean }) => {
+        log.orders.push({ column: col, ascending: opts?.ascending })
+        if (log.ascending === undefined) log.ascending = opts?.ascending
         return b
       }
       b.limit = (n: number) => {
@@ -41,9 +43,18 @@ vi.mock('@/lib/supabase', () => ({
         return b
       }
       const settle = () => {
-        // Stored newest-first. Ascending means oldest-first.
+        // Emulate Postgres: apply each order clause in sequence, then the limit.
+        // Rows are stored newest-first; with no order clause they are returned as-is.
         const all = db.rowsByTable[table] ?? []
-        const ordered = log.ascending === false ? all : [...all].reverse()
+        const cmp = (a: Record<string, unknown>, b2: Record<string, unknown>) => {
+          for (const o of log.orders) {
+            const av = String(a[o.column])
+            const bv = String(b2[o.column])
+            if (av !== bv) return (av < bv ? -1 : 1) * (o.ascending === false ? -1 : 1)
+          }
+          return 0
+        }
+        const ordered = log.orders.length ? [...all].sort(cmp) : all
         const data = log.limit == null ? ordered : ordered.slice(0, log.limit)
         return Promise.resolve({ data, error: null })
       }
@@ -75,6 +86,25 @@ function makeRows(count: number, extra: Record<string, unknown> = {}) {
     created_at: new Date(1_700_000_000_000 + (count - 1 - i) * 1000).toISOString(),
     ...extra,
   }))
+}
+
+/**
+ * `count` rows that ALL share one created_at, with zero-padded ids (m000 oldest id …)
+ * so lexicographic order matches insertion order; stored in shuffled-ish order to prove
+ * the mock relies on the logged order clauses, not storage order.
+ */
+function makeTiedRows(count: number, extra: Record<string, unknown> = {}) {
+  const createdAt = new Date(1_700_000_000_000).toISOString()
+  const rows = Array.from({ length: count }, (_, i) => ({
+    id: `m${String(i).padStart(3, '0')}`,
+    game_id: 'ABCD',
+    player_id: 'p1',
+    text: `msg ${i}`,
+    created_at: createdAt,
+    ...extra,
+  }))
+  // Deterministic interleave so storage order is neither ascending nor descending.
+  return rows.filter((_, i) => i % 2 === 0).concat(rows.filter((_, i) => i % 2 === 1).reverse())
 }
 
 beforeEach(() => {
@@ -113,6 +143,28 @@ describe('useAnonymousMessages history window', () => {
     await waitFor(() => expect(result.current.messages.length).toBe(3))
     expect(result.current.messages.map((m) => m.id)).toEqual(['m0', 'm1', 'm2'])
   })
+
+  it('breaks created_at ties with a secondary id order so window membership is deterministic', async () => {
+    const total = ANONYMOUS_MESSAGES_HISTORY_LIMIT + 10
+    db.rowsByTable.anonymous_messages = makeTiedRows(total)
+    const { result } = renderHook(() => useAnonymousMessages('ABCD', true, []))
+    await waitFor(() => expect(result.current.messages.length).toBe(ANONYMOUS_MESSAGES_HISTORY_LIMIT))
+
+    // Both order clauses reach the query builder, in sequence, both descending.
+    const q = db.queries.find((x) => x.table === 'anonymous_messages')
+    expect(q?.orders).toEqual([
+      { column: 'created_at', ascending: false },
+      { column: 'id', ascending: false },
+    ])
+
+    // With every created_at equal, the window must be the top-N ids (deterministic),
+    // not whatever storage order happened to yield — rendered oldest-id-first.
+    const expected = Array.from(
+      { length: ANONYMOUS_MESSAGES_HISTORY_LIMIT },
+      (_, i) => `m${String(10 + i).padStart(3, '0')}`
+    )
+    expect(result.current.messages.map((m) => m.id)).toEqual(expected)
+  })
 })
 
 describe('useCodewordsChat history window', () => {
@@ -134,5 +186,24 @@ describe('useCodewordsChat history window', () => {
     const ids = result.current.messages.map((m) => m.id)
     expect(ids[0]).toBe('m150')
     expect(ids[ids.length - 1]).toBe('m199')
+  })
+
+  it('breaks created_at ties with a secondary id order so window membership is deterministic', async () => {
+    const total = CODEWORDS_CHAT_HISTORY_LIMIT + 10
+    db.rowsByTable.codewords_messages = makeTiedRows(total, { team: 'red' })
+    const { result } = renderHook(() => useCodewordsChat('ABCD', 'red', true, []))
+    await waitFor(() => expect(result.current.messages.length).toBe(CODEWORDS_CHAT_HISTORY_LIMIT))
+
+    const q = db.queries.find((x) => x.table === 'codewords_messages')
+    expect(q?.orders).toEqual([
+      { column: 'created_at', ascending: false },
+      { column: 'id', ascending: false },
+    ])
+
+    const expected = Array.from(
+      { length: CODEWORDS_CHAT_HISTORY_LIMIT },
+      (_, i) => `m${String(10 + i).padStart(3, '0')}`
+    )
+    expect(result.current.messages.map((m) => m.id)).toEqual(expected)
   })
 })
