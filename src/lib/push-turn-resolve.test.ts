@@ -133,3 +133,175 @@ describe('scheduleTurnNotification', () => {
     expect(queriedTables()).toEqual(['games', 'ludo_sessions'])
   })
 })
+
+/**
+ * A finished session must never produce a "your turn" push.
+ *
+ * The routes now pass the games row they read BEFORE their mutation, so it is
+ * pinned to `status: 'active'` even on the move that ended the game. That makes
+ * the per-session terminal check the only thing standing between a player who
+ * just won and an "It's your turn!" notification — and it was reading
+ * `session.status` on tables whose terminal column is `phase`, i.e. reading
+ * `undefined` and never firing.
+ */
+describe('resolveCurrentTurnPlayerId — finished sessions', () => {
+  // gameType → session table, its terminal column, and a row that WOULD resolve
+  // to a player if the terminal guard did not fire.
+  const TERMINAL: {
+    gameType: string
+    table: string
+    column: 'status' | 'phase'
+    live: Record<string, unknown>
+    resolvesTo: string
+  }[] = [
+    // `phase`-based session tables
+    {
+      gameType: 'ludo',
+      table: 'ludo_sessions',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
+      resolvesTo: 'p1',
+    },
+    {
+      gameType: 'whot',
+      table: 'whot_sessions',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
+      resolvesTo: 'p2',
+    },
+    {
+      gameType: 'scrabble',
+      table: 'scrabble_sessions',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
+      resolvesTo: 'p1',
+    },
+    {
+      gameType: 'crazy_eights',
+      table: 'crazy_eights_sessions',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
+      resolvesTo: 'p2',
+    },
+    {
+      gameType: 'snake_and_ladder',
+      table: 'snake_ladder_sessions',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
+      resolvesTo: 'p1',
+    },
+    {
+      gameType: 'yahtzee',
+      table: 'yahtzee_sessions',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
+      resolvesTo: 'p2',
+    },
+    {
+      gameType: 'monopoly',
+      table: 'monopoly_boards',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
+      resolvesTo: 'p1',
+    },
+    {
+      gameType: 'mahjong',
+      table: 'mahjong_sessions',
+      column: 'phase',
+      live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
+      resolvesTo: 'p2',
+    },
+    // `status`-based session tables
+    {
+      gameType: 'chess',
+      table: 'chess_sessions',
+      column: 'status',
+      live: { current_turn: 'w', player_white_id: 'p1', player_black_id: 'p2' },
+      resolvesTo: 'p1',
+    },
+    {
+      gameType: 'checkers',
+      table: 'checkers_sessions',
+      column: 'status',
+      live: { current_turn: 'r', player_red_id: 'p1', player_black_id: 'p2' },
+      resolvesTo: 'p1',
+    },
+    {
+      gameType: 'checkers_international',
+      table: 'checkers10_sessions',
+      column: 'status',
+      live: { current_turn: 'b', player_red_id: 'p1', player_black_id: 'p2' },
+      resolvesTo: 'p2',
+    },
+    {
+      gameType: 'checkers_nigeria',
+      table: 'checkers10_sessions',
+      column: 'status',
+      live: { current_turn: 'r', player_red_id: 'p1', player_black_id: 'p2' },
+      resolvesTo: 'p1',
+    },
+    {
+      gameType: 'ayo',
+      table: 'ayo_sessions',
+      column: 'status',
+      live: { current_turn: 'b', player_a_id: 'p1', player_b_id: 'p2' },
+      resolvesTo: 'p2',
+    },
+    {
+      gameType: 'tic_tac_toe',
+      table: 'tic_tac_toe_sessions',
+      column: 'status',
+      live: { current_turn_mark: 'X', player_x_id: 'p1', player_o_id: 'p2' },
+      resolvesTo: 'p1',
+    },
+  ]
+
+  // Pins the branch → table mapping, so a future branch can't be pointed at a
+  // table whose terminal column it doesn't check.
+  it.each(TERMINAL)(
+    '$gameType: reads $table and resolves a player while the session is live',
+    async ({ gameType, table, live, resolvesTo }) => {
+      queueResponse({ data: live })
+
+      const playerId = await resolveCurrentTurnPlayerId('game1', { status: 'active', game_type: gameType })
+
+      expect(queriedTables()).toEqual([table])
+      expect(playerId).toBe(resolvesTo)
+    }
+  )
+
+  it.each(TERMINAL)(
+    '$gameType: returns null when $table says $column = finished, even with an active games row',
+    async ({ gameType, column, live }) => {
+      queueResponse({ data: { ...live, [column]: 'finished' } })
+
+      const playerId = await resolveCurrentTurnPlayerId('game1', { status: 'active', game_type: gameType })
+
+      expect(playerId).toBeNull()
+    }
+  )
+
+  it('sends no push when the game just ended on this move', async () => {
+    queueResponse({ data: { phase: 'finished', turn_order: ['p1', 'p2'], current_turn_index: 0 } })
+
+    scheduleTurnNotification('game1', { status: 'active', game_type: 'ludo' })
+    await Promise.all(scheduled)
+
+    // No push_subscriptions / mobile_push_tokens read means nothing was sent.
+    expect(queriedTables()).toEqual(['ludo_sessions'])
+  })
+})
+
+describe('resolveCurrentTurnPlayerId — untrusted known rows', () => {
+  it('falls back to the games fetch when the passed row has a non-string status', async () => {
+    queueResponse({ data: { status: 'active', game_type: 'ludo' } }) // games
+    queueResponse({ data: { turn_order: ['p1', 'p2'], current_turn_index: 1 } })
+
+    const playerId = await resolveCurrentTurnPlayerId('game1', {
+      game_type: 'ludo',
+    } as unknown as Parameters<typeof resolveCurrentTurnPlayerId>[1])
+
+    expect(queriedTables()).toEqual(['games', 'ludo_sessions'])
+    expect(playerId).toBe('p2')
+  })
+})

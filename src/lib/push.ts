@@ -290,6 +290,24 @@ export async function maybeNotifyHostPlayerJoined(
  */
 export type KnownGameRow = { status: string; game_type: unknown }
 
+/**
+ * Terminal check that works across BOTH session-table shapes.
+ *
+ * Session tables split on the name of their terminal column: `tic_tac_toe`,
+ * `checkers`, `checkers10`, `ayo` and `chess` call it `status`; `ludo`, `whot`,
+ * `scrabble`, `crazy_eights`, `snake_ladder`, `yahtzee`, `monopoly_boards` and
+ * `mahjong` call it `phase`. Every one of them spells the terminal value
+ * `'finished'` (verified against supabase/migrations CHECK constraints).
+ *
+ * This used to be a per-branch `session.status === 'finished'`, which silently
+ * read `undefined` on the eight phase-based tables — so once the caller started
+ * passing a pre-mutation `games` row (pinned to `'active'`), nothing stopped a
+ * player who had just WON from getting an "It's your turn!" push.
+ */
+function sessionFinished(session: { status?: unknown; phase?: unknown } | null | undefined): boolean {
+  return !session || session.status === 'finished' || session.phase === 'finished'
+}
+
 /** Resolve the player whose turn it is now for supported turn-based games. */
 export async function resolveCurrentTurnPlayerId(gameCode: string, knownGame?: KnownGameRow): Promise<string | null> {
   const admin = getSupabaseAdmin()
@@ -299,87 +317,92 @@ export async function resolveCurrentTurnPlayerId(gameCode: string, knownGame?: K
   // at the server ticker's rate (expire-turn routes fire every few seconds per
   // active game), so re-reading `games` here doubled the games-table read
   // volume. The fallback fetch keeps callers without the row working.
+  // The Supabase client is untyped, so `KnownGameRow` enforces nothing at
+  // runtime. Only trust a passed row that actually carries a string status —
+  // anything else falls through to the fetch rather than being read as
+  // "not active" and silently swallowing the notification.
+  const trustedKnownGame = knownGame && typeof knownGame.status === 'string' ? knownGame : null
   const game =
-    knownGame ?? (await admin.from('games').select('status, game_type').eq('id', code).maybeSingle()).data
+    trustedKnownGame ?? (await admin.from('games').select('status, game_type').eq('id', code).maybeSingle()).data
   if (!game || game.status !== 'active') return null
 
   const gameType = parseGameType(game.game_type)
 
   if (isLudoGame(gameType)) {
     const { data: session } = await admin.from('ludo_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return ludoCurrentPlayerId(session)
   }
 
   if (isTicTacToeGame(gameType)) {
     const { data: session } = await admin.from('tic_tac_toe_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return ticTacToeCurrentTurnPlayerId(session)
   }
 
   if (isCheckersGame(gameType)) {
     const { data: session } = await admin.from('checkers_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return checkersCurrentTurnPlayerId(session)
   }
 
   if (isAyoGame(gameType)) {
     const { data: session } = await admin.from('ayo_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return ayoCurrentTurnPlayerId(session)
   }
 
   if (isDraughts10Game(gameType)) {
     const { data: session } = await admin.from('checkers10_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return draughts10CurrentTurnPlayerId(session)
   }
 
   if (isChessGame(gameType)) {
     const { data: session } = await admin.from('chess_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return chessCurrentTurnPlayerId(session)
   }
 
   if (isWhotGame(gameType)) {
     const { data: session } = await admin.from('whot_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return whotCurrentPlayerId(session)
   }
 
   if (isScrabbleGame(gameType)) {
     const { data: session } = await admin.from('scrabble_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return scrabbleCurrentTurnPlayerId(session)
   }
 
   if (isMonopolyGame(gameType)) {
     const { data: board } = await admin.from('monopoly_boards').select('*').eq('game_id', code).maybeSingle()
-    if (!board || board.phase === 'finished') return null
+    if (sessionFinished(board)) return null
     return monopolyCurrentPlayerId(board)
   }
 
   if (isMahjongGame(gameType)) {
     const { data: session } = await admin.from('mahjong_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.phase === 'finished') return null
+    if (sessionFinished(session)) return null
     return currentMahjongPlayerId(session)
   }
 
   if (isCrazyEightsGame(gameType)) {
     const { data: session } = await admin.from('crazy_eights_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return crazyEightsCurrentPlayerId(session)
   }
 
   if (isSnakeAndLadderGame(gameType)) {
     const { data: session } = await admin.from('snake_ladder_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return snakeLadderCurrentPlayerId(session)
   }
 
   if (isYahtzeeGame(gameType)) {
     const { data: session } = await admin.from('yahtzee_sessions').select('*').eq('game_id', code).maybeSingle()
-    if (!session || session.status === 'finished') return null
+    if (sessionFinished(session)) return null
     return yahtzeeCurrentPlayerId(session)
   }
 
