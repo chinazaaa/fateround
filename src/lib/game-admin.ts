@@ -31,9 +31,11 @@ export async function assertPlayer(supabase: SupabaseClient, gameCode: string, r
   // A real, authorized player is acting on this game — that is the definition of
   // "the game is alive". This is the one chokepoint every player-facing write
   // passes through (~130 route files, every game family, including the
-  // anonymous/secret message inboxes), and none of those routes otherwise write
-  // the `games` row, so without this bump a board game an hour into play looks
-  // idle to the reaper. Fire-and-forget and throttled to one write per game per
+  // anonymous/secret message inboxes) except mahjong, which authorizes through
+  // `verifyMahjongPlayerAccess` in src/lib/mahjong-auth.ts and bumps there the same
+  // way. None of those routes otherwise write the `games` row, so without this bump
+  // a board game an hour into play looks idle to the reaper — which ENDS games.
+  // Fire-and-forget and throttled to one write per game per
   // ACTIVITY_THROTTLE_MINUTES — see src/lib/game-activity.ts.
   touchGameActivity(supabase, id)
   return { error: null, status: 200 as const, player, id }
