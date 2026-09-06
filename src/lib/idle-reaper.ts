@@ -47,7 +47,7 @@ const MIN_IDLE_MINUTES = 1
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000 // every 15 minutes
 const REAPER_BATCH_LIMIT = 20
 
-function resolveIdleMinutes(): number {
+export function resolveIdleMinutes(): number {
   const raw = Number(process.env.IDLE_REAPER_MINUTES)
   if (!Number.isFinite(raw) || raw < MIN_IDLE_MINUTES) return DEFAULT_IDLE_MINUTES
   return Math.floor(raw)
