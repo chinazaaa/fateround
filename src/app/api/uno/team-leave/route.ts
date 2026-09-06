@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   const { error } = await processUnoTeamLeaveDecision(supabase, code, auth.player.id, decision)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
-  if (decision === 'continue') scheduleTurnNotification(code)
+  if (decision === 'continue') scheduleTurnNotification(code, game)
 
   return NextResponse.json({ success: true })
 }

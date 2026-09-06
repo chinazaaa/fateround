@@ -283,12 +283,24 @@ export async function maybeNotifyHostPlayerJoined(
   await notifyPlayerEvent(code, game.host_player_id, 'host_player_joined', body)
 }
 
+/**
+ * The slice of the `games` row that turn resolution needs. Callers that just
+ * fetched the row (every /api/<game>/* route does, to authorize the request)
+ * pass it through so we don't re-read the same row per notification.
+ */
+export type KnownGameRow = { status: string; game_type: unknown }
+
 /** Resolve the player whose turn it is now for supported turn-based games. */
-export async function resolveCurrentTurnPlayerId(gameCode: string): Promise<string | null> {
+export async function resolveCurrentTurnPlayerId(gameCode: string, knownGame?: KnownGameRow): Promise<string | null> {
   const admin = getSupabaseAdmin()
   const code = gameCode.toUpperCase()
 
-  const { data: game } = await admin.from('games').select('status, game_type').eq('id', code).maybeSingle()
+  // Reuse the caller's already-fetched game row when provided. This path runs
+  // at the server ticker's rate (expire-turn routes fire every few seconds per
+  // active game), so re-reading `games` here doubled the games-table read
+  // volume. The fallback fetch keeps callers without the row working.
+  const game =
+    knownGame ?? (await admin.from('games').select('status, game_type').eq('id', code).maybeSingle()).data
   if (!game || game.status !== 'active') return null
 
   const gameType = parseGameType(game.game_type)
@@ -375,10 +387,10 @@ export async function resolveCurrentTurnPlayerId(gameCode: string): Promise<stri
 }
 
 /** After a turn change, notify the player whose turn it is now (best-effort, non-blocking). */
-export function scheduleTurnNotification(gameCode: string): void {
+export function scheduleTurnNotification(gameCode: string, knownGame?: KnownGameRow): void {
   after(async () => {
     try {
-      const playerId = await resolveCurrentTurnPlayerId(gameCode)
+      const playerId = await resolveCurrentTurnPlayerId(gameCode, knownGame)
       if (!playerId) return
       await notifyPlayerEvent(gameCode, playerId, 'your_turn')
     } catch (err) {
