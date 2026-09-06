@@ -277,3 +277,37 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now fateround-streak-reminders.timer
+
+# Idle-active-game reaper — closes 'active' games whose last_activity_at hasn't
+# moved in 30 minutes, so abandoned rooms reach a terminal status instead of
+# being poked by the server ticker forever. Runs as a cron-hit route (NOT from
+# instrumentation.ts — see the DO-NOT-RE-ADD outage note there). Every 15
+# minutes to match the reaper's designed cadence; the route batches 20 games
+# per sweep so a backlog drains gently. IDLE_REAPER_DISABLED=1 (SSM) makes the
+# route a no-op if a sweep ever needs to be stopped without a deploy.
+cat > /etc/systemd/system/fateround-reap-idle.service <<EOF
+[Unit]
+Description=FateRound idle-active-game reaper
+After=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+ExecStart=/usr/bin/curl -fsS --max-time 90 -X POST -H "Authorization: Bearer $CRON_SECRET" $TICK_URL/api/cron/reap-idle
+EOF
+chmod 600 /etc/systemd/system/fateround-reap-idle.service
+
+cat > /etc/systemd/system/fateround-reap-idle.timer <<'EOF'
+[Unit]
+Description=FateRound idle-active-game reaper timer
+
+[Timer]
+OnBootSec=300
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now fateround-reap-idle.timer
