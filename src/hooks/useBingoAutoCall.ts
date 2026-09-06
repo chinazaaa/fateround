@@ -48,6 +48,17 @@ export function useBingoAutoCall({
     lastCalledAtRef.current = lastCalledAt
   })
 
+  // A sync request outlives the game code it was issued for: if the client switches games
+  // while one is in flight, the response resolves against the *new* game's refs. Applying
+  // it would append the old game's called number to the new game's list (the views dedupe
+  // by row id only, so a foreign row is not filtered out), and reporting its failure would
+  // back off the new game's poll. The whole response-handling block is therefore skipped
+  // when the code no longer matches, not just the `called` branch.
+  const gameCodeRef = useRef(gameCode)
+  useEffect(() => {
+    gameCodeRef.current = gameCode
+  })
+
   const callIntervalSeconds = game ? bingoCallIntervalFromGame(game) : 5
 
   // Whether auto-calling should be running at all — independent of which client is
@@ -85,12 +96,16 @@ export function useBingoAutoCall({
       }
 
       inFlight.current = true
+      const requestedGameCode = gameCode
       try {
         const res = await fetch('/api/bingo/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ gameId: gameCode }),
         })
+        // Stale response — this client has moved to another game. Drop it entirely, and
+        // report healthy so it cannot back off the poll that now belongs to that game.
+        if (gameCodeRef.current !== requestedGameCode) return true
         if (!res.ok) return false
         const body = (await res.json()) as { code?: string; row?: BingoCalledNumber }
         if (body.code === 'called' && body.row) onCalledRef.current?.(body.row)
