@@ -108,10 +108,14 @@ export function useBingoAutoCall({
         if (gameCodeRef.current !== requestedGameCode) return true
         if (!res.ok) return false
         const body = (await res.json()) as { code?: string; row?: BingoCalledNumber }
+        // The game can also change while the body is being parsed, so re-check here.
+        if (gameCodeRef.current !== requestedGameCode) return true
         if (body.code === 'called' && body.row) onCalledRef.current?.(body.row)
         return true
       } catch {
-        return false
+        // A request that failed after the client moved on says nothing about the new
+        // game's health, so report healthy rather than backing off its poll.
+        return gameCodeRef.current !== requestedGameCode
       } finally {
         inFlight.current = false
       }
