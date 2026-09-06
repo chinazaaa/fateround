@@ -17,6 +17,9 @@ vi.mock('next/server', async (importOriginal) => ({
   },
 }))
 
+// `server-only` is a Next runtime guard, not an npm package — it isn't resolvable under Vitest.
+vi.mock('server-only', () => ({}))
+
 const GAME = { id: 'ABCD', status: 'active', game_type: 'anonymous_messages', session_started_at: null }
 const PLAYER = { id: 'p-1', game_id: 'ABCD', resume_token: 'TOKEN-1234', joined_at: null }
 

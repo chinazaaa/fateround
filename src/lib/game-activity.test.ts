@@ -10,6 +10,9 @@ const after = vi.fn((fn: () => Promise<unknown>) => {
 })
 vi.mock('next/server', () => ({ after: (fn: () => Promise<unknown>) => after(fn) }))
 
+// `server-only` is a Next runtime guard, not an npm package — it isn't resolvable under Vitest.
+vi.mock('server-only', () => ({}))
+
 import {
   touchGameActivity,
   bumpGameActivity,

@@ -8,6 +8,9 @@ vi.mock('next/server', () => ({
     deferred.push(fn())
   },
 }))
+
+// `server-only` is a Next runtime guard, not an npm package — it isn't resolvable under Vitest.
+vi.mock('server-only', () => ({}))
 import {
   assertPlayer,
   assertHostGame,

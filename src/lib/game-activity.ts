@@ -1,3 +1,7 @@
+// `after()` is an App-Router server API, so this module can never be bundled for the
+// client. `server-only` says that out loud: an accidental client import fails the build
+// with that message instead of a baffling one about `after()` and the Pages Router.
+import 'server-only'
 import { after } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
