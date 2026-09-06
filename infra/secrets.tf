@@ -215,6 +215,20 @@ resource "aws_ssm_parameter" "game_tick_interval_ms" {
   value = var.game_tick_interval_ms
 }
 
+resource "aws_ssm_parameter" "game_tick_activity_window_ms" {
+  count = var.game_tick_activity_window_ms != "" ? 1 : 0
+  name  = "/${var.name_prefix}/GAME_TICK_ACTIVITY_WINDOW_MS"
+  type  = "String"
+  value = var.game_tick_activity_window_ms
+}
+
+resource "aws_ssm_parameter" "game_tick_discovery_limit" {
+  count = var.game_tick_discovery_limit != "" ? 1 : 0
+  name  = "/${var.name_prefix}/GAME_TICK_DISCOVERY_LIMIT"
+  type  = "String"
+  value = var.game_tick_discovery_limit
+}
+
 resource "aws_ssm_parameter" "idle_reaper_disabled" {
   count = var.idle_reaper_disabled != "" ? 1 : 0
   name  = "/${var.name_prefix}/IDLE_REAPER_DISABLED"

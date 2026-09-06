@@ -114,6 +114,87 @@ function selfBaseUrl(): string {
   return process.env.GAME_TICK_BASE_URL || `http://127.0.0.1:${process.env.PORT || 3000}`
 }
 
+/**
+ * Discovery bounds for the ticker's per-tick `games` query.
+ *
+ * IMPORTANT — what `games.last_activity_at` actually tracks. It is bumped ONLY by:
+ *   - any UPDATE on the `games` row (the `games_touch_last_activity` trigger),
+ *   - any INSERT/DELETE on `players` (the `touch_game_activity_from_players` trigger),
+ *   - the handful of host/lobby routes that write the column explicitly
+ *     (`/api/games/[code]`, `/reschedule`, `/transfer-scheduled-host`).
+ *
+ * It is NOT a liveness signal for gameplay. Turn-based games (chess, ludo, whot,
+ * scrabble, monopoly, mahjong, …) write their moves to sub-tables — never to the
+ * games row — so a hard-fought turn-based match's `last_activity_at` freezes at the
+ * moment play started and never moves again, no matter how many moves are made.
+ * Round-based games are the asymmetric case: their `/advance` writes
+ * `games.current_round_number`, which trips the trigger, so they self-refresh.
+ *
+ * Consequently this window is NOT "is this game alive?" — it is only a way to shed the
+ * abandoned-forever backlog of `status='active'` rows that nobody will ever return to.
+ * The default is therefore set well beyond any realistic session (6 hours) so that a
+ * genuinely live turn-based game — whose column is frozen by design — can never be
+ * dropped out of the ticker mid-play. Dropping one is not cosmetic: it stops
+ * server-side turn/clock expiry, and for bot-seated games it stops the bot moving
+ * entirely (the ticker is effectively `bot-tick`'s only caller), forfeiting every turn.
+ *
+ * The proper follow-up is to bump `last_activity_at` on turn-based moves so the column
+ * means what its name says; that is deliberately out of scope for this change.
+ *
+ * Env override: GAME_TICK_ACTIVITY_WINDOW_MS.
+ */
+export const DEFAULT_GAME_TICK_ACTIVITY_WINDOW_MS = 6 * 60 * 60 * 1000
+const MIN_GAME_TICK_ACTIVITY_WINDOW_MS = 60 * 1000
+
+/**
+ * Blast-radius cap on discovery: never look at more than this many games per tick.
+ * (Note this caps *games*, not pokes — fan-out is up to two pokes per game, the timer
+ * poke plus the bot-tick poke, so the poke ceiling is 2x this.)
+ *
+ * Ordered by `last_activity_at` ASCENDING — longest un-poked first. Freshest-first would
+ * pin the same head set forever: a round-based game refreshes its own timestamp every
+ * time it advances, so being served would keep it at the front while the frozen
+ * turn-based games below the cap are cut on every single tick, silently and
+ * deterministically. Ascending inverts that into a fair queue — a game that actually
+ * advanced sorts to the back, and games nothing has touched rise to the front — so the
+ * cap degrades by rotating rather than by blacklisting a fixed set. It also matches the
+ * idle reaper's ordering. Cap binding is logged (see {@link tickActiveGames}).
+ *
+ * Env override: GAME_TICK_DISCOVERY_LIMIT.
+ */
+export const DEFAULT_GAME_TICK_DISCOVERY_LIMIT = 200
+const MIN_GAME_TICK_DISCOVERY_LIMIT = 1
+
+/**
+ * Read a positive-integer env override, falling back to `fallback` unless the value is
+ * finite and at least `min`. Mirrors `resolveIdleMinutes` in {@link file://./idle-reaper.ts}:
+ * a bare `Number(x) || default` would accept `-1` (making the cutoff a *future* timestamp,
+ * so the ticker silently matches nothing) and `1e400` → `Infinity`, whose
+ * `new Date(-Infinity).toISOString()` throws inside the tick's bare catch — a dead ticker
+ * with no log at all. Resolved per call (not at module load) so it is stubbable in tests.
+ */
+function resolvePositiveEnvInt(raw: string | undefined, min: number, fallback: number): number {
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value < min) return fallback
+  return Math.floor(value)
+}
+
+export function resolveActivityWindowMs(): number {
+  return resolvePositiveEnvInt(
+    process.env.GAME_TICK_ACTIVITY_WINDOW_MS,
+    MIN_GAME_TICK_ACTIVITY_WINDOW_MS,
+    DEFAULT_GAME_TICK_ACTIVITY_WINDOW_MS
+  )
+}
+
+export function resolveDiscoveryLimit(): number {
+  return resolvePositiveEnvInt(
+    process.env.GAME_TICK_DISCOVERY_LIMIT,
+    MIN_GAME_TICK_DISCOVERY_LIMIT,
+    DEFAULT_GAME_TICK_DISCOVERY_LIMIT
+  )
+}
+
 let inFlight = false
 
 /** One tick: poke every active timed game's system endpoint. Safe to call repeatedly. */
@@ -122,13 +203,30 @@ export async function tickActiveGames(): Promise<void> {
   inFlight = true
   try {
     const supabase = getSupabaseAdmin()
+    const windowMs = resolveActivityWindowMs()
+    const discoveryLimit = resolveDiscoveryLimit()
+    const activityCutoff = new Date(Date.now() - windowMs).toISOString()
     const { data: games, error } = await supabase
       .from('games')
       .select('id, game_type')
       .eq('status', 'active')
       .in('game_type', HANDLED_GAME_TYPES)
+      .gt('last_activity_at', activityCutoff)
+      .order('last_activity_at', { ascending: true })
+      .limit(discoveryLimit)
 
     if (error || !games || games.length === 0) return
+
+    // The cap binding is otherwise invisible: some active games simply never get poked.
+    // Ascending order means the cut set rotates instead of being the same games forever,
+    // but a persistently-bound cap still means the tail is served slower than the
+    // interval promises — so say so, loudly enough to act on.
+    if (games.length >= discoveryLimit) {
+      console.warn(
+        `[game-tick] discovery cap bound: ${games.length} game(s) at limit=${discoveryLimit} ` +
+          `(window=${windowMs}ms) — some active games are deferred to a later tick`
+      )
+    }
 
     if (process.env.GAME_TICK_DEBUG === '1') {
       console.log(
