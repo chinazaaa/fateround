@@ -54,8 +54,7 @@ export function useBingoAutoCall({
   // currently elected driver. The failover baseline must anchor on this, not on the
   // election: a replacement driver being elected mid-game must not push the "overdue"
   // baseline forward, or failover is delayed exactly when the ticker and host are down.
-  const autoCallActive =
-    !!enabled && !!game && game.status === 'active' && bingoCallModeFromGame(game) === 'auto'
+  const autoCallActive = !!enabled && !!game && game.status === 'active' && bingoCallModeFromGame(game) === 'auto'
 
   const active = autoCallActive && role !== 'none'
 
