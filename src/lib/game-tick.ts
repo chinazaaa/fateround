@@ -114,6 +114,24 @@ function selfBaseUrl(): string {
   return process.env.GAME_TICK_BASE_URL || `http://127.0.0.1:${process.env.PORT || 3000}`
 }
 
+/**
+ * Only tick games with recent player activity. `games.last_activity_at` is bumped by
+ * player actions (any UPDATE on the games row, INSERT/DELETE on players — see the
+ * idle-reaper header) but deliberately NOT by the ticker's own pokes, so a game
+ * abandoned with status='active' stops matching this window and stops being poked.
+ * 60 minutes sits comfortably above the idle reaper's 30-minute threshold and any
+ * legitimate turn deadline, so a live-but-slow game is never dropped before the
+ * reaper would have closed it anyway. Env override: GAME_TICK_ACTIVITY_WINDOW_MS.
+ */
+export const GAME_TICK_ACTIVITY_WINDOW_MS = Number(process.env.GAME_TICK_ACTIVITY_WINDOW_MS) || 60 * 60 * 1000
+
+/**
+ * Blast-radius cap on discovery: never poke more than this many games per tick. Ordered
+ * by last_activity_at descending so the freshest games win if the cap ever binds.
+ * Env override: GAME_TICK_DISCOVERY_LIMIT.
+ */
+export const GAME_TICK_DISCOVERY_LIMIT = Number(process.env.GAME_TICK_DISCOVERY_LIMIT) || 200
+
 let inFlight = false
 
 /** One tick: poke every active timed game's system endpoint. Safe to call repeatedly. */
@@ -122,11 +140,15 @@ export async function tickActiveGames(): Promise<void> {
   inFlight = true
   try {
     const supabase = getSupabaseAdmin()
+    const activityCutoff = new Date(Date.now() - GAME_TICK_ACTIVITY_WINDOW_MS).toISOString()
     const { data: games, error } = await supabase
       .from('games')
       .select('id, game_type')
       .eq('status', 'active')
       .in('game_type', HANDLED_GAME_TYPES)
+      .gt('last_activity_at', activityCutoff)
+      .order('last_activity_at', { ascending: false })
+      .limit(GAME_TICK_DISCOVERY_LIMIT)
 
     if (error || !games || games.length === 0) return
 

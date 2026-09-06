@@ -1,13 +1,37 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { pokeTargetFor, HANDLED_GAME_TYPES, tickActiveGames } from '@/lib/game-tick'
+import {
+  pokeTargetFor,
+  HANDLED_GAME_TYPES,
+  tickActiveGames,
+  GAME_TICK_ACTIVITY_WINDOW_MS,
+  GAME_TICK_DISCOVERY_LIMIT,
+} from '@/lib/game-tick'
 
 const activeGames = vi.fn()
+const gtSpy = vi.fn()
+const orderSpy = vi.fn()
+const limitSpy = vi.fn()
 vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () => ({
     from: () => ({
       select: () => ({
         eq: () => ({
-          in: () => activeGames(),
+          in: () => ({
+            gt: (...gtArgs: unknown[]) => {
+              gtSpy(...gtArgs)
+              return {
+                order: (...orderArgs: unknown[]) => {
+                  orderSpy(...orderArgs)
+                  return {
+                    limit: (...limitArgs: unknown[]) => {
+                      limitSpy(...limitArgs)
+                      return activeGames()
+                    },
+                  }
+                },
+              }
+            },
+          }),
         }),
       }),
     }),
@@ -109,6 +133,9 @@ describe('tickActiveGames', () => {
     vi.stubEnv('PORT', '4567')
     activeGames.mockReset()
     fetchMock.mockClear()
+    gtSpy.mockClear()
+    orderSpy.mockClear()
+    limitSpy.mockClear()
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -148,5 +175,43 @@ describe('tickActiveGames', () => {
     activeGames.mockResolvedValue({ data: null, error: { message: 'boom' } })
     await expect(tickActiveGames()).resolves.toBeUndefined()
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  describe('discovery bounds', () => {
+    it('filters out games idle beyond the activity window via gt(last_activity_at, cutoff)', async () => {
+      activeGames.mockResolvedValue({ data: [], error: null })
+      const before = Date.now()
+      await tickActiveGames()
+      const after = Date.now()
+
+      expect(gtSpy).toHaveBeenCalledTimes(1)
+      const [column, cutoffIso] = gtSpy.mock.calls[0] as [string, string]
+      expect(column).toBe('last_activity_at')
+      // Cutoff is "now minus window" — a game whose last_activity_at is older than this
+      // (idle beyond the window) fails the gt() and is never poked; a fresher one passes.
+      const cutoff = new Date(cutoffIso).getTime()
+      expect(cutoff).toBeGreaterThanOrEqual(before - GAME_TICK_ACTIVITY_WINDOW_MS)
+      expect(cutoff).toBeLessThanOrEqual(after - GAME_TICK_ACTIVITY_WINDOW_MS)
+    })
+
+    it('caps discovery and orders freshest-first so recent games win if the cap binds', async () => {
+      activeGames.mockResolvedValue({ data: [], error: null })
+      await tickActiveGames()
+
+      expect(orderSpy).toHaveBeenCalledWith('last_activity_at', { ascending: false })
+      expect(limitSpy).toHaveBeenCalledWith(GAME_TICK_DISCOVERY_LIMIT)
+      expect(GAME_TICK_DISCOVERY_LIMIT).toBe(200)
+      expect(GAME_TICK_ACTIVITY_WINDOW_MS).toBe(60 * 60 * 1000)
+    })
+
+    it('still pokes games returned by the bounded query', async () => {
+      activeGames.mockResolvedValue({ data: [{ id: 'FRSH', game_type: 'trivia' }], error: null })
+      await tickActiveGames()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledWith(
+        'http://127.0.0.1:4567/api/trivia/advance',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ gameId: 'FRSH' }) })
+      )
+    })
   })
 })
