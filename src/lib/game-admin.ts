@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeGender, type ParticipantGender } from '@/lib/participants'
 import { normalizeResumeToken } from '@/lib/utils'
+import { touchGameActivity } from '@/lib/game-activity'
 
 /**
  * Authorize a player action by its secret resume_token.
@@ -27,6 +28,14 @@ export async function assertPlayer(supabase: SupabaseClient, gameCode: string, r
     .eq('resume_token', token)
     .maybeSingle()
   if (!player) return { error: 'Unauthorized', status: 403 as const, player: null, id }
+  // A real, authorized player is acting on this game — that is the definition of
+  // "the game is alive". This is the one chokepoint every player-facing write
+  // passes through (~130 route files, every game family, including the
+  // anonymous/secret message inboxes), and none of those routes otherwise write
+  // the `games` row, so without this bump a board game an hour into play looks
+  // idle to the reaper. Fire-and-forget and throttled to one write per game per
+  // ACTIVITY_THROTTLE_MINUTES — see src/lib/game-activity.ts.
+  touchGameActivity(supabase, id)
   return { error: null, status: 200 as const, player, id }
 }
 
