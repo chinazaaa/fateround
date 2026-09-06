@@ -39,24 +39,34 @@ export function useBingoAutoCall({
 }) {
   const inFlight = useRef(false)
   const onCalledRef = useRef(onCalled)
-  onCalledRef.current = onCalled
+  useEffect(() => {
+    onCalledRef.current = onCalled
+  })
+
+  const lastCalledAtRef = useRef(lastCalledAt)
+  useEffect(() => {
+    lastCalledAtRef.current = lastCalledAt
+  })
 
   const callIntervalSeconds = game ? bingoCallIntervalFromGame(game) : 5
 
-  const active =
-    !!enabled && !!game && game.status === 'active' && bingoCallModeFromGame(game) === 'auto' && role !== 'none'
+  // Whether auto-calling should be running at all — independent of which client is
+  // currently elected driver. The failover baseline must anchor on this, not on the
+  // election: a replacement driver being elected mid-game must not push the "overdue"
+  // baseline forward, or failover is delayed exactly when the ticker and host are down.
+  const autoCallActive =
+    !!enabled && !!game && game.status === 'active' && bingoCallModeFromGame(game) === 'auto'
+
+  const active = autoCallActive && role !== 'none'
 
   // Nothing called yet means there is no timestamp to measure "overdue" from. Anchor on
   // the moment this client saw the game go active instead, so a game that has just
   // started is not treated as infinitely overdue.
   const baselineRef = useRef(Date.now())
   useEffect(() => {
-    if (active) baselineRef.current = Date.now()
-    // Re-anchor only on the active edge, not on every render.
-  }, [active, gameCode])
-
-  const lastCalledAtRef = useRef(lastCalledAt)
-  lastCalledAtRef.current = lastCalledAt
+    if (autoCallActive) baselineRef.current = Date.now()
+    // Re-anchor only on the auto-call-active edge (not driver election, not every render).
+  }, [autoCallActive, gameCode])
 
   usePolling(
     async () => {
