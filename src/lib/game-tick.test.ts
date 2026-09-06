@@ -7,37 +7,36 @@ import {
   DEFAULT_GAME_TICK_DISCOVERY_LIMIT,
   resolveActivityWindowMs,
   resolveDiscoveryLimit,
+  resetDiscoveryCursor,
 } from '@/lib/game-tick'
 
 const activeGames = vi.fn()
 const gtSpy = vi.fn()
+const orSpy = vi.fn()
 const orderSpy = vi.fn()
 const limitSpy = vi.fn()
+const selectSpy = vi.fn()
+
+// Chainable PostgREST builder stub: every filter/order returns `this`, and `limit()`
+// resolves. `or()` is optional (only issued once discovery is paging past a cursor).
+function makeQueryBuilder() {
+  const builder: Record<string, (...args: unknown[]) => unknown> = {
+    select: (...args) => (selectSpy(...args), builder),
+    eq: () => builder,
+    in: () => builder,
+    gt: (...args) => (gtSpy(...args), builder),
+    or: (...args) => (orSpy(...args), builder),
+    order: (...args) => (orderSpy(...args), builder),
+    limit: (...args) => {
+      limitSpy(...args)
+      return activeGames()
+    },
+  }
+  return builder
+}
+
 vi.mock('@/lib/supabase-admin', () => ({
-  getSupabaseAdmin: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          in: () => ({
-            gt: (...gtArgs: unknown[]) => {
-              gtSpy(...gtArgs)
-              return {
-                order: (...orderArgs: unknown[]) => {
-                  orderSpy(...orderArgs)
-                  return {
-                    limit: (...limitArgs: unknown[]) => {
-                      limitSpy(...limitArgs)
-                      return activeGames()
-                    },
-                  }
-                },
-              }
-            },
-          }),
-        }),
-      }),
-    }),
-  }),
+  getSupabaseAdmin: () => ({ from: () => makeQueryBuilder() }),
 }))
 
 describe('pokeTargetFor', () => {
@@ -136,8 +135,11 @@ describe('tickActiveGames', () => {
     activeGames.mockReset()
     fetchMock.mockClear()
     gtSpy.mockClear()
+    orSpy.mockClear()
     orderSpy.mockClear()
     limitSpy.mockClear()
+    selectSpy.mockClear()
+    resetDiscoveryCursor()
   })
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -204,6 +206,8 @@ describe('tickActiveGames', () => {
       // every time it advances, so descending order would keep the same games at the head
       // forever and cut the same (frozen, turn-based) tail on every single tick.
       expect(orderSpy).toHaveBeenCalledWith('last_activity_at', { ascending: true })
+      // `id` breaks ties so the cross-tick paging cursor is a total order.
+      expect(orderSpy).toHaveBeenCalledWith('id', { ascending: true })
       expect(limitSpy).toHaveBeenCalledWith(DEFAULT_GAME_TICK_DISCOVERY_LIMIT)
     })
 
@@ -256,6 +260,100 @@ describe('tickActiveGames', () => {
     })
   })
 
+  describe('cross-tick paging', () => {
+    // 7 in-window games, cap 3. Ordering alone can't rotate the head of the queue: a poke
+    // is a no-op when nothing is due, so it writes nothing and last_activity_at doesn't
+    // move. Without a cursor, ticks 1..N would re-select G0..G2 forever and G3..G6 would
+    // starve. This drives the real cursor through a fake ordered table.
+    const table = Array.from({ length: 7 }, (_, i) => ({
+      id: `G${i}`,
+      game_type: 'trivia',
+      last_activity_at: `2026-01-01T00:0${i}:00.000Z`,
+    }))
+
+    function parseCursor(filter: string): { lastActivityAt: string; id: string } {
+      const match = /last_activity_at\.gt\."([^"]+)",and\(last_activity_at\.eq\."([^"]+)",id\.gt\."([^"]+)"\)/.exec(
+        filter
+      )
+      if (!match) throw new Error(`unparseable cursor filter: ${filter}`)
+      expect(match[1]).toBe(match[2])
+      return { lastActivityAt: match[1], id: match[3] }
+    }
+
+    function servePagedTable(limit: number) {
+      let seenOrCalls = 0
+      activeGames.mockImplementation(() => {
+        const orCalls = orSpy.mock.calls
+        const issuedOr = orCalls.length > seenOrCalls
+        const filter = issuedOr ? String(orCalls[orCalls.length - 1][0]) : null
+        seenOrCalls = orCalls.length
+        const cursor = filter ? parseCursor(filter) : null
+        const rows = table.filter(
+          (row) =>
+            !cursor ||
+            row.last_activity_at > cursor.lastActivityAt ||
+            (row.last_activity_at === cursor.lastActivityAt && row.id > cursor.id)
+        )
+        return Promise.resolve({ data: rows.slice(0, limit), error: null })
+      })
+    }
+
+    function pokedIds(): string[] {
+      return fetchMock.mock.calls.map(([, opts]) => JSON.parse(opts.body).gameId)
+    }
+
+    it('visits every game across successive ticks instead of re-serving the oldest page', async () => {
+      vi.stubEnv('GAME_TICK_DISCOVERY_LIMIT', '3')
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      servePagedTable(3)
+
+      // ceil(7 / 3) = 3 ticks to walk the whole queue once.
+      await tickActiveGames()
+      expect(pokedIds()).toEqual(['G0', 'G1', 'G2'])
+      await tickActiveGames()
+      await tickActiveGames()
+
+      expect(new Set(pokedIds())).toEqual(new Set(table.map((g) => g.id)))
+      expect(pokedIds()).toHaveLength(7)
+    })
+
+    it('wraps back to the head of the queue after a short page', async () => {
+      vi.stubEnv('GAME_TICK_DISCOVERY_LIMIT', '3')
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      servePagedTable(3)
+
+      await tickActiveGames() // G0 G1 G2
+      await tickActiveGames() // G3 G4 G5
+      await tickActiveGames() // G6 — short page, so the cursor wraps
+      fetchMock.mockClear()
+
+      await tickActiveGames()
+      expect(pokedIds()).toEqual(['G0', 'G1', 'G2'])
+    })
+
+    it('does not page on the first tick (no cursor yet)', async () => {
+      activeGames.mockResolvedValue({ data: [], error: null })
+      await tickActiveGames()
+      expect(orSpy).not.toHaveBeenCalled()
+    })
+
+    it('leaves the cursor alone when the discovery read fails, retrying the same page', async () => {
+      vi.stubEnv('GAME_TICK_DISCOVERY_LIMIT', '3')
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      servePagedTable(3)
+      await tickActiveGames() // G0 G1 G2 -> cursor at G2
+
+      activeGames.mockResolvedValue({ data: null, error: { message: 'boom' } })
+      await tickActiveGames()
+
+      fetchMock.mockClear()
+      servePagedTable(3)
+      // The failed tick still asked for the page after G2, and the cursor survived it.
+      await tickActiveGames()
+      expect(pokedIds()).toEqual(['G3', 'G4', 'G5'])
+    })
+  })
+
   describe('env override clamping', () => {
     it('applies valid overrides', () => {
       vi.stubEnv('GAME_TICK_ACTIVITY_WINDOW_MS', '900000')
@@ -293,6 +391,31 @@ describe('tickActiveGames', () => {
       vi.stubEnv('GAME_TICK_DISCOVERY_LIMIT', '1e400')
       expect(resolveActivityWindowMs()).toBe(DEFAULT_GAME_TICK_ACTIVITY_WINDOW_MS)
       expect(resolveDiscoveryLimit()).toBe(DEFAULT_GAME_TICK_DISCOVERY_LIMIT)
+    })
+
+    it.each(['1e16', '1e15', String(31 * 24 * 60 * 60 * 1000)])(
+      'falls back for the finite but out-of-range window %j',
+      (raw) => {
+        // 1e16 is finite and passes the min check, but `new Date(Date.now() - 1e16)` is an
+        // Invalid Date and `toISOString()` throws inside the tick's bare catch — the ticker
+        // would stop discovering with no log at all. Anything past the 30d cap is a typo.
+        vi.stubEnv('GAME_TICK_ACTIVITY_WINDOW_MS', raw)
+        expect(resolveActivityWindowMs()).toBe(DEFAULT_GAME_TICK_ACTIVITY_WINDOW_MS)
+      }
+    )
+
+    it('accepts a window right up to the 30-day cap', () => {
+      const cap = 30 * 24 * 60 * 60 * 1000
+      vi.stubEnv('GAME_TICK_ACTIVITY_WINDOW_MS', String(cap))
+      expect(resolveActivityWindowMs()).toBe(cap)
+    })
+
+    it('survives a tick with a finite out-of-range window', async () => {
+      vi.stubEnv('GAME_TICK_ACTIVITY_WINDOW_MS', '1e16')
+      activeGames.mockResolvedValue({ data: [], error: null })
+      await expect(tickActiveGames()).resolves.toBeUndefined()
+      const [, cutoffIso] = gtSpy.mock.calls[0] as [string, string]
+      expect(Number.isFinite(new Date(cutoffIso).getTime())).toBe(true)
     })
 
     it('rejects a below-minimum window rather than shrinking it to nothing', () => {
