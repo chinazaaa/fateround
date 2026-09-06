@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
+import { noteChannelStatus, registerChannel, unregisterChannel } from './realtime-health'
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
@@ -39,3 +41,45 @@ export const fetchWithTimeout: typeof fetch = (input, init) => {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: { fetch: fetchWithTimeout },
 })
+
+/**
+ * Report every channel's subscription state into the realtime-health store, so `usePolling` can
+ * stand down while realtime is actually delivering.
+ *
+ * Done by wrapping the client rather than at the ~33 call sites that open channels: the signal is
+ * only useful if it sees ALL of them, and a per-call-site opt-in would silently rot the moment
+ * someone adds a channel without it. Wrapping means a new channel is tracked by default.
+ *
+ * Both wrappers preserve return values and forward the caller's own status callback unchanged, so
+ * existing `.subscribe((status) => ...)` handlers keep working.
+ */
+const openChannel = supabase.channel.bind(supabase)
+const closeChannel = supabase.removeChannel.bind(supabase)
+const channelTokens = new WeakMap<object, symbol>()
+
+supabase.channel = ((name: string, opts?: Parameters<typeof openChannel>[1]) => {
+  const channel = opts ? openChannel(name, opts) : openChannel(name)
+  const token = registerChannel()
+  channelTokens.set(channel, token)
+
+  const subscribe = channel.subscribe.bind(channel)
+  channel.subscribe = ((callback?: Parameters<typeof subscribe>[0], timeout?: number) =>
+    subscribe((status, err) => {
+      noteChannelStatus(token, status)
+      callback?.(status, err)
+    }, timeout)) as typeof channel.subscribe
+
+  return channel
+}) as typeof supabase.channel
+
+supabase.removeChannel = ((channel: Parameters<typeof closeChannel>[0]) => {
+  const token = channelTokens.get(channel)
+  // Untrack BEFORE the async removal resolves. A channel being torn down must stop counting
+  // against health immediately, or a page unmounting several channels briefly reads as unhealthy
+  // and kicks off a burst of full-speed polls on its way out.
+  if (token) {
+    unregisterChannel(token)
+    channelTokens.delete(channel)
+  }
+  return closeChannel(channel)
+}) as typeof supabase.removeChannel
