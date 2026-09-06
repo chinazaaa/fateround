@@ -1,5 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
+
+// `after()` needs a request scope; run the deferred activity bump inline instead.
+const deferred: Promise<unknown>[] = []
+vi.mock('next/server', () => ({
+  after: (fn: () => Promise<unknown>) => {
+    deferred.push(fn())
+  },
+}))
 import {
   assertPlayer,
   assertHostGame,
@@ -7,6 +15,7 @@ import {
   assertHostGameSettings,
   assertHostLateJoinSettings,
 } from './game-admin'
+import { resetGameActivityThrottle } from './game-activity'
 
 // Stand-in for `supabase.from('games').select('*').eq('id', …).maybeSingle()`.
 function mockSupabase(game: Record<string, unknown> | null): SupabaseClient {
@@ -92,9 +101,12 @@ const PLAYER_ROWS = [
   { id: 'p-carol', game_id: 'ZZZZ', resume_token: 'GGGG7777HHHH8888IIII9999', name: 'Carol' },
 ]
 
+const rpc = vi.fn().mockResolvedValue({ data: true, error: null })
+
 function mockPlayers(): { client: SupabaseClient; queries: number } {
   const state = { queries: 0 }
   const client = {
+    rpc,
     from: () => {
       const filters: Record<string, unknown> = {}
       const chain = {
@@ -120,6 +132,17 @@ function mockPlayers(): { client: SupabaseClient; queries: number } {
       return state.queries
     },
   } as { client: SupabaseClient; queries: number }
+}
+
+beforeEach(() => {
+  rpc.mockClear()
+  deferred.length = 0
+  resetGameActivityThrottle()
+})
+
+/** Await the fire-and-forget work `after()` was handed. */
+async function settle() {
+  await Promise.all(deferred.splice(0))
 }
 
 describe('assertPlayer', () => {
@@ -181,5 +204,46 @@ describe('assertPlayer', () => {
       const res = await assertPlayer(client, 'ABCD', token)
       expect(res.status === 200 && res.player === null).toBe(false)
     }
+  })
+})
+
+/**
+ * Turn-based gameplay writes only its own `*_sessions` tables, so `games.last_activity_at`
+ * — the column every liveness check reads — never moved while a board game was being
+ * played. `assertPlayer` is the one place every player-facing write passes through, so the
+ * bump lives here.
+ */
+describe('assertPlayer marks the game as alive', () => {
+  it('bumps activity for an authorized player', async () => {
+    const { client } = mockPlayers()
+    await assertPlayer(client, 'abcd', 'AAAA1111BBBB2222CCCC3333')
+    await settle()
+    expect(rpc).toHaveBeenCalledWith('touch_game_activity', expect.objectContaining({ p_game_id: 'ABCD' }))
+  })
+
+  it('does not bump for a rejected token — an impostor is not activity', async () => {
+    const { client } = mockPlayers()
+    await assertPlayer(client, 'ABCD', 'NOPE0000NOPE0000NOPE0000')
+    await assertPlayer(client, 'ABCD', '')
+    await settle()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('writes at most once per game across a burst of moves', async () => {
+    const { client } = mockPlayers()
+    for (let i = 0; i < 10; i++) await assertPlayer(client, 'ABCD', 'AAAA1111BBBB2222CCCC3333')
+    await settle()
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('still authorizes the player when the activity bump fails', async () => {
+    rpc.mockRejectedValueOnce(new Error('db down'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { client } = mockPlayers()
+    const res = await assertPlayer(client, 'ABCD', 'AAAA1111BBBB2222CCCC3333')
+    await expect(settle()).resolves.toBeUndefined()
+    expect(res.status).toBe(200)
+    expect(res.player?.id).toBe('p-alice')
+    consoleError.mockRestore()
   })
 })
