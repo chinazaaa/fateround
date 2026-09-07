@@ -215,6 +215,9 @@ describe('assertPlayer', () => {
  * — the column every liveness check reads — never moved while a board game was being
  * played. `assertPlayer` is the one place every player-facing write passes through, so the
  * bump lives here.
+ *
+ * It is a WRITE-path marker, though: read-only callers pass `{ readOnly: true }`, because a
+ * poll that bumps would let an abandoned game fake liveness and dodge the idle reaper forever.
  */
 describe('assertPlayer marks the game as alive', () => {
   it('bumps activity for an authorized player', async () => {
@@ -230,6 +233,40 @@ describe('assertPlayer marks the game as alive', () => {
     await assertPlayer(client, 'ABCD', '')
     await settle()
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('does NOT bump on a read-only path — polling must not keep an abandoned game alive', async () => {
+    const { client } = mockPlayers()
+    const res = await assertPlayer(client, 'ABCD', 'AAAA1111BBBB2222CCCC3333', { readOnly: true })
+    await settle()
+    // Still fully authorized — only the liveness side effect is suppressed.
+    expect(res.status).toBe(200)
+    expect(res.player?.id).toBe('p-alice')
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('bumps by default and when readOnly is explicitly false — a new route is covered for free', async () => {
+    const { client } = mockPlayers()
+    await assertPlayer(client, 'ABCD', 'AAAA1111BBBB2222CCCC3333', {})
+    await settle()
+    expect(rpc).toHaveBeenCalledTimes(1)
+
+    rpc.mockClear()
+    resetGameActivityThrottle()
+    await assertPlayer(client, 'ABCD', 'AAAA1111BBBB2222CCCC3333', { readOnly: false })
+    await settle()
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('a read-only poll does not consume the throttle window a later write needs', async () => {
+    const { client } = mockPlayers()
+    for (let i = 0; i < 5; i++) await assertPlayer(client, 'ABCD', 'AAAA1111BBBB2222CCCC3333', { readOnly: true })
+    await settle()
+    expect(rpc).not.toHaveBeenCalled()
+
+    await assertPlayer(client, 'ABCD', 'AAAA1111BBBB2222CCCC3333')
+    await settle()
+    expect(rpc).toHaveBeenCalledTimes(1)
   })
 
   it('writes at most once per game across a burst of moves', async () => {

@@ -3,6 +3,14 @@ import { normalizeGender, type ParticipantGender } from '@/lib/participants'
 import { normalizeResumeToken } from '@/lib/utils'
 import { touchGameActivity } from '@/lib/game-activity'
 
+export type PlayerAccessOptions = {
+  /**
+   * Set on paths that only READ. The default is a write path, so a route added later
+   * gets the liveness bump for free and only an explicitly read-only one opts out.
+   */
+  readOnly?: boolean
+}
+
 /**
  * Authorize a player action by its secret resume_token.
  *
@@ -14,8 +22,18 @@ import { touchGameActivity } from '@/lib/game-activity'
  *
  * The resume_token travels with the player across devices, so this preserves
  * cross-device resume: any device presenting the correct token is authorized.
+ *
+ * `games.last_activity_at` is bumped on WRITE-PATH authorization only. Liveness has
+ * to mean a player ACTED: a read that bumps lets a tab left polling in a pocket keep
+ * an abandoned game off the idle reaper's list forever. Read-only callers therefore
+ * pass `{ readOnly: true }` — see the callers listed on the bump below.
  */
-export async function assertPlayer(supabase: SupabaseClient, gameCode: string, resumeToken: string | null | undefined) {
+export async function assertPlayer(
+  supabase: SupabaseClient,
+  gameCode: string,
+  resumeToken: string | null | undefined,
+  opts: PlayerAccessOptions = {}
+) {
   const id = gameCode.toUpperCase()
   const token = normalizeResumeToken(String(resumeToken ?? ''))
   if (token.length < 4) {
@@ -28,16 +46,23 @@ export async function assertPlayer(supabase: SupabaseClient, gameCode: string, r
     .eq('resume_token', token)
     .maybeSingle()
   if (!player) return { error: 'Unauthorized', status: 403 as const, player: null, id }
-  // A real, authorized player is acting on this game — that is the definition of
+  // A real, authorized player is WRITING to this game — that is the definition of
   // "the game is alive". This is the one chokepoint every player-facing write
   // passes through (~130 route files, every game family, including the
   // anonymous/secret message inboxes) except mahjong, which authorizes through
   // `verifyMahjongPlayerAccess` in src/lib/mahjong-auth.ts and bumps there the same
   // way. None of those routes otherwise write the `games` row, so without this bump
   // a board game an hour into play looks idle to the reaper — which ENDS games.
+  //
+  // Read paths (`opts.readOnly`) deliberately do NOT bump: polling must not be able to
+  // fake liveness and keep an abandoned game alive indefinitely. The read-only callers
+  // are /api/mafia/[code]/state, /api/wordle-room/status, /api/two-truths/my-guesses
+  // and /api/two-truths/my-statement — all POST-shaped reads (POST only so the resume
+  // token stays out of query strings). Every other caller acts on the game.
+  //
   // Fire-and-forget and throttled to one write per game per
   // ACTIVITY_THROTTLE_MINUTES — see src/lib/game-activity.ts.
-  touchGameActivity(supabase, id)
+  if (!opts.readOnly) touchGameActivity(supabase, id)
   return { error: null, status: 200 as const, player, id }
 }
 
