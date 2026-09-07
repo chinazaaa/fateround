@@ -685,8 +685,12 @@ export async function reconcileCodewordsTeamAfterRemoval(
       .eq('game_id', code)
       .is('winner', null)
     if (winError) return { error: internalErrorMessage('codewords', winError), outcome: noop }
-    const { error: finishError } = await finishCodewordsGame(supabase, code)
+    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code)
     if (finishError) return { error: finishError, outcome: noop }
+    // The forfeit landed; only the chat wipe failed, and that cannot un-finish the game.
+    // Nothing retries it, so log it instead of turning a completed forfeit into an error.
+    if (cleanupError)
+      console.error(`codewords: chat cleanup after forfeit failed for ${code} — not retried`, cleanupError)
     return { error: null, outcome: { ended: true, forfeitWinner: otherTeam } }
   }
 

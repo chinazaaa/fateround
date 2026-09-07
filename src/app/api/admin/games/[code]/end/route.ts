@@ -14,11 +14,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await supabase.from('games').select('id, status, game_type').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
 
-  const { error } = await adminEndGame(supabase, game)
+  const { error, cleanupError } = await adminEndGame(supabase, game)
   if (error) {
     const status = error === 'Only waiting or active games can be ended' ? 400 : 500
     return NextResponse.json({ error }, { status })
   }
+
+  // The game IS ended; only its post-finish data wipe failed, which cannot un-end it.
+  // Failing the request would tell the admin the end did not happen and invite a retry
+  // that can only 400 ("Only waiting or active games can be ended"). Not retried
+  // anywhere, so log it for an operator instead.
+  if (cleanupError)
+    console.error(`admin/games/code/end: cleanup after finish failed for ${gameId} — not retried`, cleanupError)
 
   return NextResponse.json({ success: true })
 }

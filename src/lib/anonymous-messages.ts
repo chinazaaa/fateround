@@ -236,6 +236,21 @@ export async function finishExpiredAnonymousSession(
   if (game.status !== 'active') return false
   if (!anonymousSessionExpired(game.session_started_at)) return false
 
-  const { error } = await finishAnonymousRoomSession(supabase, game.id)
-  return !error
+  const { error, cleanupError } = await finishAnonymousRoomSession(supabase, game.id)
+  if (error) return false
+
+  // The room IS finished at this point — only the post-finish message/ban wipe failed,
+  // and that cannot un-finish it. Folding it into the return value would report a
+  // completed expiry as "not expired", so surface it instead: like every other finish
+  // path, a failed cleanup is not retried (nothing revisits a finished game and there
+  // is no durable retry queue), so it needs to be loud enough for an operator to
+  // re-run the wipe by hand.
+  if (cleanupError) {
+    console.error(
+      `anonymous-messages: cleanup after expired-session finish failed for ${game.id} — not retried`,
+      cleanupError
+    )
+  }
+
+  return true
 }

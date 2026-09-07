@@ -1953,6 +1953,11 @@ export async function DELETE(req: NextRequest) {
             status: gameRow.status,
             game_type: gameRow.game_type,
           })
+          // The game IS finished; a failed post-finish wipe does not un-finish it, so the
+          // stamp below still runs. Nothing retries the wipe — surface it for an operator.
+          if (ended.cleanupError) {
+            console.error(`players: cleanup after host-left finish failed for ${id} — not retried`, ended.cleanupError)
+          }
           if (!ended.error) {
             await getSupabaseAdmin()
               .from('games')
