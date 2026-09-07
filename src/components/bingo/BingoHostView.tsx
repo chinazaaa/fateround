@@ -45,6 +45,7 @@ import type { BingoCallMode, BingoCalledNumber, BingoClaim, BingoCard, Game, Pla
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
+import { newestCalledAtOf } from '@/lib/bingo-driver'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { mergeRealtimeGame } from '@/lib/realtime-merge'
@@ -249,7 +250,19 @@ export function BingoHostView({ gameCode, hostToken }: { gameCode: string; hostT
       />
     ) : null
 
-  useBingoAutoCall({ gameCode, game, enabled: game?.status === 'active', onSynced: load })
+  const newestCalledAt = useMemo(() => newestCalledAtOf(calledNumbers), [calledNumbers])
+
+  // Standby auto-call driver. The server ticker (src/lib/game-tick.ts) is the primary
+  // clock; the host only pokes /api/bingo/sync once a call is overdue, and applies the
+  // returned row directly rather than reloading the whole game. See src/lib/bingo-driver.ts.
+  useBingoAutoCall({
+    gameCode,
+    game,
+    role: 'host',
+    lastCalledAt: newestCalledAt,
+    enabled: game?.status === 'active',
+    onCalled: (row) => setCalledNumbers((prev) => (prev.some((c) => c.id === row.id) ? prev : [...prev, row])),
+  })
 
   const markHostNumber = async (cellIndex: number) => {
     if (!hostPlayerId || !hostCard || hostMarking) return

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
-import { assertTrollRunRacingPlayer } from '@/lib/troll-run'
+import { assertTrollRunRacingPlayer } from '@/lib/troll-run-guard'
 
 const reportDeathSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),

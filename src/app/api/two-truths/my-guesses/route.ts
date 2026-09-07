@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
     // Authorize by the secret resume_token; the resolved player.id is authoritative. A
     // client-supplied playerId is public and forgeable, and would hand over another player's
     // guesses — which is exactly the leak this route exists to close.
-    const auth = await assertPlayer(supabase, gameId, body.resumeToken)
+    // Read-only: fetching your own guesses must not bump `games.last_activity_at`.
+    const auth = await assertPlayer(supabase, gameId, body.resumeToken, { readOnly: true })
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
     const { data, error } = await supabase
