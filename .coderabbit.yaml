@@ -22,7 +22,14 @@ reviews:
   poem: false
 
   auto_review:
-    enabled: true
+    # DISABLED 2026-09-06 because quota became the binding constraint, exactly as the note on
+    # `drafts` below predicted. On the free tier this account gets roughly one review an hour,
+    # and with automatic review on, every push spends one — including the small follow-up commits
+    # that fix a review's own findings. A single hook PR (#1137) burned three consecutive windows
+    # that way while four finished PRs (#1139 #1142 #1143 #1144) sat unreviewed for a day.
+    # Reviews are now requested explicitly with `@coderabbitai review`, so the hourly slot goes to
+    # whichever PR is next in the merge order. Pre-push review is done locally instead.
+    enabled: false
 
     # DEFAULT IS false, AND IT COST US. Seven security PRs (#744 #758 #759 #787 #838 #866 #867)
     # sat in draft for roughly two weeks with zero automated review, because drafts are skipped
