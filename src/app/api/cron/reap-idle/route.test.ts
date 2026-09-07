@@ -6,10 +6,16 @@ const adminClient = {}
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => adminClient }))
 
 const closeIdleActiveGames = vi.fn()
-vi.mock('@/lib/idle-reaper', () => ({
-  closeIdleActiveGames: (...a: unknown[]) => closeIdleActiveGames(...a),
-  resolveIdleMinutes: () => 30,
-}))
+// The kill-switch parser is deliberately NOT stubbed — its exact acceptance set is
+// the thing under test here, so it has to be the real implementation.
+vi.mock('@/lib/idle-reaper', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/idle-reaper')>()
+  return {
+    closeIdleActiveGames: (...a: unknown[]) => closeIdleActiveGames(...a),
+    resolveIdleMinutes: () => 30,
+    isIdleReaperDisabled: actual.isIdleReaperDisabled,
+  }
+})
 
 import { POST } from './route'
 
@@ -67,11 +73,39 @@ describe('POST /api/cron/reap-idle', () => {
     expect(closeIdleActiveGames).not.toHaveBeenCalled()
   })
 
-  it('no-ops when the IDLE_REAPER_DISABLED kill-switch is set', async () => {
+  it('no-ops for every plausible spelling of the IDLE_REAPER_DISABLED kill-switch', async () => {
+    // Set by a human through SSM mid-incident. An exact `=== '1'` check silently
+    // ignores true/yes/on and keeps ending games while ops believe it is stopped.
+    for (const value of ['1', 'true', 'TRUE', 'yes', 'on', ' 1 ']) {
+      process.env.IDLE_REAPER_DISABLED = value
+      const res = await post({ authorization: 'Bearer sekrit' })
+      expect(res.status, value).toBe(200)
+      expect(await res.json()).toEqual({ ok: true, skipped: 'disabled', closed: 0, failed: 0 })
+    }
+    expect(closeIdleActiveGames).not.toHaveBeenCalled()
+  })
+
+  it('still sweeps when the kill-switch is explicitly off or empty', async () => {
+    for (const value of ['', '0', 'false', 'FALSE']) {
+      closeIdleActiveGames.mockClear()
+      process.env.IDLE_REAPER_DISABLED = value
+      const res = await post({ authorization: 'Bearer sekrit' })
+      expect(res.status, value).toBe(200)
+      expect(closeIdleActiveGames, value).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  it('checks auth BEFORE the kill-switch, so it is never an unauthenticated probe', async () => {
+    // Reversing the order would let anyone learn whether the reaper is disabled
+    // (200 skipped vs 401) without the cron secret.
     process.env.IDLE_REAPER_DISABLED = '1'
-    const res = await post({ authorization: 'Bearer sekrit' })
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ ok: true, skipped: 'disabled', closed: 0, failed: 0 })
+    const cases: Record<string, string>[] = [{}, { authorization: 'Bearer nope' }]
+    for (const headers of cases) {
+      const res = await post(headers)
+      expect(res.status).toBe(401)
+    }
+    delete process.env.CRON_SECRET
+    expect((await post({ authorization: 'Bearer nope' })).status).toBe(503)
     expect(closeIdleActiveGames).not.toHaveBeenCalled()
   })
 

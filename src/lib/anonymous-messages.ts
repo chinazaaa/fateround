@@ -173,10 +173,11 @@ export async function clearAnonymousRoomSessionData(
 
 export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
 ): Promise<{ error: string | null }> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError } = await markGameFinished(supabase, gameId)
+  const { error: gameError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
   if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError) }
 
   return clearAnonymousRoomSessionData(supabase, gameId)
@@ -185,10 +186,11 @@ export async function finishAnonymousRoomSession(
 /** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
 export async function finishSecretMessageBoard(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
 ): Promise<{ error: string | null }> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError } = await markGameFinished(supabase, gameId)
+  const { error: gameError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
   if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError) }
 
   return clearAnonymousRoomSessionData(supabase, gameId)

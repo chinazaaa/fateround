@@ -560,8 +560,12 @@ export async function clearCodewordsChat(supabase: SupabaseClient, gameId: strin
   return { error: null }
 }
 
-export async function finishCodewordsGame(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
-  const { error: gameError } = await markGameFinished(supabase, gameId)
+export async function finishCodewordsGame(
+  supabase: SupabaseClient,
+  gameId: string,
+  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+): Promise<{ error: string | null }> {
+  const { error: gameError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
   if (gameError) return { error: internalErrorMessage('codewords', gameError) }
 
   const { error: chatError } = await clearCodewordsChat(supabase, gameId)

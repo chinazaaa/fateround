@@ -34,7 +34,23 @@ export function staleGameCutoffIso(olderThanHours: number): string {
  * because the guard above rejects a game that is already finished, so a failed reveal would be
  * unrecoverable rather than retryable.
  */
-export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEnd): Promise<{ error: string | null }> {
+export type AdminEndGameOptions = {
+  /**
+   * Make the active→finished flip a compare-and-set so only one caller runs the
+   * award/tournament side effects. Pass it from any path where two requests can
+   * pick the same game concurrently — the idle reaper's cron route has no
+   * in-flight guard, so an ops curl overlapping a timer fire would otherwise
+   * award room points and resolve the tournament match twice for one game.
+   * Defaults to false, preserving every existing caller's behaviour.
+   */
+  onlyIfActive?: boolean
+}
+
+export async function adminEndGame(
+  supabase: SupabaseClient,
+  game: AdminGameToEnd,
+  { onlyIfActive = false }: AdminEndGameOptions = {}
+): Promise<{ error: string | null }> {
   if (game.status !== 'active' && game.status !== 'waiting') {
     return { error: 'Only waiting or active games can be ended' }
   }
@@ -65,16 +81,16 @@ export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEn
     }
   }
   if (isAnonymousMessagesGame(gameType)) {
-    return finishAnonymousRoomSession(supabase, gameId)
+    return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive })
   }
   if (isSecretMessageGame(gameType)) {
-    return finishSecretMessageBoard(supabase, gameId)
+    return finishSecretMessageBoard(supabase, gameId, { onlyIfActive })
   }
   if (isCodewordsGame(gameType)) {
-    return finishCodewordsGame(supabase, gameId)
+    return finishCodewordsGame(supabase, gameId, { onlyIfActive })
   }
 
-  const { error } = await markGameFinished(supabase, gameId, now)
+  const { error } = await markGameFinished(supabase, gameId, now, { onlyIfActive })
   if (error) return { error: internalErrorMessage('admin-end-game', error) }
 
   // Tag the abort reason so the trophy/coin award pass knows to skip counter

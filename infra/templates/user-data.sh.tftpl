@@ -129,6 +129,7 @@ APP_ENV=$(
 GAME_TICK_DISABLED=$(get_param_opt --name "/$PREFIX/GAME_TICK_DISABLED")
 GAME_TICK_INTERVAL_MS=$(get_param_opt --name "/$PREFIX/GAME_TICK_INTERVAL_MS")
 IDLE_REAPER_DISABLED=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_DISABLED")
+IDLE_REAPER_MINUTES=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_MINUTES")
 
 # With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
 # Without it, the app is published directly on :80.
@@ -163,6 +164,7 @@ docker run -d --name app --restart always \
   -e GAME_TICK_DISABLED="$GAME_TICK_DISABLED" \
   -e GAME_TICK_INTERVAL_MS="$GAME_TICK_INTERVAL_MS" \
   -e IDLE_REAPER_DISABLED="$IDLE_REAPER_DISABLED" \
+  -e IDLE_REAPER_MINUTES="$IDLE_REAPER_MINUTES" \
   "$REPO:$TAG"
 
 # Reclaim disk from previous images. Each deploy pulls "$REPO:<commit-sha>", so old images
@@ -283,8 +285,10 @@ systemctl enable --now fateround-streak-reminders.timer
 # being poked by the server ticker forever. Runs as a cron-hit route (NOT from
 # instrumentation.ts — see the DO-NOT-RE-ADD outage note there). Every 15
 # minutes to match the reaper's designed cadence; the route batches 20 games
-# per sweep so a backlog drains gently. IDLE_REAPER_DISABLED=1 (SSM) makes the
-# route a no-op if a sweep ever needs to be stopped without a deploy.
+# per sweep so a backlog drains gently. IDLE_REAPER_DISABLED (SSM; any non-empty
+# value but 0/false) makes the route a no-op if a sweep ever needs to be stopped
+# without a deploy, and IDLE_REAPER_MINUTES (SSM) widens the idle threshold as
+# the less drastic first response to over-eager reaping.
 cat > /etc/systemd/system/fateround-reap-idle.service <<EOF
 [Unit]
 Description=FateRound idle-active-game reaper

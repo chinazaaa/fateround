@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { closeIdleActiveGames, resolveIdleMinutes } from '@/lib/idle-reaper'
+import { closeIdleActiveGames, isIdleReaperDisabled, resolveIdleMinutes } from '@/lib/idle-reaper'
 
 /**
  * Cron tick — close `status='active'` games whose `last_activity_at` hasn't
@@ -18,7 +18,8 @@ import { closeIdleActiveGames, resolveIdleMinutes } from '@/lib/idle-reaper'
  * caller, abandoned games stay 'active' forever and the server ticker pokes
  * them for days (~68.5k Supabase reads/day per zombie).
  *
- * Honors the IDLE_REAPER_DISABLED=1 kill-switch (SSM-plumbed via infra)
+ * Honors the IDLE_REAPER_DISABLED kill-switch (SSM-plumbed via infra; any
+ * non-empty value other than 0/false disables the sweep)
  * that guarded the old in-process reaper, so ops can still stop a bad sweep
  * without a deploy.
  *
@@ -34,7 +35,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  if (process.env.IDLE_REAPER_DISABLED === '1') {
+  // Checked AFTER auth on purpose: flipping the order would turn this into an
+  // unauthenticated probe that reports whether the kill-switch is set.
+  if (isIdleReaperDisabled()) {
     return NextResponse.json({ ok: true, skipped: 'disabled', closed: 0, failed: 0 })
   }
 

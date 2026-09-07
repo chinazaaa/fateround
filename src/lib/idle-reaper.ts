@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { adminEndGame, type AdminGameToEnd } from '@/lib/admin-end-game'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { isProdDeployment } from '@/lib/app-env'
+import { MESSAGE_INBOX_GAME_TYPES, isMessageInboxGame } from '@/lib/game-types'
 
 /**
  * Idle-active-game reaper.
@@ -47,6 +48,20 @@ const MIN_IDLE_MINUTES = 1
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000 // every 15 minutes
 const REAPER_BATCH_LIMIT = 20
 
+/**
+ * Kill-switch. Deliberately permissive about how it is spelled: `IDLE_REAPER_DISABLED`
+ * is set by a human under pressure through SSM, and an exact `=== '1'` check silently
+ * ignores `true` / `yes` / `on` — leaving a destructive sweep running while ops believe
+ * they stopped it. Anything non-empty disables the reaper except an explicit
+ * `0` / `false` (case-insensitive), which are the only spellings that plausibly mean
+ * "leave it on".
+ */
+export function isIdleReaperDisabled(): boolean {
+  const raw = (process.env.IDLE_REAPER_DISABLED ?? '').trim().toLowerCase()
+  if (raw === '' || raw === '0' || raw === 'false') return false
+  return true
+}
+
 export function resolveIdleMinutes(): number {
   const raw = Number(process.env.IDLE_REAPER_MINUTES)
   if (!Number.isFinite(raw) || raw < MIN_IDLE_MINUTES) return DEFAULT_IDLE_MINUTES
@@ -74,12 +89,24 @@ export async function closeIdleActiveGames(
     .select('id, status, game_type')
     .eq('status', 'active')
     .lt('last_activity_at', cutoff)
+    // Message inboxes are never idle in the sense this reaper means. A secret
+    // message board is created `status='active'` by design (src/app/api/games/route.ts)
+    // and is *meant* to sit there — the host posts an NGL-style link and collects
+    // messages for days. Reaping one runs finishSecretMessageBoard →
+    // clearAnonymousRoomSessionData, which DELETEs every anonymous_messages and
+    // anonymous_room_bans row for that board: the host's whole inbox, gone, because
+    // nobody wrote to it for 30 minutes. Excluded server-side so they never eat a
+    // batch slot either.
+    .not('game_type', 'in', `(${MESSAGE_INBOX_GAME_TYPES.join(',')})`)
     .order('last_activity_at', { ascending: true })
     .limit(REAPER_BATCH_LIMIT)
 
   if (error) return { closed: 0, failed: 0, errors: [error.message] }
 
-  const games: AdminGameToEnd[] = data ?? []
+  // Belt and braces: the filter above is the one that matters, but the cost of it
+  // being wrong (a typo'd filter string, a new inbox-shaped game type) is a
+  // permanently deleted inbox, so re-check every row against the canonical predicate.
+  const games: AdminGameToEnd[] = (data ?? []).filter((game: AdminGameToEnd) => !isMessageInboxGame(game.game_type))
   if (games.length === 0) return { closed: 0, failed: 0, errors: [] }
 
   let closed = 0
@@ -87,7 +114,11 @@ export async function closeIdleActiveGames(
   const errors: string[] = []
 
   for (const game of games) {
-    const result = await adminEndGame(supabase, game)
+    // CAS the active→finished flip. This route has no in-flight guard, so an ops
+    // curl overlapping a timer fire (or a manual `systemctl start` during a slow
+    // sweep) can select the same batch twice; without the guard both runs award
+    // room points and both resolve the tournament match for one game.
+    const result = await adminEndGame(supabase, game, { onlyIfActive: true })
     if (result.error) {
       failed += 1
       if (errors.length < 5) errors.push(`${game.id}: ${result.error}`)
@@ -149,7 +180,7 @@ async function tick(): Promise<void> {
  */
 export function startIdleReaper(): void {
   if (started) return
-  if (process.env.IDLE_REAPER_DISABLED === '1') return
+  if (isIdleReaperDisabled()) return
   const enabled = isProdDeployment() || process.env.IDLE_REAPER_ENABLED === '1'
   if (!enabled) return
   started = true
