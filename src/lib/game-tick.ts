@@ -145,8 +145,8 @@ function selfBaseUrl(): string {
  * throttled to one write per game per 5 minutes so the bump costs effectively nothing.
  * Until that lands, the wide default below is what keeps a live turn-based match (whose
  * timestamp is frozen at kickoff) inside the ticker; do NOT narrow it before then.
- * Mahjong is the one gap: its routes authorize through `verifyMahjongPlayerAccess`
- * (src/lib/mahjong-auth.ts) rather than `assertPlayer`, so it still relies on the window.
+ * Mahjong authorizes through `verifyMahjongPlayerAccess` (src/lib/mahjong-auth.ts) rather
+ * than `assertPlayer`, so #1146 bumps from there too — every family is covered.
  *
  * Env override: GAME_TICK_ACTIVITY_WINDOW_MS.
  */

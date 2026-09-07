@@ -142,7 +142,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // Determine auth player
   let myPlayerState: MafiaPlayerState | undefined = undefined
   if (resumeToken) {
-    const auth = await assertPlayer(admin, gameId, resumeToken)
+    // Read-only: a state poll must not bump `games.last_activity_at` (see assertPlayer).
+    const auth = await assertPlayer(admin, gameId, resumeToken, { readOnly: true })
     if (auth.player) {
       myPlayerState = playerStates.find((p) => p.player_id === auth.player.id)
     }
