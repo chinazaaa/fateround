@@ -82,7 +82,7 @@ const game = (id: string, game_type = 'trivia'): Row => ({ id, status: 'active',
 describe('closeIdleActiveGames — selection predicate', () => {
   beforeEach(() => {
     adminEndGame.mockReset()
-    adminEndGame.mockResolvedValue({ error: null })
+    adminEndGame.mockResolvedValue({ error: null, won: true })
   })
 
   it('only considers active games idle past the cutoff, oldest first, capped to one batch', async () => {
@@ -117,7 +117,7 @@ describe('closeIdleActiveGames — selection predicate', () => {
   it('reports a failed select instead of throwing, and ends nothing', async () => {
     const { supabase } = mockSupabase([], { selectError: { message: 'connection reset' } })
     const result = await closeIdleActiveGames(supabase, 30)
-    expect(result).toEqual({ closed: 0, failed: 0, errors: ['connection reset'] })
+    expect(result).toEqual({ closed: 0, failed: 0, raced: 0, errors: ['connection reset'] })
     expect(adminEndGame).not.toHaveBeenCalled()
   })
 })
@@ -125,7 +125,7 @@ describe('closeIdleActiveGames — selection predicate', () => {
 describe('closeIdleActiveGames — message inboxes are never reaped', () => {
   beforeEach(() => {
     adminEndGame.mockReset()
-    adminEndGame.mockResolvedValue({ error: null })
+    adminEndGame.mockResolvedValue({ error: null, won: true })
   })
 
   it('excludes inbox game types in the database filter so they never eat a batch slot', async () => {
@@ -152,14 +152,14 @@ describe('closeIdleActiveGames — message inboxes are never reaped', () => {
     const result = await closeIdleActiveGames(supabase, 30)
     expect(adminEndGame).not.toHaveBeenCalled()
     expect(recorded.reasonUpdates).toEqual([])
-    expect(result).toEqual({ closed: 0, failed: 0, errors: [] })
+    expect(result).toEqual({ closed: 0, failed: 0, raced: 0, errors: [] })
   })
 })
 
 describe('closeIdleActiveGames — finishing each game', () => {
   beforeEach(() => {
     adminEndGame.mockReset()
-    adminEndGame.mockResolvedValue({ error: null })
+    adminEndGame.mockResolvedValue({ error: null, won: true })
   })
 
   it('finishes with onlyIfActive so overlapping sweeps cannot double-award', async () => {
@@ -178,7 +178,7 @@ describe('closeIdleActiveGames — finishing each game', () => {
   it('stamps result_reason=idle_timeout on each game it closed', async () => {
     const { supabase, recorded } = mockSupabase([game('AAAA'), game('BBBB')])
     const result = await closeIdleActiveGames(supabase, 30)
-    expect(result).toEqual({ closed: 2, failed: 0, errors: [] })
+    expect(result).toEqual({ closed: 2, failed: 0, raced: 0, errors: [] })
     expect(recorded.reasonUpdates).toEqual([
       { patch: { result_reason: 'idle_timeout' }, column: 'id', id: 'AAAA' },
       { patch: { result_reason: 'idle_timeout' }, column: 'id', id: 'BBBB' },
@@ -195,7 +195,7 @@ describe('closeIdleActiveGames — finishing each game', () => {
 
   it('isolates a per-game failure — one bad game does not abort the sweep', async () => {
     adminEndGame.mockImplementation(async (_supabase: unknown, g: Row) =>
-      g.id === 'BBBB' ? { error: 'reveal failed' } : { error: null }
+      g.id === 'BBBB' ? { error: 'reveal failed', won: false } : { error: null, won: true }
     )
     const { supabase, recorded } = mockSupabase([game('AAAA'), game('BBBB'), game('CCCC')])
     const result = await closeIdleActiveGames(supabase, 30)
@@ -208,8 +208,42 @@ describe('closeIdleActiveGames — finishing each game', () => {
     expect(recorded.reasonUpdates.map((u) => u.id)).toEqual(['AAAA', 'CCCC'])
   })
 
+  it('does not count or stamp a game whose finish CAS lost to a concurrent sweep', async () => {
+    // The cron route has no in-flight guard, so two sweeps can select the same row.
+    // The loser's adminEndGame returns error:null with won:false — it changed nothing.
+    // Counting it as closed double-reports the sweep, and stamping idle_timeout would
+    // overwrite the result_reason of a finish someone else performed.
+    adminEndGame.mockResolvedValue({ error: null, won: false })
+    const { supabase, recorded } = mockSupabase([game('AAAA')])
+    const result = await closeIdleActiveGames(supabase, 30)
+
+    expect(result).toEqual({ closed: 0, failed: 0, raced: 1, errors: [] })
+    expect(recorded.reasonUpdates).toEqual([])
+  })
+
+  it('counts a lost race as raced, not as a failure — nothing went wrong', async () => {
+    adminEndGame.mockResolvedValue({ error: null, won: false })
+    const { supabase } = mockSupabase([game('AAAA'), game('BBBB')])
+    const result = await closeIdleActiveGames(supabase, 30)
+
+    expect(result.failed).toBe(0)
+    expect(result.errors).toEqual([])
+    expect(result.raced).toBe(2)
+  })
+
+  it('separates winners from losers within one batch', async () => {
+    adminEndGame.mockImplementation(async (_supabase: unknown, g: Row) =>
+      g.id === 'BBBB' ? { error: null, won: false } : { error: null, won: true }
+    )
+    const { supabase, recorded } = mockSupabase([game('AAAA'), game('BBBB'), game('CCCC')])
+    const result = await closeIdleActiveGames(supabase, 30)
+
+    expect(result).toEqual({ closed: 2, failed: 0, raced: 1, errors: [] })
+    expect(recorded.reasonUpdates.map((u) => u.id)).toEqual(['AAAA', 'CCCC'])
+  })
+
   it('caps the reported errors so a fully broken batch cannot flood the log line', async () => {
-    adminEndGame.mockResolvedValue({ error: 'boom' })
+    adminEndGame.mockResolvedValue({ error: 'boom', won: false })
     const rows = Array.from({ length: 8 }, (_, i) => game(`G${i}`))
     const { supabase } = mockSupabase(rows)
     const result = await closeIdleActiveGames(supabase, 30)

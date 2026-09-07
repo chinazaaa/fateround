@@ -81,7 +81,7 @@ export function resolveIdleMinutes(): number {
 export async function closeIdleActiveGames(
   supabase: SupabaseClient,
   olderThanMinutes: number
-): Promise<{ closed: number; failed: number; errors: string[] }> {
+): Promise<{ closed: number; failed: number; raced: number; errors: string[] }> {
   const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString()
 
   const { data, error } = await supabase
@@ -101,16 +101,21 @@ export async function closeIdleActiveGames(
     .order('last_activity_at', { ascending: true })
     .limit(REAPER_BATCH_LIMIT)
 
-  if (error) return { closed: 0, failed: 0, errors: [error.message] }
+  if (error) return { closed: 0, failed: 0, raced: 0, errors: [error.message] }
 
   // Belt and braces: the filter above is the one that matters, but the cost of it
   // being wrong (a typo'd filter string, a new inbox-shaped game type) is a
   // permanently deleted inbox, so re-check every row against the canonical predicate.
   const games: AdminGameToEnd[] = (data ?? []).filter((game: AdminGameToEnd) => !isMessageInboxGame(game.game_type))
-  if (games.length === 0) return { closed: 0, failed: 0, errors: [] }
+  if (games.length === 0) return { closed: 0, failed: 0, raced: 0, errors: [] }
 
   let closed = 0
   let failed = 0
+  // Games another request finished between our SELECT and our UPDATE. Counted
+  // separately from both `closed` and `failed`: nothing went wrong (the game IS
+  // finished), we simply were not the sweep that finished it — so it is neither our
+  // close to claim nor an incident to page on.
+  let raced = 0
   const errors: string[] = []
 
   for (const game of games) {
@@ -122,6 +127,14 @@ export async function closeIdleActiveGames(
     if (result.error) {
       failed += 1
       if (errors.length < 5) errors.push(`${game.id}: ${result.error}`)
+      continue
+    }
+    // Lost the CAS: `error` is null but the row was already `finished`, so the
+    // concurrent run owns this game. Counting it as closed would double-report the
+    // sweep, and stamping `idle_timeout` would overwrite the real result_reason of a
+    // game that another path (a normal finish, an admin end) just completed.
+    if (!result.won) {
+      raced += 1
       continue
     }
     // Tag the reason after the finish transition landed. Best-effort — if
@@ -138,7 +151,7 @@ export async function closeIdleActiveGames(
     closed += 1
   }
 
-  return { closed, failed, errors }
+  return { closed, failed, raced, errors }
 }
 
 let inFlight = false
@@ -151,9 +164,9 @@ async function tick(): Promise<void> {
     const supabase = getSupabaseAdmin()
     const minutes = resolveIdleMinutes()
     const result = await closeIdleActiveGames(supabase, minutes)
-    if (result.closed > 0 || result.failed > 0) {
+    if (result.closed > 0 || result.failed > 0 || result.raced > 0) {
       console.log(
-        `[idle-reaper] closed=${result.closed} failed=${result.failed} threshold=${minutes}m${
+        `[idle-reaper] closed=${result.closed} failed=${result.failed} raced=${result.raced} threshold=${minutes}m${
           result.errors.length ? ` errors=${result.errors.join('; ')}` : ''
         }`
       )

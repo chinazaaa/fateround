@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { markGameFinished } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
 import { parseQuestionSource } from '@/lib/custom-questions'
 import {
   CODEWORDS_BOARD_SIZE,
@@ -564,14 +564,16 @@ export async function finishCodewordsGame(
   supabase: SupabaseClient,
   gameId: string,
   { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
-): Promise<{ error: string | null }> {
-  const { error: gameError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
-  if (gameError) return { error: internalErrorMessage('codewords', gameError) }
+): Promise<FinishGameResult> {
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
+  // The chat wipe stays unconditional (idempotent delete); only `won` is threaded out so
+  // a caller can tell whether THIS request flipped the row.
   const { error: chatError } = await clearCodewordsChat(supabase, gameId)
-  if (chatError) return { error: chatError }
+  if (chatError) return { error: chatError, won }
 
-  return { error: null }
+  return { error: null, won }
 }
 
 export async function clearCodewordsRoundData(

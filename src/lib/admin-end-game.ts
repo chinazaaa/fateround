@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
-import { markGameFinished } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
 import {
   isAnonymousMessagesGame,
   isCodewordsGame,
@@ -50,9 +50,9 @@ export async function adminEndGame(
   supabase: SupabaseClient,
   game: AdminGameToEnd,
   { onlyIfActive = false }: AdminEndGameOptions = {}
-): Promise<{ error: string | null }> {
+): Promise<FinishGameResult> {
   if (game.status !== 'active' && game.status !== 'waiting') {
-    return { error: 'Only waiting or active games can be ended' }
+    return { error: 'Only waiting or active games can be ended', won: false }
   }
 
   const gameId = game.id
@@ -64,7 +64,7 @@ export async function adminEndGame(
     .eq('game_id', gameId)
     .eq('status', 'active')
 
-  if (roundError) return { error: internalErrorMessage('admin-end-game', roundError) }
+  if (roundError) return { error: internalErrorMessage('admin-end-game', roundError), won: false }
 
   const gameType = parseGameType(game.game_type)
   // The bulk round update above finishes rounds without going through the Two Truths reveal,
@@ -77,7 +77,7 @@ export async function adminEndGame(
     // round keeps no lie_index forever.
     const revealed = await revealFinishedTtlRounds(supabase, gameId)
     if (!revealed) {
-      return { error: 'Could not reveal every Two Truths round — game left endable; retry.' }
+      return { error: 'Could not reveal every Two Truths round — game left endable; retry.', won: false }
     }
   }
   if (isAnonymousMessagesGame(gameType)) {
@@ -90,8 +90,14 @@ export async function adminEndGame(
     return finishCodewordsGame(supabase, gameId, { onlyIfActive })
   }
 
-  const { error } = await markGameFinished(supabase, gameId, now, { onlyIfActive })
-  if (error) return { error: internalErrorMessage('admin-end-game', error) }
+  const { error, won } = await markGameFinished(supabase, gameId, now, { onlyIfActive })
+  if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }
+
+  // Lost the compare-and-set: another request already finished this game, so it is
+  // not ours to label. Stamping anyway would write `admin_ended` over a game someone
+  // else finished for a different reason (the `is(null)` guard only helps if the
+  // winner already got its own stamp in). Not an error — just nothing left to do.
+  if (!won) return { error: null, won: false }
 
   // Tag the abort reason so the trophy/coin award pass knows to skip counter
   // and streak credit for this finish (src/lib/trophies/award.ts — ABORT_REASONS).
@@ -103,7 +109,7 @@ export async function adminEndGame(
     .eq('id', gameId)
     .is('result_reason', null)
   if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
-  return { error: null }
+  return { error: null, won: true }
 }
 
 export async function countStaleOpenGames(

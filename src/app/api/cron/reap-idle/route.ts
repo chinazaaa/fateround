@@ -44,9 +44,9 @@ export async function POST(req: NextRequest) {
   const minutes = resolveIdleMinutes()
   try {
     const result = await closeIdleActiveGames(getSupabaseAdmin(), minutes)
-    if (result.closed > 0 || result.failed > 0 || result.errors.length > 0) {
+    if (result.closed > 0 || result.failed > 0 || result.raced > 0 || result.errors.length > 0) {
       console.log(
-        `[idle-reaper] closed=${result.closed} failed=${result.failed} threshold=${minutes}m${
+        `[idle-reaper] closed=${result.closed} failed=${result.failed} raced=${result.raced} threshold=${minutes}m${
           result.errors.length ? ` errors=${result.errors.join('; ')}` : ''
         }`
       )

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
+import type { FinishGameResult } from '@/lib/game-finish'
 import { clearSessionTables } from './session-clear'
 import type { Game, Player } from '@/types'
 import {
@@ -175,12 +176,16 @@ export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
   gameId: string,
   { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
-): Promise<{ error: string | null }> {
+): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
-  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError) }
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
-  return clearAnonymousRoomSessionData(supabase, gameId)
+  // Clearing stays unconditional (it is an idempotent delete, and skipping it on a lost
+  // race would leave data behind if the winner's own clear failed) — only the `won`
+  // signal is threaded out, so callers can tell who actually flipped the row.
+  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
+  return { error: clearError, won }
 }
 
 /** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
@@ -188,12 +193,13 @@ export async function finishSecretMessageBoard(
   supabase: SupabaseClient,
   gameId: string,
   { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
-): Promise<{ error: string | null }> {
+): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
-  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError) }
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
-  return clearAnonymousRoomSessionData(supabase, gameId)
+  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
+  return { error: clearError, won }
 }
 
 /** Clear inbox and reopen a secret message board. */
