@@ -570,10 +570,12 @@ export async function finishCodewordsGame(
 
   // The chat wipe stays unconditional (idempotent delete); only `won` is threaded out so
   // a caller can tell whether THIS request flipped the row.
+  //
+  // A failed wipe comes back as `cleanupError`, not `error`: the game is already
+  // `finished`, so reporting it as a finish failure made callers drop a close they
+  // had actually performed (and skip its `result_reason` stamp).
   const { error: chatError } = await clearCodewordsChat(supabase, gameId)
-  if (chatError) return { error: chatError, won }
-
-  return { error: null, won }
+  return { error: null, won, cleanupError: chatError }
 }
 
 export async function clearCodewordsRoundData(

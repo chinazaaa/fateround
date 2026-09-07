@@ -117,7 +117,14 @@ describe('closeIdleActiveGames — selection predicate', () => {
   it('reports a failed select instead of throwing, and ends nothing', async () => {
     const { supabase } = mockSupabase([], { selectError: { message: 'connection reset' } })
     const result = await closeIdleActiveGames(supabase, 30)
-    expect(result).toEqual({ closed: 0, failed: 0, raced: 0, errors: ['connection reset'] })
+    expect(result).toEqual({
+      closed: 0,
+      failed: 0,
+      raced: 0,
+      errors: ['connection reset'],
+      cleanupFailed: 0,
+      cleanupErrors: [],
+    })
     expect(adminEndGame).not.toHaveBeenCalled()
   })
 })
@@ -152,7 +159,7 @@ describe('closeIdleActiveGames — message inboxes are never reaped', () => {
     const result = await closeIdleActiveGames(supabase, 30)
     expect(adminEndGame).not.toHaveBeenCalled()
     expect(recorded.reasonUpdates).toEqual([])
-    expect(result).toEqual({ closed: 0, failed: 0, raced: 0, errors: [] })
+    expect(result).toEqual({ closed: 0, failed: 0, raced: 0, errors: [], cleanupFailed: 0, cleanupErrors: [] })
   })
 })
 
@@ -178,7 +185,7 @@ describe('closeIdleActiveGames — finishing each game', () => {
   it('stamps result_reason=idle_timeout on each game it closed', async () => {
     const { supabase, recorded } = mockSupabase([game('AAAA'), game('BBBB')])
     const result = await closeIdleActiveGames(supabase, 30)
-    expect(result).toEqual({ closed: 2, failed: 0, raced: 0, errors: [] })
+    expect(result).toEqual({ closed: 2, failed: 0, raced: 0, errors: [], cleanupFailed: 0, cleanupErrors: [] })
     expect(recorded.reasonUpdates).toEqual([
       { patch: { result_reason: 'idle_timeout' }, column: 'id', id: 'AAAA' },
       { patch: { result_reason: 'idle_timeout' }, column: 'id', id: 'BBBB' },
@@ -217,7 +224,7 @@ describe('closeIdleActiveGames — finishing each game', () => {
     const { supabase, recorded } = mockSupabase([game('AAAA')])
     const result = await closeIdleActiveGames(supabase, 30)
 
-    expect(result).toEqual({ closed: 0, failed: 0, raced: 1, errors: [] })
+    expect(result).toEqual({ closed: 0, failed: 0, raced: 1, errors: [], cleanupFailed: 0, cleanupErrors: [] })
     expect(recorded.reasonUpdates).toEqual([])
   })
 
@@ -238,8 +245,70 @@ describe('closeIdleActiveGames — finishing each game', () => {
     const { supabase, recorded } = mockSupabase([game('AAAA'), game('BBBB'), game('CCCC')])
     const result = await closeIdleActiveGames(supabase, 30)
 
-    expect(result).toEqual({ closed: 2, failed: 0, raced: 1, errors: [] })
+    expect(result).toEqual({ closed: 2, failed: 0, raced: 1, errors: [], cleanupFailed: 0, cleanupErrors: [] })
     expect(recorded.reasonUpdates.map((u) => u.id)).toEqual(['AAAA', 'CCCC'])
+  })
+
+  /**
+   * A finish that WON is a finish. The delegating finishers (anonymous rooms,
+   * codewords) run a data wipe after the row is already `finished`; when that wipe
+   * fails the game is still closed. Folding the wipe failure into `error` made this
+   * sweep report the close as failed and skip the `idle_timeout` stamp — and since
+   * later sweeps select only `status='active'` rows, nothing ever revisited the game:
+   * the close was silently un-counted and permanently unlabelled.
+   */
+  it('counts and stamps a won finish whose post-finish cleanup failed', async () => {
+    adminEndGame.mockResolvedValue({ error: null, won: true, cleanupError: 'chat wipe failed' })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { supabase, recorded } = mockSupabase([game('AAAA', 'codewords')])
+
+    const result = await closeIdleActiveGames(supabase, 30)
+
+    expect(result.closed).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(result.raced).toBe(0)
+    expect(result.errors).toEqual([])
+    // The game is finished, so it must carry the reaper's label.
+    expect(recorded.reasonUpdates).toEqual([{ patch: { result_reason: 'idle_timeout' }, column: 'id', id: 'AAAA' }])
+    // …and the cleanup failure must not vanish: it is reported and logged, because no
+    // later sweep can retry it (they select active games only).
+    expect(result.cleanupFailed).toBe(1)
+    expect(result.cleanupErrors).toEqual(['AAAA: cleanup failed: chat wipe failed'])
+    expect(errorSpy).toHaveBeenCalledTimes(1)
+    expect(String(errorSpy.mock.calls[0][0])).toContain('AAAA')
+    errorSpy.mockRestore()
+  })
+
+  it('keeps a genuine finish failure separate from a cleanup failure', async () => {
+    adminEndGame.mockImplementation(async (_supabase: unknown, g: Row) =>
+      g.id === 'BBBB' ? { error: 'reveal failed', won: false } : { error: null, won: true, cleanupError: 'wipe failed' }
+    )
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { supabase, recorded } = mockSupabase([game('AAAA'), game('BBBB')])
+
+    const result = await closeIdleActiveGames(supabase, 30)
+
+    expect(result.closed).toBe(1)
+    expect(result.failed).toBe(1)
+    expect(result.errors).toEqual(['BBBB: reveal failed'])
+    expect(result.cleanupFailed).toBe(1)
+    expect(result.cleanupErrors).toEqual(['AAAA: cleanup failed: wipe failed'])
+    expect(recorded.reasonUpdates.map((u) => u.id)).toEqual(['AAAA'])
+    errorSpy.mockRestore()
+  })
+
+  it('caps the reported cleanup errors the same way it caps finish errors', async () => {
+    adminEndGame.mockResolvedValue({ error: null, won: true, cleanupError: 'wipe failed' })
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rows = Array.from({ length: 8 }, (_, i) => game(`G${i}`))
+    const { supabase } = mockSupabase(rows)
+
+    const result = await closeIdleActiveGames(supabase, 30)
+
+    expect(result.closed).toBe(8)
+    expect(result.cleanupFailed).toBe(8)
+    expect(result.cleanupErrors).toHaveLength(5)
+    errorSpy.mockRestore()
   })
 
   it('caps the reported errors so a fully broken batch cannot flood the log line', async () => {

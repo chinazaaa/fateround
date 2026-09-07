@@ -18,7 +18,10 @@ import { adminEndGame } from './admin-end-game'
 
 type Recorded = { gameUpdates: Array<Record<string, unknown>>; deletes: string[] }
 
-function mockSupabase(): { supabase: SupabaseClient; recorded: Recorded } {
+function mockSupabase(opts: { deleteError?: { message: string } } = {}): {
+  supabase: SupabaseClient
+  recorded: Recorded
+} {
   const recorded: Recorded = { gameUpdates: [], deletes: [] }
   const supabase = {
     from: (table: string) => ({
@@ -36,7 +39,7 @@ function mockSupabase(): { supabase: SupabaseClient; recorded: Recorded } {
       delete: () => ({
         eq: async () => {
           recorded.deletes.push(table)
-          return { error: null }
+          return { error: opts.deleteError ?? null }
         },
       }),
     }),
@@ -111,7 +114,7 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
       { onlyIfActive: true }
     )
 
-    expect(result).toEqual({ error: null, won: false })
+    expect(result).toEqual({ error: null, won: false, cleanupError: null })
     // Delegated, not handled by the generic path.
     expect(recorded.deletes).toContain('codewords_messages')
     expect(recorded.gameUpdates).toEqual([])
@@ -127,7 +130,7 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
       { onlyIfActive: true }
     )
 
-    expect(result).toEqual({ error: null, won: true })
+    expect(result).toEqual({ error: null, won: true, cleanupError: null })
   })
 
   it('reports a finish failure from a delegating finisher as won:false', async () => {
@@ -142,5 +145,44 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
 
     expect(result.won).toBe(false)
     expect(result.error).toBeTruthy()
+  })
+
+  /**
+   * The finish and the post-finish data wipe are two different things. The wipe runs
+   * after the row is already `finished`, so a wipe failure cannot un-finish the game —
+   * but it used to come back in `error`, which made every caller (the idle reaper
+   * above all) treat a completed close as a failure and skip the work that follows a
+   * win. Cleanup status now travels in its own field.
+   */
+  it('reports a failed post-finish cleanup as cleanupError, keeping won:true and error:null', async () => {
+    markGameFinished.mockResolvedValue({ error: null, won: true })
+    const { supabase, recorded } = mockSupabase({ deleteError: { message: 'chat wipe failed' } })
+
+    const result = await adminEndGame(
+      supabase,
+      { id: 'CODE', status: 'active', game_type: 'codewords' },
+      { onlyIfActive: true }
+    )
+
+    expect(result.won).toBe(true)
+    expect(result.error).toBeNull()
+    expect(result.cleanupError).toBeTruthy()
+    // The wipe was still attempted, and its failure did not abort the finish.
+    expect(recorded.deletes).toContain('codewords_messages')
+  })
+
+  it('keeps a lost CAS a lost CAS even when the cleanup also fails', async () => {
+    markGameFinished.mockResolvedValue({ error: null, won: false })
+    const { supabase } = mockSupabase({ deleteError: { message: 'chat wipe failed' } })
+
+    const result = await adminEndGame(
+      supabase,
+      { id: 'CODE', status: 'active', game_type: 'codewords' },
+      { onlyIfActive: true }
+    )
+
+    expect(result.won).toBe(false)
+    expect(result.error).toBeNull()
+    expect(result.cleanupError).toBeTruthy()
   })
 })

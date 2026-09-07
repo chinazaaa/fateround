@@ -175,6 +175,12 @@ export async function closeStaleOpenGames(
         errors.push(`${game.id}: ${result.error}`)
       }
     } else {
+      // A failed post-finish cleanup does not un-close the game, so it counts as
+      // closed — but it is not retried anywhere (no later pass revisits a finished
+      // game), so log it loudly enough for an operator to clean up by hand.
+      if (result.cleanupError) {
+        console.error(`close-stale: cleanup after finish failed for ${game.id} — not retried`, result.cleanupError)
+      }
       closed += 1
     }
   }

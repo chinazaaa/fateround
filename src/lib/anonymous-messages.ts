@@ -184,8 +184,12 @@ export async function finishAnonymousRoomSession(
   // Clearing stays unconditional (it is an idempotent delete, and skipping it on a lost
   // race would leave data behind if the winner's own clear failed) — only the `won`
   // signal is threaded out, so callers can tell who actually flipped the row.
+  //
+  // A failed clear is reported as `cleanupError`, never as `error`: the game IS
+  // finished at this point, and folding the wipe failure into `error` made callers
+  // (the idle reaper) treat a completed close as a failure and skip its stamp.
   const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
-  return { error: clearError, won }
+  return { error: null, won, cleanupError: clearError }
 }
 
 /** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
@@ -198,8 +202,9 @@ export async function finishSecretMessageBoard(
   const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
   if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
+  // Cleanup failure is reported separately from the finish — see finishAnonymousRoomSession.
   const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
-  return { error: clearError, won }
+  return { error: null, won, cleanupError: clearError }
 }
 
 /** Clear inbox and reopen a secret message board. */
