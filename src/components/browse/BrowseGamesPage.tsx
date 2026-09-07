@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { FateRoundLogo } from '@/components/FateRoundLogo'
 import { supabase } from '@/lib/supabase'
@@ -9,8 +9,22 @@ import { roomGameStatusLabel } from '@/components/rooms/room-game-display'
 import { readHostToken } from '@/lib/host-session'
 import { getPlayerSession } from '@/lib/utils'
 import type { PublicGame } from '@/lib/game-browse'
+import {
+  applyBrowseGamesRealtimeEvent,
+  PUBLIC_GAMES_REALTIME_FILTER,
+  watchedGamesRealtimeFilters,
+  type GamesRealtimeRow,
+} from '@/lib/browse-games-realtime'
 
 const POLL_FALLBACK_MS = 15_000
+/**
+ * Slow safety refetch that still runs while the realtime channel is SUBSCRIBED. Realtime can
+ * go quiet without the socket reporting an error, so we never trust it completely — but at 60s
+ * instead of 15s the healthy-channel case costs a quarter of the reads it used to.
+ */
+const HEALTHY_REFRESH_MS = 60_000
+/** Coalesce a burst of realtime events that each need a refetch into a single read. */
+const RELOAD_DEBOUNCE_MS = 400
 
 type Tab = 'live' | 'upcoming'
 
@@ -33,6 +47,28 @@ export function BrowseGamesPage() {
   // (set on join via setPlayerSession, cleared on leave). Powers the "Continue"
   // CTA on games the viewer has already joined.
   const [joinedSet, setJoinedSet] = useState<Set<string>>(() => new Set())
+  // Timestamp of the last completed list read. The poll fallback uses it to skip work while
+  // the realtime channel is healthy and the list is already fresh.
+  const lastLoadAtRef = useRef(0)
+  // "The watched-ids channel saw a frame that needs a full refetch." Set by the watched
+  // handler (outside any state updater, so React can never rebase the write away); the
+  // fetch itself runs in the effect keyed on the tick below.
+  const watchReloadPendingRef = useRef(false)
+  const [watchReloadTick, setWatchReloadTick] = useState(0)
+  // Ref mirror of `games` so the realtime handlers can compute reducer results OUTSIDE a
+  // setState updater (updaters must stay pure — React may invoke one twice under Strict
+  // Mode, or rebase/discard an invocation entirely). The mirror is synchronously
+  // authoritative: EVERY write to the list goes through `commitGames` below, which updates
+  // the ref before queueing the state update, so a handler firing in the same tick as a
+  // resolved load can never reduce from — and then re-commit — a stale snapshot. There is
+  // deliberately NO commit-keyed `useEffect` resync: with all writers funneled through the
+  // dispatcher it would be redundant, and worse, it could briefly regress the ref to an
+  // older committed value between a handler's write and that write's own commit.
+  const gamesRef = useRef<PublicGame[]>([])
+  const commitGames = useCallback((next: PublicGame[]) => {
+    gamesRef.current = next
+    setGames(next)
+  }, [])
 
   const loadGames = useCallback(
     async (nextCursor?: string | null, silent = false) => {
@@ -52,12 +88,20 @@ export function BrowseGamesPage() {
         if (!res.ok) throw new Error('Failed to load games')
         const d = await res.json()
         const rows: PublicGame[] = d.games ?? []
-        setGames((prev) => (loadingMore ? [...prev, ...rows] : rows))
+        // Merge from the synchronously-authoritative ref (not a functional updater) and
+        // commit through the dispatcher, so a realtime frame landing between this resolve
+        // and React's commit reduces from THIS result instead of overwriting it.
+        commitGames(loadingMore ? [...gamesRef.current, ...rows] : rows)
         setHasMore(!!d.hasMore)
         setCursor(d.nextCursor ?? null)
+        // Freshness is recorded ONLY after a successful, parsed response. Doing it in
+        // `finally` would let a FAILED silent load mark the list fresh and gate the poll
+        // fallback below for another HEALTHY_REFRESH_MS — exactly the recovery path the
+        // poll exists to provide.
+        lastLoadAtRef.current = Date.now()
       } catch {
         if (!loadingMore && !silent) {
-          setGames([])
+          commitGames([])
           setHasMore(false)
           setCursor(null)
         }
@@ -66,7 +110,7 @@ export function BrowseGamesPage() {
         else if (!silent) setLoading(false)
       }
     },
-    [tab]
+    [tab, commitGames]
   )
 
   useEffect(() => {
@@ -155,33 +199,154 @@ export function BrowseGamesPage() {
     }
   }, [tab, games])
 
-  // Freshness: Realtime is primary; visibility + slow poll are fallbacks. Any change to a
-  // game (new public game, status flip, finish) reloads the first page — cheap and simple.
+  // Freshness: Realtime is primary; visibility + slow poll are fallbacks.
+  //
+  // Every part of this used to be maximally expensive: the subscription was an unfiltered
+  // `event: '*'` on `games`, so an idle viewer here received a (measured) 12,275 byte frame
+  // for every games write anywhere on the platform, threw the payload away, and ran a full
+  // list refetch for each one — on top of an unconditional 15s poll.
   useEffect(() => {
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null
+    // Coalesce the refetches that a payload genuinely cannot satisfy (see
+    // applyBrowseGamesRealtimeEvent) so an event burst is one read, not N.
+    const scheduleReload = () => {
+      if (reloadTimer) return
+      reloadTimer = setTimeout(() => {
+        reloadTimer = null
+        void loadGames(null, true)
+      }, RELOAD_DEBOUNCE_MS)
+    }
+
+    const onUpsert = (eventType: 'INSERT' | 'UPDATE', row: GamesRealtimeRow) => {
+      // Reduce from the ref mirror and commit through the dispatcher (never a functional
+      // updater): keeps the mirror synchronously authoritative for every other handler,
+      // and moves the scheduleReload side effect out of the updater, where Strict Mode
+      // double-invocation or a rebased render could double- or zero-fire it.
+      const { games: next, reload } = applyBrowseGamesRealtimeEvent(gamesRef.current, { eventType, row }, tab)
+      commitGames(next)
+      if (reload) scheduleReload()
+    }
+
+    // Realtime health, tracked locally off the channel's own subscribe callback so the poll
+    // below can stand down while the socket is delivering. This deliberately does NOT use
+    // src/lib/realtime-health.ts from PR #1134 (unmerged) — see the PR description; this
+    // interval should become `usePolling({ gateOnRealtime: true })` once #1134 lands.
+    let realtimeHealthy = false
+
     // Per-mount channel name — supabase-js caches channels by name and
     // removeChannel is async, so a stale-then-remounted page could otherwise
     // hit "cannot add postgres_changes callbacks … after subscribe()".
     const channel = supabase
       .channel(`public_games_browse_${Math.random().toString(36).slice(2, 10)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => {
-        void loadGames(null, true)
+      // Server-side filter. `is_public` defaults to false, so this alone drops the large
+      // majority of `games` events before they ever reach the wire.
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'games', filter: PUBLIC_GAMES_REALTIME_FILTER },
+        (payload) => onUpsert('INSERT', payload.new as GamesRealtimeRow)
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: PUBLIC_GAMES_REALTIME_FILTER },
+        (payload) => onUpsert('UPDATE', payload.new as GamesRealtimeRow)
+      )
+      // DELETE is intentionally UNFILTERED. `games` has REPLICA IDENTITY DEFAULT, so its
+      // DELETE payload carries ONLY the primary key — a filter on `is_public` could never
+      // match one, and deleted games would linger in every browser's list until a reload.
+      // An id-only DELETE frame is tiny and game deletion is rare next to the UPDATE volume
+      // the filter above removes.
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'games' }, (payload) => {
+        const id = (payload.old as { id?: string })?.id
+        commitGames(applyBrowseGamesRealtimeEvent(gamesRef.current, { eventType: 'DELETE', id }, tab).games)
       })
-      .subscribe()
+      .subscribe((status) => {
+        realtimeHealthy = status === 'SUBSCRIBED'
+      })
 
     const onVisible = () => {
       if (document.visibilityState === 'visible') void loadGames(null, true)
     }
     document.addEventListener('visibilitychange', onVisible)
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') void loadGames(null, true)
+      if (document.visibilityState !== 'visible') return
+      // Gated: while the channel is subscribed, realtime is carrying the updates and this
+      // drops to a slow safety net rather than a 15s unconditional refetch.
+      if (realtimeHealthy && Date.now() - lastLoadAtRef.current < HEALTHY_REFRESH_MS) return
+      void loadGames(null, true)
     }, POLL_FALLBACK_MS)
 
     return () => {
+      if (reloadTimer) clearTimeout(reloadTimer)
       supabase.removeChannel(channel)
       document.removeEventListener('visibilitychange', onVisible)
       clearInterval(interval)
     }
-  }, [loadGames])
+  }, [loadGames, tab, commitGames])
+
+  // Keyed on MEMBERSHIP only (sorted ids), so in-place field updates don't churn the
+  // watched channel — it re-subscribes only when a game enters or leaves the list.
+  const watchedIdsKey = useMemo(
+    () =>
+      games
+        .map((g) => g.id)
+        .sort()
+        .join(','),
+    [games]
+  )
+
+  // Closes the public→private hole in the filtered channel above: postgres_changes
+  // evaluates `is_public=eq.true` against the POST-update row, so the UPDATE that takes a
+  // listed game private never reaches the filtered subscription and the now-private game
+  // would sit visible to everyone already on /browse until the slow safety refetch. This
+  // channel watches UPDATEs for exactly the ids on screen (`id=in.(…)`), so that frame
+  // still arrives and the reducer drops the row immediately. Realtime `in` filters cap at
+  // 100 values, so the ids are chunked into one postgres_changes binding per 100 — a list
+  // that has paged past 100 games still gets every row's frame. Egress stays negligible —
+  // it only ever matches rows already rendered, and for games that remain public it merely
+  // duplicates frames the filtered channel delivers (the reducer is idempotent).
+  useEffect(() => {
+    const filters = watchedGamesRealtimeFilters(watchedIdsKey ? watchedIdsKey.split(',') : [])
+    if (filters.length === 0) return
+    const onWatchedUpdate = (payload: { new: unknown }) => {
+      // Compute from the ref mirror rather than inside a setGames updater: updaters must
+      // stay pure (React may invoke one twice under Strict Mode, or rebase/discard an
+      // invocation entirely, which would leak or drop a ref write from inside it). The
+      // dispatcher syncs the mirror immediately, so a back-to-back frame in the same tick
+      // reduces from this result instead of the not-yet-committed previous state.
+      const { games: next, reload } = applyBrowseGamesRealtimeEvent(
+        gamesRef.current,
+        { eventType: 'UPDATE', row: payload.new as GamesRealtimeRow },
+        tab
+      )
+      commitGames(next)
+      // Watched rows are by definition already in the list, so `reload` is a
+      // near-impossible race (row left the list between frames). Only such a frame bumps
+      // the tick — locally-satisfied frames no longer force an extra commit just to run
+      // the (no-op) reload effect.
+      if (reload) {
+        watchReloadPendingRef.current = true
+        setWatchReloadTick((t) => t + 1)
+      }
+    }
+    const channel = supabase.channel(`public_games_watch_${Math.random().toString(36).slice(2, 10)}`)
+    for (const filter of filters) {
+      channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter }, onWatchedUpdate)
+    }
+    channel.subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [watchedIdsKey, tab, commitGames])
+
+  // Runs the silent refetch requested by the watched-ids handler above, outside any state
+  // updater. The tick bumps only when a frame actually needs a reload; the ref guard
+  // keeps the effect idempotent (Strict Mode re-runs, dep changes) — one refetch per
+  // request, zero otherwise.
+  useEffect(() => {
+    if (!watchReloadPendingRef.current) return
+    watchReloadPendingRef.current = false
+    void loadGames(null, true)
+  }, [watchReloadTick, loadGames])
 
   return (
     <>

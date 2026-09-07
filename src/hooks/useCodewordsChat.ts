@@ -28,6 +28,14 @@ function normalizeMessage(row: RawCodewordsMessage, nameById: Map<string, string
   }
 }
 
+/**
+ * Only the most recent slice of chat is fetched on load and on every poll tick.
+ * Without this the whole history was refetched every 15s per client, so egress grew
+ * linearly with message count for the life of the game. Mirrors the `.limit(50)` in
+ * `src/app/api/rooms/[code]/messages/route.ts`.
+ */
+export const CODEWORDS_CHAT_HISTORY_LIMIT = 50
+
 export function useCodewordsChat(
   gameCode: string,
   team: CodewordsTeam,
@@ -58,11 +66,18 @@ export function useCodewordsChat(
       .select('id, game_id, player_id, team, text, created_at, players(name)')
       .eq('game_id', gameCode)
       .eq('team', team)
-      .order('created_at', { ascending: true })
+      // Descending + limit gives the NEWEST N rows; reversed below so the feed still
+      // renders oldest-first. Ascending + limit would return the OLDEST N and new
+      // messages would never appear.
+      .order('created_at', { ascending: false })
+      // Secondary order breaks created_at ties at the window boundary so membership
+      // in the N-row window is deterministic across polls.
+      .order('id', { ascending: false })
+      .limit(CODEWORDS_CHAT_HISTORY_LIMIT)
 
     if (!supabasePollOk(res)) return false
     const names = nameById()
-    setMessages((res.data ?? []).map((row) => normalizeMessage(row as RawCodewordsMessage, names)))
+    setMessages((res.data ?? []).map((row) => normalizeMessage(row as RawCodewordsMessage, names)).reverse())
     setLoading(false)
     return true
   }, [gameCode, nameById, team])
