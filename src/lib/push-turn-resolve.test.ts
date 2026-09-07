@@ -151,6 +151,8 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
     gameType: string
     table: string
     column: 'status' | 'phase'
+    /** A real non-terminal value from that table's CHECK constraint. */
+    liveValue: string
     live: Record<string, unknown>
     resolvesTo: string
   }[] = [
@@ -159,6 +161,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'ludo',
       table: 'ludo_sessions',
       column: 'phase',
+      liveValue: 'roll',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
       resolvesTo: 'p1',
     },
@@ -166,6 +169,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'whot',
       table: 'whot_sessions',
       column: 'phase',
+      liveValue: 'playing',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
       resolvesTo: 'p2',
     },
@@ -173,6 +177,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'scrabble',
       table: 'scrabble_sessions',
       column: 'phase',
+      liveValue: 'playing',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
       resolvesTo: 'p1',
     },
@@ -180,6 +185,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'crazy_eights',
       table: 'crazy_eights_sessions',
       column: 'phase',
+      liveValue: 'playing',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
       resolvesTo: 'p2',
     },
@@ -187,6 +193,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'snake_and_ladder',
       table: 'snake_ladder_sessions',
       column: 'phase',
+      liveValue: 'roll',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
       resolvesTo: 'p1',
     },
@@ -194,6 +201,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'yahtzee',
       table: 'yahtzee_sessions',
       column: 'phase',
+      liveValue: 'rolling',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
       resolvesTo: 'p2',
     },
@@ -201,6 +209,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'monopoly',
       table: 'monopoly_boards',
       column: 'phase',
+      liveValue: 'roll',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 0 },
       resolvesTo: 'p1',
     },
@@ -208,6 +217,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'mahjong',
       table: 'mahjong_sessions',
       column: 'phase',
+      liveValue: 'draw',
       live: { turn_order: ['p1', 'p2'], current_turn_index: 1 },
       resolvesTo: 'p2',
     },
@@ -216,6 +226,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'chess',
       table: 'chess_sessions',
       column: 'status',
+      liveValue: 'active',
       live: { current_turn: 'w', player_white_id: 'p1', player_black_id: 'p2' },
       resolvesTo: 'p1',
     },
@@ -223,6 +234,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'checkers',
       table: 'checkers_sessions',
       column: 'status',
+      liveValue: 'active',
       live: { current_turn: 'r', player_red_id: 'p1', player_black_id: 'p2' },
       resolvesTo: 'p1',
     },
@@ -230,6 +242,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'checkers_international',
       table: 'checkers10_sessions',
       column: 'status',
+      liveValue: 'active',
       live: { current_turn: 'b', player_red_id: 'p1', player_black_id: 'p2' },
       resolvesTo: 'p2',
     },
@@ -237,6 +250,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'checkers_nigeria',
       table: 'checkers10_sessions',
       column: 'status',
+      liveValue: 'active',
       live: { current_turn: 'r', player_red_id: 'p1', player_black_id: 'p2' },
       resolvesTo: 'p1',
     },
@@ -244,6 +258,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'ayo',
       table: 'ayo_sessions',
       column: 'status',
+      liveValue: 'active',
       live: { current_turn: 'b', player_a_id: 'p1', player_b_id: 'p2' },
       resolvesTo: 'p2',
     },
@@ -251,6 +266,7 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
       gameType: 'tic_tac_toe',
       table: 'tic_tac_toe_sessions',
       column: 'status',
+      liveValue: 'active',
       live: { current_turn_mark: 'X', player_x_id: 'p1', player_o_id: 'p2' },
       resolvesTo: 'p1',
     },
@@ -260,8 +276,8 @@ describe('resolveCurrentTurnPlayerId — finished sessions', () => {
   // table whose terminal column it doesn't check.
   it.each(TERMINAL)(
     '$gameType: reads $table and resolves a player while the session is live',
-    async ({ gameType, table, live, resolvesTo }) => {
-      queueResponse({ data: live })
+    async ({ gameType, table, column, liveValue, live, resolvesTo }) => {
+      queueResponse({ data: { ...live, [column]: liveValue } })
 
       const playerId = await resolveCurrentTurnPlayerId('game1', { status: 'active', game_type: gameType })
 
