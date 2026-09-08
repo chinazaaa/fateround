@@ -80,6 +80,11 @@ describe('#1134 poll gating on realtime health', () => {
         },
         { timeout: 30_000, interval: 250 }
       )
+      // `usePolling` fires its immediate poll before `subscribed` flips, and a request is only
+      // appended to `tally.rest` once its cloned body has been weighed. Without this drain that
+      // setup read can land AFTER `restBefore` is captured and be counted as window traffic,
+      // inflating the healthy phase by a poll that happened before the window began.
+      await tally.drain()
 
       const healthyStart = Date.now()
       const restBefore = tally.rest.length
