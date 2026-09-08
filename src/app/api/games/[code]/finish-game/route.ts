@@ -57,20 +57,26 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     return NextResponse.json({ error: internalErrorMessage('games/code/finish-game', roundError) }, { status: 500 })
 
   if (isAnonymousMessagesGame(gameType)) {
-    const { error } = await finishAnonymousRoomSession(admin, gameId)
+    const { error, cleanupError } = await finishAnonymousRoomSession(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    // The game IS finished; only the post-finish data wipe failed. Reporting that as a
+    // 500 tells the host their finish failed and invites a retry that can only 400
+    // ("Game already ended"), so log it instead — it needs an operator, not the host.
+    if (cleanupError) console.error(`games/code/finish-game: session cleanup failed for ${gameId}`, cleanupError)
     return NextResponse.json({ success: true })
   }
 
   if (isSecretMessageGame(gameType)) {
-    const { error } = await finishSecretMessageBoard(admin, gameId)
+    const { error, cleanupError } = await finishSecretMessageBoard(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    if (cleanupError) console.error(`games/code/finish-game: inbox cleanup failed for ${gameId}`, cleanupError)
     return NextResponse.json({ success: true })
   }
 
   if (isCodewordsGame(gameType)) {
-    const { error } = await finishCodewordsGame(admin, gameId)
+    const { error, cleanupError } = await finishCodewordsGame(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    if (cleanupError) console.error(`games/code/finish-game: chat cleanup failed for ${gameId}`, cleanupError)
     return NextResponse.json({ success: true })
   }
 

@@ -321,6 +321,144 @@ jobs:
           fi
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
+  rls-boundaries-local:
+    name: RLS Boundaries (local)
+    # The same security gate as `RLS Boundaries` above, run against a throwaway Supabase stack
+    # started inside the runner instead of a hosted project. Three reasons this job exists:
+    #
+    #   1. The hosted job needs `needs: [migrate]`, an environment, and three secrets, so it only
+    #      runs on PUSH to dev/main — i.e. after merge. This one runs on PULL REQUESTS, which is
+    #      where a boundary regression is still cheap to fix, and it is the only form of this
+    #      check that can be made a REQUIRED status check (see issue #1131).
+    #   2. It costs nothing and depends on no quota. The hosted dev project has been 402'd since
+    #      2026-08-24, so `RLS Boundaries` has been failing rather than checking since then.
+    #   3. It tests the migrations in THIS PR, not whatever state a shared project drifted into.
+    #
+    # It does NOT replace the hosted job: only that one can catch a hosted project whose grants
+    # diverge from the migrations (a hand-run GRANT in the dashboard). Keep both.
+    runs-on: ubuntu-latest
+    # `supabase start` pulls and boots several containers; a hung pull or a wedged container would
+    # otherwise hold a runner for GitHub's 6-hour default. A healthy run is ~4 minutes.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # The Supabase CLI's local-development demo keys. Constant across every local stack and
+      # published in Supabase's own docs -- not secrets, and deliberately not stored as any.
+      LOCAL_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      LOCAL_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1 branch head
+        with:
+          version: 2.108.0
+
+      # Applies every migration in supabase/migrations from scratch, in order.
+      - name: Start local Supabase
+        run: supabase start
+
+      # The local stack's URL and keys. These are the Supabase CLI's fixed demo credentials --
+      # public, documented, identical on every developer's machine, and worthless outside this
+      # container -- so they are literals here rather than secrets, and this job needs no
+      # repository secrets at all.
+      #
+      # They are NOT read from `supabase status -o env`: as of CLI 2.108.0 that command emits
+      # URLs only (API_URL, DB_URL, REST_URL, ...) and no ANON_KEY or SERVICE_ROLE_KEY, so
+      # parsing it for keys yields empty strings. Verified against 2.108.0 on 2026-08-31.
+      - name: Export local credentials
+        run: |
+          set -euo pipefail
+          # The fallbacks here are load-bearing. Under `set -euo pipefail`, a `supabase status`
+          # that exits non-zero or a grep that matches nothing would abort the step at the
+          # assignment -- so the explanatory ::error:: below would never print and the job would
+          # fail with an opaque non-zero exit. A guard whose whole purpose is to say WHY it
+          # failed must not die before saying it. Capture the status output first, then parse.
+          status_env=$(supabase status -o env) || status_env=''
+          api_url=$(printf '%s\n' "$status_env" | { grep -E '^API_URL=' || true; } | cut -d= -f2- | tr -d '"')
+          if [ -z "$api_url" ]; then
+            echo "::error::supabase status reported no API_URL. Refusing to run a security gate against a half-started stack."
+            exit 1
+          fi
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$api_url"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$LOCAL_ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$LOCAL_SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+
+      # Pin the failure. If a future CLI release rotates the local demo keys, every request below
+      # 401s and the suite fails with a wall of confusing "denied" results that look exactly like
+      # a passing security posture read wrong. Assert the anon key AUTHENTICATES -- separately
+      # from what it is allowed to read -- so that day produces one clear message instead.
+      - name: Verify the local keys still authenticate
+        run: |
+          set -euo pipefail
+          # Same reasoning as the step above: a curl that cannot connect exits non-zero and would
+          # abort before the ::error:: prints. Fall back to 000 so the check reports the real
+          # problem. The fallback must OVERRIDE, not append: on a connection failure curl's
+          # `-w '%{http_code}'` already emits 000, so an `|| echo 000` inside the substitution
+          # would yield the string "000000" and a garbled diagnostic.
+          code=$(curl -s --max-time 30 -o /tmp/probe.json -w '%{http_code}' \
+            "${NEXT_PUBLIC_SUPABASE_URL}/rest/v1/games?select=id&limit=1" \
+            -H "apikey: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${NEXT_PUBLIC_SUPABASE_ANON_KEY}") || code=000
+          if [ "$code" != "200" ]; then
+            echo "::error::The anon key could not read games.id (HTTP $code). The Supabase CLI's local demo keys have probably changed -- update LOCAL_ANON_KEY / LOCAL_SERVICE_ROLE_KEY in this job. Response: $(head -c 300 /tmp/probe.json)"
+            exit 1
+          fi
+
+      # Hosted-parity grant for the SERVICE role, and only the service role.
+      #
+      # `20260803160000_default_privileges_lockdown.sql` uses ALTER DEFAULT PRIVILEGES, which
+      # applies to FUTURE objects only, so tables created by earlier migrations never received
+      # these grants on a database built from scratch. The hosted projects have them (they were
+      # granted when those tables were created, under the defaults of the day); a fresh
+      # `supabase start` does not. Without this, the suite's own write-probe control fails with
+      # `permission denied for table api_rate_limit_attempts` before it can probe anything.
+      #
+      # This CANNOT weaken any assertion in the suite. Every assertion is about `anon`, this
+      # touches only `service_role`, and the service role is the suite's known-POSITIVE control:
+      # it is supposed to be able to do everything, and the file is built on that. Never extend
+      # this to anon -- that would re-grant the very columns the redaction migrations revoked and
+      # turn the gate into a rubber stamp.
+      - name: Grant the service role hosted-parity access
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -c "grant all privileges on all tables in schema public to service_role;" \
+            -c "grant all privileges on all sequences in schema public to service_role;"
+
+      # The suite needs at least one readable row to inspect: its column sweep can only report on
+      # tables it actually read, and a stack where every table is empty proves nothing. One game
+      # row is enough. `host_token` is deliberately a real-shaped value — it is one of the columns
+      # the redaction assertions expect anon to be denied.
+      - name: Seed one probe row
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -c \
+            "insert into public.games (id, title, host_token) values ('rls-ci-probe', 'RLS CI probe', 'ci-probe-host-token') on conflict (id) do nothing;"
+
+      # Diagnostic, not a gate. `20260803160000_default_privileges_lockdown.sql` uses ALTER DEFAULT
+      # PRIVILEGES, which applies to FUTURE objects only, so tables created by earlier migrations
+      # can end up with an RLS SELECT policy but no anon grant here while the hosted projects have
+      # both. That difference does not make this job unsound -- the suite's positive controls fail
+      # loudly on it rather than passing vacuously -- but when it does fail, this table is the
+      # first thing to read.
+      - name: Report anon grant coverage
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -c \
+            "select count(*) filter (where has_table_privilege('anon', c.oid, 'SELECT')) as anon_readable, count(*) as total_tables from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r';"
+
+      - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

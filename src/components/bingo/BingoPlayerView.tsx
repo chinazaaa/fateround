@@ -22,7 +22,7 @@ import type { BingoCalledNumber, BingoCard, BingoClaim, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
-import { isAdvanceDriver } from '@/lib/advance-driver'
+import { bingoDriverRole, newestCalledAtOf } from '@/lib/bingo-driver'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -294,12 +294,19 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     calledNumbers.length
   )
 
-  // W5: only an elected quorum of clients drives auto-call (see isAdvanceDriver).
+  // Standby auto-call driver. The server ticker (src/lib/game-tick.ts) is the primary
+  // clock and the host client is the first standby; exactly one elected player is the
+  // last-resort tier, firing only if a call stays overdue past the player grace — i.e.
+  // both the ticker and the host are gone. See src/lib/bingo-driver.ts.
+  const autoCallRole = useMemo(() => bingoDriverRole({ players, myPlayerId }), [players, myPlayerId])
+  const newestCalledAt = useMemo(() => newestCalledAtOf(calledNumbers), [calledNumbers])
   useBingoAutoCall({
     gameCode,
     game,
-    enabled: screen === 'active' && isAdvanceDriver(players, myPlayerId),
-    onSynced: load,
+    role: autoCallRole,
+    lastCalledAt: newestCalledAt,
+    enabled: screen === 'active',
+    onCalled: (row) => setCalledNumbers((prev) => (prev.some((c) => c.id === row.id) ? prev : [...prev, row])),
   })
 
   useRoomMemberAutoJoin({

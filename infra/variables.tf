@@ -291,8 +291,44 @@ variable "game_tick_interval_ms" {
   }
 }
 
+variable "game_tick_activity_window_ms" {
+  description = "GAME_TICK_ACTIVITY_WINDOW_MS — how far back games.last_activity_at may be for a game to still be ticked, in ms, as a positive integer. Empty = code default (6h). Note last_activity_at is NOT bumped by turn-based gameplay, so this window only sheds the abandoned-forever backlog; shrinking it drops live turn-based games (and their bots) mid-play."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.game_tick_activity_window_ms == "" || can(regex("^[1-9][0-9]*$", var.game_tick_activity_window_ms))
+    error_message = "game_tick_activity_window_ms must be a positive integer (milliseconds), or empty for the code default."
+  }
+}
+
+variable "game_tick_discovery_limit" {
+  description = "GAME_TICK_DISCOVERY_LIMIT — max games the ticker discovers per tick, as a positive integer (fan-out is up to 2 pokes per game). Empty = code default (200). The ticker logs a warning whenever this cap binds."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.game_tick_discovery_limit == "" || can(regex("^[1-9][0-9]*$", var.game_tick_discovery_limit))
+    error_message = "game_tick_discovery_limit must be a positive integer, or empty for the code default."
+  }
+}
+
 variable "idle_reaper_disabled" {
   description = "IDLE_REAPER_DISABLED — set to \"1\" to stop the idle-active-game reaper. Empty = enabled."
   type        = string
   default     = ""
+}
+
+variable "idle_reaper_minutes" {
+  description = "IDLE_REAPER_MINUTES — how long an active game's last_activity_at may sit still before the reaper ends it, as a positive integer of minutes. Empty = code default (30). Widen this rather than disabling the reaper outright when it reaps too eagerly."
+  type        = string
+  default     = ""
+
+  # The reaper ENDS games, so a bad value here is destructive. `resolveIdleMinutes()`
+  # falls back to the 30m default for anything non-finite or below 1, but keep the
+  # garbage out of SSM in the first place so the intent is visible in the plan.
+  validation {
+    condition     = var.idle_reaper_minutes == "" || can(regex("^[1-9][0-9]*$", var.idle_reaper_minutes))
+    error_message = "idle_reaper_minutes must be a positive integer (minutes), or empty for the code default."
+  }
 }
