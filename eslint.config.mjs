@@ -32,7 +32,7 @@ export default tseslint.config(
     // The service worker runs in the ServiceWorkerGlobalScope, so `self` and friends
     // are legitimate globals (not `no-undef`). Flat config can't use the old
     // `/* eslint-env serviceworker */` comment, so declare them here.
-    files: ['scripts/playtest/**/*.mjs'],
+    files: ['scripts/playtest/**/*.mjs', 'scripts/bench/**/*.mjs'],
     languageOptions: {
       sourceType: 'module',
       globals: { process: 'readonly', console: 'readonly', fetch: 'readonly', URL: 'readonly' },
@@ -62,6 +62,14 @@ export default tseslint.config(
       'react-hooks/purity': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
     },
+  },
+  {
+    // The bench REPORTS numbers, so printing them is the point — `no-console` would be telling
+    // a measurement tool not to measure out loud. It stays otherwise fully linted, for the same
+    // reason scripts/playtest does: a dropped import in a harness that fails fast is invisible
+    // at runtime, and a bench that silently skips a measurement reports a saving that isn't there.
+    files: ['scripts/bench/**/*.{ts,tsx,mjs}'],
+    rules: { 'no-console': 'off' },
   },
   eslintConfigPrettier
 )
