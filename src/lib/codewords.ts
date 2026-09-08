@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { markGameFinished } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
 import { parseQuestionSource } from '@/lib/custom-questions'
 import {
   CODEWORDS_BOARD_SIZE,
@@ -560,14 +560,22 @@ export async function clearCodewordsChat(supabase: SupabaseClient, gameId: strin
   return { error: null }
 }
 
-export async function finishCodewordsGame(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
-  const { error: gameError } = await markGameFinished(supabase, gameId)
-  if (gameError) return { error: internalErrorMessage('codewords', gameError) }
+export async function finishCodewordsGame(
+  supabase: SupabaseClient,
+  gameId: string,
+  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+): Promise<FinishGameResult> {
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
+  // The chat wipe stays unconditional (idempotent delete); only `won` is threaded out so
+  // a caller can tell whether THIS request flipped the row.
+  //
+  // A failed wipe comes back as `cleanupError`, not `error`: the game is already
+  // `finished`, so reporting it as a finish failure made callers drop a close they
+  // had actually performed (and skip its `result_reason` stamp).
   const { error: chatError } = await clearCodewordsChat(supabase, gameId)
-  if (chatError) return { error: chatError }
-
-  return { error: null }
+  return { error: null, won, cleanupError: chatError }
 }
 
 export async function clearCodewordsRoundData(
@@ -677,8 +685,12 @@ export async function reconcileCodewordsTeamAfterRemoval(
       .eq('game_id', code)
       .is('winner', null)
     if (winError) return { error: internalErrorMessage('codewords', winError), outcome: noop }
-    const { error: finishError } = await finishCodewordsGame(supabase, code)
+    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code)
     if (finishError) return { error: finishError, outcome: noop }
+    // The forfeit landed; only the chat wipe failed, and that cannot un-finish the game.
+    // Nothing retries it, so log it instead of turning a completed forfeit into an error.
+    if (cleanupError)
+      console.error(`codewords: chat cleanup after forfeit failed for ${code} — not retried`, cleanupError)
     return { error: null, outcome: { ended: true, forfeitWinner: otherTeam } }
   }
 

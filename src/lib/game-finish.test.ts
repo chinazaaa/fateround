@@ -57,6 +57,7 @@ describe('markGameFinished', () => {
     const { supabase, calls } = makeSupabase([{ id: 'GAME' }])
     const res = await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true })
     expect(res.error).toBeNull()
+    expect(res.won).toBe(true)
     expect(calls.eqs).toContainEqual(['status', 'active'])
     expect(calls.selected).toBe(true)
     expect(award).toHaveBeenCalledTimes(1)
@@ -64,15 +65,21 @@ describe('markGameFinished', () => {
 
   it('does not award when a concurrent finisher already won the CAS (no rows affected)', async () => {
     const { supabase } = makeSupabase([])
-    await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true })
+    const res = await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true })
     expect(award).not.toHaveBeenCalled()
+    // The loser must be able to TELL it lost: error is null either way, so callers that
+    // only inspect `error` would treat this as their own successful finish.
+    expect(res.error).toBeNull()
+    expect(res.won).toBe(false)
   })
 
   it('awards unconditionally when onlyIfActive is not set (unchanged default)', async () => {
     const { supabase, calls } = makeSupabase(null)
-    await markGameFinished(supabase, 'GAME')
+    const res = await markGameFinished(supabase, 'GAME')
     expect(calls.eqs).not.toContainEqual(['status', 'active'])
     expect(calls.selected).toBe(false)
     expect(award).toHaveBeenCalledTimes(1)
+    // No CAS was attempted, so every unguarded caller keeps reading a win.
+    expect(res.won).toBe(true)
   })
 })
