@@ -131,6 +131,7 @@ GAME_TICK_INTERVAL_MS=$(get_param_opt --name "/$PREFIX/GAME_TICK_INTERVAL_MS")
 GAME_TICK_ACTIVITY_WINDOW_MS=$(get_param_opt --name "/$PREFIX/GAME_TICK_ACTIVITY_WINDOW_MS")
 GAME_TICK_DISCOVERY_LIMIT=$(get_param_opt --name "/$PREFIX/GAME_TICK_DISCOVERY_LIMIT")
 IDLE_REAPER_DISABLED=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_DISABLED")
+IDLE_REAPER_MINUTES=$(get_param_opt --name "/$PREFIX/IDLE_REAPER_MINUTES")
 
 # With Caddy (origin TLS) the app is private behind Caddy on localhost:8080.
 # Without it, the app is published directly on :80.
@@ -167,6 +168,7 @@ docker run -d --name app --restart always \
   -e GAME_TICK_ACTIVITY_WINDOW_MS="$GAME_TICK_ACTIVITY_WINDOW_MS" \
   -e GAME_TICK_DISCOVERY_LIMIT="$GAME_TICK_DISCOVERY_LIMIT" \
   -e IDLE_REAPER_DISABLED="$IDLE_REAPER_DISABLED" \
+  -e IDLE_REAPER_MINUTES="$IDLE_REAPER_MINUTES" \
   "$REPO:$TAG"
 
 # Reclaim disk from previous images. Each deploy pulls "$REPO:<commit-sha>", so old images
@@ -281,3 +283,39 @@ EOF
 
 systemctl daemon-reload
 systemctl enable --now fateround-streak-reminders.timer
+
+# Idle-active-game reaper — closes 'active' games whose last_activity_at hasn't
+# moved in 30 minutes, so abandoned rooms reach a terminal status instead of
+# being poked by the server ticker forever. Runs as a cron-hit route (NOT from
+# instrumentation.ts — see the DO-NOT-RE-ADD outage note there). Every 15
+# minutes to match the reaper's designed cadence; the route batches 20 games
+# per sweep so a backlog drains gently. IDLE_REAPER_DISABLED (SSM; any non-empty
+# value but 0/false) makes the route a no-op if a sweep ever needs to be stopped
+# without a deploy, and IDLE_REAPER_MINUTES (SSM) widens the idle threshold as
+# the less drastic first response to over-eager reaping.
+cat > /etc/systemd/system/fateround-reap-idle.service <<EOF
+[Unit]
+Description=FateRound idle-active-game reaper
+After=docker.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=120
+ExecStart=/usr/bin/curl -fsS --max-time 90 -X POST -H "Authorization: Bearer $CRON_SECRET" $TICK_URL/api/cron/reap-idle
+EOF
+chmod 600 /etc/systemd/system/fateround-reap-idle.service
+
+cat > /etc/systemd/system/fateround-reap-idle.timer <<'EOF'
+[Unit]
+Description=FateRound idle-active-game reaper timer
+
+[Timer]
+OnBootSec=300
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now fateround-reap-idle.timer

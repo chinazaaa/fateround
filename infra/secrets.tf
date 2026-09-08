@@ -235,3 +235,10 @@ resource "aws_ssm_parameter" "idle_reaper_disabled" {
   type  = "String"
   value = var.idle_reaper_disabled
 }
+
+resource "aws_ssm_parameter" "idle_reaper_minutes" {
+  count = var.idle_reaper_minutes != "" ? 1 : 0
+  name  = "/${var.name_prefix}/IDLE_REAPER_MINUTES"
+  type  = "String"
+  value = var.idle_reaper_minutes
+}

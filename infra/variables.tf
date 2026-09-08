@@ -318,3 +318,17 @@ variable "idle_reaper_disabled" {
   type        = string
   default     = ""
 }
+
+variable "idle_reaper_minutes" {
+  description = "IDLE_REAPER_MINUTES — how long an active game's last_activity_at may sit still before the reaper ends it, as a positive integer of minutes. Empty = code default (30). Widen this rather than disabling the reaper outright when it reaps too eagerly."
+  type        = string
+  default     = ""
+
+  # The reaper ENDS games, so a bad value here is destructive. `resolveIdleMinutes()`
+  # falls back to the 30m default for anything non-finite or below 1, but keep the
+  # garbage out of SSM in the first place so the intent is visible in the plan.
+  validation {
+    condition     = var.idle_reaper_minutes == "" || can(regex("^[1-9][0-9]*$", var.idle_reaper_minutes))
+    error_message = "idle_reaper_minutes must be a positive integer (minutes), or empty for the code default."
+  }
+}
