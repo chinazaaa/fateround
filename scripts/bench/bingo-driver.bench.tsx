@@ -79,9 +79,7 @@ describe('#1137 bingo auto-call driver', () => {
    * fact that traffic is the failover the PR deliberately keeps. Both are measured, separately.
    */
   function useDriver(role: 'host' | 'player', tickerAlive: boolean, game: Game) {
-    const [lastCalledAt, setLastCalledAt] = useState<string | null>(
-      tickerAlive ? new Date().toISOString() : null
-    )
+    const [lastCalledAt, setLastCalledAt] = useState<string | null>(tickerAlive ? new Date().toISOString() : null)
     useEffect(() => {
       if (!tickerAlive) return
       const id = setInterval(() => setLastCalledAt(new Date().toISOString()), SERVER_TICK_MS)
@@ -122,6 +120,11 @@ describe('#1137 bingo auto-call driver', () => {
       await sleep(WINDOW_MS)
       const elapsed = Date.now() - started
       for (const m of mounted) m.unmount()
+      // `usePolling`'s cleanup cancels the next timer but cannot cancel the tick already in
+      // flight, and the tally only records a call once its body has been weighed. Without this
+      // drain the stub's `pokes` counter can legitimately run ahead of `tally.rest`, and the
+      // consistency check below fails on a race rather than on a real disagreement.
+      await tally.drain()
 
       const syncCalls = tally.rest.filter((c) => c.url.includes('/api/bingo/sync'))
       const s = summarize(syncCalls)

@@ -45,14 +45,25 @@ describe('#1135 bounded chat reads', () => {
       await seedAnonymousMessages(GAME, playerId, size)
 
       const tally = startTally()
+      // Held OUTSIDE the try: if `waitFor` gives up, an unmount on the success path alone would
+      // never run, leaving this scenario's realtime channel and 15s poll alive to contribute
+      // requests to the NEXT size's tally.
+      let unmount: (() => void) | undefined
       try {
-        const { result, unmount } = renderHook(() => useAnonymousMessages(GAME, true, NO_PLAYERS))
+        const { result, unmount: u } = renderHook(() => useAnonymousMessages(GAME, true, NO_PLAYERS))
+        unmount = u
         // Wait for the mount read to LAND, not merely to be issued. Reading the tally while the
         // response is still in flight would record 0 bytes and score an unbounded query as free.
-        await waitFor(() => {
-          if (result.current.loading) throw new Error('still loading')
-        }, { timeout: 30_000 })
+        await waitFor(
+          () => {
+            if (result.current.loading) throw new Error('still loading')
+          },
+          { timeout: 30_000 }
+        )
         unmount()
+        unmount = undefined
+        // The mount read's Response has landed, but its body is weighed asynchronously.
+        await tally.drain()
 
         const reads = tally.rest.filter((c) => c.endpoint === 'anonymous_messages')
         const s = summarize(reads)
@@ -66,9 +77,14 @@ describe('#1135 bounded chat reads', () => {
           scenario: `${size} messages in room`,
           requests: s.requests,
           bytes: s.bytes,
-          extra: { rowsSeeded: size, rowsReturned: result.current.messages.length, bytesPerRead: Math.round(s.bytes / s.requests) },
+          extra: {
+            rowsSeeded: size,
+            rowsReturned: result.current.messages.length,
+            bytesPerRead: Math.round(s.bytes / s.requests),
+          },
         })
       } finally {
+        unmount?.()
         tally.restore()
       }
     })

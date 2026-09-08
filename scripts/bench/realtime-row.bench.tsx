@@ -11,7 +11,7 @@
  * that a concurrent writer could have perturbed.
  */
 import { afterAll, beforeAll, describe, it } from 'vitest'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type RealtimeChannel } from '@supabase/supabase-js'
 import { GAME_SELECT } from '@/lib/supabase-selects'
 import { cleanupGame, seedGame } from './fixtures'
 import { record } from './report'
@@ -34,32 +34,43 @@ describe('games realtime row cost', () => {
   })
 
   it(`measures the wire cost of ${SAMPLES} games UPDATEs`, async () => {
-    const tally = startTally()
     // A dedicated client, not the app singleton: this bench measures the PROTOCOL, and it must
     // give the same answer whether or not the branch under test has instrumented `.channel()`.
+    //
+    // Constructed BEFORE `startTally()`: `createClient` throws on a missing anon key, and a throw
+    // between patching the globals and entering the try would leave `fetch` and `WebSocket`
+    // wrapped for the rest of the worker, silently corrupting every later bench file.
     const sb = createClient(URL_BASE, ANON)
+    const tally = startTally()
+    // Declared out here so the socket is torn down even when an assertion below throws; a live
+    // channel would otherwise hold the Vitest worker open past the end of the file.
+    let channel: RealtimeChannel | undefined
     try {
       const frames: number[] = []
       const payloads: { cols: number; parsedBytes: number }[] = []
       let pgBound = false
 
-      const channel = sb
+      const ch = sb
         .channel(`bench-row-${GAME}`)
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${GAME}` },
-          (p) => {
-            const rec = (p.new ?? {}) as Record<string, unknown>
-            payloads.push({ cols: Object.keys(rec).length, parsedBytes: Buffer.byteLength(JSON.stringify(p)) })
-          }
-        )
-      await new Promise<void>((res, rej) => {
-        channel.subscribe((status) => {
-          if (status === 'SUBSCRIBED') res()
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') rej(new Error(status))
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${GAME}` }, (p) => {
+          const rec = (p.new ?? {}) as Record<string, unknown>
+          payloads.push({ cols: Object.keys(rec).length, parsedBytes: Buffer.byteLength(JSON.stringify(p)) })
         })
-        setTimeout(() => rej(new Error('subscribe timed out')), 30_000)
-      })
+      channel = ch
+      // The timeout is cleared once `subscribe` settles: an un-cleared 30s timer keeps the Vitest
+      // worker's event loop alive long after the measurement is done.
+      let subscribeTimer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await new Promise<void>((res, rej) => {
+          ch.subscribe((status) => {
+            if (status === 'SUBSCRIBED') res()
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') rej(new Error(status))
+          })
+          subscribeTimer = setTimeout(() => rej(new Error('subscribe timed out')), 30_000)
+        })
+      } finally {
+        if (subscribeTimer) clearTimeout(subscribeTimer)
+      }
       // `SUBSCRIBED` means the CHANNEL joined; the server sends a separate "Subscribed to
       // PostgreSQL" system message when the postgres_changes binding is live. Updating before
       // that lands produces zero events and a bench that reports realtime as free.
@@ -86,8 +97,6 @@ describe('games realtime row cost', () => {
           await sleep(100)
         }
       }
-      void sb.removeChannel(channel)
-
       if (frames.length !== SAMPLES) {
         throw new Error(`only ${frames.length}/${SAMPLES} realtime frames arrived — too lossy to report`)
       }
@@ -114,6 +123,11 @@ describe('games realtime row cost', () => {
         },
       })
     } finally {
+      // Awaited, not fired and forgotten: `removeChannel` defers the socket close until the leave
+      // is acknowledged, and `disconnect()` afterwards makes sure the transport is actually shut
+      // rather than left retrying behind the finished test.
+      if (channel) await sb.removeChannel(channel).catch(() => null)
+      sb.realtime.disconnect()
       tally.restore()
     }
   })

@@ -74,14 +74,18 @@ describe('#1134 poll gating on realtime health', () => {
       // Do not start the clock until realtime is actually up. Counting the window from mount
       // would include the pre-subscribe interval during which BOTH branches poll, diluting the
       // difference the bench exists to detect.
-      await waitFor(() => {
-        if (!result.current.subscribed) throw new Error('channel not SUBSCRIBED yet')
-      }, { timeout: 30_000, interval: 250 })
+      await waitFor(
+        () => {
+          if (!result.current.subscribed) throw new Error('channel not SUBSCRIBED yet')
+        },
+        { timeout: 30_000, interval: 250 }
+      )
 
       const healthyStart = Date.now()
       const restBefore = tally.rest.length
       const rtBefore = tally.rtFrames.length
       await sleep(HEALTHY_WINDOW_MS)
+      await tally.drain()
 
       const healthyRest = tally.rest.slice(restBefore)
       const healthyRt = tally.rtFrames.slice(rtBefore)
@@ -107,6 +111,8 @@ describe('#1134 poll gating on realtime health', () => {
       const degradedStart = Date.now()
       const restBefore2 = tally.rest.length
       await sleep(DEGRADED_WINDOW_MS)
+      unmount()
+      await tally.drain()
 
       const degraded = summarize(tally.rest.slice(restBefore2).filter((c) => c.endpoint === 'games'))
       record({
@@ -119,8 +125,6 @@ describe('#1134 poll gating on realtime health', () => {
           expectedPollsAtInterval: Math.floor(DEGRADED_WINDOW_MS / POLL_INTERVALS.realtimeFallback),
         },
       })
-
-      unmount()
 
       // A branch that polls in neither phase has not saved anything; it has stopped recovering.
       // Fail loudly here rather than letting the results table read it as a 100% win.

@@ -32,8 +32,13 @@ export SUPABASE_SERVICE_ROLE_KEY="$(supabase status -o env | grep SUPABASE_SERVI
 BENCH_LABEL=baseline npx vitest run --config scripts/bench/vitest.bench.config.ts
 ```
 
-Results append to `scripts/bench/results/<BENCH_LABEL>.jsonl` (gitignored). To compare a branch
-against `dev`, run the identical harness on both and diff the two files:
+Results append to `scripts/bench/results/<BENCH_LABEL>.jsonl` (gitignored). Because `record()`
+**appends**, prefer the runner — `node scripts/bench/egress-bench.mjs run <label>` — which
+truncates that file first. Invoking `vitest` directly as above stacks a re-run's rows on top of
+the previous run's, and `compare` would then read the stale row for any scenario the new run
+never reached. Delete the file yourself if you go that route.
+
+To compare a branch against `dev`, run the identical harness on both and diff the two files:
 
 ```sh
 node scripts/bench/egress-bench.mjs compare scripts/bench/results/baseline.jsonl scripts/bench/results/branch.jsonl
@@ -45,7 +50,7 @@ Knobs: `BENCH_WINDOW_MS` (default 180000), `BENCH_DEGRADED_WINDOW_MS` (default 6
 ## Isolation — read this before believing a number
 
 - **Never point a bench at whatever is on `:3000`.** Other sessions run dev servers there, and a
-  bench aimed at one measures *that branch's* code while reporting it as yours. Start your own
+  bench aimed at one measures _that branch's_ code while reporting it as yours. Start your own
   server from the worktree under test on a dedicated port and set `BENCH_APP_URL`.
 - The local Supabase stack may be **shared**. Every bench seeds fixtures it owns, under the
   `BNC*` id prefix, and filters its measurements to those rows, so another session's games and
@@ -66,7 +71,7 @@ Knobs: `BENCH_WINDOW_MS` (default 180000), `BENCH_DEGRADED_WINDOW_MS` (default 6
   them through Node's `EventTarget`, which rejects any Event that is not its own. The socket
   connects and then dies silently on first dispatch. `setup.bench.ts` recovers Node's native
   `Event` from an `AbortSignal` and restores it. Without that fix, realtime never connects — and
-  a bench for a *realtime-gated* optimisation would score the branch as saving nothing. A false
+  a bench for a _realtime-gated_ optimisation would score the branch as saving nothing. A false
   refutation is the worst outcome a bench can produce, worse than not running.
 - **A fresh `[]` passed to a hook is not an empty list, it is a new identity every render.** It
   invalidated `useAnonymousMessages`' `loadMessages`, re-ran the polling effect with

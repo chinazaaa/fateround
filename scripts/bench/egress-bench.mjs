@@ -11,7 +11,7 @@
  * means that run crashed, and silently reporting it as "0" would score a crash as a saving.
  */
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 
 const [, , cmd, ...args] = process.argv
 
@@ -31,6 +31,16 @@ if (cmd === 'run') {
     console.error('usage: egress-bench.mjs run <label>')
     process.exit(2)
   }
+  // `report.ts` APPENDS, so a re-run under the same label would stack its rows on top of the
+  // previous run's. `compare` matches on claim+scenario and takes the FIRST row it sees, so a
+  // re-run that crashes before a scenario would silently be compared using the stale row —
+  // exactly the "a crash scores as a saving" failure the missing-row check exists to prevent.
+  // Truncating here (rather than demanding a unique path per run) keeps the documented
+  // `run <label>` / `compare results/<label>.jsonl` workflow working as written, and it must
+  // mirror `report.ts`'s own default path.
+  const out = process.env.BENCH_OUT ?? `scripts/bench/results/${label}.jsonl`
+  rmSync(out, { force: true })
+
   const res = spawnSync(
     'npx',
     ['vitest', 'run', '--config', 'scripts/bench/vitest.bench.config.ts', ...args.slice(1)],
@@ -56,24 +66,44 @@ if (cmd === 'compare') {
     const y = b.get(k)
     if (!x || !y) {
       unmatched += 1
-      rows.push({ scenario: k, baseline: x ? 'measured' : 'MISSING', branch: y ? 'measured' : 'MISSING', delta: 'NOT COMPARABLE' })
+      rows.push({
+        scenario: k,
+        baseline: x ? 'measured' : 'MISSING',
+        branch: y ? 'measured' : 'MISSING',
+        delta: 'NOT COMPARABLE',
+      })
       continue
     }
     for (const metric of ['requests', 'bytes', 'rtFrames', 'rtBytes']) {
-      if (x[metric] === undefined && y[metric] === undefined) continue
+      const xm = x[metric] ?? null
+      const ym = y[metric] ?? null
+      if (xm === null && ym === null) continue
+      if (xm === null || ym === null) {
+        // Only one side reported this metric. Treating the absent side as 0 would manufacture a
+        // 100% saving (or a 100% regression) out of a metric that was never measured, so this is
+        // handled exactly like a missing scenario: named, and fatal to the exit status.
+        unmatched += 1
+        rows.push({
+          scenario: `${k} [${metric}]`,
+          baseline: xm === null ? 'MISSING' : fmt(xm),
+          branch: ym === null ? 'MISSING' : fmt(ym),
+          delta: 'NOT COMPARABLE',
+        })
+        continue
+      }
       rows.push({
         scenario: `${k} [${metric}]`,
-        baseline: fmt(x[metric]),
-        branch: fmt(y[metric]),
-        delta: `${fmt((y[metric] ?? 0) - (x[metric] ?? 0))} (${pct(x[metric] ?? 0, y[metric] ?? 0)})`,
+        baseline: fmt(xm),
+        branch: fmt(ym),
+        delta: `${fmt(ym - xm)} (${pct(xm, ym)})`,
       })
     }
   }
   console.table(rows)
   if (unmatched > 0) {
     console.error(
-      `\n${unmatched} scenario(s) were measured on only one side. A missing row is not a zero — ` +
-        `re-run the side that is short before drawing any conclusion from this table.`
+      `\n${unmatched} scenario/metric(s) were measured on only one side. A missing value is not ` +
+        `a zero — re-run the side that is short before drawing any conclusion from this table.`
     )
     process.exit(1)
   }

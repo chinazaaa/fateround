@@ -11,9 +11,7 @@ const SRV = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 export function requireServiceKey(): string {
   if (!SRV) {
-    throw new Error(
-      'SUPABASE_SERVICE_ROLE_KEY is required to seed bench fixtures. See scripts/bench/README.md.'
-    )
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required to seed bench fixtures. See scripts/bench/README.md.')
   }
   return SRV
 }
@@ -79,8 +77,24 @@ export async function seedAnonymousMessages(gameId: string, playerId: string, n:
   return srv('/anonymous_messages', { method: 'POST', body: JSON.stringify(rows) })
 }
 
+/**
+ * Remove every row this bench owns for `id`.
+ *
+ * All three deletes are attempted even if an earlier one fails — a half-cleaned fixture is worse
+ * than an uncleaned one — but a failure is then RAISED rather than swallowed. Leftover rows
+ * silently change the next run's starting state (a topped-up room, a duplicate-key seed), and a
+ * measurement taken against unknown fixture state is not a measurement.
+ */
 export async function cleanupGame(id: string) {
-  await srv(`/anonymous_messages?game_id=eq.${id}`, { method: 'DELETE' }).catch(() => null)
-  await srv(`/players?game_id=eq.${id}`, { method: 'DELETE' }).catch(() => null)
-  await srv(`/games?id=eq.${id}`, { method: 'DELETE' }).catch(() => null)
+  const results = await Promise.allSettled([
+    srv(`/anonymous_messages?game_id=eq.${id}`, { method: 'DELETE' }),
+    srv(`/players?game_id=eq.${id}`, { method: 'DELETE' }),
+    srv(`/games?id=eq.${id}`, { method: 'DELETE' }),
+  ])
+  const failures = results.filter((r) => r.status === 'rejected')
+  if (failures.length > 0) {
+    throw new Error(
+      `fixture cleanup for ${id} failed (${failures.length}/3): ` + failures.map((f) => String(f.reason)).join('; ')
+    )
+  }
 }
