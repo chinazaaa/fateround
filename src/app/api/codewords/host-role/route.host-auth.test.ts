@@ -145,6 +145,13 @@ describe('POST /api/codewords/host-role — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'Not a codewords game' })
   })
 
+  it('reports 403 before either 400 — a wrong token on a wrong-type, wrong-status game', async () => {
+    game = gameRow({ status: 'finished', game_type: 'smash_marry_kill' })
+    const res = await post(validPost({ hostToken: WRONG_TOKEN }))
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
+  })
+
   it('authorizes the real host on a waiting codewords game and assigns the role', async () => {
     const res = await post(validPost())
     expect(res.status).toBe(200)
@@ -209,6 +216,13 @@ describe('DELETE /api/codewords/host-role — host authorization', () => {
     const res = await del(validDelete())
     expect(res.status).toBe(400)
     await expect(res.json()).resolves.toEqual({ error: 'Not a codewords game' })
+  })
+
+  it('reports 403 before either 400 — a wrong token on a wrong-type, wrong-status game', async () => {
+    game = gameRow({ status: 'finished', game_type: 'smash_marry_kill' })
+    const res = await del(validDelete({ hostToken: WRONG_TOKEN }))
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
   })
 
   it('authorizes the real host on a waiting codewords game and benches the player', async () => {

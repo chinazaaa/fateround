@@ -105,6 +105,13 @@ describe('POST /api/codewords/randomize-teams — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'Not a codewords game' })
   })
 
+  it('reports 403 before either 400 — a wrong token on a wrong-type, wrong-status game', async () => {
+    game = gameRow({ status: 'active', game_type: 'smash_marry_kill', codewords_randomize_teams: true })
+    const res = await post({ gameId: GAME_CODE, hostToken: WRONG_TOKEN })
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
+  })
+
   it('rejects a codewords game that does not use randomized teams', async () => {
     game = gameRow({ status: 'waiting', game_type: 'codewords', codewords_randomize_teams: false })
     const res = await post({ gameId: GAME_CODE, hostToken: HOST_TOKEN })

@@ -114,6 +114,13 @@ describe('POST /api/games/[code]/whot-admit — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'Not a Whot game' })
   })
 
+  it('reports 403 before either 400 — a wrong token on a wrong-type, wrong-status game', async () => {
+    game = liveGame({ status: 'waiting', game_type: 'smash_marry_kill' })
+    const res = await post({ hostToken: WRONG_TOKEN, playerId: PLAYER_ID })
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
+  })
+
   it('authorizes the real host on an active Whot game and deals the player in', async () => {
     const res = await post({ hostToken: HOST_TOKEN, playerId: PLAYER_ID })
     expect(res.status).toBe(200)

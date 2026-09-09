@@ -115,6 +115,13 @@ describe('DELETE /api/anonymous-messages — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'Not a message board' })
   })
 
+  it('reports 403 before either 400 — a wrong token on a wrong-type, wrong-status game', async () => {
+    game = gameRow({ status: 'finished', game_type: 'smash_marry_kill' })
+    const res = await del(valid({ hostToken: WRONG_TOKEN }))
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
+  })
+
   it('does NOT apply the active-only status gate to a secret message board', async () => {
     game = gameRow({ status: 'finished', game_type: 'secret_message' })
     const res = await del(valid())

@@ -107,6 +107,13 @@ describe('POST /api/mahjong/penalty — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'Game is not active' })
   })
 
+  it('reports 403 before either 400 — a wrong token on a wrong-type, wrong-status game', async () => {
+    game = gameRow({ status: 'waiting', game_type: 'smash_marry_kill' })
+    const res = await post(valid({ hostToken: WRONG_TOKEN }))
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
+  })
+
   it('authorizes the real host on an active mahjong game and records the penalty', async () => {
     const res = await post(valid())
     expect(res.status).toBe(200)
