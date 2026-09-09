@@ -214,6 +214,7 @@ import { pickCustomQuickDrawPrompts, pickQuickDrawPrompts } from '@/lib/quick-dr
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { recordSeenContent, fetchSeenContentForPlayers } from '@/lib/seen-content'
+import { assertHostWith } from '@/lib/game-admin'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 import { wyrQuestionKey } from '@/lib/pool-key'
 import { codewordPoolKey } from '@/lib/codewords-pool'
@@ -336,10 +337,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
   const { hostToken } = parsed.data
 
-  const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', code.toUpperCase()).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'waiting') return NextResponse.json({ error: 'Game already started' }, { status: 400 })
+  const auth = await assertHostWith(getSupabaseAdmin(), code, hostToken, {
+    allowedStatuses: ['waiting'],
+    statusError: 'Game already started',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const gameType = parseGameType(game.game_type)
   const poolUsage = parsePoolUsage(game.pool_usage)

@@ -3,6 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertHostWith } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -14,10 +15,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const admin = getSupabaseAdmin()
 
-  const { data: game } = await admin.from('games').select('*').eq('id', gameId).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
+  const auth = await assertHostWith(admin, gameId, hostToken, {
+    allowedStatuses: ['active'],
+    statusError: 'Game not active',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const { data: activeRound } = await admin
     .from('rounds')

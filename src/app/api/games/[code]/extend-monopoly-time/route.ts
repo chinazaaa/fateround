@@ -4,6 +4,7 @@ import { extendMonopolyGameDuration, clampMonopolyTimeExtension } from '@/lib/mo
 import { monopolyExtendTimeSchema } from '@/lib/validation'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertHostAny } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -14,13 +15,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameId = code.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('id, host_token, game_type, status')
-    .eq('id', gameId)
-    .maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  // No status gate: extending the clock is accepted whatever state the game is in
+  // (`assertHostAny`), exactly as the hand-rolled ladder this replaced did. The only
+  // gate is the game-type check below, which stays AFTER the token check.
+  const auth = await assertHostAny(supabase, gameId, hostToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
   if (!isMonopolyGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not an Estate Kings game' }, { status: 400 })
   }

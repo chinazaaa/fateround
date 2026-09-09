@@ -72,6 +72,7 @@ import {
 } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
+import { assertHostWith } from '@/lib/game-admin'
 
 const supabase = getSupabaseAnon()
 
@@ -306,15 +307,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', gameCode).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'waiting') {
-    return NextResponse.json(
-      { error: 'Settings can only be changed in the lobby before the game starts' },
-      { status: 400 }
-    )
-  }
+  const auth = await assertHostWith(getSupabaseAdmin(), gameCode, hostToken, {
+    allowedStatuses: ['waiting'],
+    statusError: 'Settings can only be changed in the lobby before the game starts',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const boardLobbyType = boardGameLobbyType(game.game_type)
   const timedLobbyType = timedLobbyLimitType(game.game_type)
