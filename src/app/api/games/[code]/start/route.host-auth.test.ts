@@ -72,7 +72,7 @@ describe('POST /api/games/[code]/start — host authorization', () => {
   })
 
   it('THROWS on an empty request body — this route has no parseJsonBody guard', async () => {
-    await expect(post('')).rejects.toThrow()
+    await expect(post('')).rejects.toThrow(new SyntaxError('Unexpected end of JSON input'))
   })
 
   it('rejects a wrong hostToken with 403 "Unauthorized"', async () => {
