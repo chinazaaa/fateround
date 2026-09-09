@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeGender, type ParticipantGender } from '@/lib/participants'
 import { normalizeResumeToken } from '@/lib/utils'
 import { touchGameActivity } from '@/lib/game-activity'
+import { secretMatches } from '@/lib/secret-compare'
 
 export type PlayerAccessOptions = {
   /**
@@ -66,25 +67,66 @@ export async function assertPlayer(
   return { error: null, status: 200 as const, player, id }
 }
 
+export type HostAccessOptions = {
+  /** Statuses the game may be in. Omit the option entirely (see `assertHostAny`) to skip the gate. */
+  allowedStatuses: readonly string[]
+  /** 400 body returned when the status gate rejects. */
+  statusError: string
+}
+
 /**
- * Shared host-authorization check: loads the game, verifies the host token, and
- * enforces that the game's status is one of `allowedStatuses`. The exported
- * assertHost* wrappers below differ only by their allowed-status set and message.
+ * Shared host-authorization check: loads the game, verifies the host token, and — when a
+ * status gate is supplied — enforces that the game's status is one of `allowedStatuses`.
+ *
+ * The failure ladder is ordered on purpose and must stay that way: missing game (404) beats
+ * bad token (403) beats bad status (400). A route that reordered it would tell an
+ * unauthenticated caller which codes exist and what state they're in.
+ *
+ * Pass `opts: null` to run the 404/403 ladder with NO status gate — some ~43 routes accept a
+ * host action in any state, and could not express that through the fixed-status wrappers.
  */
 async function assertHost(
   supabase: SupabaseClient,
   gameCode: string,
-  hostToken: string,
-  opts: { allowedStatuses: readonly string[]; statusError: string }
+  hostToken: string | null | undefined,
+  opts: HostAccessOptions | null
 ) {
   const id = gameCode.toUpperCase()
   const { data: game } = await supabase.from('games').select('*').eq('id', id).maybeSingle()
   if (!game) return { error: 'Game not found', status: 404 as const, game: null, id }
-  if (game.host_token !== hostToken) return { error: 'Unauthorized', status: 403 as const, game: null, id }
-  if (!opts.allowedStatuses.includes(game.status)) {
+  // Constant-time, like every other secret comparison in the app (src/lib/secret-compare.ts).
+  // `games.host_token` is `text not null` (migration 0001, never relaxed) and all four insert
+  // sites mint a token, so the one behaviour `secretMatches` changes versus `!==` — an empty
+  // supplied token matching a NULL stored one — is unreachable here, and is a bug if it ever
+  // becomes reachable.
+  if (!(await secretMatches(hostToken, game.host_token))) {
+    return { error: 'Unauthorized', status: 403 as const, game: null, id }
+  }
+  if (opts && !opts.allowedStatuses.includes(game.status)) {
     return { error: opts.statusError, status: 400 as const, game: null, id }
   }
   return { error: null, status: 200 as const, game, id }
+}
+
+/**
+ * Host authorization with a caller-supplied status gate — the general form of the fixed-status
+ * wrappers below, for routes whose allowed statuses or 400 message are their own.
+ */
+export async function assertHostWith(
+  supabase: SupabaseClient,
+  gameCode: string,
+  hostToken: string | null | undefined,
+  opts: HostAccessOptions
+) {
+  return assertHost(supabase, gameCode, hostToken, opts)
+}
+
+/**
+ * Host authorization with NO status gate: the 404/403 ladder only, succeeding whatever state
+ * the game is in. For host actions that are valid at any point in a game's life.
+ */
+export async function assertHostAny(supabase: SupabaseClient, gameCode: string, hostToken: string | null | undefined) {
+  return assertHost(supabase, gameCode, hostToken, null)
 }
 
 export async function assertHostGame(supabase: SupabaseClient, gameCode: string, hostToken: string) {
