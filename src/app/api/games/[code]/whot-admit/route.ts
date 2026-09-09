@@ -4,6 +4,7 @@ import { whotAdmitSchema } from '@/lib/validation'
 import { isWhotGame, parseGameType } from '@/lib/game-types'
 import { admitWhotPlayer, whotGameSessionExpired } from '@/lib/whot'
 import { fetchGamePlayerLimits, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
+import { assertHostAny } from '@/lib/game-admin'
 
 // Host-initiated: deal a spectator into an ACTIVE Whot game. Host-authed (host_token),
 // whot-only, active-only. The game-state work (seat + deal, CAS, guards) lives in
@@ -20,9 +21,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const gameCode = code.toUpperCase()
   const admin = getSupabaseAdmin()
 
-  const { data: game } = await admin.from('games').select('*').eq('id', gameCode).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  // 404/403 only: the game-TYPE gate below has to stay AHEAD of the status gate, so the
+  // status-gated wrappers can't be used here without changing which 400 a caller sees.
+  const { game, error: authError, status: authStatus } = await assertHostAny(admin, gameCode, hostToken)
+  if (!game) return NextResponse.json({ error: authError }, { status: authStatus })
   if (!isWhotGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a Whot game' }, { status: 400 })
   }

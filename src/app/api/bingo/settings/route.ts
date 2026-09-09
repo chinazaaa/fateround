@@ -6,6 +6,7 @@ import { parseBingoCallMode, clampBingoCallInterval } from '@/lib/bingo'
 import { clampLobbyMaxPlayers, fetchGamePlayerLimits } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertHostAny } from '@/lib/game-admin'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, bingoSettingsSchema)
@@ -19,9 +20,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const { data: game } = await supabase.from('games').select('*').eq('id', code).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  // 404/403 only: the game-TYPE gate below has to stay AHEAD of the status gate, so the
+  // status-gated wrappers can't be used here without changing which 400 a caller sees.
+  const { game, error: authError, status: authStatus } = await assertHostAny(supabase, code, hostToken)
+  if (!game) return NextResponse.json({ error: authError }, { status: authStatus })
   if (!isBingoGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a bingo game' }, { status: 400 })
   }
