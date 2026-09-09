@@ -51,18 +51,21 @@ consciously accept each finding before promoting to `main`.
 
 **review → fix the findings → re-review the fixed code → repeat until a review
 comes back with no issues.** A PR is not ready while its head commit is
-unreviewed — the fixes are new code and get reviewed like any other.
+unreviewed — the fixes are new code and get reviewed like any other. If a
+review is still finding new issues after ~3 rounds, the PR is too big: split
+it, or escalate for a human call.
 
-| Reviewer              | How                                             | When                             |
-| --------------------- | ----------------------------------------------- | -------------------------------- |
-| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — no per-hour cap        |
-| **CodeRabbit GH bot** | comment `@coderabbitai review` on the PR        | only when the CLI is unavailable |
+| Reviewer              | How                                             | When                              |
+| --------------------- | ----------------------------------------------- | --------------------------------- |
+| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — not on the hourly quota |
+| **CodeRabbit GH bot** | comment `@coderabbitai review` on the PR        | only when the CLI is unavailable  |
 
 - The CLI is `coderabbit` (alias `cr`, v0.3.7) on `~/.local/bin`. Useful flags:
   `--plain` (non-interactive text), `--prompt-only`, `-t/--type
   all|committed|uncommitted`, `--base <branch>`, `--base-commit <commit>`,
-  `--cwd <path>`, `-c/--config <files…>`. That is the whole flag set — there is
-  no `--pr`, no output-file flag.
+  `--cwd <path>`, `-c/--config <files…>`, `--api-key <key>`. That is the whole
+  `review` flag set in v0.3.7 (no `--pr`, no output-file flag); confirm with
+  `coderabbit review --help`, and `coderabbit update` to upgrade.
 - **Auth:** `coderabbit auth status` shows the logged-in account and org;
   `coderabbit auth login` does the OAuth flow, `auth logout` / `auth org` round
   it out. If a review errors as unauthenticated, log in (or pass `--api-key`)
