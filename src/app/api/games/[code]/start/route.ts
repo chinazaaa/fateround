@@ -72,7 +72,9 @@ import {
 } from '@/lib/player-question-pool'
 import { getFullHostListForRounds } from '@/lib/participant-mode'
 import { buildPeoplePollParticipantPool } from '@/lib/player-participant-pool'
+import { z } from 'zod'
 import { hostActionSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { ANONYMOUS_ROOM_MIN_PLAYERS } from '@/lib/anonymous-messages'
 import { BINGO_MIN_PLAYERS, createBingoCardsForPlayers } from '@/lib/bingo'
 import {
@@ -214,6 +216,7 @@ import { pickCustomQuickDrawPrompts, pickQuickDrawPrompts } from '@/lib/quick-dr
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { recordSeenContent, fetchSeenContentForPlayers } from '@/lib/seen-content'
+import { assertHostWith } from '@/lib/game-admin'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 import { wyrQuestionKey } from '@/lib/pool-key'
 import { codewordPoolKey } from '@/lib/codewords-pool'
@@ -326,20 +329,29 @@ function mergeAiIntoPlatformPool<T>(
   return merged
 }
 
+/**
+ * Body guard for the start request. Only `hostToken` is required — the game is addressed by
+ * the `[code]` path param, never by the body. `firstTeam` (Codewords only) stays `unknown` on
+ * purpose: an unrecognized value falls back to a coin flip below rather than failing the
+ * whole start, which is the behaviour this route has always had.
+ */
+const startBodySchema = hostActionSchema.extend({
+  firstTeam: z.unknown().optional(),
+})
+
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = hostActionSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: raw, error: bodyError } = await parseJsonBody(req, startBodySchema)
+  if (bodyError) return bodyError
 
-  const { hostToken } = parsed.data
+  const { hostToken } = raw
 
-  const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', code.toUpperCase()).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'waiting') return NextResponse.json({ error: 'Game already started' }, { status: 400 })
+  const auth = await assertHostWith(getSupabaseAdmin(), code, hostToken, {
+    allowedStatuses: ['waiting'],
+    statusError: 'Game already started',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const gameType = parseGameType(game.game_type)
   const poolUsage = parsePoolUsage(game.pool_usage)
