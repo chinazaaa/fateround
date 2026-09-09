@@ -80,6 +80,15 @@ describe('POST /api/games/[code]/lobby-settings — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
   })
 
+  // The body guard must not validate `gameId` — `gameId ?? code` treats an explicit null as
+  // "not supplied" and falls back to the [code] path param. Reaching the 403 proves the code
+  // was resolved rather than 400'd as a bad game code.
+  it('falls back to the [code] path param when the body sends gameId: null', async () => {
+    const res = await post({ hostToken: WRONG_TOKEN, gameId: null })
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual({ error: 'Unauthorized' })
+  })
+
   it('returns 404 "Game not found" when the game does not exist', async () => {
     game = null
     const res = await post({ hostToken: HOST_TOKEN })

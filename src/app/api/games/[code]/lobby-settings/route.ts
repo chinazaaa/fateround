@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { boardGameLobbySettingsSchema } from '@/lib/validation'
@@ -122,11 +123,17 @@ function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
 }
 
 /**
- * Guard schema for the raw request body. `gameId` is optional on the wire — the `[code]`
- * path param is the fallback — so it must NOT be required here; the body is re-validated
- * against the full `boardGameLobbySettingsSchema` once `gameId` has been filled in.
+ * Guard schema for the raw request body. It deliberately validates NOTHING beyond "this is a
+ * JSON object" — its only job is to turn a throwing `req.json()` into a 400. Validation stays
+ * with the single `boardGameLobbySettingsSchema.safeParse` below, which runs once the `[code]`
+ * path param has been folded in as the `gameId` fallback.
+ *
+ * A narrower guard would be wrong twice over: `z.object` strips unknown keys, and any key it
+ * declared would be validated twice (`puzzle_custom_questions` and `wordle_room_words` carry up
+ * to 500 / 2000 elements). It would also reject `gameId: null`, which `?? code` has always
+ * treated as "not supplied" and fallen back to the path param for.
  */
-const lobbySettingsBodySchema = boardGameLobbySettingsSchema.partial({ gameId: true })
+const lobbySettingsBodySchema = z.record(z.string(), z.unknown())
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
