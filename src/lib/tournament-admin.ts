@@ -14,6 +14,13 @@ import { secretMatches } from '@/lib/secret-compare'
  *
  * Fourteen call sites across thirteen tournament route files currently hand-roll
  * `tournament.host_token !== hostToken`. This exists so they can stop.
+ *
+ * CALLERS MUST PASS A SERVICE-ROLE CLIENT (`getSupabaseAdmin()`), as all fourteen already do.
+ * `anon`/`authenticated` hold COLUMN-level SELECT on `tournaments` that deliberately excludes
+ * `host_token` (`supabase/migrations/20260803120000_lockdown_tournaments.sql`), so the
+ * `select('*')` below ERRORS under the anon key. That fails closed — the error surfaces as
+ * `data: null` and the helper returns 404, never a bypass — but it 404s every tournament,
+ * which reads as "wrong code" rather than "wrong client". Hence this line.
  */
 
 /**
