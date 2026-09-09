@@ -4,6 +4,7 @@ import { parseGameType } from '@/lib/game-types'
 import { parseQuestionSource } from '@/lib/custom-questions'
 import { loadPlatformEntries } from '@/lib/platform-content'
 import { fetchSeenContentForPlayers } from '@/lib/seen-content'
+import { assertHostWith } from '@/lib/game-admin'
 
 const HARDCODED_POOL_SIZES: Record<string, number> = {
   trivia: 100,
@@ -36,15 +37,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('host_token, status, game_type, question_source')
-    .eq('id', gameId)
-    .maybeSingle()
-
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'waiting') return NextResponse.json({ error: 'Game not in waiting state' }, { status: 400 })
+  const auth = await assertHostWith(supabase, gameId, hostToken, {
+    allowedStatuses: ['waiting'],
+    statusError: 'Game not in waiting state',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const gameType = parseGameType(game.game_type)
   const questionSource = parseQuestionSource(game.question_source, gameType)

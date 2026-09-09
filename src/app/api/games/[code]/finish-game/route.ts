@@ -24,6 +24,7 @@ import {
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertHostWith } from '@/lib/game-admin'
 import { withGameNotification } from '@/lib/push-route'
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -36,12 +37,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
   const admin = getSupabaseAdmin()
 
-  const { data: game } = await admin.from('games').select('*').eq('id', gameId).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'active' && game.status !== 'waiting') {
-    return NextResponse.json({ error: 'Game already ended' }, { status: 400 })
-  }
+  const auth = await assertHostWith(admin, gameId, hostToken, {
+    allowedStatuses: ['active', 'waiting'],
+    statusError: 'Game already ended',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const gameType = parseGameType(game.game_type)
   const inLobby = game.status === 'waiting'
