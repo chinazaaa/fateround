@@ -13,8 +13,8 @@ import {
  * Characterization of the host-authorization branch of POST /api/games/[code]/lobby-settings.
  *
  * Two behaviours worth noting before anything is centralized:
- *  - this route calls `await req.json()` WITHOUT the `parseJsonBody` guard, so an empty
- *    body REJECTS out of the handler instead of returning 400 (pinned below);
+ *  - this route guards the body with `parseJsonBody`, so an empty body returns
+ *    400 "Invalid or empty request body" (pinned below);
  *  - the "nothing to update" check runs BEFORE the game is even loaded, so a request with
  *    no settings fields gets 400 "Nothing to update" even with a wrong token or a
  *    nonexistent game. Authorization is not the first gate here.
@@ -68,8 +68,10 @@ describe('POST /api/games/[code]/lobby-settings — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'hostToken is required' })
   })
 
-  it('THROWS on an empty request body — this route has no parseJsonBody guard', async () => {
-    await expect(post('')).rejects.toThrow()
+  it('rejects an empty request body with 400 "Invalid or empty request body"', async () => {
+    const res = await post('')
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid or empty request body' })
   })
 
   it('rejects a wrong hostToken with 403 "Unauthorized"', async () => {
