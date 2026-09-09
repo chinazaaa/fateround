@@ -16,8 +16,8 @@ import {
  * that `assertHostGame` returns for the same `waiting`-only allow-list. Swapping this
  * route onto the helper changes the string a host sees, so it is pinned literally.
  *
- * Like lobby-settings, this route calls `await req.json()` with no guard, so an empty
- * body rejects instead of returning 400.
+ * Like lobby-settings, this route guards the body with `parseJsonBody`, so an empty body
+ * returns 400 "Invalid or empty request body".
  */
 
 const deferred: Promise<unknown>[] = []
@@ -71,8 +71,10 @@ describe('POST /api/games/[code]/start — host authorization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'hostToken is required' })
   })
 
-  it('THROWS on an empty request body — this route has no parseJsonBody guard', async () => {
-    await expect(post('')).rejects.toThrow(new SyntaxError('Unexpected end of JSON input'))
+  it('rejects an empty request body with 400 "Invalid or empty request body"', async () => {
+    const res = await post('')
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid or empty request body' })
   })
 
   it('rejects a wrong hostToken with 403 "Unauthorized"', async () => {
