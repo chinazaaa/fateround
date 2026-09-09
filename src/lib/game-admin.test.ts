@@ -17,6 +17,8 @@ import {
   assertHostPlayerRemove,
   assertHostGameSettings,
   assertHostLateJoinSettings,
+  assertHostWith,
+  assertHostAny,
 } from './game-admin'
 import { resetGameActivityThrottle } from './game-activity'
 
@@ -90,6 +92,168 @@ describe('per-variant allowed statuses (behaviour preserved)', () => {
       expect(r.game).toBeNull()
     })
   }
+})
+
+/**
+ * The two general entry points. `assertHostWith` is the fixed-status wrappers' own core, exported
+ * so a route can name its own allowed statuses and 400 message; `assertHostAny` runs the
+ * 404/403 ladder with no status gate at all. Both must keep the `{ error, status, game, id }`
+ * shape and the ladder ORDER — missing game beats bad token beats bad status — because the
+ * ~43 routes that hand-roll this check are meant to adopt them without changing a response.
+ */
+describe('assertHostAny (no status gate)', () => {
+  const ANY_STATUS = ['waiting', 'active', 'finished', 'scheduled', 'cancelled', 'weird-future-status']
+
+  it('authorizes the host whatever the game status is', async () => {
+    for (const status of ANY_STATUS) {
+      const r = await assertHostAny(mockSupabase(game(status)), 'abcd', TOKEN)
+      expect(r.error, `status ${status}`).toBeNull()
+      expect(r.status, `status ${status}`).toBe(200)
+      expect(r.game).not.toBeNull()
+    }
+  })
+
+  it('still 404s a missing game and 403s a wrong token', async () => {
+    const missing = await assertHostAny(mockSupabase(null), 'abcd', TOKEN)
+    expect(missing.status).toBe(404)
+    expect(missing.error).toBe('Game not found')
+    expect(missing.game).toBeNull()
+
+    const wrong = await assertHostAny(mockSupabase(game('active')), 'abcd', 'wrong-token')
+    expect(wrong.status).toBe(403)
+    expect(wrong.error).toBe('Unauthorized')
+    expect(wrong.game).toBeNull()
+  })
+
+  it('uppercases the game code into the queried id', async () => {
+    let queriedId: unknown
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: (_col: string, value: unknown) => {
+            queriedId = value
+            return { maybeSingle: async () => ({ data: game('active') }) }
+          },
+        }),
+      }),
+    } as unknown as SupabaseClient
+    const r = await assertHostAny(supabase, 'abcd', TOKEN)
+    expect(r.id).toBe('ABCD')
+    expect(queriedId).toBe('ABCD')
+  })
+})
+
+describe('assertHostWith (caller-supplied status gate)', () => {
+  const opts = { allowedStatuses: ['scheduled', 'waiting'], statusError: 'Only before kickoff' } as const
+
+  it('accepts each status the caller allowed', async () => {
+    for (const status of opts.allowedStatuses) {
+      const r = await assertHostWith(mockSupabase(game(status)), 'abcd', TOKEN, opts)
+      expect(r.error, `status ${status}`).toBeNull()
+      expect(r.status).toBe(200)
+      expect(r.game).not.toBeNull()
+    }
+  })
+
+  it('rejects an unlisted status with 400 and the caller’s own message', async () => {
+    const r = await assertHostWith(mockSupabase(game('active')), 'abcd', TOKEN, opts)
+    expect(r.status).toBe(400)
+    expect(r.error).toBe('Only before kickoff') // the supplied message verbatim, not a generic one
+    expect(r.game).toBeNull()
+  })
+
+  it('an empty allowedStatuses list rejects everything', async () => {
+    const r = await assertHostWith(mockSupabase(game('waiting')), 'abcd', TOKEN, {
+      allowedStatuses: [],
+      statusError: 'nope',
+    })
+    expect(r.status).toBe(400)
+    expect(r.error).toBe('nope')
+  })
+
+  it('uppercases the game code into the queried id', async () => {
+    let queriedId: unknown
+    const supabase = {
+      from: () => ({
+        select: () => ({
+          eq: (_col: string, value: unknown) => {
+            queriedId = value
+            return { maybeSingle: async () => ({ data: game('waiting') }) }
+          },
+        }),
+      }),
+    } as unknown as SupabaseClient
+    const r = await assertHostWith(supabase, 'abcd', TOKEN, opts)
+    expect(r.id).toBe('ABCD')
+    expect(queriedId).toBe('ABCD')
+  })
+})
+
+/**
+ * The order matters more than any single rung: a caller with no token must not be able to tell
+ * a nonexistent code from a real one, nor learn a real game's status.
+ */
+describe('host failure ladder order', () => {
+  it('missing game beats a bad token (404, not 403)', async () => {
+    for (const call of [
+      assertHostAny(mockSupabase(null), 'abcd', 'wrong-token'),
+      assertHostWith(mockSupabase(null), 'abcd', 'wrong-token', {
+        allowedStatuses: ['waiting'],
+        statusError: 'nope',
+      }),
+    ]) {
+      const r = await call
+      expect(r.status).toBe(404)
+      expect(r.error).toBe('Game not found')
+    }
+  })
+
+  it('bad token beats a bad status (403, not 400 — the status never leaks)', async () => {
+    const r = await assertHostWith(mockSupabase(game('active')), 'abcd', 'wrong-token', {
+      allowedStatuses: ['waiting'],
+      statusError: 'Game has already started',
+    })
+    expect(r.status).toBe(403)
+    expect(r.error).toBe('Unauthorized')
+    expect(r.game).toBeNull()
+  })
+})
+
+/**
+ * The host token is compared with `secretMatches` (constant time). Its one behavioural
+ * difference from `!==` is that an absent token no longer matches an absent stored value.
+ * `games.host_token` is `text not null` (migration 0001, never relaxed) and every insert site
+ * mints one, so this is defence in depth — but "" authorizing a host would be a total bypass,
+ * so it is pinned.
+ */
+describe('host token comparison', () => {
+  it.each([
+    ['null stored', null],
+    ['undefined stored', undefined],
+    ['empty stored', ''],
+  ])('403s an empty supplied token against a %s token', async (_label, stored) => {
+    for (const supplied of ['', null, undefined]) {
+      const r = await assertHostAny(
+        mockSupabase({ id: 'ABCD', host_token: stored, status: 'waiting' }),
+        'abcd',
+        supplied
+      )
+      expect(r.status).toBe(403)
+      expect(r.error).toBe('Unauthorized')
+      expect(r.game).toBeNull()
+    }
+  })
+
+  it('still authorizes an exact token match', async () => {
+    const r = await assertHostAny(mockSupabase(game('waiting')), 'abcd', TOKEN)
+    expect(r.status).toBe(200)
+    expect(r.game).not.toBeNull()
+  })
+
+  it('rejects a token that is a prefix of the stored one', async () => {
+    const r = await assertHostAny(mockSupabase(game('waiting')), 'abcd', TOKEN.slice(0, -1))
+    expect(r.status).toBe(403)
+  })
 })
 
 /**
