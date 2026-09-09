@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { boardGameLobbySettingsSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import {
   isLudoGame,
   isMonopolyGame,
@@ -72,6 +74,7 @@ import {
 } from '@/lib/game-limits'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { scheduleNewPublicGameFanout } from '@/lib/notification-subscriptions'
+import { assertHostWith } from '@/lib/game-admin'
 
 const supabase = getSupabaseAnon()
 
@@ -120,9 +123,23 @@ function limitOnlyLobbyType(gameType: string): LobbyLimitGameType | null {
   return null
 }
 
+/**
+ * Guard schema for the raw request body. It deliberately validates NOTHING beyond "this is a
+ * JSON object" — its only job is to turn a throwing `req.json()` into a 400. Validation stays
+ * with the single `boardGameLobbySettingsSchema.safeParse` below, which runs once the `[code]`
+ * path param has been folded in as the `gameId` fallback.
+ *
+ * A narrower guard would be wrong twice over: `z.object` strips unknown keys, and any key it
+ * declared would be validated twice (`puzzle_custom_questions` and `wordle_room_words` carry up
+ * to 500 / 2000 elements). It would also reject `gameId: null`, which `?? code` has always
+ * treated as "not supplied" and fallen back to the path param for.
+ */
+const lobbySettingsBodySchema = z.record(z.string(), z.unknown())
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
+  const { data: raw, error: bodyError } = await parseJsonBody(req, lobbySettingsBodySchema)
+  if (bodyError) return bodyError
   const parsed = boardGameLobbySettingsSchema.safeParse({ ...raw, gameId: raw.gameId ?? code })
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
@@ -306,15 +323,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
-  const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', gameCode).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'waiting') {
-    return NextResponse.json(
-      { error: 'Settings can only be changed in the lobby before the game starts' },
-      { status: 400 }
-    )
-  }
+  const auth = await assertHostWith(getSupabaseAdmin(), gameCode, hostToken, {
+    allowedStatuses: ['waiting'],
+    statusError: 'Settings can only be changed in the lobby before the game starts',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const boardLobbyType = boardGameLobbyType(game.game_type)
   const timedLobbyType = timedLobbyLimitType(game.game_type)
