@@ -72,7 +72,9 @@ import {
 } from '@/lib/player-question-pool'
 import { getFullHostListForRounds } from '@/lib/participant-mode'
 import { buildPeoplePollParticipantPool } from '@/lib/player-participant-pool'
+import { z } from 'zod'
 import { hostActionSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { ANONYMOUS_ROOM_MIN_PLAYERS } from '@/lib/anonymous-messages'
 import { BINGO_MIN_PLAYERS, createBingoCardsForPlayers } from '@/lib/bingo'
 import {
@@ -327,15 +329,22 @@ function mergeAiIntoPlatformPool<T>(
   return merged
 }
 
+/**
+ * Body guard for the start request. Only `hostToken` is required — the game is addressed by
+ * the `[code]` path param, never by the body. `firstTeam` (Codewords only) stays `unknown` on
+ * purpose: an unrecognized value falls back to a coin flip below rather than failing the
+ * whole start, which is the behaviour this route has always had.
+ */
+const startBodySchema = hostActionSchema.extend({
+  firstTeam: z.unknown().optional(),
+})
+
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = hostActionSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: raw, error: bodyError } = await parseJsonBody(req, startBodySchema)
+  if (bodyError) return bodyError
 
-  const { hostToken } = parsed.data
+  const { hostToken } = raw
 
   const auth = await assertHostWith(getSupabaseAdmin(), code, hostToken, {
     allowedStatuses: ['waiting'],
