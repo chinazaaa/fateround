@@ -4,15 +4,13 @@ import { processMahjongNextHand } from '@/lib/mahjong'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertHostWith } from '@/lib/game-admin'
 import { mahjongNextHandSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = mahjongNextHandSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, mahjongNextHandSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, hostToken } = parsed.data
+  const { gameId, hostToken } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
