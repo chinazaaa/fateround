@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
-import { secretMatches } from '@/lib/secret-compare'
+import { assertTournamentHostAny } from '@/lib/tournament-admin'
 import { tournamentHostActionSchema } from '@/lib/tournament-validation'
 
 const RESTART_ERRORS: Record<string, { message: string; status: number }> = {
@@ -26,14 +26,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { hostToken } = body
 
-  const { data: tournament } = await getSupabaseAdmin()
-    .from('tournaments')
-    .select('host_token')
-    .eq('id', tournamentId)
-    .maybeSingle()
-  if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  if (!(await secretMatches(hostToken, tournament.host_token)))
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  // No status gate here: "is it finished?" is re-checked inside the RPC below, under the
+  // row lock, so it can't race a concurrent finish/start.
+  const auth = await assertTournamentHostAny(getSupabaseAdmin(), code, hostToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const { data, error } = await getSupabaseAdmin().rpc('restart_tournament', { p_tournament_id: tournamentId })
 

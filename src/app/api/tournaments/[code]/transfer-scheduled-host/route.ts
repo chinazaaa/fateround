@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod/v4'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertTournamentHostBeforeStart } from '@/lib/tournament-admin'
 import { notifyTournamentEvent } from '@/lib/tournament-push'
 
 /**
@@ -41,18 +42,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   const admin = getSupabaseAdmin()
-  const { data: tournament } = await admin
-    .from('tournaments')
-    .select('id, title, host_token, status')
-    .eq('id', tournamentId)
-    .maybeSingle()
-  if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  if (tournament.host_token !== parsed.data.hostToken) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  }
-  if (tournament.status === 'finished' || tournament.status === 'active') {
-    return NextResponse.json({ error: 'Transfer is only available before the tournament starts.' }, { status: 400 })
-  }
+  const auth = await assertTournamentHostBeforeStart(
+    admin,
+    code,
+    parsed.data.hostToken,
+    'Transfer is only available before the tournament starts.'
+  )
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const tournament = auth.tournament
 
   // Target must be a real, non-eliminated tournament player.
   const { data: player } = await admin

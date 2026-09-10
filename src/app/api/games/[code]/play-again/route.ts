@@ -84,6 +84,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
+import { assertHostAny } from '@/lib/game-admin'
 
 const supabase = getSupabaseAnon()
 
@@ -202,9 +203,11 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   } = body
   const gameId = code.toUpperCase()
 
-  const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', gameId).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  // No status gate here: the replay gate below is game-type-aware (`canReturnToLobby` and
+  // friends), not a static status list, so this only runs the 404/403 ladder.
+  const auth = await assertHostAny(getSupabaseAdmin(), gameId, hostToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const gameType = parseGameType(game.game_type)
   const ticTacToeCanReplay = isTicTacToeGame(gameType)

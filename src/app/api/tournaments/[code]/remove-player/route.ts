@@ -4,6 +4,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { removeTournamentPlayerSchema } from '@/lib/tournament-validation'
 import { resolveGroupSize } from '@/lib/tournament-bracket'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertTournamentHostUnfinished } from '@/lib/tournament-admin'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeScrabblePlayer } from '@/lib/scrabble'
 
@@ -55,14 +56,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { hostToken, playerId } = body
   const admin = getSupabaseAdmin()
 
-  const { data: tournament } = await admin
-    .from('tournaments')
-    .select('host_token, format, status, elimination_config, game_type, game_config')
-    .eq('id', tournamentId)
-    .maybeSingle()
-  if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (tournament.status === 'finished') return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
+  const auth = await assertTournamentHostUnfinished(admin, code, hostToken, 'Tournament has ended')
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const tournament = auth.tournament
 
   const { data: player } = await admin
     .from('tournament_players')

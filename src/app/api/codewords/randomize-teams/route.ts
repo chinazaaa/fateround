@@ -4,6 +4,7 @@ import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import { lobbyReady, persistRandomizedRoles, teamsNeedRandomization } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertHostAny } from '@/lib/game-admin'
 
 const schema = z.object({
   gameId: z.string().min(4).max(10),
@@ -18,14 +19,10 @@ export async function POST(req: NextRequest) {
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase
-    .from('games')
-    .select('host_token, game_type, status, codewords_randomize_teams')
-    .eq('id', code)
-    .maybeSingle()
-
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  // 404/403 only: the game-TYPE gate below has to stay AHEAD of the status gate, so the
+  // status-gated wrappers can't be used here without changing which 400 a caller sees.
+  const { game, error: authError, status: authStatus } = await assertHostAny(supabase, code, hostToken)
+  if (!game) return NextResponse.json({ error: authError }, { status: authStatus })
   if (!isCodewordsGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a codewords game' }, { status: 400 })
   }
