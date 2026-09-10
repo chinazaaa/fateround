@@ -3,6 +3,36 @@ import { normalizeGender, type ParticipantGender } from '@/lib/participants'
 import { normalizeResumeToken } from '@/lib/utils'
 import { touchGameActivity } from '@/lib/game-activity'
 import { secretMatches } from '@/lib/secret-compare'
+import type { Game, Player } from '@/types'
+
+/**
+ * A `players` row as returned by the `select('*')` below.
+ *
+ * The Supabase client is untyped, so the row arrives as `any`. `Player` is the best
+ * description of it the codebase already has, and the open index signature covers the rest:
+ * `select('*')` returns every column, including ones `Player` (a client-facing shape) does
+ * not model, and routes read those raw columns off this row. They keep the `any` they have
+ * today — narrowing the select, and with it this row, is a separate change.
+ *
+ * The job of this type here is only to give the success arm of {@link PlayerAuthResult} a
+ * row that is provably not `null`.
+ */
+export interface PlayerRow extends Player {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [column: string]: any
+}
+
+/**
+ * Discriminated result of {@link assertPlayer}.
+ *
+ * `error` is the discriminant, and it discriminates by TRUTHINESS — which is why the failure
+ * arm types it as a union of the literal messages rather than as `string`. `string` includes
+ * `''`, so TypeScript cannot drop the failure arm on the false branch of `if (r.error)` and
+ * the caller keeps a possibly-`null` row. Literals are all non-empty, so it can.
+ */
+export type PlayerAuthResult =
+  | { error: null; status: 200; player: PlayerRow; id: string }
+  | { error: 'Missing or invalid player code' | 'Unauthorized'; status: 403; player: null; id: string }
 
 export type PlayerAccessOptions = {
   /**
@@ -34,7 +64,7 @@ export async function assertPlayer(
   gameCode: string,
   resumeToken: string | null | undefined,
   opts: PlayerAccessOptions = {}
-) {
+): Promise<PlayerAuthResult> {
   const id = gameCode.toUpperCase()
   const token = normalizeResumeToken(String(resumeToken ?? ''))
   if (token.length < 4) {
@@ -67,11 +97,36 @@ export async function assertPlayer(
   return { error: null, status: 200 as const, player, id }
 }
 
-export type HostAccessOptions = {
+/**
+ * A `games` row as returned by the `select('*')` below — `Game` plus an open index signature
+ * for the columns it does not model. See {@link PlayerRow} for the reasoning.
+ */
+export interface GameRow extends Game {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [column: string]: any
+}
+
+/**
+ * `S` is the caller-supplied 400 message (`HostAccessOptions['statusError']`), threaded
+ * through so the failure arm's `error` stays a union of string LITERALS. That is what makes
+ * the union discriminate under the callers' `if (auth.error) return …` idiom: TypeScript can
+ * only drop the failure arm on the false branch when every `error` it could hold is
+ * definitely truthy, and `string` is not (it includes `''`). `never` — the default, used by
+ * the un-gated `assertHostAny` — simply contributes nothing to the union.
+ *
+ * So keep `statusError` a string LITERAL at the call site. Passing a `string`-typed variable
+ * still type-checks and still behaves identically at runtime; it just widens `S` back to
+ * `string` and costs that caller its narrowing.
+ */
+export type HostAuthResult<S extends string = never> =
+  | { error: null; status: 200; game: GameRow; id: string }
+  | { error: 'Game not found' | 'Unauthorized' | S; status: 400 | 403 | 404; game: null; id: string }
+
+export type HostAccessOptions<S extends string = string> = {
   /** Statuses the game may be in. Omit the option entirely (see `assertHostAny`) to skip the gate. */
   allowedStatuses: readonly string[]
   /** 400 body returned when the status gate rejects. */
-  statusError: string
+  statusError: S
 }
 
 /**
@@ -85,12 +140,12 @@ export type HostAccessOptions = {
  * Pass `opts: null` to run the 404/403 ladder with NO status gate — some ~43 routes accept a
  * host action in any state, and could not express that through the fixed-status wrappers.
  */
-async function assertHost(
+async function assertHost<S extends string = never>(
   supabase: SupabaseClient,
   gameCode: string,
   hostToken: string | null | undefined,
-  opts: HostAccessOptions | null
-) {
+  opts: HostAccessOptions<S> | null
+): Promise<HostAuthResult<S>> {
   const id = gameCode.toUpperCase()
   const { data: game } = await supabase.from('games').select('*').eq('id', id).maybeSingle()
   if (!game) return { error: 'Game not found', status: 404 as const, game: null, id }
@@ -112,11 +167,11 @@ async function assertHost(
  * Host authorization with a caller-supplied status gate — the general form of the fixed-status
  * wrappers below, for routes whose allowed statuses or 400 message are their own.
  */
-export async function assertHostWith(
+export async function assertHostWith<S extends string>(
   supabase: SupabaseClient,
   gameCode: string,
   hostToken: string | null | undefined,
-  opts: HostAccessOptions
+  opts: HostAccessOptions<S>
 ) {
   return assertHost(supabase, gameCode, hostToken, opts)
 }

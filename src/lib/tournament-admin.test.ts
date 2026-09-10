@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { makeSupabaseStub, type ResolverContext } from '@/test-support/tournament-host-auth'
 import {
   assertTournamentHostWith,
   assertTournamentHostAny,
@@ -328,5 +329,75 @@ describe('host token comparison', () => {
     const r = await assertTournamentHostAny(mockSupabase(tournament('waiting')), 'abcd', supplied)
     expect(r.status).toBe(403)
     expect(r.error).toBe('Unauthorized')
+  })
+})
+
+/**
+ * Query-shape characterization.
+ *
+ * `mockSupabase` above answers every query identically, so it cannot tell `tournaments`
+ * from any other table, `id` from `code`, or `TOURNAMENT_SELECT` from a different column
+ * list. `makeSupabaseStub` from `@/test-support/tournament-host-auth` records the table, the
+ * `select(...)` arguments and the ordered filter calls onto the resolver context, so they
+ * can be asserted.
+ *
+ * These pin TODAY'S shape: `TOURNAMENT_SELECT` is `'*'`, deliberately, because the adopting
+ * routes read `format`, `game_config`, `game_queue`, `elimination_config`, `branding` and
+ * `title` off the row. Narrowing it is a follow-up; this is what makes that follow-up
+ * visible rather than silent.
+ */
+function recordingStub(row: Record<string, unknown> | null) {
+  const seen: ResolverContext[] = []
+  const supabase = makeSupabaseStub({
+    tournaments: (ctx) => {
+      seen.push(ctx)
+      return { data: row, error: null }
+    },
+  }) as unknown as SupabaseClient
+  return { supabase, seen }
+}
+
+describe('tournament host query shape', () => {
+  const helpers = [
+    ['assertTournamentHostAny', (s: SupabaseClient) => assertTournamentHostAny(s, 'abcd', TOKEN)],
+    [
+      'assertTournamentHostWith',
+      (s: SupabaseClient) =>
+        assertTournamentHostWith(s, 'abcd', TOKEN, { allowedStatuses: ['waiting'], statusError: 'nope' }),
+    ],
+    [
+      'assertTournamentHostUnfinished',
+      (s: SupabaseClient) => assertTournamentHostUnfinished(s, 'abcd', TOKEN, 'Tournament has ended'),
+    ],
+    [
+      'assertTournamentHostBeforeStart',
+      (s: SupabaseClient) => assertTournamentHostBeforeStart(s, 'abcd', TOKEN, 'Before kickoff only'),
+    ],
+  ] as const
+
+  for (const [name, call] of helpers) {
+    it(`${name} reads \`tournaments\` once, filtered by the upper-cased id`, async () => {
+      // A query against any other table would leave the resolver unfired and `seen` empty.
+      const { supabase, seen } = recordingStub(tournament('waiting'))
+      const r = await call(supabase)
+      expect(r.status).toBe(200)
+      expect(seen).toHaveLength(1)
+      expect(seen[0].table).toBe('tournaments')
+      expect(seen[0].op).toBe('select')
+      expect(seen[0].filterCalls).toEqual([{ method: 'eq', args: ['id', 'ABCD'] }])
+    })
+
+    it(`${name} selects \`*\` — TOURNAMENT_SELECT as it stands today`, async () => {
+      const { supabase, seen } = recordingStub(tournament('waiting'))
+      await call(supabase)
+      expect(seen[0].selects).toEqual(['*'])
+    })
+  }
+
+  it('reads nothing at all when the missing-token 400 fires first', async () => {
+    const { supabase, seen } = recordingStub(tournament('waiting'))
+    const r = await assertTournamentHostAny(supabase, 'abcd', '', { missingTokenError: 'Missing hostToken' })
+    expect(r.status).toBe(400)
+    expect(seen).toHaveLength(0)
   })
 })
