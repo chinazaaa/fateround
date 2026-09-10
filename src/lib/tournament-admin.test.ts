@@ -387,12 +387,87 @@ describe('tournament host query shape', () => {
       expect(seen[0].filterCalls).toEqual([{ method: 'eq', args: ['id', 'ABCD'] }])
     })
 
-    it(`${name} selects \`*\` — TOURNAMENT_SELECT as it stands today`, async () => {
+    it(`${name} selects \`*\` by default — TOURNAMENT_SELECT, for callers that do not narrow`, async () => {
       const { supabase, seen } = recordingStub(tournament('waiting'))
       await call(supabase)
       expect(seen[0].selects).toEqual(['*'])
     })
   }
+
+  it('asks for exactly the caller list plus the two columns the ladder itself reads', async () => {
+    // `host_token` and `status` are appended, never left to the caller: the token comparison
+    // and the status gate read them, so a caller that forgot one would silently 403/400.
+    const { supabase, seen } = recordingStub(tournament('waiting'))
+    await assertTournamentHostAny(supabase, 'abcd', TOKEN, { columns: 'title' })
+    expect(seen[0].selects).toEqual(['title, host_token, status'])
+  })
+
+  it('does not duplicate a required column the caller already named', async () => {
+    const { supabase, seen } = recordingStub(tournament('waiting'))
+    await assertTournamentHostAny(supabase, 'abcd', TOKEN, { columns: 'host_token, branding' })
+    expect(seen[0].selects).toEqual(['host_token, branding, status'])
+  })
+
+  it('threads `columns` through every gated entry point', async () => {
+    const narrowed: [string, (s: SupabaseClient) => Promise<unknown>, string][] = [
+      [
+        'assertTournamentHostWith',
+        (s) =>
+          assertTournamentHostWith(s, 'abcd', TOKEN, {
+            allowedStatuses: ['waiting'],
+            statusError: 'nope',
+            columns: 'format',
+          }),
+        'format, host_token, status',
+      ],
+      [
+        'assertTournamentHostUnfinished',
+        (s) =>
+          assertTournamentHostUnfinished(s, 'abcd', TOKEN, 'Tournament has ended', {
+            columns: 'format, elimination_config, game_type, game_config',
+          }),
+        'format, elimination_config, game_type, game_config, host_token, status',
+      ],
+      [
+        'assertTournamentHostBeforeStart',
+        (s) => assertTournamentHostBeforeStart(s, 'abcd', TOKEN, 'Before kickoff only', { columns: 'id, title' }),
+        'id, title, host_token, status',
+      ],
+    ]
+    for (const [, call, expected] of narrowed) {
+      const { supabase, seen } = recordingStub(tournament('waiting'))
+      await call(supabase)
+      expect(seen[0].selects).toEqual([expected])
+    }
+  })
+
+  it('falls back to `*` for an explicit `*` or an empty list', async () => {
+    for (const columns of ['*', '', '  ']) {
+      const { supabase, seen } = recordingStub(tournament('waiting'))
+      await assertTournamentHostAny(supabase, 'abcd', TOKEN, { columns })
+      expect(seen[0].selects).toEqual(['*'])
+    }
+  })
+
+  it('still runs the whole ladder on a narrowed read', async () => {
+    // Narrowing is an egress change, not a behaviour change.
+    const missing = recordingStub(null)
+    expect(await assertTournamentHostAny(missing.supabase, 'abcd', TOKEN, { columns: 'title' })).toMatchObject({
+      error: 'Tournament not found',
+      status: 404,
+    })
+    const wrong = recordingStub(tournament('waiting'))
+    expect(await assertTournamentHostAny(wrong.supabase, 'abcd', 'nope', { columns: 'title' })).toMatchObject({
+      error: 'Unauthorized',
+      status: 403,
+    })
+    const gated = recordingStub(tournament('finished'))
+    expect(
+      await assertTournamentHostUnfinished(gated.supabase, 'abcd', TOKEN, 'Tournament has ended', {
+        columns: 'title',
+      })
+    ).toMatchObject({ error: 'Tournament has ended', status: 400 })
+  })
 
   it('reads nothing at all when the missing-token 400 fires first', async () => {
     const { supabase, seen } = recordingStub(tournament('waiting'))

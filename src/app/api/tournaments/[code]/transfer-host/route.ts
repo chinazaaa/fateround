@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     code,
     hostToken,
     "Can't transfer host of a finished tournament",
-    { missingTokenError: 'Missing hostToken' }
+    { missingTokenError: 'Missing hostToken', columns: 'id, host_token, status' }
   )
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

@@ -46,7 +46,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     admin,
     code,
     parsed.data.hostToken,
-    'Transfer is only available before the tournament starts.'
+    'Transfer is only available before the tournament starts.',
+    { columns: 'id, title' }
   )
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const tournament = auth.tournament

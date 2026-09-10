@@ -35,7 +35,11 @@ export async function POST(req: NextRequest) {
 
   // 404/403 only: the game-TYPE gate below has to stay AHEAD of the status gate, so the
   // status-gated wrappers can't be used here without changing which 400 a caller sees.
-  const { game, error: authError, status: authStatus } = await assertHostAny(supabase, code, hostToken)
+  const {
+    game,
+    error: authError,
+    status: authStatus,
+  } = await assertHostAny(supabase, code, hostToken, { columns: 'game_type' })
   if (!game) return NextResponse.json({ error: authError }, { status: authStatus })
   if (!isCodewordsGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a codewords game' }, { status: 400 })
@@ -90,7 +94,11 @@ export async function DELETE(req: NextRequest) {
 
   // 404/403 only: the game-TYPE gate below has to stay AHEAD of the status gate, so the
   // status-gated wrappers can't be used here without changing which 400 a caller sees.
-  const { game, error: authError, status: authStatus } = await assertHostAny(supabase, code, hostToken)
+  const {
+    game,
+    error: authError,
+    status: authStatus,
+  } = await assertHostAny(supabase, code, hostToken, { columns: 'game_type' })
   if (!game) return NextResponse.json({ error: authError }, { status: authStatus })
   if (!isCodewordsGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a codewords game' }, { status: 400 })

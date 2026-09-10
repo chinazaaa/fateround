@@ -98,8 +98,13 @@ export async function assertPlayer(
 }
 
 /**
- * A `games` row as returned by the `select('*')` below — `Game` plus an open index signature
- * for the columns it does not model. See {@link PlayerRow} for the reasoning.
+ * A `games` row as returned by the select below — `Game` plus an open index signature for the
+ * columns it does not model. See {@link PlayerRow} for the reasoning.
+ *
+ * The row is still typed as if it were `select('*')` even when a caller narrows it via
+ * {@link HostColumnOptions}: the client is untyped, so the shape cannot follow the column
+ * list, and pretending otherwise would give a false sense of safety. A caller that narrows
+ * owns the check that its list covers what it reads.
  */
 export interface GameRow extends Game {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,11 +127,51 @@ export type HostAuthResult<S extends string = never> =
   | { error: null; status: 200; game: GameRow; id: string }
   | { error: 'Game not found' | 'Unauthorized' | S; status: 400 | 403 | 404; game: null; id: string }
 
-export type HostAccessOptions<S extends string = string> = {
+export type HostAccessOptions<S extends string = string> = HostColumnOptions & {
   /** Statuses the game may be in. Omit the option entirely (see `assertHostAny`) to skip the gate. */
   allowedStatuses: readonly string[]
   /** 400 body returned when the status gate rejects. */
   statusError: S
+}
+
+/**
+ * Opt-in narrowing of the `games` read this helper performs. The counterpart to
+ * `TournamentColumnOptions` in `src/lib/tournament-admin.ts` — the two must not diverge.
+ *
+ * Defaults to `HOST_COLUMNS_ALL` (`'*'`), so a caller that says nothing keeps exactly the row
+ * it gets today. A caller that DOES pass a list is promising the list covers every column it
+ * (or anything it hands the row to) reads: the Supabase client is untyped, so a missing
+ * column is a silent `undefined` at runtime, NOT a type error. Two columns are always
+ * appended for you — `host_token` and `status` — because the ladder itself reads them.
+ *
+ * Motivation is egress, not correctness: `select('*')` on `games` ships every column,
+ * including large JSONB, on every host-authenticated request.
+ */
+export type HostColumnOptions = {
+  /** PostgREST column list, e.g. `'game_type, question_source'`. Defaults to `'*'`. */
+  columns?: string
+}
+
+/** The default: every column, the shape every caller had before `columns` existed. */
+export const HOST_COLUMNS_ALL = '*'
+
+/**
+ * The columns the ladder itself reads, appended to any caller-supplied list so a narrow list
+ * can never accidentally break the gate. Deduplicated, so naming them explicitly is harmless.
+ */
+const HOST_REQUIRED_COLUMNS = ['host_token', 'status'] as const
+
+function hostSelect(columns: string | undefined): string {
+  if (!columns || columns.trim() === HOST_COLUMNS_ALL) return HOST_COLUMNS_ALL
+  const requested = columns
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+  // A blank or all-whitespace list is "I did not actually narrow anything", not "select the
+  // gate columns only" — fall back to the wide default rather than silently starving a caller.
+  if (requested.length === 0) return HOST_COLUMNS_ALL
+  const merged = [...requested, ...HOST_REQUIRED_COLUMNS.filter((c) => !requested.includes(c))]
+  return merged.join(', ')
 }
 
 /**
@@ -144,10 +189,18 @@ async function assertHost<S extends string = never>(
   supabase: SupabaseClient,
   gameCode: string,
   hostToken: string | null | undefined,
-  opts: HostAccessOptions<S> | null
+  opts: HostAccessOptions<S> | null,
+  columns?: string
 ): Promise<HostAuthResult<S>> {
   const id = gameCode.toUpperCase()
-  const { data: game } = await supabase.from('games').select('*').eq('id', id).maybeSingle()
+  // Cast: postgrest-js resolves the row type from the select STRING, and only a literal
+  // carries enough information for it. `hostSelect(...)` is computed, so the client infers
+  // `GenericStringError` for every column. The runtime shape is unchanged — `GameRow` is the
+  // same open-index type this returned when the argument was the literal `'*'`, and it stays
+  // as wide as `'*'` on a narrowed read on purpose (see {@link GameRow}).
+  const { data: game } = (await supabase.from('games').select(hostSelect(columns)).eq('id', id).maybeSingle()) as {
+    data: GameRow | null
+  }
   if (!game) return { error: 'Game not found', status: 404 as const, game: null, id }
   // Constant-time, like every other secret comparison in the app (src/lib/secret-compare.ts).
   // `games.host_token` is `text not null` (migration 0001, never relaxed) and all four insert
@@ -173,15 +226,20 @@ export async function assertHostWith<S extends string>(
   hostToken: string | null | undefined,
   opts: HostAccessOptions<S>
 ) {
-  return assertHost(supabase, gameCode, hostToken, opts)
+  return assertHost(supabase, gameCode, hostToken, opts, opts.columns)
 }
 
 /**
  * Host authorization with NO status gate: the 404/403 ladder only, succeeding whatever state
  * the game is in. For host actions that are valid at any point in a game's life.
  */
-export async function assertHostAny(supabase: SupabaseClient, gameCode: string, hostToken: string | null | undefined) {
-  return assertHost(supabase, gameCode, hostToken, null)
+export async function assertHostAny(
+  supabase: SupabaseClient,
+  gameCode: string,
+  hostToken: string | null | undefined,
+  opts?: HostColumnOptions
+) {
+  return assertHost(supabase, gameCode, hostToken, null, opts?.columns)
 }
 
 export async function assertHostGame(supabase: SupabaseClient, gameCode: string, hostToken: string) {

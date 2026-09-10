@@ -56,7 +56,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { hostToken, playerId } = body
   const admin = getSupabaseAdmin()
 
-  const auth = await assertTournamentHostUnfinished(admin, code, hostToken, 'Tournament has ended')
+  const auth = await assertTournamentHostUnfinished(admin, code, hostToken, 'Tournament has ended', {
+    columns: 'format, elimination_config, game_type, game_config',
+  })
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const tournament = auth.tournament
 

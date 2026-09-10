@@ -137,7 +137,13 @@ export async function DELETE(req: NextRequest) {
   // 404/403 only: the game-TYPE gate below has to stay AHEAD of the (conditional) status
   // gate, so the status-gated wrappers can't be used here without changing which 400 a
   // caller sees — and the status gate only applies to anonymous_messages boards anyway.
-  const { game, error: authError, status: authStatus } = await assertHostAny(getSupabaseAdmin(), gameCode, hostToken)
+  const {
+    game,
+    error: authError,
+    status: authStatus,
+  } = await assertHostAny(getSupabaseAdmin(), gameCode, hostToken, {
+    columns: 'game_type',
+  })
   if (!game) return NextResponse.json({ error: authError }, { status: authStatus })
   if (!isMessageInboxGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a message board' }, { status: 400 })
