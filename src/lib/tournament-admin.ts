@@ -18,8 +18,8 @@ import type { Tournament } from '@/types/tournament'
  *
  * CALLERS MUST PASS A SERVICE-ROLE CLIENT (`getSupabaseAdmin()`), as all fourteen already do.
  * `anon`/`authenticated` hold COLUMN-level SELECT on `tournaments` that deliberately excludes
- * `host_token` (`supabase/migrations/20260803120000_lockdown_tournaments.sql`), so the
- * `select('*')` below ERRORS under the anon key. That fails closed — the error surfaces as
+ * `host_token` (`supabase/migrations/20260803120000_lockdown_tournaments.sql`), so the select
+ * below — which always includes `host_token` — ERRORS under the anon key. That fails closed — the error surfaces as
  * `data: null` and the helper returns 404, never a bypass — but it 404s every tournament,
  * which reads as "wrong code" rather than "wrong client". Hence this line.
  */
@@ -27,10 +27,11 @@ import type { Tournament } from '@/types/tournament'
 /**
  * Every `tournaments` column, including `host_token`.
  *
- * `select('*')` (as the games helper does) rather than a column list, because the callers
- * that will adopt this go on to read wildly different columns off the returned row —
- * `format`, `game_config`, `game_queue`, `elimination_config`, `branding`, `title` — and a
- * fixed list would have to be the union of all of them, i.e. `*` with extra maintenance.
+ * The DEFAULT, used by any caller that does not narrow the read: the adopting callers go on
+ * to read wildly different columns off the returned row — `format`, `game_config`,
+ * `game_queue`, `elimination_config`, `branding`, `title` — so a single fixed list would have
+ * to be the union of all of them, i.e. `*` with extra maintenance. Callers that know their
+ * own needs pass {@link TournamentColumnOptions.columns} instead.
  *
  * This row is for the ROUTE, never for the response body. Callers must not spread it into a
  * `NextResponse.json` payload: `host_token` is the host credential, and anon SELECT on it is
@@ -40,6 +41,44 @@ import type { Tournament } from '@/types/tournament'
  * public response is allowed to have.
  */
 const TOURNAMENT_SELECT = '*'
+
+/**
+ * Opt-in narrowing of the `tournaments` read. The counterpart to `HostColumnOptions` in
+ * `src/lib/game-admin.ts` — the two must not diverge.
+ *
+ * Defaults to {@link TOURNAMENT_SELECT} (`'*'`), so a caller that says nothing keeps exactly
+ * the row it gets today. A caller that DOES pass a list is promising the list covers every
+ * column it (or anything it hands the row to) reads: the Supabase client is untyped, so a
+ * missing column is a silent `undefined` at runtime, NOT a type error. Two columns are always
+ * appended for you — `host_token` and `status` — because the ladder itself reads them.
+ *
+ * Motivation is egress, not correctness. `tournaments` rows carry `custom_trivia_pack` and
+ * `custom_wst_pack` — whole question decks as JSONB — plus `branding` and `game_config`, and
+ * `'*'` ships all of them on every host-authenticated request.
+ */
+export type TournamentColumnOptions = {
+  /** PostgREST column list, e.g. `'title'`. Defaults to `'*'`. */
+  columns?: string
+}
+
+/**
+ * The columns the ladder itself reads, appended to any caller-supplied list so a narrow list
+ * can never accidentally break the gate. Deduplicated, so naming them explicitly is harmless.
+ */
+const TOURNAMENT_REQUIRED_COLUMNS = ['host_token', 'status'] as const
+
+function tournamentSelect(columns: string | undefined): string {
+  if (!columns || columns.trim() === TOURNAMENT_SELECT) return TOURNAMENT_SELECT
+  const requested = columns
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+  // A blank or all-whitespace list is "I did not actually narrow anything", not "select the
+  // gate columns only" — fall back to the wide default rather than silently starving a caller.
+  if (requested.length === 0) return TOURNAMENT_SELECT
+  const merged = [...requested, ...TOURNAMENT_REQUIRED_COLUMNS.filter((c) => !requested.includes(c))]
+  return merged.join(', ')
+}
 
 /**
  * The three non-terminal tournament statuses — i.e. "anything but `finished`".
@@ -58,8 +97,10 @@ export const TOURNAMENT_UNFINISHED_STATUSES = ['waiting', 'active', 'scheduled']
  * The Supabase client is untyped, so the row arrives as `any`. `Tournament` is the best
  * description of it the codebase already has, and the open index signature covers the rest:
  * `TOURNAMENT_SELECT` is `'*'`, so the row carries columns `Tournament` does not model and
- * routes read those raw columns off it. They keep the `any` they have today — narrowing the
- * select, and with it this row, is a separate change.
+ * routes read those raw columns off it. The shape stays this wide even when a caller narrows
+ * the read via {@link TournamentColumnOptions}: the client is untyped, so the type cannot
+ * follow the column list, and a caller that narrows owns the check that its list covers what
+ * it reads.
  *
  * The job of this type here is only to give the success arm of {@link TournamentAuthResult}
  * a row that is provably not `null`. It carries `host_token`, the host CREDENTIAL — see the
@@ -95,7 +136,7 @@ export type TournamentAuthResult<E extends string = never> =
   | { error: null; status: 200; tournament: TournamentRow; id: string }
   | { error: 'Tournament not found' | 'Unauthorized' | E; status: 400 | 403 | 404; tournament: null; id: string }
 
-export type TournamentHostAccessOptions<E extends string = string> = {
+export type TournamentHostAccessOptions<E extends string = string> = TournamentColumnOptions & {
   /** Statuses the tournament may be in. Omit the gate entirely via `assertTournamentHostAny`. */
   allowedStatuses: readonly string[]
   /** 400 body returned when the status gate rejects. */
@@ -124,7 +165,8 @@ async function assertTournamentHost<E extends string = never>(
   code: string,
   hostToken: string | null | undefined,
   gate: StatusGate<E> | null,
-  missingTokenError?: E
+  missingTokenError?: E,
+  columns?: string
 ): Promise<TournamentAuthResult<E>> {
   const id = code.toUpperCase()
 
@@ -135,7 +177,15 @@ async function assertTournamentHost<E extends string = never>(
     return { error: missingTokenError, status: 400 as const, tournament: null, id }
   }
 
-  const { data: tournament } = await supabase.from('tournaments').select(TOURNAMENT_SELECT).eq('id', id).maybeSingle()
+  // Cast: postgrest-js resolves the row type from the select STRING, and only a literal
+  // carries enough information for it. `tournamentSelect(...)` is computed, so the client
+  // infers `GenericStringError` for every column. The runtime shape is unchanged — see the
+  // matching note in `src/lib/game-admin.ts`, which these two must not diverge from.
+  const { data: tournament } = (await supabase
+    .from('tournaments')
+    .select(tournamentSelect(columns))
+    .eq('id', id)
+    .maybeSingle()) as { data: TournamentRow | null }
   if (!tournament) return { error: 'Tournament not found', status: 404 as const, tournament: null, id }
 
   // Constant-time, matching `[code]/restart/route.ts` (the one site that already got this
@@ -172,7 +222,7 @@ export async function assertTournamentHostWith<E extends string>(
   hostToken: string | null | undefined,
   opts: TournamentHostAccessOptions<E>
 ) {
-  return assertTournamentHost(supabase, code, hostToken, opts, opts.missingTokenError)
+  return assertTournamentHost(supabase, code, hostToken, opts, opts.missingTokenError, opts.columns)
 }
 
 /**
@@ -192,11 +242,11 @@ export async function assertTournamentHostAny<M extends string = never>(
   supabase: SupabaseClient,
   code: string,
   hostToken: string | null | undefined,
-  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError'>
+  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError' | 'columns'>
 ) {
   // `null` gate — genuinely no status rung, not an `allowedStatuses` listing every status
   // (which would silently start rejecting the day a status is added to the vocabulary).
-  return assertTournamentHost(supabase, code, hostToken, null, opts?.missingTokenError)
+  return assertTournamentHost(supabase, code, hostToken, null, opts?.missingTokenError, opts?.columns)
 }
 
 /**
@@ -210,14 +260,15 @@ export async function assertTournamentHostUnfinished<S extends string, M extends
   code: string,
   hostToken: string | null | undefined,
   statusError: S,
-  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError'>
+  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError' | 'columns'>
 ) {
   return assertTournamentHost<S | M>(
     supabase,
     code,
     hostToken,
     { allowedStatuses: TOURNAMENT_UNFINISHED_STATUSES, statusError },
-    opts?.missingTokenError
+    opts?.missingTokenError,
+    opts?.columns
   )
 }
 
@@ -236,13 +287,14 @@ export async function assertTournamentHostBeforeStart<S extends string, M extend
   code: string,
   hostToken: string | null | undefined,
   statusError: S,
-  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError'>
+  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError' | 'columns'>
 ) {
   return assertTournamentHost<S | M>(
     supabase,
     code,
     hostToken,
     { allowedStatuses: ['waiting', 'scheduled'], statusError },
-    opts?.missingTokenError
+    opts?.missingTokenError,
+    opts?.columns
   )
 }

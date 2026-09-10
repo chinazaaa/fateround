@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { crazyEightsAdmitSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { isCrazyEightsGame, parseGameType } from '@/lib/game-types'
 import { admitCrazyEightsPlayer, crazyEightsGameSessionExpired } from '@/lib/crazy-eights'
 import { fetchGamePlayerLimits, lobbyMaxPlayersFromGame } from '@/lib/game-limits'
@@ -11,13 +12,10 @@ import { assertHostAny } from '@/lib/game-admin'
 // admitCrazyEightsPlayer; this route only authorizes and resolves the seat cap.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
-  const raw = await req.json()
-  const parsed = crazyEightsAdmitSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, crazyEightsAdmitSchema)
+  if (bodyError) return bodyError
 
-  const { hostToken, playerId } = parsed.data
+  const { hostToken, playerId } = body
   const gameCode = code.toUpperCase()
   const admin = getSupabaseAdmin()
 

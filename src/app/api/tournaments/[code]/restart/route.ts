@@ -28,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   // No status gate here: "is it finished?" is re-checked inside the RPC below, under the
   // row lock, so it can't race a concurrent finish/start.
-  const auth = await assertTournamentHostAny(getSupabaseAdmin(), code, hostToken)
+  const auth = await assertTournamentHostAny(getSupabaseAdmin(), code, hostToken, { columns: 'host_token' })
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const { data, error } = await getSupabaseAdmin().rpc('restart_tournament', { p_tournament_id: tournamentId })

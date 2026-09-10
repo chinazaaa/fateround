@@ -165,7 +165,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   const admin = getSupabaseAdmin()
   // No status rung in the ladder: this route's status checks are CONDITIONAL on which fields
   // are being edited, and stay exactly where they are, below the 403.
-  const auth = await assertTournamentHostAny(admin, code, hostToken)
+  const auth = await assertTournamentHostAny(admin, code, hostToken, {
+    columns: 'format, game_type, game_config, game_queue',
+  })
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const tournament = auth.tournament
 

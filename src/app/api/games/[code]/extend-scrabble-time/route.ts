@@ -18,7 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   // No status gate: extending the clock is accepted whatever state the game is in
   // (`assertHostAny`), exactly as the hand-rolled ladder this replaced did. The only
   // gate is the game-type check below, which stays AFTER the token check.
-  const auth = await assertHostAny(supabase, gameId, hostToken)
+  const auth = await assertHostAny(supabase, gameId, hostToken, { columns: 'id, game_type' })
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const game = auth.game
   if (!isScrabbleGame(parseGameType(game.game_type))) {

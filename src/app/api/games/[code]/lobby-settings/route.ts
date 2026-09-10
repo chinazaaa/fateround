@@ -171,6 +171,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_pick2_stacking,
     uno_wd4_challenge,
     uno_uno_penalty,
+    uno_wd4_challenge_penalty,
     uno_zero_seven,
     uno_stacking,
     uno_multi_play_mode,
@@ -260,6 +261,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     crazy8_pick2_stacking === undefined &&
     uno_wd4_challenge === undefined &&
     uno_uno_penalty === undefined &&
+    uno_wd4_challenge_penalty === undefined &&
     uno_zero_seven === undefined &&
     uno_stacking === undefined &&
     uno_multi_play_mode === undefined &&
@@ -742,6 +744,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (boardLobbyType === 'uno') {
     if (uno_wd4_challenge !== undefined) gameUpdate.uno_wd4_challenge = uno_wd4_challenge
     if (uno_uno_penalty !== undefined) gameUpdate.uno_uno_penalty = Number(uno_uno_penalty) === 4 ? 4 : 2
+    // Mirrors create (`/api/games`): only 4 (the milder variant) and 6 (standard: the 4 cards
+    // refused plus a 2-card penalty) are reachable, so a value set here means the same thing as
+    // one chosen at create time and matches what `parseUnoRules` reads back at play time.
+    if (uno_wd4_challenge_penalty !== undefined) {
+      gameUpdate.uno_wd4_challenge_penalty = Number(uno_wd4_challenge_penalty) === 4 ? 4 : 6
+    }
     if (uno_zero_seven !== undefined) gameUpdate.uno_zero_seven = uno_zero_seven
     if (uno_stacking !== undefined) gameUpdate.uno_stacking = uno_stacking
     if (uno_multi_play_mode !== undefined) gameUpdate.uno_multi_play_mode = parseMultiPlayMode(uno_multi_play_mode)
@@ -761,6 +769,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   } else if (
     uno_wd4_challenge !== undefined ||
     uno_uno_penalty !== undefined ||
+    uno_wd4_challenge_penalty !== undefined ||
     uno_zero_seven !== undefined ||
     uno_stacking !== undefined ||
     uno_multi_play_mode !== undefined ||
