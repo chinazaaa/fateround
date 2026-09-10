@@ -5,6 +5,7 @@ import { generateGameCode, generateToken } from '@/lib/utils'
 import { addTournamentGameSchema, TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertTournamentHostUnfinished } from '@/lib/tournament-admin'
 import { clampTriviaTimer, TRIVIA_DEFAULT_ROUNDS } from '@/lib/trivia'
 import { clampTtlTimer, TTL_DEFAULT_TIMER } from '@/lib/two-truths'
 import { WST_DECK_MIN_ENTRIES } from '@/lib/who-said-this'
@@ -39,17 +40,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const admin = getSupabaseAdmin()
 
-  const { data: tournament } = await admin.from('tournaments').select('*').eq('id', tournamentId).maybeSingle()
-
-  if (!tournament) {
-    return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  }
-  if (tournament.host_token !== hostToken) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  }
-  if (tournament.status === 'finished') {
-    return NextResponse.json({ error: 'Tournament has ended' }, { status: 400 })
-  }
+  const auth = await assertTournamentHostUnfinished(admin, code, hostToken, 'Tournament has ended')
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const tournament = auth.tournament
 
   // Scheduled-event gate: block spawning the first game until the scheduled
   // start time is reached (or the host explicitly opts in with startEarly).
