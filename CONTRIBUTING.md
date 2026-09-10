@@ -49,6 +49,9 @@ consciously accept each finding before promoting to `main`.
 
 ### Review is a loop, not a pass
 
+This is how the **Code review** gate above is actually run; `/verify` and
+`/security-review` still run after it comes back clean.
+
 **review → fix the findings → re-review the fixed code → repeat until a review
 comes back with no issues.** A PR is not ready while its head commit is
 unreviewed — the fixes are new code and get reviewed like any other. If a
@@ -57,23 +60,30 @@ it, or escalate for a human call.
 
 | Reviewer              | How                                             | When                              |
 | --------------------- | ----------------------------------------------- | --------------------------------- |
-| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — not on the hourly quota |
+| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — run it before pushing   |
 | **CodeRabbit GH bot** | comment `@coderabbitai review` on the PR        | only when the CLI is unavailable  |
 
-- The CLI is `coderabbit` (alias `cr`, v0.3.7) on `~/.local/bin`. Useful flags:
-  `--plain` (non-interactive text), `--prompt-only`, `-t/--type
-  all|committed|uncommitted`, `--base <branch>`, `--base-commit <commit>`,
-  `--cwd <path>`, `-c/--config <files…>`, `--api-key <key>`. That is the whole
-  `review` flag set in v0.3.7 (no `--pr`, no output-file flag); confirm with
-  `coderabbit review --help`, and `coderabbit update` to upgrade.
+- **Install:** `curl -fsSL https://cli.coderabbit.ai/install.sh | sh` (see
+  [the CLI docs](https://docs.coderabbit.ai/cli)). The installer puts
+  `coderabbit` (alias `cr`) on `~/.local/bin`, so add that to your `PATH` if it
+  isn't there. `coderabbit --version` confirms it; `coderabbit update` upgrades.
+- Flags worth knowing: `--plain` (non-interactive text output — use this from a
+  script or an agent), `-t/--type all|committed|uncommitted`, and `--base
+  <branch>` to review against something other than the default base. There is no
+  `--pr` flag and no output-file flag — it reviews the worktree you run it in.
+  `coderabbit review --help` is the authority on the rest.
 - **Auth:** `coderabbit auth status` shows the logged-in account and org;
   `coderabbit auth login` does the OAuth flow, `auth logout` / `auth org` round
   it out. If a review errors as unauthenticated, log in (or pass `--api-key`)
   rather than falling straight through to the bot.
-- The bot is the **fallback**: the free tier is roughly **one review an hour**,
-  and `auto_review` is disabled in `.coderabbit.yaml`, so reviews are
-  on-demand — pushing does **not** burn a review, but each `@coderabbitai
-  review` does.
+- The bot is the **fallback**: on the free tier this account gets roughly **one
+  review an hour**. While `auto_review` is disabled in `.coderabbit.yaml` (see
+  the note there for why), reviews are on-demand — pushing does not burn one,
+  but each `@coderabbitai review` does. The config is the source of truth for
+  that; if it is ever re-enabled, every push spends a review again.
+- If a review comes back rate-limited, wait the window out rather than skipping
+  the gate — the quota is per account, so a second reviewer is not a way around
+  it.
 - **A subagent owns the whole cycle for its PR** — review, fix, re-review — and
   reports back when a review is clean, not after one round.
 
@@ -81,6 +91,8 @@ it, or escalate for a human call.
 
 Every finding gets a decision, and the decision goes on the thread:
 
+- **Right and in scope** → fix it in this PR, then re-review — the fix is new
+  code, so it goes back through the loop above.
 - **Wrong** → reply with the reasoning for why it doesn't apply. Don't edit code
   to silence a reviewer.
 - **Right but out of scope** → split it into a stacked PR and record that PR on
