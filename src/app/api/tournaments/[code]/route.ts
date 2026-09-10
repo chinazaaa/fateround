@@ -5,6 +5,7 @@ import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { updateTournamentSchema, TOURNAMENT_ELIGIBLE_TYPES } from '@/lib/tournament-validation'
 import { buildTournamentGameConfig, type TournamentGameConfigInput } from '@/lib/tournament-game-config'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertTournamentHostAny } from '@/lib/tournament-admin'
 import type { TournamentQueueEntry } from '@/types/tournament'
 
 const supabase = getSupabaseAnon()
@@ -162,16 +163,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
   } = body
 
   const admin = getSupabaseAdmin()
-  const { data: tournament } = await admin
-    .from('tournaments')
-    .select('host_token, status, format, game_type, game_config, game_queue')
-    .eq('id', tournamentId)
-    .maybeSingle()
-
-  if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  if (tournament.host_token !== hostToken) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  }
+  // No status rung in the ladder: this route's status checks are CONDITIONAL on which fields
+  // are being edited, and stay exactly where they are, below the 403.
+  const auth = await assertTournamentHostAny(admin, code, hostToken)
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const tournament = auth.tournament
 
   // Lives settings can only change before the first game — afterwards players
   // already hold live counts and changing the rule mid-run would desync them.

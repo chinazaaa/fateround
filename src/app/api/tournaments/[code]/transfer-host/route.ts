@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertTournamentHostUnfinished } from '@/lib/tournament-admin'
 
 /**
  * Host nominates a tournament player to take over as host (claim-based transfer).
@@ -22,19 +23,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
   const hostToken = typeof body?.hostToken === 'string' ? body.hostToken : ''
   const playerId = typeof body?.playerId === 'string' && body.playerId.trim() ? body.playerId.trim() : null
-  if (!hostToken) return NextResponse.json({ error: 'Missing hostToken' }, { status: 400 })
 
   const supabase = getSupabaseAdmin()
-  const { data: tournament } = await supabase
-    .from('tournaments')
-    .select('id, host_token, status')
-    .eq('id', tournamentId)
-    .maybeSingle()
-  if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (tournament.status === 'finished') {
-    return NextResponse.json({ error: "Can't transfer host of a finished tournament" }, { status: 400 })
-  }
+  const auth = await assertTournamentHostUnfinished(
+    supabase,
+    code,
+    hostToken,
+    "Can't transfer host of a finished tournament",
+    { missingTokenError: 'Missing hostToken' }
+  )
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   if (playerId) {
     // The nominee must be a real, non-eliminated player in this tournament.

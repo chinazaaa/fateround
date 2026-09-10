@@ -3,6 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { tournamentHostActionSchema } from '@/lib/tournament-validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertTournamentHostUnfinished } from '@/lib/tournament-admin'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params
@@ -14,21 +15,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { hostToken } = body
   const admin = getSupabaseAdmin()
 
-  const { data: tournament } = await admin
-    .from('tournaments')
-    .select('host_token, status')
-    .eq('id', tournamentId)
-    .maybeSingle()
-
-  if (!tournament) {
-    return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-  }
-  if (tournament.host_token !== hostToken) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  }
-  if (tournament.status === 'finished') {
-    return NextResponse.json({ error: 'Tournament already finished' }, { status: 400 })
-  }
+  const auth = await assertTournamentHostUnfinished(admin, code, hostToken, 'Tournament already finished')
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   await admin
     .from('tournament_games')
