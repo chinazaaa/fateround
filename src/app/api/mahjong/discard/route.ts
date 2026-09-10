@@ -2,18 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isMahjongGame } from '@/lib/game-types'
 import { processMahjongDiscard } from '@/lib/mahjong'
 import { mahjongDiscardSchema } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { scheduleTurnNotification } from '@/lib/push'
 import { verifyMahjongPlayerAccess } from '@/lib/mahjong-auth'
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
-  const parsed = mahjongDiscardSchema.safeParse(raw)
-  if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })
-  }
+  const { data: body, error: bodyError } = await parseJsonBody(req, mahjongDiscardSchema)
+  if (bodyError) return bodyError
 
-  const { gameId, playerId, resumeToken, tile } = parsed.data
+  const { gameId, playerId, resumeToken, tile } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
