@@ -67,11 +67,18 @@ it, or escalate for a human call.
   [the CLI docs](https://docs.coderabbit.ai/cli)). The installer puts
   `coderabbit` (alias `cr`) on `~/.local/bin`, so add that to your `PATH` if it
   isn't there. `coderabbit --version` confirms it; `coderabbit update` upgrades.
+- **Quota:** the Free plan allows roughly **3 CLI reviews an hour** per
+  developer, as a rolling allowance rather than a fixed reset — see
+  [plans](https://docs.coderabbit.ai/management/plans). `coderabbit usage`
+  (`cr usage`) shows what's left. It is a separate allowance from the bot's, so
+  a local review does not spend the PR-review slot, but it is not unlimited
+  either.
 - Flags worth knowing: `--plain` (non-interactive text output — use this from a
   script or an agent), `-t/--type all|committed|uncommitted`, and `--base
   <branch>` to review against something other than the default base. There is no
   `--pr` flag and no output-file flag — it reviews the worktree you run it in.
-  `coderabbit review --help` is the authority on the rest.
+  Flags move between versions (this was checked against v0.3.7; v0.4.5 is
+  current), so `coderabbit review --help` is the authority on the rest.
 - **Auth:** `coderabbit auth status` shows the logged-in account and org;
   `coderabbit auth login` does the OAuth flow, `auth logout` / `auth org` round
   it out. If a review errors as unauthenticated, log in (or pass `--api-key`)
@@ -82,8 +89,8 @@ it, or escalate for a human call.
   but each `@coderabbitai review` does. The config is the source of truth for
   that; if it is ever re-enabled, every push spends a review again.
 - If a review comes back rate-limited, wait the window out rather than skipping
-  the gate — the quota is per account, so a second reviewer is not a way around
-  it.
+  the gate. The CLI and the bot have separate allowances, so the other one is a
+  fallback — but neither is a way to review more than the plan allows.
 - **A subagent owns the whole cycle for its PR** — review, fix, re-review — and
   reports back when a review is clean, not after one round.
 
