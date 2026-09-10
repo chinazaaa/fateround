@@ -11,6 +11,7 @@ vi.mock('next/server', () => ({
 
 // `server-only` is a Next runtime guard, not an npm package — it isn't resolvable under Vitest.
 vi.mock('server-only', () => ({}))
+import { makeSupabaseStub, type ResolverContext } from '@/test-support/host-auth'
 import {
   assertPlayer,
   assertHostGame,
@@ -449,5 +450,92 @@ describe('assertPlayer marks the game as alive', () => {
     expect(res.status).toBe(200)
     expect(res.player?.id).toBe('p-alice')
     consoleError.mockRestore()
+  })
+})
+
+/**
+ * Query-shape characterization.
+ *
+ * The hand-rolled mocks above answer every query identically, so they cannot tell `games`
+ * from any other table, `id` from `code`, or `select('*')` from a narrow column list — a
+ * whole class of change this suite was blind to. `makeSupabaseStub` from
+ * `@/test-support/host-auth` records the table, the `select(...)` arguments and the ordered
+ * filter calls onto the resolver context, so they can be asserted.
+ *
+ * These pin TODAY'S shape, `select('*')` included. `assertHost` reads `*` because the ~43
+ * routes adopting it go on to read wildly different columns off the row; narrowing it is a
+ * deliberate follow-up, and these are the tests that make that follow-up visible instead of
+ * silent.
+ */
+function recordingStub(table: string, row: Record<string, unknown> | null) {
+  const seen: ResolverContext[] = []
+  const supabase = makeSupabaseStub({
+    [table]: (ctx) => {
+      seen.push(ctx)
+      return { data: row, error: null }
+    },
+  }) as unknown as SupabaseClient
+  return { supabase, seen }
+}
+
+describe('assertHost query shape', () => {
+  it('issues exactly one read of the `games` table', async () => {
+    // A query against any other table would leave the resolver unfired and `seen` empty.
+    const { supabase, seen } = recordingStub('games', game('waiting'))
+    const r = await assertHostAny(supabase, 'abcd', TOKEN)
+    expect(r.status).toBe(200)
+    expect(seen).toHaveLength(1)
+    expect(seen[0].table).toBe('games')
+    expect(seen[0].op).toBe('select')
+  })
+
+  it('filters by `id` alone, on the upper-cased code', async () => {
+    const { supabase, seen } = recordingStub('games', game('waiting'))
+    await assertHostAny(supabase, 'abcd', TOKEN)
+    expect(seen[0].filterCalls).toEqual([{ method: 'eq', args: ['id', 'ABCD'] }])
+  })
+
+  it('selects `*` — the current shape, pinned so narrowing it is a visible change', async () => {
+    const { supabase, seen } = recordingStub('games', game('waiting'))
+    await assertHostAny(supabase, 'abcd', TOKEN)
+    expect(seen[0].selects).toEqual(['*'])
+  })
+
+  it('keeps that shape on the gated wrappers, which share the same core', async () => {
+    const calls = [
+      (s: SupabaseClient) => assertHostGame(s, 'abcd', TOKEN),
+      (s: SupabaseClient) => assertHostWith(s, 'abcd', TOKEN, { allowedStatuses: ['waiting'], statusError: 'nope' }),
+    ]
+    for (const call of calls) {
+      const { supabase, seen } = recordingStub('games', game('waiting'))
+      await call(supabase)
+      expect(seen).toHaveLength(1)
+      expect(seen[0].table).toBe('games')
+      expect(seen[0].selects).toEqual(['*'])
+      expect(seen[0].filterCalls).toEqual([{ method: 'eq', args: ['id', 'ABCD'] }])
+    }
+  })
+})
+
+describe('assertPlayer query shape', () => {
+  const ROW = { id: 'p-alice', game_id: 'ABCD', resume_token: 'AAAA1111BBBB2222CCCC3333' }
+
+  it('reads `players` filtered by game_id AND resume_token', async () => {
+    const { supabase, seen } = recordingStub('players', ROW)
+    const res = await assertPlayer(supabase, 'abcd', ' aaaa-1111 bbbb-2222 cccc-3333 ', { readOnly: true })
+    expect(res.status).toBe(200)
+    expect(seen).toHaveLength(1)
+    expect(seen[0].table).toBe('players')
+    expect(seen[0].filterCalls).toEqual([
+      { method: 'eq', args: ['game_id', 'ABCD'] },
+      // The NORMALIZED token, not the raw input — this filter IS the authorization.
+      { method: 'eq', args: ['resume_token', 'AAAA1111BBBB2222CCCC3333'] },
+    ])
+  })
+
+  it('selects `*` — the current shape, pinned', async () => {
+    const { supabase, seen } = recordingStub('players', ROW)
+    await assertPlayer(supabase, 'abcd', 'AAAA1111BBBB2222CCCC3333', { readOnly: true })
+    expect(seen[0].selects).toEqual(['*'])
   })
 })

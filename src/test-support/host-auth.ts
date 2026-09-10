@@ -31,6 +31,14 @@ export const PLAYER_ID = '11111111-1111-4111-8111-111111111111'
 /** The PostgREST verb that opened the chain, so a resolver can tell a read from a write. */
 export type ChainOp = 'select' | 'insert' | 'update' | 'upsert' | 'delete'
 
+/** One filter verb call on the chain, in the order it was made. */
+export type FilterCall = {
+  /** The builder method name — `eq`, `neq`, `in`, `is`, `not`, `gt`, `gte`, `lt`, `lte`. */
+  method: string
+  /** The arguments it was given, verbatim. */
+  args: readonly unknown[]
+}
+
 export type ResolverContext = {
   table: string
   op: ChainOp
@@ -38,14 +46,31 @@ export type ResolverContext = {
   filters: Record<string, unknown>
   /** The payload handed to insert/update/upsert, if any. */
   payload: unknown
+  /**
+   * One entry per `.select(...)` call, in call order; the entry is that call's first
+   * argument, or `undefined` when it was called with none. A write-then-return chain
+   * (`.update({...}).select()`) therefore records two entries, so this is a list rather
+   * than a single value.
+   *
+   * This is what makes a select-shape change (a narrow column list widening to `'*'`, or
+   * the reverse) visible to a test instead of silently discarded.
+   */
+  selects: readonly (string | undefined)[]
+  /**
+   * Every filter verb call in order, including the non-`eq` ones that `filters` cannot
+   * represent. `filters` stays the keyed view resolvers branch on; this is the record of
+   * what the query layer actually asked for.
+   */
+  filterCalls: readonly FilterCall[]
 }
 
 export type Resolver = (ctx: ResolverContext) => unknown
 
 /**
  * The subset of the PostgREST builder the covered routes actually call. Every filter
- * verb returns the same chain; only `eq` records anything, and only the terminals
- * (`maybeSingle` / `single` / `then`) hit the resolver.
+ * verb returns the same chain and records the call; only `eq` also lands in the keyed
+ * `filters` map, and only the terminals (`maybeSingle` / `single` / `then`) hit the
+ * resolver.
  */
 export type StubChain = {
   select: (...args: unknown[]) => StubChain
@@ -81,12 +106,23 @@ export type StubChain = {
 export function makeSupabaseStub(resolvers: Record<string, Resolver>) {
   const from = (table: string): StubChain => {
     const filters: Record<string, unknown> = {}
+    const selects: (string | undefined)[] = []
+    const filterCalls: FilterCall[] = []
     const state: { op: ChainOp; payload: unknown } = { op: 'select', payload: undefined }
 
     const resolve = async () => {
       const resolver = resolvers[table]
       if (!resolver) return { data: null, error: null }
-      return await resolver({ table, op: state.op, filters, payload: state.payload })
+      return await resolver({
+        table,
+        op: state.op,
+        filters,
+        payload: state.payload,
+        // Snapshots: a resolver must see what the chain asked for at the moment it
+        // resolved, not whatever a later chain reuse might append.
+        selects: [...selects],
+        filterCalls: [...filterCalls],
+      })
     }
 
     const start =
@@ -99,27 +135,39 @@ export function makeSupabaseStub(resolvers: Record<string, Resolver>) {
 
     const passthrough = (): StubChain => chain
 
+    /** A filter verb that changes nothing about the answer but is worth recording. */
+    const recordFilter =
+      (method: string) =>
+      (...args: unknown[]): StubChain => {
+        filterCalls.push({ method, args })
+        return chain
+      }
+
     const chain: StubChain = {
       // `select` never sets the op: PostgREST spells "write, then return the rows"
       // as `.update({...}).select()`, so a select after a write must not downgrade
       // the recorded op back to a read. The default op is already 'select'.
-      select: () => chain,
+      select: (...args: unknown[]) => {
+        selects.push(args.length > 0 ? (args[0] as string | undefined) : undefined)
+        return chain
+      },
       insert: start('insert'),
       update: start('update'),
       upsert: start('upsert'),
       delete: start('delete'),
       eq: (column: string, value: unknown) => {
         filters[column] = value
+        filterCalls.push({ method: 'eq', args: [column, value] })
         return chain
       },
-      neq: passthrough,
-      in: passthrough,
-      is: passthrough,
-      not: passthrough,
-      gt: passthrough,
-      gte: passthrough,
-      lt: passthrough,
-      lte: passthrough,
+      neq: recordFilter('neq'),
+      in: recordFilter('in'),
+      is: recordFilter('is'),
+      not: recordFilter('not'),
+      gt: recordFilter('gt'),
+      gte: recordFilter('gte'),
+      lt: recordFilter('lt'),
+      lte: recordFilter('lte'),
       order: passthrough,
       limit: passthrough,
       range: passthrough,
