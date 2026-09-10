@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import {
   isDailyChallengeGameType,
@@ -16,6 +18,10 @@ import { computeDailyRank } from '@/lib/daily-rank'
 import { wordleFinalScore, wordleEmojiGrid } from '@/lib/daily-wordle'
 
 export const dynamic = 'force-dynamic'
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads.
+const submitBodySchema = z.record(z.string(), z.unknown())
 
 // ---------------------------------------------------------------------------
 // Per-game server-side verification + metric extraction
@@ -507,7 +513,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ gam
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, submitBodySchema)
+  if (bodyError) return bodyError
+
   const { challengeId, timeSeconds, submission } = body as {
     challengeId: string
     timeSeconds: number

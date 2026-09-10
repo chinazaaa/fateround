@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { isICallOnGame, parseGameType } from '@/lib/game-types'
 import { parseNpatMetadata, availableLettersForPick, ensureBlankAnswers } from '@/lib/npat'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 import { assertPlayer } from '@/lib/game-admin'
 
 const LETTER_RE = /^[A-Za-z]$/
 
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads.
+const letterBodySchema = z.record(z.string(), z.unknown())
+
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
+  const { data: raw, error: bodyError } = await parseJsonBody(req, letterBodySchema)
+  if (bodyError) return bodyError
+
   const gameId = typeof raw.gameId === 'string' ? raw.gameId.toUpperCase() : ''
   const resumeToken = typeof raw.resumeToken === 'string' ? raw.resumeToken : ''
   const roundId = typeof raw.roundId === 'string' ? raw.roundId : ''

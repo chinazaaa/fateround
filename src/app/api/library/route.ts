@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getProfileFromRequest } from '@/lib/identity-server'
+import { parseJsonBody } from '@/lib/parse-body'
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads. Values stay
+// `z.any()` so the untouched downstream field handling keeps the exact typing `req.json()` gave it.
+const submitPackBodySchema = z.record(z.string(), z.any())
 
 /**
  * PostgREST `.or()` takes a comma-separated filter EXPRESSION, so raw user input spliced into
@@ -139,7 +146,9 @@ export async function POST(req: NextRequest) {
   const limited = await enforceRateLimit(req, RATE_LIMITS.librarySubmit)
   if (limited) return limited
 
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, submitPackBodySchema)
+  if (bodyError) return bodyError
+
   const { title, game_type, author_name, description, questions, tags, collection_ids } = body
 
   if (!title || !game_type || !author_name || !Array.isArray(questions)) {
