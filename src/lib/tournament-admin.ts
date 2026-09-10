@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { secretMatches } from '@/lib/secret-compare'
+import type { Tournament } from '@/types/tournament'
 
 /**
  * Host authorization for `tournaments`, the counterpart to `assertHost*` in
@@ -51,11 +52,54 @@ const TOURNAMENT_SELECT = '*'
  */
 export const TOURNAMENT_UNFINISHED_STATUSES = ['waiting', 'active', 'scheduled'] as const
 
-export type TournamentHostAccessOptions = {
+/**
+ * A `tournaments` row as returned by {@link TOURNAMENT_SELECT}.
+ *
+ * The Supabase client is untyped, so the row arrives as `any`. `Tournament` is the best
+ * description of it the codebase already has, and the open index signature covers the rest:
+ * `TOURNAMENT_SELECT` is `'*'`, so the row carries columns `Tournament` does not model and
+ * routes read those raw columns off it. They keep the `any` they have today — narrowing the
+ * select, and with it this row, is a separate change.
+ *
+ * The job of this type here is only to give the success arm of {@link TournamentAuthResult}
+ * a row that is provably not `null`. It carries `host_token`, the host CREDENTIAL — see the
+ * `TOURNAMENT_SELECT` doc above; never respond with it.
+ */
+export interface TournamentRow extends Omit<Tournament, 'status'> {
+  /**
+   * Widened from `Tournament['status']`: the DB vocabulary also has `'scheduled'`
+   * (`supabase/migrations/0097_tournaments.sql`), which the client-facing type omits.
+   */
+  status: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [column: string]: any
+}
+
+/**
+ * Discriminated result of the `assertTournamentHost*` family — the counterpart to
+ * `HostAuthResult` in `src/lib/game-admin.ts`, and deliberately the same shape: these two
+ * helpers must not diverge.
+ *
+ * `E` is the caller-supplied message(s) — `statusError` and/or `missingTokenError` — threaded
+ * through so the failure arm's `error` stays a union of string LITERALS. That is what makes
+ * the union discriminate under the callers' `if (auth.error) return …` idiom: TypeScript can
+ * only drop the failure arm on the false branch when every `error` it could hold is definitely
+ * truthy, and `string` is not (it includes `''`). `never` contributes nothing to the union,
+ * which is what the un-gated, no-message call shapes get.
+ *
+ * So keep these messages string LITERALS at the call site. Passing a `string`-typed variable
+ * still type-checks and still behaves identically at runtime; it just widens `E` back to
+ * `string` and costs that caller its narrowing.
+ */
+export type TournamentAuthResult<E extends string = never> =
+  | { error: null; status: 200; tournament: TournamentRow; id: string }
+  | { error: 'Tournament not found' | 'Unauthorized' | E; status: 400 | 403 | 404; tournament: null; id: string }
+
+export type TournamentHostAccessOptions<E extends string = string> = {
   /** Statuses the tournament may be in. Omit the gate entirely via `assertTournamentHostAny`. */
   allowedStatuses: readonly string[]
   /** 400 body returned when the status gate rejects. */
-  statusError: string
+  statusError: E
   /**
    * When set, an absent/blank `hostToken` short-circuits to a 400 with this message BEFORE
    * the tournament is looked up.
@@ -69,19 +113,19 @@ export type TournamentHostAccessOptions = {
    * Leave it unset to keep the default ladder, where a missing token is simply a token that
    * fails to match and yields 403 (or 404 first, if the code does not exist).
    */
-  missingTokenError?: string
+  missingTokenError?: E
 }
 
 /** The status gate, split from `missingTokenError` so "no gate" is a real `null`. */
-type StatusGate = Pick<TournamentHostAccessOptions, 'allowedStatuses' | 'statusError'>
+type StatusGate<E extends string = string> = Pick<TournamentHostAccessOptions<E>, 'allowedStatuses' | 'statusError'>
 
-async function assertTournamentHost(
+async function assertTournamentHost<E extends string = never>(
   supabase: SupabaseClient,
   code: string,
   hostToken: string | null | undefined,
-  gate: StatusGate | null,
-  missingTokenError?: string
-) {
+  gate: StatusGate<E> | null,
+  missingTokenError?: E
+): Promise<TournamentAuthResult<E>> {
   const id = code.toUpperCase()
 
   // Opt-in rung, ahead of everything else: see `missingTokenError`. It is deliberately the
@@ -122,11 +166,11 @@ async function assertTournamentHost(
  * unauthenticated caller which tournament codes exist and what state they are in — the code
  * is the only thing gating this whole surface, and it is shared publicly.
  */
-export async function assertTournamentHostWith(
+export async function assertTournamentHostWith<E extends string>(
   supabase: SupabaseClient,
   code: string,
   hostToken: string | null | undefined,
-  opts: TournamentHostAccessOptions
+  opts: TournamentHostAccessOptions<E>
 ) {
   return assertTournamentHost(supabase, code, hostToken, opts, opts.missingTokenError)
 }
@@ -144,11 +188,11 @@ export async function assertTournamentHostWith(
  * `opts` may still be passed for `missingTokenError` alone — that is how `branding/logo`
  * gets its 400 rung with no status gate behind it.
  */
-export async function assertTournamentHostAny(
+export async function assertTournamentHostAny<M extends string = never>(
   supabase: SupabaseClient,
   code: string,
   hostToken: string | null | undefined,
-  opts?: Pick<TournamentHostAccessOptions, 'missingTokenError'>
+  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError'>
 ) {
   // `null` gate — genuinely no status rung, not an `allowedStatuses` listing every status
   // (which would silently start rejecting the day a status is added to the vocabulary).
@@ -161,14 +205,14 @@ export async function assertTournamentHostAny(
  * because each of those sites words it differently today, and adopting this must not change
  * a response body.
  */
-export async function assertTournamentHostUnfinished(
+export async function assertTournamentHostUnfinished<S extends string, M extends string = never>(
   supabase: SupabaseClient,
   code: string,
   hostToken: string | null | undefined,
-  statusError: string,
-  opts?: Pick<TournamentHostAccessOptions, 'missingTokenError'>
+  statusError: S,
+  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError'>
 ) {
-  return assertTournamentHost(
+  return assertTournamentHost<S | M>(
     supabase,
     code,
     hostToken,
@@ -181,15 +225,24 @@ export async function assertTournamentHostUnfinished(
  * Host authorization on a tournament that has not started — `reschedule` and
  * `transfer-scheduled-host`, which both reject `active` and `finished`. Named because
  * "before kickoff" is a real phase of the tournament lifecycle, not an arbitrary pair.
+ *
+ * `opts` is accepted, though no caller passes it yet, so this stays signature-compatible with
+ * `assertTournamentHostUnfinished` — the two are used interchangeably (they are iterated as
+ * one list in `tournament-admin.test.ts`), and a union of two differently-shaped generic
+ * signatures is not callable.
  */
-export async function assertTournamentHostBeforeStart(
+export async function assertTournamentHostBeforeStart<S extends string, M extends string = never>(
   supabase: SupabaseClient,
   code: string,
   hostToken: string | null | undefined,
-  statusError: string
+  statusError: S,
+  opts?: Pick<TournamentHostAccessOptions<M>, 'missingTokenError'>
 ) {
-  return assertTournamentHost(supabase, code, hostToken, {
-    allowedStatuses: ['waiting', 'scheduled'],
-    statusError,
-  })
+  return assertTournamentHost<S | M>(
+    supabase,
+    code,
+    hostToken,
+    { allowedStatuses: ['waiting', 'scheduled'], statusError },
+    opts?.missingTokenError
+  )
 }

@@ -172,7 +172,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
     poolUsage = applyParticipantListUpdate(game, nextParticipants, poolUsage).poolUsage
     gameUpdate.pool_usage = poolUsage
-    nextGame = { ...nextGame, pool_usage: poolUsage }
+    nextGame = { ...nextGame, pool_usage: poolUsage } as typeof game
   }
 
   const isLobbyQuestions = isBinaryChoiceGame(gameType) || isMostLikelyTo(gameType) || isNeverHaveIEver(gameType)
