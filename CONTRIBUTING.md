@@ -47,6 +47,81 @@ Run them in order: **code review → QA → security**. Reconcile findings (a
 security pass may down- or up-grade a code-review finding). Address or
 consciously accept each finding before promoting to `main`.
 
+### Review is a loop, not a pass
+
+This is how the **Code review** gate above is actually run; `/verify` and
+`/security-review` still run after it comes back clean.
+
+**review → fix the findings → re-review the fixed code → repeat until a review
+comes back with no issues.** A PR is not ready while its head commit is
+unreviewed — the fixes are new code and get reviewed like any other. If a
+review is still finding new issues after ~3 rounds, the PR is too big: split
+it, or escalate for a human call.
+
+| Reviewer              | How                                             | When                              |
+| --------------------- | ----------------------------------------------- | --------------------------------- |
+| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — run it before pushing   |
+| **CodeRabbit GH bot** | comment `@coderabbitai review` on the PR        | only when the CLI is unavailable  |
+
+- **Install:** `curl -fsSL https://cli.coderabbit.ai/install.sh | sh` (see
+  [the CLI docs](https://docs.coderabbit.ai/cli)). The installer puts
+  `coderabbit` (alias `cr`) on `~/.local/bin`, so add that to your `PATH` if it
+  isn't there. `coderabbit --version` confirms it; `coderabbit update` upgrades.
+- **Quota:** the Free plan allows roughly **3 CLI reviews an hour** per
+  developer, as a rolling allowance rather than a fixed reset — see
+  [plans](https://docs.coderabbit.ai/management/plans). `coderabbit usage`
+  (`cr usage`) shows what's left. It is a separate allowance from the bot's, so
+  a local review does not spend the PR-review slot, but it is not unlimited
+  either.
+- Flags worth knowing: `--plain` (non-interactive text output — use this from a
+  script or an agent), `-t/--type all|committed|uncommitted`, and `--base
+  <branch>` to review against something other than the default base. There is no
+  `--pr` flag and no output-file flag — it reviews the worktree you run it in.
+  Flags move between versions (this was checked against v0.3.7; v0.4.5 is
+  current), so `coderabbit review --help` is the authority on the rest.
+- **Auth:** `coderabbit auth status` shows the logged-in account and org;
+  `coderabbit auth login` does the OAuth flow, `auth logout` / `auth org` round
+  it out. If a review errors as unauthenticated, log in (or pass `--api-key`)
+  rather than falling straight through to the bot.
+- The bot is the **fallback**: on the free tier this account gets roughly **one
+  review an hour**. While `auto_review` is disabled in `.coderabbit.yaml` (see
+  the note there for why), reviews are on-demand — pushing does not burn one,
+  but each `@coderabbitai review` does. The config is the source of truth for
+  that; if it is ever re-enabled, every push spends a review again.
+- If a review comes back rate-limited, wait the window out rather than skipping
+  the gate. The CLI and the bot have separate allowances, so the other one is a
+  fallback — but neither is a way to review more than the plan allows.
+- **A subagent owns the whole cycle for its PR** — review, fix, re-review — and
+  reports back when a review is clean, not after one round.
+
+### Verdicts, not reflex fixes
+
+Every finding gets a decision, and the decision goes on the thread:
+
+- **Right and in scope** → fix it in this PR, then re-review — the fix is new
+  code, so it goes back through the loop above.
+- **Wrong** → reply with the reasoning for why it doesn't apply. Don't edit code
+  to silence a reviewer.
+- **Right but out of scope** → split it into a stacked PR and record that PR on
+  the thread.
+- Then **resolve the thread yourself, with the reasoning in the reply** (same
+  convention as the note in `.coderabbit.yaml` — CodeRabbit won't resolve a
+  fixed thread until a later pass reconfirms it, and it blocks the merge
+  meanwhile).
+
+### Refactors: characterization tests first
+
+When you're changing how existing behaviour is implemented:
+
+1. Pin the current `{status, body}` in tests **against the unchanged code**.
+2. Prove them green — a characterization test that never ran against the old
+   code pins nothing.
+3. Change the implementation and re-run **the same tests, unmodified**.
+
+Gotcha: a case must combine the independent gates it means to separate (e.g.
+wrong type **and** wrong status in one request). Test them one at a time and a
+swapped precedence still passes every test.
+
 ## CI checks (required)
 
 `.github/workflows/ci.yml` runs on push + PR to **`main` and `dev`**. It has
