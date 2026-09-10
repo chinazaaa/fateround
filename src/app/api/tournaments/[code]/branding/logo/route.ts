@@ -77,7 +77,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     // it answers before the tournament is even read, and both are above the
     // `formData()` call below.
     const hostToken = req.headers.get('x-host-token')
-    const auth = await assertTournamentHostAny(admin, code, hostToken, { missingTokenError: 'Missing hostToken' })
+    const auth = await assertTournamentHostAny(admin, code, hostToken, {
+      missingTokenError: 'Missing hostToken',
+      columns: 'host_token, branding',
+    })
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const tournament = auth.tournament
 
@@ -157,7 +160,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
     const hostToken = typeof body?.hostToken === 'string' ? body.hostToken : null
 
     const admin = getSupabaseAdmin()
-    const auth = await assertTournamentHostAny(admin, code, hostToken, { missingTokenError: 'Missing hostToken' })
+    const auth = await assertTournamentHostAny(admin, code, hostToken, {
+      missingTokenError: 'Missing hostToken',
+      columns: 'host_token, branding',
+    })
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const tournament = auth.tournament
 

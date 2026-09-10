@@ -462,10 +462,10 @@ describe('assertPlayer marks the game as alive', () => {
  * `@/test-support/host-auth` records the table, the `select(...)` arguments and the ordered
  * filter calls onto the resolver context, so they can be asserted.
  *
- * These pin TODAY'S shape, `select('*')` included. `assertHost` reads `*` because the ~43
- * routes adopting it go on to read wildly different columns off the row; narrowing it is a
- * deliberate follow-up, and these are the tests that make that follow-up visible instead of
- * silent.
+ * These pin TODAY'S shape. `assertHost` still defaults to `*` — the ~43 routes adopting it go
+ * on to read wildly different columns off the row — but a caller that knows its own needs may
+ * narrow the read with `{ columns }`, and these tests pin BOTH: the unchanged default, and
+ * the exact list a narrowing caller ends up asking for.
  */
 function recordingStub(table: string, row: Record<string, unknown> | null) {
   const seen: ResolverContext[] = []
@@ -495,13 +495,13 @@ describe('assertHost query shape', () => {
     expect(seen[0].filterCalls).toEqual([{ method: 'eq', args: ['id', 'ABCD'] }])
   })
 
-  it('selects `*` — the current shape, pinned so narrowing it is a visible change', async () => {
+  it('selects `*` by default — the shape every caller that does not narrow still gets', async () => {
     const { supabase, seen } = recordingStub('games', game('waiting'))
     await assertHostAny(supabase, 'abcd', TOKEN)
     expect(seen[0].selects).toEqual(['*'])
   })
 
-  it('keeps that shape on the gated wrappers, which share the same core', async () => {
+  it('keeps that default on the gated wrappers, which share the same core', async () => {
     const calls = [
       (s: SupabaseClient) => assertHostGame(s, 'abcd', TOKEN),
       (s: SupabaseClient) => assertHostWith(s, 'abcd', TOKEN, { allowedStatuses: ['waiting'], statusError: 'nope' }),
@@ -514,6 +514,61 @@ describe('assertHost query shape', () => {
       expect(seen[0].selects).toEqual(['*'])
       expect(seen[0].filterCalls).toEqual([{ method: 'eq', args: ['id', 'ABCD'] }])
     }
+  })
+
+  it('asks for exactly the caller list plus the two columns the ladder itself reads', async () => {
+    const { supabase, seen } = recordingStub('games', game('waiting'))
+    await assertHostAny(supabase, 'abcd', TOKEN, { columns: 'game_type' })
+    // `host_token` and `status` are appended, never left to the caller: the token comparison
+    // and the status gate read them, so a caller that forgot one would silently 403/400.
+    expect(seen[0].selects).toEqual(['game_type, host_token, status'])
+  })
+
+  it('does not duplicate a required column the caller already named', async () => {
+    const { supabase, seen } = recordingStub('games', game('waiting'))
+    await assertHostAny(supabase, 'abcd', TOKEN, { columns: 'host_token, id' })
+    expect(seen[0].selects).toEqual(['host_token, id, status'])
+  })
+
+  it('threads `columns` through the options bag on assertHostWith', async () => {
+    const { supabase, seen } = recordingStub('games', game('waiting'))
+    await assertHostWith(supabase, 'abcd', TOKEN, {
+      allowedStatuses: ['waiting'],
+      statusError: 'nope',
+      columns: 'game_type, question_source',
+    })
+    expect(seen[0].selects).toEqual(['game_type, question_source, host_token, status'])
+  })
+
+  it('falls back to `*` for an explicit `*` or an empty list', async () => {
+    for (const columns of ['*', '', '  ']) {
+      const { supabase, seen } = recordingStub('games', game('waiting'))
+      await assertHostAny(supabase, 'abcd', TOKEN, { columns })
+      expect(seen[0].selects).toEqual(['*'])
+    }
+  })
+
+  it('still runs the whole ladder on a narrowed read', async () => {
+    // Narrowing is an egress change, not a behaviour change: the 404/403/400 rungs and their
+    // messages must be identical to the `*` path.
+    const missing = recordingStub('games', null)
+    expect(await assertHostAny(missing.supabase, 'abcd', TOKEN, { columns: 'game_type' })).toMatchObject({
+      error: 'Game not found',
+      status: 404,
+    })
+    const wrong = recordingStub('games', game('waiting'))
+    expect(await assertHostAny(wrong.supabase, 'abcd', 'nope', { columns: 'game_type' })).toMatchObject({
+      error: 'Unauthorized',
+      status: 403,
+    })
+    const gated = recordingStub('games', game('active'))
+    expect(
+      await assertHostWith(gated.supabase, 'abcd', TOKEN, {
+        allowedStatuses: ['waiting'],
+        statusError: 'Game has already started',
+        columns: 'game_type',
+      })
+    ).toMatchObject({ error: 'Game has already started', status: 400 })
   })
 })
 
@@ -533,7 +588,7 @@ describe('assertPlayer query shape', () => {
     ])
   })
 
-  it('selects `*` — the current shape, pinned', async () => {
+  it('selects `*` — assertPlayer takes no `columns` option, so this stays wide', async () => {
     const { supabase, seen } = recordingStub('players', ROW)
     await assertPlayer(supabase, 'abcd', 'AAAA1111BBBB2222CCCC3333', { readOnly: true })
     expect(seen[0].selects).toEqual(['*'])

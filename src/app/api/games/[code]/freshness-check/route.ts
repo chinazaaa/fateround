@@ -40,6 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const auth = await assertHostWith(supabase, gameId, hostToken, {
     allowedStatuses: ['waiting'],
     statusError: 'Game not in waiting state',
+    columns: 'game_type, question_source',
   })
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const game = auth.game

@@ -38,7 +38,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ co
     admin,
     code,
     parsed.data.hostToken,
-    'Reschedule is only available before the tournament starts.'
+    'Reschedule is only available before the tournament starts.',
+    { columns: 'id, title' }
   )
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const tournament = auth.tournament
