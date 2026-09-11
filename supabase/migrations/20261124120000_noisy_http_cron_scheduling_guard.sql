@@ -53,6 +53,7 @@ declare
   cron_secret text;
   expected_jobs text[] := array['scheduled_games_push_tick', 'warn_idle_waiting_lobbies'];
   missing_jobs text[];
+  missing_settings text;
 begin
   if not exists (select 1 from pg_available_extensions where name = 'pg_cron') then
     raise warning
@@ -79,20 +80,20 @@ begin
     cron_secret := null;
   end;
 
+  -- concat_ws drops NULL arguments, so this names only the settings that are
+  -- actually missing. The ::text casts keep the CASE results from being
+  -- unknown-typed in a variadic "any" argument list.
+  missing_settings := concat_ws(
+    ', ',
+    case when api_base is null or api_base = '' then 'app.api_base'::text end,
+    case when cron_secret is null or cron_secret = '' then 'app.cron_secret'::text end
+  );
+
   if api_base is null or api_base = '' or cron_secret is null or cron_secret = '' then
     raise warning
       'CRON GUARD: HTTP cron jobs (%) were NOT scheduled because required database settings are unset: %. Set them with "alter database <db> set app.api_base = ''https://fateround.com''" and "alter database <db> set app.cron_secret = ''<same value as the CRON_SECRET env var>''", then re-run the do-block in supabase/migrations/20261124120000_noisy_http_cron_scheduling_guard.sql from a NEW session. Until then the scheduled-games push tick and the idle-lobby warning tick do not run at all.',
       array_to_string(expected_jobs, ', '),
-      array_to_string(
-        array_remove(
-          array[
-            case when api_base is null or api_base = '' then 'app.api_base' end,
-            case when cron_secret is null or cron_secret = '' then 'app.cron_secret' end
-          ],
-          null
-        ),
-        ', '
-      );
+      missing_settings;
     return;
   end if;
 
