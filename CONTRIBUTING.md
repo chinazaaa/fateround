@@ -60,7 +60,7 @@ it, or escalate for a human call.
 
 | Reviewer              | How                                             | When                              |
 | --------------------- | ----------------------------------------------- | --------------------------------- |
-| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — run it before pushing   |
+| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — after commit and push   |
 | **CodeRabbit GH bot** | comment `@coderabbitai review` on the PR        | only when the CLI is unavailable  |
 
 - **Install:** `curl -fsSL https://cli.coderabbit.ai/install.sh | sh` (see
