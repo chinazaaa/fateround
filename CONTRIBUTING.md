@@ -94,6 +94,44 @@ it, or escalate for a human call.
 - **A subagent owns the whole cycle for its PR** — review, fix, re-review — and
   reports back when a review is clean, not after one round.
 
+#### Gotchas the loop taught us
+
+Each of these cost a review round on a real PR here:
+
+- **Commit and push before you review.** Against a dirty tree the CLI
+  mis-assembles the diff and reports findings that do not exist — on #1157 it
+  claimed a duplicated code tail and an unmatched `}` that made a file "not
+  parse", in a file that passed `tsc`, prettier and 92 tests; re-running on the
+  committed tree made all four vanish. The branch also has to be on the remote:
+  on #1161 the review failed with `Review failed: Unknown error` twice, then
+  succeeded immediately after a (non-force) push.
+- **It reviews outside the PR diff.** On #1159 it returned a finding against a
+  `tournaments/` test file the branch never touched. Check the diff with
+  `git diff --name-only origin/dev...HEAD` and reject out-of-diff findings — and
+  do **not** keep looping on one: a re-run returns it identically, forever.
+  Stopping at one round is correct when the only finding left is out of diff.
+- **A transient `REVIEW ERROR: Unknown error` usually passes on an immediate
+  retry.** Retry once before concluding anything from it.
+- **A finding is a proposal, not an instruction** — verify it before acting.
+  Twice, following the suggestion would have shipped a bug: on #1163 it proposed
+  `hostToken: z.string().optional()` for a body guard, which rejects
+  `{"hostToken": null}` with "expected string, received null" while the route
+  treats a null token as absent, turning a working request into a 400; on #1153
+  the same class of mistake (`.partial()` tolerates `undefined`, not `null`) had
+  already regressed `{"gameId": null}`. Reject structurally-impossible findings
+  (syntax errors, "does not parse", missing code) with the `tsc`/prettier/test
+  output as the evidence.
+- **A cycle is complete only on a clean pass**, or on an explicit written manual
+  review standing in for one. "Waiting on CI and the CodeRabbit retry" is not a
+  completed cycle. When the CLI is rate-limited, do the manual review, keep
+  working, and re-run when the window opens.
+- **A characterization test pins _current_ behaviour, so when a PR deliberately
+  changes that behaviour the pin moves with it.** On #1163,
+  `branding/logo/route.host-auth.test.ts` asserted `500s on an unparseable
+  body` — the exact bug the PR fixed — and that one assertion was updated to
+  expect 400. This is the one legitimate reason to edit a characterization test,
+  and it belongs in the PR description when it happens.
+
 ### Verdicts, not reflex fixes
 
 Every finding gets a decision, and the decision goes on the thread:
