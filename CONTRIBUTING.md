@@ -98,18 +98,12 @@ it, or escalate for a human call.
   allowances, so using one never starves the other, which is why "the CLI is
   rate-limited" is a reason to fall back to the bot, never a reason to skip
   review. Neither is a way to review more than the plan allows.
-- **Keep concurrent review-running subagents to two or three.** Roughly 3
-  reviews an hour is the whole budget, and you cannot query what's left;
-  dispatching six at once overruns it and starves the later ones into exactly
-  the downgrade the rule above forbids. Stagger them instead.
-- **The author's own read-through is not a review.** An agent that implements a
-  change and then writes its own assessment of that change is marking its own
-  homework. If CodeRabbit is unavailable, dispatch a **separate subagent that
-  did not write the code** to review it adversarially, and say in the PR
-  description which reviewer was used. Skipping this is what let #1166 and
-  #1168 be opened on code no independent reviewer had seen.
-- **A subagent owns the whole cycle for its PR** — review, fix, re-review — and
-  reports back when a review is clean, not after one round.
+- **The author's own read-through is not a review.** Writing a change and then
+  writing your own assessment of it is marking your own homework. If CodeRabbit
+  is unavailable, get a second reviewer who did not write the code to go through
+  it adversarially, and say in the PR description which reviewer was used.
+  Skipping this is what let #1166 and #1168 be opened on code no independent
+  reviewer had seen.
 
 #### Gotchas the loop taught us
 
@@ -143,9 +137,9 @@ Each of these cost a review round on a real PR here:
   already regressed `{"gameId": null}`. Reject structurally-impossible findings
   (syntax errors, "does not parse", missing code) with the `tsc`/prettier/test
   output as the evidence.
-- **A cycle is complete only on a clean pass**, or on an explicit written review
-  by a reviewer that did not write the code standing in for one. "Waiting on CI
-  and the CodeRabbit retry" is not a completed cycle, and neither is the
+- **The loop is finished only on a clean pass**, or on an explicit written
+  review by someone who did not write the code standing in for one. "Waiting on
+  CI and the CodeRabbit retry" is not a finished loop, and neither is the
   author's own read-through. When the CLI is rate-limited, get that independent
   review, keep working, and re-run when the window opens.
 - **A characterization test pins _current_ behaviour, so when a PR deliberately
