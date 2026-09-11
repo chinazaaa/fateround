@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 /**
@@ -27,6 +27,10 @@ beforeAll(async () => {
 beforeEach(() => {
   authorizedRoom.mockReset()
   authorizedRoom.mockResolvedValue(null)
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 function post(body: string) {
@@ -68,8 +72,14 @@ describe('POST /api/audio-token — request body guard', () => {
   })
 
   it('leaves the catch handling every other throw as a 500', async () => {
+    // Without these the handler answers its own "not set in environment variables" 500
+    // before `authorizedRoom` ever runs, and this test would pass for the wrong reason.
+    vi.stubEnv('LIVEKIT_API_KEY', 'test-key')
+    vi.stubEnv('LIVEKIT_API_SECRET', 'test-secret')
     authorizedRoom.mockRejectedValue(new Error('livekit exploded'))
     const res = await post('{"roomName":"lobby"}')
     expect(res.status).toBe(500)
+    await expect(res.json()).resolves.toEqual({ error: 'Failed to generate token' })
+    expect(authorizedRoom).toHaveBeenCalledWith('lobby', undefined)
   })
 })
