@@ -162,10 +162,11 @@ describe('DELETE /api/tournaments/[code]/branding/logo host authorization', () =
     expect(tournamentLookups).toBe(0)
   })
 
-  it('500s on an unparseable body — the JSON read sits inside the try block', async () => {
+  it('400s on an unparseable body — a client fault, decided before the auth ladder', async () => {
     const res = await remove('')
-    expect(res.status).toBe(500)
-    expect(res.body).toEqual({ error: 'Internal server error' })
+    expect(res.status).toBe(400)
+    expect(res.body).toEqual({ error: 'Invalid or empty request body' })
+    expect(tournamentLookups).toBe(0)
   })
 
   it('404s when the tournament does not exist', async () => {

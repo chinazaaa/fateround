@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertTournamentHostAny } from '@/lib/tournament-admin'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { parseJsonBody } from '@/lib/parse-body'
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads.
+const logoDeleteBodySchema = z.record(z.string(), z.unknown())
 
 // Small, focused upload route for a tournament's brand logo. Only the host
 // (proving it via the tournament's host_token) can hit this, and the file is
@@ -156,8 +162,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
   const tournamentId = code.toUpperCase()
 
   try {
-    const body = await req.json()
-    const hostToken = typeof body?.hostToken === 'string' ? body.hostToken : null
+    const { data: body, error: bodyError } = await parseJsonBody(req, logoDeleteBodySchema)
+    if (bodyError) return bodyError
+
+    const hostToken = typeof body.hostToken === 'string' ? body.hostToken : null
 
     const admin = getSupabaseAdmin()
     const auth = await assertTournamentHostAny(admin, code, hostToken, {

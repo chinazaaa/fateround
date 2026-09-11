@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { AccessToken } from 'livekit-server-sdk'
 import { authorizedRoom, type AudioAuth } from '@/lib/audio-room-auth'
+import { parseJsonBody } from '@/lib/parse-body'
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads.
+const audioTokenBodySchema = z.record(z.string(), z.unknown())
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
+    const { data: body, error: bodyError } = await parseJsonBody(req, audioTokenBodySchema)
+    if (bodyError) return bodyError
+
     const { roomName, name, auth } = body as {
       roomName?: string
       name?: string
