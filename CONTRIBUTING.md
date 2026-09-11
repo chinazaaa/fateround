@@ -98,18 +98,23 @@ it, or escalate for a human call.
 
 Each of these cost a review round on a real PR here:
 
-- **Commit and push before you review.** Against a dirty tree the CLI
-  mis-assembles the diff and reports findings that do not exist — on #1157 it
-  claimed a duplicated code tail and an unmatched `}` that made a file "not
-  parse", in a file that passed `tsc`, prettier and 92 tests; re-running on the
-  committed tree made all four vanish. The branch also has to be on the remote:
-  on #1161 the review failed with `Review failed: Unknown error` twice, then
-  succeeded immediately after a (non-force) push.
+- **Commit and push before you review.** Reviewing a dirty tree is a supported
+  mode — `-t/--type` takes `all` (the default), `committed` or `uncommitted` —
+  but on the version we ran it on (v0.3.7) it is what cost us rounds. Against a
+  dirty tree the CLI mis-assembled the diff and reported findings that do not
+  exist — on #1157 it claimed a duplicated code tail and an unmatched `}` that
+  made a file "not parse", in a file that passed `tsc`, prettier and 92 tests;
+  re-running on the committed tree made all four vanish. The branch also has to
+  be on the remote: on #1161 the review failed with `Review failed: Unknown
+  error` twice, then succeeded immediately after a (non-force) push. Committing
+  and pushing first avoids both, so that is the practice here.
 - **It reviews outside the PR diff.** On #1159 it returned a finding against a
-  `tournaments/` test file the branch never touched. Check the diff with
-  `git diff --name-only origin/dev...HEAD` and reject out-of-diff findings — and
-  do **not** keep looping on one: a re-run returns it identically, forever.
-  Stopping at one round is correct when the only finding left is out of diff.
+  `tournaments/` test file the branch never touched. Check the diff against the
+  PR's own base — `git diff --name-only origin/dev...HEAD` for a feature or fix
+  PR, `origin/main...HEAD` for a `dev` → `main` promotion — and reject
+  out-of-diff findings; and do **not** keep looping on one: a re-run returns it
+  identically, forever. Stopping at one round is correct when the only finding
+  left is out of diff.
 - **A transient `REVIEW ERROR: Unknown error` usually passes on an immediate
   retry.** Retry once before concluding anything from it.
 - **A finding is a proposal, not an instruction** — verify it before acting.
