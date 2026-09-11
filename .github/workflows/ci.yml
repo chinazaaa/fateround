@@ -477,9 +477,9 @@ jobs:
       # set. Nothing in CI can see a hosted project's settings; that check has
       # to live post-deploy (see the PR for #1167).
       #
-      # Runs LAST, after the RLS suite, because it mutates the database
-      # (scheduling jobs, setting database-level GUCs) and must not perturb the
-      # security gate that is this job's main purpose.
+      # Runs LAST, after the RLS suite, because it mutates the database (it
+      # registers cron jobs) and must not perturb the security gate that is this
+      # job's main purpose.
       #
       # Fail-safe on environment, strict on defects: if pg_cron/pg_net cannot be
       # created in this stack (a self-hosted or future CLI image without them
@@ -499,15 +499,28 @@ jobs:
             exit 0
           fi
 
-          # Database-level settings only take effect for NEW connections, so this
-          # must be its own psql invocation, before the one that reads them.
-          psql "$DB" -v ON_ERROR_STOP=1 -q \
-            -c "alter database postgres set app.api_base = 'http://127.0.0.1:3000';" \
-            -c "alter database postgres set app.cron_secret = 'ci-not-a-real-secret';"
-
+          # Set the two GUCs at SESSION level, in the SAME psql session that then
+          # runs the guard. `alter database postgres set app.api_base = ...` does
+          # not work here: `app.api_base` is a custom placeholder parameter, and
+          # PostgreSQL only lets a superuser attach one of those to a database or
+          # role. The local stack's `postgres` role is not a superuser, so that
+          # form fails with `permission denied to set parameter "app.api_base"`.
+          # A session-level SET carries no such restriction and is read back by
+          # `current_setting('app.api_base', true)` in the same connection, which
+          # is exactly what the guard's do-block reads -- so this creates the same
+          # precondition state without needing superuser.
+          #
+          # psql executes repeated -c/-f options in the order given, all on one
+          # connection, so the two SETs are still in effect when the -f runs.
+          # (This is also why they cannot be split across psql invocations: unlike
+          # a database-level setting, a session SET dies with its connection.)
+          #
           # Re-run the guard migration with the preconditions satisfied. Its own
           # assertion raises, and ON_ERROR_STOP turns that into a failed step.
-          psql "$DB" -v ON_ERROR_STOP=1 -f "$GUARD_MIGRATION"
+          psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://127.0.0.1:3000';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -f "$GUARD_MIGRATION"
 
           echo "Scheduled cron jobs:"
           psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule from cron.job order by jobname;"
