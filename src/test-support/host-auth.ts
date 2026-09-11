@@ -224,3 +224,24 @@ export function jsonRequest(path: string, body: unknown, method: string = 'POST'
     body: typeof body === 'string' ? body : JSON.stringify(body),
   })
 }
+
+/**
+ * Apply a PostgREST-style column projection to a row, the way the real server would.
+ *
+ * A narrowed read only returns the columns it asked for, so a stub that always hands back
+ * the whole row cannot tell a right column list from a wrong one. Feeding the recorded
+ * `select(...)` argument through here makes a route that reads a column it never selected
+ * see `undefined`, exactly as it would in production.
+ *
+ * `'*'`, an empty list and `undefined` all mean "everything", matching `assertHost`'s own
+ * fallback.
+ */
+export function projectRow(row: Record<string, unknown> | null, select: string | undefined) {
+  if (!row) return null
+  const columns = (select ?? '*')
+    .split(',')
+    .map((c) => c.trim())
+    .filter(Boolean)
+  if (columns.length === 0 || columns.includes('*')) return { ...row }
+  return Object.fromEntries(columns.filter((c) => c in row).map((c) => [c, row[c]]))
+}
