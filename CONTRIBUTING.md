@@ -54,7 +54,9 @@ This is how the **Code review** gate above is actually run; `/verify` and
 
 **review → fix the findings → re-review the fixed code → repeat until a review
 comes back with no issues.** A PR is not ready while its head commit is
-unreviewed — the fixes are new code and get reviewed like any other. If a
+unreviewed — the fixes are new code and get reviewed like any other. **No PR
+is opened on unreviewed code**: that is the point of the loop, not a nicety,
+and a head commit no reviewer has seen is not ready however green CI is. If a
 review is still finding new issues after ~3 rounds, the PR is too big: split
 it, or escalate for a human call.
 
@@ -69,10 +71,12 @@ it, or escalate for a human call.
   isn't there. `coderabbit --version` confirms it; `coderabbit update` upgrades.
 - **Quota:** the Free plan allows roughly **3 CLI reviews an hour** per
   developer, as a rolling allowance rather than a fixed reset — see
-  [plans](https://docs.coderabbit.ai/management/plans). `coderabbit usage`
-  (`cr usage`) shows what's left. It is a separate allowance from the bot's, so
-  a local review does not spend the PR-review slot, but it is not unlimited
-  either.
+  [plans](https://docs.coderabbit.ai/management/plans). Nothing reports what's
+  left: v0.3.7 has only `auth`, `review` and `update`, and `coderabbit usage`
+  falls through to `review` and errors with "too many arguments". So count your
+  own reviews, and treat the rate-limit message a review returns as the only
+  signal you get. It is a separate allowance from the bot's, so a local review
+  does not spend the PR-review slot, but it is not unlimited either.
 - Flags worth knowing: `--plain` (non-interactive text output — use this from a
   script or an agent), `-t/--type all|committed|uncommitted`, and `--base
   <branch>` to review against something other than the default base. There is no
@@ -88,9 +92,22 @@ it, or escalate for a human call.
   the note there for why), reviews are on-demand — pushing does not burn one,
   but each `@coderabbitai review` does. The config is the source of truth for
   that; if it is ever re-enabled, every push spends a review again.
-- If a review comes back rate-limited, wait the window out rather than skipping
-  the gate. The CLI and the bot have separate allowances, so the other one is a
-  fallback — but neither is a way to review more than the plan allows.
+- **A rate limit means wait, not downgrade.** The allowance is rolling, not
+  spent for good: wait the window out and re-run rather than skipping the gate.
+  Both reviewers are in play and they do not compete — they draw on separate
+  allowances, so using one never starves the other, which is why "the CLI is
+  rate-limited" is a reason to fall back to the bot, never a reason to skip
+  review. Neither is a way to review more than the plan allows.
+- **Keep concurrent review-running subagents to two or three.** Roughly 3
+  reviews an hour is the whole budget, and you cannot query what's left;
+  dispatching six at once overruns it and starves the later ones into exactly
+  the downgrade the rule above forbids. Stagger them instead.
+- **The author's own read-through is not a review.** An agent that implements a
+  change and then writes its own assessment of that change is marking its own
+  homework. If CodeRabbit is unavailable, dispatch a **separate subagent that
+  did not write the code** to review it adversarially, and say in the PR
+  description which reviewer was used. Skipping this is what let #1166 and
+  #1168 be opened on code no independent reviewer had seen.
 - **A subagent owns the whole cycle for its PR** — review, fix, re-review — and
   reports back when a review is clean, not after one round.
 
@@ -126,10 +143,11 @@ Each of these cost a review round on a real PR here:
   already regressed `{"gameId": null}`. Reject structurally-impossible findings
   (syntax errors, "does not parse", missing code) with the `tsc`/prettier/test
   output as the evidence.
-- **A cycle is complete only on a clean pass**, or on an explicit written manual
-  review standing in for one. "Waiting on CI and the CodeRabbit retry" is not a
-  completed cycle. When the CLI is rate-limited, do the manual review, keep
-  working, and re-run when the window opens.
+- **A cycle is complete only on a clean pass**, or on an explicit written review
+  by a reviewer that did not write the code standing in for one. "Waiting on CI
+  and the CodeRabbit retry" is not a completed cycle, and neither is the
+  author's own read-through. When the CLI is rate-limited, get that independent
+  review, keep working, and re-run when the window opens.
 - **A characterization test pins _current_ behaviour, so when a PR deliberately
   changes that behaviour the pin moves with it.** On #1163,
   `branding/logo/route.host-auth.test.ts` asserted `500s on an unparseable
