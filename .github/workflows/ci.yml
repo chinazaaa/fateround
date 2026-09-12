@@ -459,6 +459,139 @@ jobs:
 
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
+      # ── HTTP cron scheduling gate (issue #1167) ──────────────────────────────
+      # The scheduling migrations no-op silently when `app.api_base` /
+      # `app.cron_secret` are unset. On production they WERE unset, so
+      # `scheduled_games_push_tick`, `warn_idle_waiting_lobbies` and
+      # `reap_idle_active_games` were never scheduled -- for months, with no
+      # failing check anywhere.
+      #
+      # A "the jobs exist" assertion against this stack as-is would be vacuous:
+      # the GUCs are unset here too, and a no-op is CORRECT in that state. So
+      # this step creates the state the assertion is actually about -- it sets
+      # both GUCs, re-executes the scheduling block, and then requires the jobs
+      # to be in cron.job. That makes the guard's happy path a tested path: a
+      # typo'd jobname, a broken precondition test, or a scheduling call that
+      # silently does nothing fails HERE instead of on a hosted project.
+      #
+      # It does NOT and CANNOT assert that the hosted projects have the GUCs
+      # set. Nothing in CI can see a hosted project's settings; that check has
+      # to live post-deploy (see the PR for #1167).
+      #
+      # Runs LAST, after the RLS suite, because it mutates the database (it
+      # registers cron jobs) and must not perturb the security gate that is this
+      # job's main purpose.
+      #
+      # Fail-safe on environment, strict on defects: if pg_cron/pg_net are
+      # genuinely absent from this stack (a self-hosted or future CLI image
+      # without them preloaded), the step warns and exits 0 rather than turning
+      # an unrelated image change into a red required check. Everything after
+      # that point is hard-asserted -- and the soft-skip is scoped strictly to
+      # "the extensions are unavailable", never to "psql exited non-zero", so a
+      # `supabase start` flake cannot quietly turn this gate into a green no-op.
+      - name: HTTP cron jobs are scheduled once the GUCs are set
+        run: |
+          set -euo pipefail
+          DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          GUARD_MIGRATION=supabase/migrations/20261124120000_noisy_http_cron_scheduling_guard.sql
+
+          # Connectivity first, and HARD-FAIL on it. `psql` exits non-zero for
+          # any reason at all -- "could not connect to server", auth failure, a
+          # wedged stack -- so a bare `create extension` probe cannot tell "this
+          # image has no pg_cron" from "the stack never came up". Treating both
+          # as skippable would let a `supabase start` flake turn this whole gate
+          # into a green no-op with a warning nobody reads, which is precisely
+          # the silent-skip class this step exists to eliminate. Same precedent
+          # as "Refusing to run a security gate against a half-started stack"
+          # earlier in this job.
+          if ! psql "$DB" -v ON_ERROR_STOP=1 -q -c "select 1;" >/dev/null; then
+            echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to run the HTTP cron scheduling gate against a half-started stack."
+            exit 1
+          fi
+
+          if ! psql "$DB" -v ON_ERROR_STOP=1 -q \
+              -c "create extension if not exists pg_cron;" \
+              -c "create extension if not exists pg_net;"; then
+            # The connection was healthy a moment ago, so narrow the cause
+            # before skipping: only "the extension is not available in this
+            # image" is an environment difference. Anything else -- including
+            # the connection dying in between -- is a real failure.
+            if ! unavailable=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+                "select coalesce(string_agg(e, ', '), '') from unnest(array['pg_cron','pg_net']) e where not exists (select 1 from pg_available_extensions a where a.name = e);"); then
+              echo "::error::create extension failed and the follow-up availability probe could not connect either. Refusing to skip the HTTP cron scheduling gate on an unhealthy stack."
+              exit 1
+            fi
+            if [ -z "$unavailable" ]; then
+              echo "::error::create extension failed even though pg_cron and pg_net are both listed in pg_available_extensions. That is a real failure, not an environment difference."
+              exit 1
+            fi
+            echo "::warning::Not available in this local stack: $unavailable -- HTTP cron scheduling gate skipped."
+            exit 0
+          fi
+
+          # Set the two GUCs at SESSION level, in the SAME psql session that then
+          # runs the guard. `alter database postgres set app.api_base = ...` does
+          # not work here: `app.api_base` is a custom placeholder parameter, and
+          # PostgreSQL only lets a superuser attach one of those to a database or
+          # role. The local stack's `postgres` role is not a superuser, so that
+          # form fails with `permission denied to set parameter "app.api_base"`.
+          # A session-level SET carries no such restriction and is read back by
+          # `current_setting('app.api_base', true)` in the same connection, which
+          # is exactly what the guard's do-block reads -- so this creates the same
+          # precondition state without needing superuser.
+          #
+          # psql executes repeated -c/-f options in the order given, all on one
+          # connection, so the two SETs are still in effect when the -f runs.
+          # (This is also why they cannot be split across psql invocations: unlike
+          # a database-level setting, a session SET dies with its connection.)
+          #
+          # Re-run the guard migration with the preconditions satisfied. Its own
+          # assertion raises, and ON_ERROR_STOP turns that into a failed step.
+          psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://127.0.0.1:3000';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -f "$GUARD_MIGRATION"
+
+          echo "Scheduled cron jobs:"
+          psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule from cron.job order by jobname;"
+
+          # Independent of the migration's internal check, so a future edit that
+          # drops that check still cannot make this gate pass vacuously.
+          #
+          # Asserts DEFINITION, not just existence. `jobname in (...)` alone
+          # still passes if someone flips a cron expression to '0 0 * * *',
+          # repoints a URL at the wrong route, or drops the Authorization
+          # header -- and these job definitions are copy-pasted between
+          # migration files with nothing keeping them in sync, so drift is the
+          # likeliest regression. One expectation row per job, checked for
+          # presence + schedule + route + bearer header.
+          bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
+            select coalesce(string_agg(format('%s (%s)', expected.jobname, checked.problem), '; ' order by expected.jobname), '')
+              from (values
+                      ('scheduled_games_push_tick'::text, '* * * * *'::text, '/api/scheduled/tick'::text),
+                      ('warn_idle_waiting_lobbies', '*/2 * * * *', '/api/cron/warn-idle-lobbies'),
+                      ('reap_idle_active_games', '*/15 * * * *', '/api/cron/reap-idle')
+                   ) as expected(jobname, schedule, route)
+              left join cron.job j on j.jobname = expected.jobname
+              cross join lateral (
+                select case
+                         when j.jobid is null then 'absent from cron.job'
+                         when j.schedule is distinct from expected.schedule
+                           then format('schedule is %L, expected %L', j.schedule, expected.schedule)
+                         when position(expected.route in j.command) = 0
+                           then format('command does not POST to %s', expected.route)
+                         when position('Authorization' in j.command) = 0
+                           then 'command does not send an Authorization header'
+                       end as problem
+              ) as checked
+             where checked.problem is not null;")
+          if [ -n "$bad" ]; then
+            echo "::error::Expected HTTP cron job(s) wrong or missing in cron.job after scheduling with both GUCs set: $bad"
+            echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
+            exit 1
+          fi
+          echo "All three expected HTTP cron jobs are present with the expected schedule and route."
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
