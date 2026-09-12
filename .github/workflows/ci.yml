@@ -457,6 +457,157 @@ jobs:
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -c \
             "select count(*) filter (where has_table_privilege('anon', c.oid, 'SELECT')) as anon_readable, count(*) as total_tables from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r';"
 
+      # Exercises the idle-reaper migration's guard BRANCHES, which nothing else can:
+      # `supabase start` applies 20261123120000_reap_idle_active_games_cron.sql exactly
+      # once, with both GUCs unset, so only the skip path ever runs there -- and it runs
+      # without anything asserting that it said so. A guard branch CI never executes is
+      # not tested, and the whole class of bug behind issue #1167 is a guard branch that
+      # silently did the wrong thing for 17 days.
+      #
+      # Four cases, in this order (each one first clears the job so a leftover
+      # registration from the previous case cannot make the next one pass vacuously):
+      #   1. GUCs unset            -> warns, names both settings, schedules nothing.
+      #   2. http:// remote host   -> warns, refuses to send CRON_SECRET in cleartext,
+      #                               schedules nothing. (CWE-319 gate.)
+      #   3. http:// loopback      -> allowed; the documented narrow exception, and the
+      #                               same api_base the next step's gate uses.
+      #   4. https://              -> scheduled, then asserted for schedule + route +
+      #                               Authorization header, independently of the
+      #                               migration's own assertion so a future edit that
+      #                               drops that check cannot make this gate pass.
+      #
+      # Fail-safe on environment, strict on defects: connectivity is hard-failed first
+      # (a `supabase start` flake must not turn this gate into a green no-op), and the
+      # extensions are soft-skipped ONLY when a follow-up probe proves they are genuinely
+      # absent from the image.
+      - name: Idle-reaper cron guard branches are exercised
+        run: |
+          set -euo pipefail
+          DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          MIG=supabase/migrations/20261123120000_reap_idle_active_games_cron.sql
+          JOB=reap_idle_active_games
+
+          if ! psql "$DB" -v ON_ERROR_STOP=1 -q -c "select 1;" >/dev/null; then
+            echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to run the idle-reaper cron guard gate against a half-started stack."
+            exit 1
+          fi
+
+          if ! psql "$DB" -v ON_ERROR_STOP=1 -q \
+              -c "create extension if not exists pg_cron;" \
+              -c "create extension if not exists pg_net;"; then
+            # The connection was healthy a moment ago, so narrow the cause before
+            # skipping: only "not available in this image" is an environment difference.
+            if ! unavailable=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+                "select coalesce(string_agg(e, ', '), '') from unnest(array['pg_cron','pg_net']) e where not exists (select 1 from pg_available_extensions a where a.name = e);"); then
+              echo "::error::create extension failed and the follow-up availability probe could not connect either. Refusing to skip the idle-reaper cron guard gate on an unhealthy stack."
+              exit 1
+            fi
+            if [ -z "$unavailable" ]; then
+              echo "::error::create extension failed even though pg_cron and pg_net are both listed in pg_available_extensions. That is a real failure, not an environment difference."
+              exit 1
+            fi
+            echo "::warning::Not available in this local stack: $unavailable -- idle-reaper cron guard gate skipped."
+            exit 0
+          fi
+
+          # `alter database ... set app.api_base` needs superuser for a custom
+          # placeholder parameter and the local `postgres` role is not one, so the GUCs
+          # are set at SESSION level in the SAME psql session that then runs the
+          # migration. psql runs repeated -c/-f options in order on one connection, so
+          # the SETs are still in effect for the -f -- and that is also why a case's SET
+          # cannot leak into another case's psql invocation.
+          clear_job() {
+            psql "$DB" -v ON_ERROR_STOP=1 -q -c "select cron.unschedule(jobid) from cron.job where jobname = '$JOB';" >/dev/null
+          }
+          job_count() {
+            psql "$DB" -v ON_ERROR_STOP=1 -tAc "select count(*) from cron.job where jobname = '$JOB';"
+          }
+          expect_absent() {
+            local n; n=$(job_count)
+            if [ "$n" != "0" ]; then
+              echo "::error::$1: $JOB is registered in cron.job ($n row(s)) but the guard should have refused to schedule it."
+              exit 1
+            fi
+          }
+          expect_warning() {
+            if ! printf '%s\n' "$2" | grep -qF "$1"; then
+              echo "::error::The guard did not emit the expected warning. Wanted to find: $1"
+              echo "::error::Actual psql output follows."
+              printf '%s\n' "$2"
+              exit 1
+            fi
+          }
+
+          echo '--- Case 1: both GUCs unset -> loud skip, nothing scheduled'
+          clear_job
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 -f "$MIG" 2>&1) || { echo "::error::The migration failed to apply with the GUCs unset; a missing setting must warn, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) was NOT scheduled because required database settings are unset: app.api_base, app.cron_secret' "$out"
+          expect_absent 'Case 1 (GUCs unset)'
+
+          echo '--- Case 2: plaintext http:// to a remote host -> refused (CWE-319)'
+          clear_job
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://reaper-ci.example.com';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -f "$MIG" 2>&1) || { echo "::error::The migration failed to apply with a plaintext api_base; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
+          expect_absent 'Case 2 (plaintext remote api_base)'
+
+          # A host check, not a substring check: this URL contains "localhost" but is not
+          # one, so it must still be refused. This is the case a naive `like '%localhost%'`
+          # carve-out would wave through.
+          echo '--- Case 2b: a remote http:// host that merely CONTAINS "localhost" -> still refused'
+          clear_job
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://localhost.reaper-ci.example.com';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -f "$MIG" 2>&1) || { echo "::error::The migration failed to apply for case 2b; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
+          expect_absent 'Case 2b (remote host containing "localhost")'
+
+          echo '--- Case 3: http:// loopback -> allowed (the documented narrow exception)'
+          clear_job
+          psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://127.0.0.1:3000';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -f "$MIG"
+          if [ "$(job_count)" != "1" ]; then
+            echo "::error::Case 3 (loopback http): $JOB was NOT scheduled. Loopback http:// is the documented exception -- infra/templates/user-data.sh.tftpl and the HTTP-cron gate both rely on it."
+            exit 1
+          fi
+
+          echo '--- Case 4: https:// -> scheduled, and asserted independently of the migration'
+          clear_job
+          psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -f "$MIG"
+          psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule from cron.job order by jobname;"
+          bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
+            select coalesce(
+                     case
+                       when j.jobid is null then 'absent from cron.job'
+                       when j.schedule is distinct from '*/15 * * * *'
+                         then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
+                       when position('/api/cron/reap-idle' in j.command) = 0
+                         then 'command does not POST to /api/cron/reap-idle'
+                       when position('Authorization' in j.command) = 0
+                         then 'command does not send an Authorization header'
+                       when position('https://reaper-ci.example.invalid' in j.command) = 0
+                         then 'command does not use the api_base that was set'
+                     end, '')
+              from (select 1) as one
+              left join cron.job j on j.jobname = '$JOB';")
+          if [ -n "$bad" ]; then
+            echo "::error::Case 4 (https): $JOB is wrong or missing in cron.job after scheduling with both GUCs set: $bad"
+            echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
+            exit 1
+          fi
+          echo "All four idle-reaper guard branches behaved as specified."
+
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
   security:
