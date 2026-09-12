@@ -457,24 +457,34 @@ jobs:
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -c \
             "select count(*) filter (where has_table_privilege('anon', c.oid, 'SELECT')) as anon_readable, count(*) as total_tables from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r';"
 
-      # Exercises the idle-reaper migration's guard BRANCHES, which nothing else can:
-      # `supabase start` applies 20261123120000_reap_idle_active_games_cron.sql exactly
-      # once, with both GUCs unset, so only the skip path ever runs there -- and it runs
-      # without anything asserting that it said so. A guard branch CI never executes is
-      # not tested, and the whole class of bug behind issue #1167 is a guard branch that
-      # silently did the wrong thing for 17 days.
+      # Exercises the idle-reaper migration AND its tick function's guard BRANCHES,
+      # which nothing else can: `supabase start` applies
+      # 20261123120000_reap_idle_active_games_cron.sql exactly once, with both GUCs
+      # unset, and never calls the tick -- so the guard branches never execute there,
+      # and the whole class of bug behind issue #1167 is a guard branch that silently
+      # did the wrong thing for 17 days.
       #
-      # Four cases, in this order (each one first clears the job so a leftover
-      # registration from the previous case cannot make the next one pass vacuously):
-      #   1. GUCs unset            -> warns, names both settings, schedules nothing.
-      #   2. http:// remote host   -> warns, refuses to send CRON_SECRET in cleartext,
-      #                               schedules nothing. (CWE-319 gate.)
-      #   3. http:// loopback      -> allowed; the documented narrow exception, and the
-      #                               same api_base the next step's gate uses.
-      #   4. https://              -> scheduled, then asserted for schedule + route +
-      #                               Authorization header, independently of the
-      #                               migration's own assertion so a future edit that
-      #                               drops that check cannot make this gate pass.
+      # The shape changed with the fix for that issue. The migration no longer reads
+      # the GUCs: it schedules reap_idle_active_games UNCONDITIONALLY (given pg_cron)
+      # and public.reap_idle_active_games_tick() does the configuration and transport
+      # checks at RUN time. So the cases assert two different things:
+      #   * after the migration, the job EXISTS regardless of GUCs; and
+      #   * the guards fire inside the tick, which is invoked directly.
+      #
+      # Cases, in this order (each first clears the job so a leftover registration
+      # from the previous case cannot make the next one pass vacuously):
+      #   0. Migration with no GUCs -> the job is scheduled anyway. This is the
+      #      structural property the old design lacked.
+      #   1. Tick with GUCs unset  -> warns, names both settings, makes no request.
+      #   2/2b/2c. Tick with http:// to a remote host (including a host that merely
+      #      CONTAINS "localhost", and an invalid 127.x quad) -> warns, refuses to
+      #      send CRON_SECRET in cleartext, makes no request. (CWE-319 gate.)
+      #   3. Tick with http:// loopback -> allowed; the documented narrow exception.
+      #   4. Tick with https:// -> request made; and the job is asserted for schedule
+      #      + command independently of the migration's own assertion, so a future
+      #      edit that drops that check cannot make this gate pass.
+      #   5. REGRESSION for #1167: apply the migration with NO GUCs, then set them,
+      #      then tick -> the request happens with no re-migration of any kind.
       #
       # Fail-safe on environment, strict on defects: connectivity is hard-failed first
       # (a `supabase start` flake must not turn this gate into a green no-op), and the
@@ -486,6 +496,7 @@ jobs:
           DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           MIG=supabase/migrations/20261123120000_reap_idle_active_games_cron.sql
           JOB=reap_idle_active_games
+          TICK="select public.reap_idle_active_games_tick();"
 
           if ! psql "$DB" -v ON_ERROR_STOP=1 -q -c "select 1;" >/dev/null; then
             echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to run the idle-reaper cron guard gate against a half-started stack."
@@ -512,20 +523,23 @@ jobs:
 
           # `alter database ... set app.api_base` needs superuser for a custom
           # placeholder parameter and the local `postgres` role is not one, so the GUCs
-          # are set at SESSION level in the SAME psql session that then runs the
-          # migration. psql runs repeated -c/-f options in order on one connection, so
-          # the SETs are still in effect for the -f -- and that is also why a case's SET
-          # cannot leak into another case's psql invocation.
+          # are set at SESSION level in the SAME psql session that then runs the tick.
+          # psql runs repeated -c/-f options in order on one connection, so the SETs are
+          # still in effect for the call that follows -- and that is also why a case's
+          # SET cannot leak into another case's psql invocation.
           clear_job() {
             psql "$DB" -v ON_ERROR_STOP=1 -q -c "select cron.unschedule(jobid) from cron.job where jobname = '$JOB';" >/dev/null
           }
           job_count() {
             psql "$DB" -v ON_ERROR_STOP=1 -tAc "select count(*) from cron.job where jobname = '$JOB';"
           }
-          expect_absent() {
+          apply_migration() {
+            psql "$DB" -v ON_ERROR_STOP=1 -f "$MIG" 2>&1
+          }
+          expect_scheduled() {
             local n; n=$(job_count)
-            if [ "$n" != "0" ]; then
-              echo "::error::$1: $JOB is registered in cron.job ($n row(s)) but the guard should have refused to schedule it."
+            if [ "$n" != "1" ]; then
+              echo "::error::$1: expected exactly one $JOB row in cron.job, found $n. Since #1167 the migration must schedule the job unconditionally -- configuration is checked inside the tick, not at migration time."
               exit 1
             fi
           }
@@ -537,89 +551,139 @@ jobs:
               exit 1
             fi
           }
+          # Every refusal path in the tick raises a "REAPER CRON GUARD" warning and
+          # returns before net.http_post, so the ABSENCE of that string is what proves
+          # the tick reached the request. The pg_net request-id sequence is then checked
+          # as the positive half: it advances on http_post and is immune to the pg_net
+          # background worker draining net.http_request_queue mid-check, which a row
+          # count would not be.
+          request_seq() {
+            psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+              "select coalesce((select last_value::text || ':' || is_called::text from net.http_request_queue_id_seq), 'unavailable');" 2>/dev/null || echo unavailable
+          }
+          expect_request_made() {
+            # $1 = case label, $2 = psql output, $3 = sequence value before the tick
+            if printf '%s\n' "$2" | grep -qF 'REAPER CRON GUARD'; then
+              echo "::error::$1: the tick emitted a guard warning and therefore made no request, but this configuration must be accepted."
+              printf '%s\n' "$2"
+              exit 1
+            fi
+            local after; after=$(request_seq)
+            if [ "$3" = unavailable ] || [ "$after" = unavailable ]; then
+              echo "::warning::$1: net.http_request_queue_id_seq is not readable in this stack; relying on the absence of a guard warning alone."
+              return 0
+            fi
+            if [ "$after" = "$3" ]; then
+              echo "::error::$1: the tick warned about nothing but the pg_net request sequence did not advance ($3 -> $after), so no request was enqueued."
+              exit 1
+            fi
+          }
 
-          echo '--- Case 1: both GUCs unset -> loud skip, nothing scheduled'
+          echo '--- Case 0: the migration schedules the job even with both GUCs unset'
           clear_job
-          out=$(psql "$DB" -v ON_ERROR_STOP=1 -f "$MIG" 2>&1) || { echo "::error::The migration failed to apply with the GUCs unset; a missing setting must warn, not error."; printf '%s\n' "$out"; exit 1; }
+          out=$(apply_migration) || { echo "::error::The migration failed to apply with the GUCs unset; it must not depend on them at all."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
-          expect_warning 'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) was NOT scheduled because required database settings are unset: app.api_base, app.cron_secret' "$out"
-          expect_absent 'Case 1 (GUCs unset)'
+          expect_scheduled 'Case 0 (migration, GUCs unset)'
+
+          echo '--- Case 1: tick with both GUCs unset -> loud skip, no request'
+          before=$(request_seq)
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 -c "$TICK" 2>&1) || { echo "::error::The tick failed with the GUCs unset; a missing setting must warn, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) made NO request because required database settings are unset: app.api_base, app.cron_secret' "$out"
+          if [ "$before" != unavailable ] && [ "$(request_seq)" != "$before" ]; then
+            echo "::error::Case 1 (GUCs unset): the pg_net request sequence advanced, so a request was enqueued despite the guard warning."
+            exit 1
+          fi
 
           echo '--- Case 2: plaintext http:// to a remote host -> refused (CWE-319)'
-          clear_job
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'http://reaper-ci.example.com';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
-            -f "$MIG" 2>&1) || { echo "::error::The migration failed to apply with a plaintext api_base; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+            -c "$TICK" 2>&1) || { echo "::error::The tick failed with a plaintext api_base; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
-          expect_absent 'Case 2 (plaintext remote api_base)'
 
           # A host check, not a substring check: this URL contains "localhost" but is not
           # one, so it must still be refused. This is the case a naive `like '%localhost%'`
           # carve-out would wave through.
           echo '--- Case 2b: a remote http:// host that merely CONTAINS "localhost" -> still refused'
-          clear_job
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'http://localhost.reaper-ci.example.com';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
-            -f "$MIG" 2>&1) || { echo "::error::The migration failed to apply for case 2b; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+            -c "$TICK" 2>&1) || { echo "::error::The tick failed for case 2b; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
-          expect_absent 'Case 2b (remote host containing "localhost")'
 
           # Not a dotted quad, so libcurl inside pg_net would DNS-resolve it as a NAME
           # and could reach a non-loopback address. A loose [0-9]{1,3} octet pattern
           # would wave this through and leak the CRON_SECRET bearer in cleartext.
           echo '--- Case 2c: an invalid 127.x quad (http://127.999.999.999) -> still refused'
-          clear_job
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'http://127.999.999.999';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
-            -f "$MIG" 2>&1) || { echo "::error::The migration failed to apply for case 2c; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+            -c "$TICK" 2>&1) || { echo "::error::The tick failed for case 2c; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
-          expect_absent 'Case 2c (invalid 127.x octets)'
+
+          # The job must still be there after every refusal: a bad GUC makes the tick
+          # decline to send, it does not unregister anything.
+          expect_scheduled 'Cases 1-2c (refusals must not unschedule the job)'
 
           echo '--- Case 3: http:// loopback -> allowed (the documented narrow exception)'
-          clear_job
-          psql "$DB" -v ON_ERROR_STOP=1 \
+          before=$(request_seq)
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'http://127.0.0.1:3000';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
-            -f "$MIG"
-          if [ "$(job_count)" != "1" ]; then
-            echo "::error::Case 3 (loopback http): $JOB was NOT scheduled. Loopback http:// is the documented exception -- infra/templates/user-data.sh.tftpl and the HTTP-cron gate both rely on it."
-            exit 1
-          fi
+            -c "$TICK" 2>&1) || { echo "::error::Case 3 (loopback http): the tick errored. Loopback http:// is the documented exception -- infra/templates/user-data.sh.tftpl relies on it."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_request_made 'Case 3 (loopback http)' "$out" "$before"
 
-          echo '--- Case 4: https:// -> scheduled, and asserted independently of the migration'
-          clear_job
-          psql "$DB" -v ON_ERROR_STOP=1 \
+          echo '--- Case 4: https:// -> request made, and the job asserted independently of the migration'
+          before=$(request_seq)
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
-            -f "$MIG"
-          psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule from cron.job order by jobname;"
+            -c "$TICK" 2>&1) || { echo "::error::Case 4 (https): the tick errored."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_request_made 'Case 4 (https)' "$out" "$before"
+          psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, command from cron.job order by jobname;"
           bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
             select coalesce(
                      case
                        when j.jobid is null then 'absent from cron.job'
                        when j.schedule is distinct from '*/15 * * * *'
                          then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-                       when position('/api/cron/reap-idle' in j.command) = 0
-                         then 'command does not POST to /api/cron/reap-idle'
-                       when position('Authorization' in j.command) = 0
-                         then 'command does not send an Authorization header'
-                       when position('https://reaper-ci.example.invalid' in j.command) = 0
-                         then 'command does not use the api_base that was set'
+                       when j.command is distinct from 'select public.reap_idle_active_games_tick();'
+                         then format('command is %L, expected the reap_idle_active_games_tick() call', j.command)
                      end, '')
               from (select 1) as one
               left join cron.job j on j.jobname = '$JOB';")
           if [ -n "$bad" ]; then
-            echo "::error::Case 4 (https): $JOB is wrong or missing in cron.job after scheduling with both GUCs set: $bad"
+            echo "::error::Case 4 (https): $JOB is wrong or missing in cron.job: $bad"
             echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
             exit 1
           fi
-          echo "All four idle-reaper guard branches behaved as specified."
+
+          # THE regression test for #1167. The old design read the GUCs at migration
+          # time, so a database migrated before they were set stayed unscheduled
+          # forever: the migration was already recorded as applied and would not
+          # re-run. Here the migration is applied with nothing set, the settings
+          # arrive afterwards in a different session, and the tick must go through --
+          # without the file being applied again.
+          echo '--- Case 5: GUCs set AFTER the migration -> the tick works with no re-migration'
+          clear_job
+          out=$(apply_migration) || { echo "::error::Case 5: the migration failed to apply with the GUCs unset."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_scheduled 'Case 5 (migration applied with no GUCs)'
+          before=$(request_seq)
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -c "$TICK" 2>&1) || { echo "::error::Case 5: the tick errored after the GUCs were set."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_request_made 'Case 5 (GUCs set after the migration)' "$out" "$before"
+
+          echo "All idle-reaper guard branches behaved as specified."
 
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
