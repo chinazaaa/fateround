@@ -64,21 +64,24 @@
 --     missing and the commands that fix it) and makes a genuine defect FATAL
 --     (preconditions met, `cron.schedule` ran, job still not correctly
 --     registered -> `raise exception`).
---   * 20261124120000_noisy_http_cron_scheduling_guard.sql (PR #1168) owns the
---     RE-REGISTRATION path: it is a later migration that re-schedules all three
---     HTTP ticks -- including this one -- behind the same loud guard, and its
---     header carries the operator runbook for an already-applied database.
+--   * The RE-REGISTRATION path is owned by a LATER migration, not by this one:
+--     a follow-up migration re-schedules all three HTTP ticks -- including this
+--     one -- behind the same loud guard, and carries the operator runbook for
+--     an already-applied database.
 -- So there is exactly ONE re-registration block per job to re-execute after the
--- GUCs are set (#1168's), not two competing ones. Adding a second one here
--- would give an operator two do-blocks for `reap_idle_active_games` with no
--- rule for which is authoritative. Visibility, on the other hand, must live in
--- BOTH files: this migration can land, and be applied, before #1168 exists.
+-- GUCs are set (the later migration's), not two competing ones. Adding a second
+-- one here would give an operator two do-blocks for `reap_idle_active_games`
+-- with no rule for which is authoritative. Visibility, on the other hand, must
+-- live in BOTH files: this migration can land, and be applied, before the
+-- re-registration migration exists.
 --
--- The trap itself is not escapable from inside a migration: after
+-- The trap itself is not escapable from inside a migration. An operator fixes
+-- an already-applied database by setting the two settings:
 --   alter database <db> set app.api_base   = 'https://fateround.com';
 --   alter database <db> set app.cron_secret = '<same value as CRON_SECRET>';
--- an operator must open a NEW session (database-level settings only affect new
--- connections) and re-execute the do-block in #1168's migration verbatim, then
+-- then opening a NEW session (database-level settings only affect new
+-- connections) so the later re-registration migration -- or, until it lands, a
+-- manual re-run of this file -- can schedule the job, and confirming with
 --   select jobname, schedule from cron.job order by jobname;
 -- Grep a deploy log for "REAPER CRON GUARD" to see which branch this file took.
 --
@@ -150,7 +153,7 @@ begin
 
   if coalesce(missing_settings, '') <> '' then
     raise warning
-      'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) was NOT scheduled because required database settings are unset: %. Set them with "alter database <db> set app.api_base = ''https://fateround.com''" and "alter database <db> set app.cron_secret = ''<same value as the CRON_SECRET env var>''", then -- because this migration is already recorded as applied and will not re-run -- open a NEW session and re-execute the do-block in supabase/migrations/20261124120000_noisy_http_cron_scheduling_guard.sql. Until then idle active games are never closed.',
+      'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) was NOT scheduled because required database settings are unset: %. Set them with "alter database <db> set app.api_base = ''https://fateround.com''" and "alter database <db> set app.cron_secret = ''<same value as the CRON_SECRET env var>''", then open a NEW session (database-level settings only affect new connections) -- because this migration is already recorded as applied and will not re-run, the job is re-provisioned by a later re-registration migration, or by re-running this file manually until that migration lands. Until then idle active games are never closed.',
       missing_settings;
     return;
   end if;
@@ -160,6 +163,12 @@ begin
   -- not pass a naive `like '%localhost%'` test. Strip the scheme, keep the
   -- authority (up to the first '/'), drop any userinfo, then take the host --
   -- bracketed for IPv6, up to the port otherwise.
+  --
+  -- The 127.0.0.0/8 test spells out each octet as 0-255 rather than a loose
+  -- [0-9]{1,3}: '127.999.999.999' is not a dotted quad, so libcurl inside
+  -- pg_net would treat it as a NAME and DNS-resolve it -- potentially to a
+  -- non-loopback address that then receives the CRON_SECRET bearer in
+  -- cleartext. Only a genuinely parseable 127.x.x.x address is loopback.
   api_scheme := lower(split_part(api_base, '://', 1));
   authority := regexp_replace(api_base, '^[a-zA-Z][a-zA-Z0-9+.-]*://', '');
   authority := split_part(authority, '/', 1);
@@ -175,7 +184,7 @@ begin
        api_scheme = 'http'
        and (
          api_host in ('localhost', '::1')
-         or api_host ~ '^127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
+         or api_host ~ '^127\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$'
        )
      )
   then
