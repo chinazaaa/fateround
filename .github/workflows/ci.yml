@@ -613,7 +613,10 @@ jobs:
             fi
           }
           expect_request_made() {
-            # $1 = case label, $2 = psql output, $3 = sequence value before the tick
+            # $1 = case label, $2 = psql output, $3 = sequence value before the tick,
+            # $4 = the file holding THAT probe's stderr (pairing the value with its own
+            # diagnosis here rather than assuming $SEQ_ERR_BEFORE, so a future caller
+            # probing into a different file cannot get a confidently wrong quote).
             if printf '%s\n' "$2" | grep -qF 'REAPER CRON GUARD'; then
               echo "::error::$1: the tick emitted a guard warning and therefore made no request, but this configuration must be accepted."
               printf '%s\n' "$2"
@@ -625,9 +628,9 @@ jobs:
               # whichever one happened to run last.
               local why
               if [ "$3" = unavailable ] && [ "$after" = unavailable ]; then
-                why="Both probes failed. The before probe said: $(seq_err "$SEQ_ERR_BEFORE") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+                why="Both probes failed. The before probe said: $(seq_err "$4") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
               elif [ "$3" = unavailable ]; then
-                why="The before probe (the one that failed) said: $(seq_err "$SEQ_ERR_BEFORE")"
+                why="The before probe (the one that failed) said: $(seq_err "$4")"
               else
                 why="The after probe (the one that failed) said: $(seq_err "$SEQ_ERR_AFTER")"
               fi
@@ -686,12 +689,29 @@ jobs:
           printf '%s\n' "$out"
           expect_warning 'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) made NO request because required database settings are unset: app.api_base, app.cron_secret' "$out"
           # Deliberate asymmetry with expect_request_made, which HARD-fails on an
-          # unreadable probe: this is a negative check, so an unreadable probe can only
-          # cost it its evidence, never make it wrong. Hard-failing here would turn a
-          # broken probe into a Case 1 failure and misreport which assertion broke --
-          # and Case 3 hard-fails on the very same probe a few lines below anyway.
-          if [ "$before" != unavailable ] && [ "$(request_seq "$SEQ_ERR_AFTER")" != "$before" ]; then
-            echo "::error::Case 1 (GUCs unset): the pg_net request sequence advanced, so a request was enqueued despite the guard warning."
+          # unreadable probe: this is a NEGATIVE check, so an unreadable probe costs it
+          # its evidence and it declines to conclude anything rather than guessing.
+          #
+          # BOTH values have to be guarded, not just $before. An unreadable after-probe
+          # returns the literal string "unavailable", which compares unequal to a
+          # perfectly good "$before" -- so testing only $before would fire this branch on
+          # a connection blip and report that the guard leaked a request when nothing was
+          # enqueued, which is the exact false diagnosis the rest of this commit exists to
+          # eliminate.
+          #
+          # The skip is not silent: the probe's own stderr is quoted, and Case 3 hard-fails
+          # on this same probe further down (after cases 2/2b/2c), so a genuinely broken
+          # probe still stops the job rather than quietly hollowing this assertion out.
+          after=$(request_seq "$SEQ_ERR_AFTER")
+          if [ "$before" = unavailable ] || [ "$after" = unavailable ]; then
+            if [ "$before" = unavailable ]; then
+              why="the before probe said: $(seq_err "$SEQ_ERR_BEFORE")"
+            else
+              why="the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+            fi
+            echo "::warning::Case 1 (GUCs unset): the pg_net request sequence could not be read ($before -> $after), so the no-request half of this case is unproven -- the guard warning matched above is all it asserts. Diagnosis: $why"
+          elif [ "$after" != "$before" ]; then
+            echo "::error::Case 1 (GUCs unset): the pg_net request sequence advanced ($before -> $after), so a request was enqueued despite the guard warning."
             exit 1
           fi
 
@@ -736,7 +756,7 @@ jobs:
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
             -c "$TICK" 2>&1) || { echo "::error::Case 3 (loopback http): the tick errored. Loopback http:// is the documented exception -- infra/templates/user-data.sh.tftpl relies on it."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
-          expect_request_made 'Case 3 (loopback http)' "$out" "$before"
+          expect_request_made 'Case 3 (loopback http)' "$out" "$before" "$SEQ_ERR_BEFORE"
 
           echo '--- Case 4: https:// -> request made, and the job asserted independently of the migration'
           before=$(request_seq "$SEQ_ERR_BEFORE")
@@ -745,7 +765,7 @@ jobs:
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
             -c "$TICK" 2>&1) || { echo "::error::Case 4 (https): the tick errored."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
-          expect_request_made 'Case 4 (https)' "$out" "$before"
+          expect_request_made 'Case 4 (https)' "$out" "$before" "$SEQ_ERR_BEFORE"
           psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, command from cron.job order by jobname;"
           bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
             select coalesce(
@@ -781,7 +801,7 @@ jobs:
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
             -c "$TICK" 2>&1) || { echo "::error::Case 5: the tick errored after the GUCs were set."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
-          expect_request_made 'Case 5 (GUCs set after the migration)' "$out" "$before"
+          expect_request_made 'Case 5 (GUCs set after the migration)' "$out" "$before" "$SEQ_ERR_BEFORE"
 
           echo "All idle-reaper guard branches behaved as specified."
 
