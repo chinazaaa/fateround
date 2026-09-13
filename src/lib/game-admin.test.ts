@@ -540,6 +540,21 @@ describe('assertHost query shape', () => {
     expect(seen[0].selects).toEqual(['game_type, question_source, host_token, status'])
   })
 
+  it('asks for exactly `game_type, host_token, status` for the mahjong next-hand/penalty bag', async () => {
+    // /api/mahjong/next-hand and /api/mahjong/penalty pass this exact options bag. Their
+    // pre-adoption read was `select('host_token, status, game_type')` and the only column
+    // either handler touches off the row is `game_type` (both engines take the game CODE,
+    // not the row), so this list is that read restored. The client is untyped, so a column
+    // dropped from here would be a silent `undefined`, never a type error — hence the pin.
+    const { supabase, seen } = recordingStub('games', game('active'))
+    await assertHostWith(supabase, 'abcd', TOKEN, {
+      allowedStatuses: ['active'],
+      statusError: 'Game is not active',
+      columns: 'game_type',
+    })
+    expect(seen[0].selects).toEqual(['game_type, host_token, status'])
+  })
+
   it('falls back to `*` for an explicit `*` or an empty list', async () => {
     for (const columns of ['*', '', '  ']) {
       const { supabase, seen } = recordingStub('games', game('waiting'))
