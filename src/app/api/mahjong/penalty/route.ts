@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
   } = await assertHostWith(supabase, code, hostToken, {
     allowedStatuses: ['active'],
     statusError: 'Game is not active',
+    columns: 'game_type',
   })
   if (!game) return NextResponse.json({ error: authError }, { status: authStatus })
   if (!isMahjongGame(parseGameType(game.game_type))) {
