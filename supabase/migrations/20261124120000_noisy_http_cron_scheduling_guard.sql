@@ -59,10 +59,15 @@
 --
 -- It stays NON-FATAL when pg_cron/pg_net genuinely do not exist or the GUCs are
 -- unset — local `supabase db reset`, CI's throwaway stack, and preview branches
--- must keep applying cleanly. It raises an EXCEPTION only in the one case that
--- is a real defect: the preconditions were all met, scheduling ran, and a job is
--- still absent from cron.job afterwards or is registered with the wrong
--- schedule or the wrong route.
+-- must keep applying cleanly. It raises an EXCEPTION in exactly two cases, both
+-- of which are real defects:
+--   1. pg_cron and pg_net are both present but public.reap_idle_active_games_tick()
+--      does not exist, so the command this migration is about to register would
+--      be dead on arrival. This fires BEFORE any unschedule/schedule runs, so
+--      nothing already in cron.job is disturbed.
+--   2. The preconditions were all met, scheduling ran, and a job is still absent
+--      from cron.job afterwards or is registered with the wrong schedule, the
+--      wrong command or the wrong route.
 --
 -- ── The trap this does NOT escape ───────────────────────────────────────────
 -- Setting the GUCs later does not retroactively schedule the two direct-HTTP
