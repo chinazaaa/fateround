@@ -78,6 +78,16 @@
 -- `warn_idle_waiting_lobbies` (*/2 * * * *) and `reap_idle_active_games`
 -- (*/15 * * * *) to appear.
 --
+-- Note what the missing-settings branch does and does NOT mean for the two
+-- direct-HTTP jobs: it RE-REGISTERS nothing, it does not unschedule anything.
+-- If 20261005120000 / 20261015120000 managed to register them on this database
+-- (their own GUC gates passed at the time), those rows are still in cron.job and
+-- still firing with whatever url and bearer token were baked in back then. So
+-- "not scheduled by this migration" is not the same as "not running", and a
+-- stale baked-in URL or a rotated secret looks identical to a dead job from the
+-- outside. `select jobname, schedule, command from cron.job order by jobname;`
+-- is what actually settles it.
+--
 -- Grep the deploy log for "CRON GUARD" to see which branch was taken.
 
 do $$
@@ -207,7 +217,7 @@ begin
 
   if api_base is null or api_base = '' or cron_secret is null or cron_secret = '' then
     raise warning
-      'CRON GUARD: the direct-HTTP cron jobs (%) were NOT scheduled because required database settings are unset: %. Set them with "alter database <db> set app.api_base = ''https://fateround.com''" and "alter database <db> set app.cron_secret = ''<same value as the CRON_SECRET env var>''", then re-run the do-block in supabase/migrations/20261124120000_noisy_http_cron_scheduling_guard.sql from a NEW session. Until then the scheduled-games push tick and the idle-lobby warning tick do not run at all. (% IS registered -- it reads the same two settings at run time, so it starts working as soon as they are set at DATABASE level, with nothing to re-run.)',
+      'CRON GUARD: the direct-HTTP cron jobs (%) were NOT re-registered because required database settings are unset: %. Set them with "alter database <db> set app.api_base = ''https://fateround.com''" and "alter database <db> set app.cron_secret = ''<same value as the CRON_SECRET env var>''", then re-run the do-block in supabase/migrations/20261124120000_noisy_http_cron_scheduling_guard.sql from a NEW session. This branch unschedules nothing, so it does NOT mean those two jobs are stopped: any rows an earlier migration managed to register are still in cron.job and still firing with the url and bearer token baked in at that time. Check with "select jobname, schedule, command from cron.job order by jobname;" -- absent means dead, present means running against possibly stale values. (% IS registered by this migration -- it reads the same two settings at run time, so it starts working as soon as they are set at DATABASE level, with nothing to re-run.)',
       http_job_names,
       missing_settings,
       reaper_jobname;
