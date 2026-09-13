@@ -581,21 +581,31 @@ jobs:
           # concurrent enqueue would make it fail rather than pass, i.e. it fails safe.
           # request_seq runs inside $( ), so it cannot hand its diagnosis back in a
           # variable -- the assignment would die with the subshell. psql's stderr goes
-          # to a file instead (truncated per call), so the hard failure below can say
-          # WHY the probe broke: relation absent, permission denied and connection
-          # refused all collapse to "unavailable" otherwise.
-          SEQ_ERR="$(mktemp)"
+          # to a file instead, so the hard failure below can say WHY the probe broke:
+          # relation absent, permission denied and connection refused all collapse to
+          # "unavailable" otherwise.
+          #
+          # Each probe writes to its OWN file, named by the caller. A single shared file
+          # would be truncated by every later call including the successful ones, so the
+          # common failure shape -- `before` fails, the tick runs, `after` succeeds -- would
+          # leave the diagnosis empty and send the reader down the "pg_get_serial_sequence
+          # returned NULL" path for what was really a connection blip.
+          SEQ_ERR_BEFORE="$(mktemp)"
+          SEQ_ERR_AFTER="$(mktemp)"
+          Q_ERR="$(mktemp)"
           request_seq() {
+            # $1 = file this probe's psql stderr is captured in
             psql "$DB" -v ON_ERROR_STOP=1 -tAc \
               "select case
                         when pg_get_serial_sequence('net.http_request_queue', 'id') is null then 'unavailable'
                         else coalesce(
                           pg_sequence_last_value(pg_get_serial_sequence('net.http_request_queue', 'id')::regclass)::text,
                           'unused')
-                      end;" 2>"$SEQ_ERR" || echo unavailable
+                      end;" 2>"$1" || echo unavailable
           }
           seq_err() {
-            local e; e=$(tr -s '\n' ' ' < "$SEQ_ERR")
+            # $1 = the stderr file of the probe being quoted
+            local e; e=$(tr -s '\n' ' ' < "$1")
             if [ -z "${e// /}" ]; then
               echo "psql reported no error, so pg_get_serial_sequence('net.http_request_queue', 'id') returned NULL -- the pg_net queue table or its identity column is not what this probe expects."
             else
@@ -609,9 +619,19 @@ jobs:
               printf '%s\n' "$2"
               exit 1
             fi
-            local after; after=$(request_seq)
+            local after; after=$(request_seq "$SEQ_ERR_AFTER")
             if [ "$3" = unavailable ] || [ "$after" = unavailable ]; then
-              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed. Last probe said: $(seq_err)"
+              # Quote the probe (or probes) that actually came back unavailable -- never
+              # whichever one happened to run last.
+              local why
+              if [ "$3" = unavailable ] && [ "$after" = unavailable ]; then
+                why="Both probes failed. The before probe said: $(seq_err "$SEQ_ERR_BEFORE") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+              elif [ "$3" = unavailable ]; then
+                why="The before probe (the one that failed) said: $(seq_err "$SEQ_ERR_BEFORE")"
+              else
+                why="The after probe (the one that failed) said: $(seq_err "$SEQ_ERR_AFTER")"
+              fi
+              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed. $why"
               exit 1
             fi
             if [ "$after" = "$3" ]; then
@@ -633,11 +653,26 @@ jobs:
           # gate stopped testing the thing it exists to catch while the function may
           # still be PUBLIC-executable. has_function_privilege() does resolve
           # PUBLIC-derived privileges, so this genuinely tests the revoke.
+          #
+          # psql's stderr goes to its own file rather than being merged with 2>&1: the
+          # merge is only wanted on the failure path, and on a SUCCESSFUL run any notice
+          # libpq prints (a client/server version mismatch, say) would be prepended to
+          # the value and fail the "exactly false" assertion for no reason.
           for role in anon authenticated; do
             granted=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
               "select case when to_regrole('$role') is null then 'no-role'
-                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;" 2>&1) \
-              || granted="probe-failed: $granted"
+                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;" 2>"$Q_ERR") \
+              || granted="probe-failed: $(tr -s '\n' ' ' < "$Q_ERR")"
+            # Keep any stderr from a SUCCESSFUL probe visible in the step log instead of
+            # discarding it; on the failure path it is already inside $granted.
+            case "$granted" in
+              probe-failed:*) ;;
+              *)
+                if [ -s "$Q_ERR" ]; then
+                  echo "  note: psql wrote to stderr while probing $role: $(tr -s '\n' ' ' < "$Q_ERR")"
+                fi
+                ;;
+            esac
             if [ "$granted" != "false" ]; then
               echo "::error::Case 0b: expected has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute') to be exactly false, got '$granted'. Postgres grants EXECUTE to PUBLIC by default, so a zero-arg function in the public schema is a POST /rest/v1/rpc/ endpoint for anyone with the anon key -- the migration must revoke it, and this check must be able to prove that it did."
               exit 1
@@ -646,11 +681,16 @@ jobs:
           done
 
           echo '--- Case 1: tick with both GUCs unset -> loud skip, no request'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 -c "$TICK" 2>&1) || { echo "::error::The tick failed with the GUCs unset; a missing setting must warn, not error."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_warning 'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) made NO request because required database settings are unset: app.api_base, app.cron_secret' "$out"
-          if [ "$before" != unavailable ] && [ "$(request_seq)" != "$before" ]; then
+          # Deliberate asymmetry with expect_request_made, which HARD-fails on an
+          # unreadable probe: this is a negative check, so an unreadable probe can only
+          # cost it its evidence, never make it wrong. Hard-failing here would turn a
+          # broken probe into a Case 1 failure and misreport which assertion broke --
+          # and Case 3 hard-fails on the very same probe a few lines below anyway.
+          if [ "$before" != unavailable ] && [ "$(request_seq "$SEQ_ERR_AFTER")" != "$before" ]; then
             echo "::error::Case 1 (GUCs unset): the pg_net request sequence advanced, so a request was enqueued despite the guard warning."
             exit 1
           fi
@@ -690,7 +730,7 @@ jobs:
           expect_scheduled 'Cases 1-2c (refusals must not unschedule the job)'
 
           echo '--- Case 3: http:// loopback -> allowed (the documented narrow exception)'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'http://127.0.0.1:3000';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
@@ -699,7 +739,7 @@ jobs:
           expect_request_made 'Case 3 (loopback http)' "$out" "$before"
 
           echo '--- Case 4: https:// -> request made, and the job asserted independently of the migration'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
@@ -735,7 +775,7 @@ jobs:
           out=$(apply_migration) || { echo "::error::Case 5: the migration failed to apply with the GUCs unset."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_scheduled 'Case 5 (migration applied with no GUCs)'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
