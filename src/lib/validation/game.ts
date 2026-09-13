@@ -401,7 +401,14 @@ export const boardGameLobbySettingsSchema = z.object({
   hostToken: hostTokenString(),
   is_public: z.boolean().optional(),
   theme: themeEnum.optional(),
-  edition_slug: z.string().min(1).max(64).optional(),
+  // No `edition_slug` here on purpose. It is coin-gated: `src/lib/coins/editions.ts` requires
+  // the ownership check to run at edition_slug write time, and `PATCH /api/games/[code]` is the
+  // endpoint that does it (entitlement + game-type validation). This route never wrote the
+  // column, so declaring the field only produced a 200 the host could not trust. Route the
+  // lobby's edition picks through `PATCH /api/games/[code]` instead.
+  //
+  // No `library_pack_id` either: it belongs to game creation (`createGameSchema` → the pool the
+  // create route resolves), and this route has no code to apply it.
   checkers_nigeria_street_rules: z.boolean().optional(),
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
@@ -528,7 +535,6 @@ export const boardGameLobbySettingsSchema = z.object({
     )
     .max(2000)
     .optional(),
-  library_pack_id: z.string().uuid().optional(),
   troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
   troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
   troll_run_world: trollRunWorldEnum.optional(),
