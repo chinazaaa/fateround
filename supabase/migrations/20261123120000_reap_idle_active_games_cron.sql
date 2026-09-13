@@ -115,6 +115,20 @@
 -- scheduled it (the migration runner), which is exactly the privilege level
 -- this needs. search_path is pinned and every object is schema-qualified so a
 -- caller's search_path cannot redirect net.http_post.
+--
+-- SECURITY INVOKER settles what the function runs AS; it says nothing about WHO
+-- may run it, and that second question is the one that bites here. Postgres
+-- grants EXECUTE to PUBLIC on every new function, and a zero-argument volatile
+-- function in `public` is published by PostgREST as
+-- POST /rest/v1/rpc/reap_idle_active_games_tick -- callable by anyone holding
+-- the public anon key, which in this project is everyone. Each call fans out to
+-- an authenticated sweep of /api/cron/reap-idle, so an unauthenticated loop
+-- becomes an outbound amplifier and the same DB-saturation profile the CADENCE
+-- note above describes. The revoke below is therefore part of the design, not
+-- boilerplate: the only legitimate callers are pg_cron (running as the role that
+-- scheduled the job) and CI (as postgres), and neither is affected by it. This
+-- follows 20260803180000_sec_definer_rpc_grants.sql, except that no
+-- service_role grant is added -- no application code calls this.
 create or replace function public.reap_idle_active_games_tick()
 returns void
 language plpgsql
@@ -225,7 +239,14 @@ end
 $fn$;
 
 comment on function public.reap_idle_active_games_tick() is
-  'One idle-active-game reaper tick: reads app.api_base / app.cron_secret at RUN time, refuses to send the CRON_SECRET bearer over cleartext http to a non-loopback host, and otherwise POSTs /api/cron/reap-idle via pg_net. Scheduled unconditionally by 20261123120000_reap_idle_active_games_cron.sql as cron job reap_idle_active_games.';
+  'One idle-active-game reaper tick: reads app.api_base / app.cron_secret at RUN time, refuses to send the CRON_SECRET bearer over cleartext http to a non-loopback host, and otherwise POSTs /api/cron/reap-idle via pg_net. Scheduled unconditionally by 20261123120000_reap_idle_active_games_cron.sql as cron job reap_idle_active_games. Not a public RPC: EXECUTE is revoked from public/anon/authenticated.';
+
+-- Drop the default PUBLIC execute grant so this never surfaces as a PostgREST
+-- RPC (see the note above the function). Re-running the file re-applies it,
+-- because `create or replace function` on an existing function preserves its
+-- ACL -- but a first-ever create in a fresh database starts from the PUBLIC
+-- default, so the revoke has to live here rather than in a one-off migration.
+revoke execute on function public.reap_idle_active_games_tick() from public, anon, authenticated;
 
 do $$
 declare

@@ -475,6 +475,8 @@ jobs:
       # from the previous case cannot make the next one pass vacuously):
       #   0. Migration with no GUCs -> the job is scheduled anyway. This is the
       #      structural property the old design lacked.
+      #   0b. Neither anon nor authenticated may EXECUTE the tick, i.e. it is not
+      #      exposed as a PostgREST RPC to anyone holding the public anon key.
       #   1. Tick with GUCs unset  -> warns, names both settings, makes no request.
       #   2/2b/2c. Tick with http:// to a remote host (including a host that merely
       #      CONTAINS "localhost", and an invalid 127.x quad) -> warns, refuses to
@@ -557,9 +559,34 @@ jobs:
           # as the positive half: it advances on http_post and is immune to the pg_net
           # background worker draining net.http_request_queue mid-check, which a row
           # count would not be.
+          #
+          # The sequence is resolved through pg_get_serial_sequence() rather than being
+          # spelled out. net.http_request_queue declares `id bigserial`, so the backing
+          # sequence is the auto-generated net.http_request_queue_id_seq -- but that name
+          # is an implementation detail of pg_net's DDL, and hardcoding it means a rename
+          # upstream silently turns this whole assertion into dead code instead of failing.
+          # An unresolvable sequence is a HARD failure below for the same reason: a
+          # ::warning:: in an otherwise-green job is nobody's stop sign. A sequence that
+          # has never been drawn from reads as 'unused', which still compares unequal to
+          # the first real value, so the advance check works from a cold database too.
+          #
+          # Soundness caveat, deliberately accepted: an advance proves that SOME request
+          # was enqueued in the window, not that it was THIS tick's. Case 0 leaves
+          # reap_idle_active_games registered for the rest of this step, so a real pg_cron
+          # tick could in principle move the sequence underneath us. It cannot today --
+          # CI never sets the GUCs at DATABASE level, so pg_cron's own connection always
+          # takes the "settings unset" early return and enqueues nothing -- but that is a
+          # coincidence propping up an assertion, so if these cases ever start flapping,
+          # this is the reason. Case 1's negative check carries the mirror-image risk: a
+          # concurrent enqueue would make it fail rather than pass, i.e. it fails safe.
           request_seq() {
             psql "$DB" -v ON_ERROR_STOP=1 -tAc \
-              "select coalesce((select last_value::text || ':' || is_called::text from net.http_request_queue_id_seq), 'unavailable');" 2>/dev/null || echo unavailable
+              "select case
+                        when pg_get_serial_sequence('net.http_request_queue', 'id') is null then 'unavailable'
+                        else coalesce(
+                          pg_sequence_last_value(pg_get_serial_sequence('net.http_request_queue', 'id')::regclass)::text,
+                          'unused')
+                      end;" 2>/dev/null || echo unavailable
           }
           expect_request_made() {
             # $1 = case label, $2 = psql output, $3 = sequence value before the tick
@@ -570,8 +597,8 @@ jobs:
             fi
             local after; after=$(request_seq)
             if [ "$3" = unavailable ] || [ "$after" = unavailable ]; then
-              echo "::warning::$1: net.http_request_queue_id_seq is not readable in this stack; relying on the absence of a guard warning alone."
-              return 0
+              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed."
+              exit 1
             fi
             if [ "$after" = "$3" ]; then
               echo "::error::$1: the tick warned about nothing but the pg_net request sequence did not advance ($3 -> $after), so no request was enqueued."
@@ -584,6 +611,18 @@ jobs:
           out=$(apply_migration) || { echo "::error::The migration failed to apply with the GUCs unset; it must not depend on them at all."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_scheduled 'Case 0 (migration, GUCs unset)'
+
+          echo '--- Case 0b: the tick is not reachable as a PostgREST RPC'
+          for role in anon authenticated; do
+            granted=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+              "select case when to_regrole('$role') is null then 'no-role'
+                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;")
+            if [ "$granted" = "true" ]; then
+              echo "::error::Case 0b: $role can execute public.reap_idle_active_games_tick(). Postgres grants EXECUTE to PUBLIC by default, so a zero-arg function in the public schema is a POST /rest/v1/rpc/ endpoint for anyone with the anon key. The migration must revoke it."
+              exit 1
+            fi
+            echo "  $role -> $granted"
+          done
 
           echo '--- Case 1: tick with both GUCs unset -> loud skip, no request'
           before=$(request_seq)
