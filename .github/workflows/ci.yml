@@ -853,12 +853,21 @@ jobs:
           # migration files with nothing keeping them in sync, so drift is the
           # likeliest regression. One expectation row per job, checked for
           # presence + schedule + route + bearer header.
+          #
+          # Only the two jobs whose COMMAND is the HTTP call are checked this
+          # way. reap_idle_active_games is registered as the single call
+          # `select public.reap_idle_active_games_tick();` (#1166): its route,
+          # bearer token and 90s timeout live inside the function body and are
+          # re-read every run, precisely so that a URL/secret rotation cannot
+          # leave a stale value baked into cron.job and so that the function's
+          # https transport gate cannot be bypassed. A route/Authorization
+          # substring test therefore cannot pass for it and must not be
+          # reintroduced -- it is asserted by exact command match below.
           bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
             select coalesce(string_agg(format('%s (%s)', expected.jobname, checked.problem), '; ' order by expected.jobname), '')
               from (values
                       ('scheduled_games_push_tick'::text, '* * * * *'::text, '/api/scheduled/tick'::text),
-                      ('warn_idle_waiting_lobbies', '*/2 * * * *', '/api/cron/warn-idle-lobbies'),
-                      ('reap_idle_active_games', '*/15 * * * *', '/api/cron/reap-idle')
+                      ('warn_idle_waiting_lobbies', '*/2 * * * *', '/api/cron/warn-idle-lobbies')
                    ) as expected(jobname, schedule, route)
               left join cron.job j on j.jobname = expected.jobname
               cross join lateral (
@@ -874,11 +883,33 @@ jobs:
               ) as checked
              where checked.problem is not null;")
           if [ -n "$bad" ]; then
-            echo "::error::Expected HTTP cron job(s) wrong or missing in cron.job after scheduling with both GUCs set: $bad"
+            echo "::error::Expected direct-HTTP cron job(s) wrong or missing in cron.job after scheduling with both GUCs set: $bad"
             echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
             exit 1
           fi
-          echo "All three expected HTTP cron jobs are present with the expected schedule and route."
+          echo "Both direct-HTTP cron jobs are present with the expected schedule and route."
+
+          # The reaper, asserted by exact command. This is the regression test
+          # for the guard migration re-inlining net.http_post over the tick call:
+          # anything other than the bare tick invocation means baked-in
+          # credentials and a bypassed transport gate.
+          bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
+            select coalesce(
+                     case
+                       when j.jobid is null then 'absent from cron.job'
+                       when j.schedule is distinct from '*/15 * * * *'
+                         then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
+                       when j.command is distinct from 'select public.reap_idle_active_games_tick();'
+                         then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
+                     end, '')
+              from (select 1) as one
+              left join cron.job j on j.jobname = 'reap_idle_active_games';")
+          if [ -n "$bad" ]; then
+            echo "::error::reap_idle_active_games is wrong or missing in cron.job after running the guard migration with both GUCs set: $bad"
+            echo "It must be registered as the tick call, not as an inlined net.http_post: the URL and the CRON_SECRET bearer must be re-read at run time (rotation-safe) and must pass the function's https transport gate (CWE-319)."
+            exit 1
+          fi
+          echo "reap_idle_active_games is registered as the tick call with the expected schedule."
 
   security:
     name: Security Scan
