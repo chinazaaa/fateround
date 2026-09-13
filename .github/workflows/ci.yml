@@ -565,8 +565,10 @@ jobs:
           # sequence is the auto-generated net.http_request_queue_id_seq -- but that name
           # is an implementation detail of pg_net's DDL, and hardcoding it means a rename
           # upstream silently turns this whole assertion into dead code instead of failing.
-          # An unresolvable sequence is a HARD failure below for the same reason: a
-          # ::warning:: in an otherwise-green job is nobody's stop sign. A sequence that
+          # An unresolvable sequence is a HARD failure in expect_request_made below for
+          # the same reason: a ::warning:: in an otherwise-green job is nobody's stop
+          # sign. Case 1's negative check deliberately warns instead -- see the comment
+          # there for why, and note Case 3 hard-fails on the same probe. A sequence that
           # has never been drawn from reads as 'unused', which still compares unequal to
           # the first real value, so the advance check works from a cold database too.
           #
@@ -704,7 +706,9 @@ jobs:
           # probe still stops the job rather than quietly hollowing this assertion out.
           after=$(request_seq "$SEQ_ERR_AFTER")
           if [ "$before" = unavailable ] || [ "$after" = unavailable ]; then
-            if [ "$before" = unavailable ]; then
+            if [ "$before" = unavailable ] && [ "$after" = unavailable ]; then
+              why="both probes failed -- the before probe said: $(seq_err "$SEQ_ERR_BEFORE") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+            elif [ "$before" = unavailable ]; then
               why="the before probe said: $(seq_err "$SEQ_ERR_BEFORE")"
             else
               why="the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
