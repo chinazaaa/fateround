@@ -246,7 +246,29 @@ comment on function public.reap_idle_active_games_tick() is
 -- because `create or replace function` on an existing function preserves its
 -- ACL -- but a first-ever create in a fresh database starts from the PUBLIC
 -- default, so the revoke has to live here rather than in a one-off migration.
-revoke execute on function public.reap_idle_active_games_tick() from public, anon, authenticated;
+--
+-- The PUBLIC revoke is unconditional: the PUBLIC pseudo-role always exists, and
+-- it is the one that actually matters -- anon and authenticated inherit their
+-- access from it. The named roles are revoked separately and only if they exist,
+-- because "revoke ... from anon" raises on a plain Postgres with no Supabase
+-- roles, which would abort this file AFTER the function is created but BEFORE
+-- the do-block below schedules the job: half-applied, no reaper. Same defensive
+-- shape as 20260803180000_sec_definer_rpc_grants.sql's to_regprocedure() guard.
+revoke execute on function public.reap_idle_active_games_tick() from public;
+
+do $roles$
+declare
+  r text;
+begin
+  foreach r in array array['anon', 'authenticated'] loop
+    if to_regrole(r) is not null then
+      execute format(
+        'revoke execute on function public.reap_idle_active_games_tick() from %I', r
+      );
+    end if;
+  end loop;
+end
+$roles$;
 
 do $$
 declare

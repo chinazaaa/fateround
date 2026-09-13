@@ -579,6 +579,12 @@ jobs:
           # coincidence propping up an assertion, so if these cases ever start flapping,
           # this is the reason. Case 1's negative check carries the mirror-image risk: a
           # concurrent enqueue would make it fail rather than pass, i.e. it fails safe.
+          # request_seq runs inside $( ), so it cannot hand its diagnosis back in a
+          # variable -- the assignment would die with the subshell. psql's stderr goes
+          # to a file instead (truncated per call), so the hard failure below can say
+          # WHY the probe broke: relation absent, permission denied and connection
+          # refused all collapse to "unavailable" otherwise.
+          SEQ_ERR="$(mktemp)"
           request_seq() {
             psql "$DB" -v ON_ERROR_STOP=1 -tAc \
               "select case
@@ -586,7 +592,15 @@ jobs:
                         else coalesce(
                           pg_sequence_last_value(pg_get_serial_sequence('net.http_request_queue', 'id')::regclass)::text,
                           'unused')
-                      end;" 2>/dev/null || echo unavailable
+                      end;" 2>"$SEQ_ERR" || echo unavailable
+          }
+          seq_err() {
+            local e; e=$(tr -s '\n' ' ' < "$SEQ_ERR")
+            if [ -z "${e// /}" ]; then
+              echo "psql reported no error, so pg_get_serial_sequence('net.http_request_queue', 'id') returned NULL -- the pg_net queue table or its identity column is not what this probe expects."
+            else
+              echo "$e"
+            fi
           }
           expect_request_made() {
             # $1 = case label, $2 = psql output, $3 = sequence value before the tick
@@ -597,7 +611,7 @@ jobs:
             fi
             local after; after=$(request_seq)
             if [ "$3" = unavailable ] || [ "$after" = unavailable ]; then
-              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed."
+              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed. Last probe said: $(seq_err)"
               exit 1
             fi
             if [ "$after" = "$3" ]; then
@@ -613,12 +627,19 @@ jobs:
           expect_scheduled 'Case 0 (migration, GUCs unset)'
 
           echo '--- Case 0b: the tick is not reachable as a PostgREST RPC'
+          # Asserted positively: the ONLY passing answer is the literal "false". A
+          # missing role, an empty result or a dead psql all fail here rather than
+          # printing a reassuring line, because every one of those states means the
+          # gate stopped testing the thing it exists to catch while the function may
+          # still be PUBLIC-executable. has_function_privilege() does resolve
+          # PUBLIC-derived privileges, so this genuinely tests the revoke.
           for role in anon authenticated; do
             granted=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
               "select case when to_regrole('$role') is null then 'no-role'
-                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;")
-            if [ "$granted" = "true" ]; then
-              echo "::error::Case 0b: $role can execute public.reap_idle_active_games_tick(). Postgres grants EXECUTE to PUBLIC by default, so a zero-arg function in the public schema is a POST /rest/v1/rpc/ endpoint for anyone with the anon key. The migration must revoke it."
+                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;" 2>&1) \
+              || granted="probe-failed: $granted"
+            if [ "$granted" != "false" ]; then
+              echo "::error::Case 0b: expected has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute') to be exactly false, got '$granted'. Postgres grants EXECUTE to PUBLIC by default, so a zero-arg function in the public schema is a POST /rest/v1/rpc/ endpoint for anyone with the anon key -- the migration must revoke it, and this check must be able to prove that it did."
               exit 1
             fi
             echo "  $role -> $granted"
