@@ -12,7 +12,12 @@
 # unbypassable, and three independent reviews of PR #1174 each found working
 # bypasses of what the then-current comments claimed. What follows is the honest
 # accounting; the real boundary is .github/CODEOWNERS, because every bypass
-# below needs an edit under `.github/` or `scripts/ci/`.
+# below needs an edit to a file that file covers: `.github/`, `scripts/`, or
+# the install surface of the job that runs this gate -- package.json (whose
+# `prepare` hook runs inside `pnpm install`), pnpm-lock.yaml,
+# pnpm-workspace.yaml, .npmrc and .husky/. The $PATH route described below
+# needs NO workflow edit, which is exactly why the list is wider than
+# `.github/`.
 #
 # CLOSED (verified by running each one against this script):
 #   * Rewriting the assertions in the PR's own copy: the copy that runs comes
@@ -35,12 +40,16 @@
 #     shim via $GITHUB_PATH with no workflow edit. A demonstration printed
 #     "enforcement logic is pinned." while installing a script whose body was
 #     `exit 0`. The same route reaches `md5sum` and, via passwordless sudo on
-#     hosted runners, /usr/bin/psql itself.
+#     hosted runners, /usr/bin/psql itself. (pnpm 10 blocks DEPENDENCY lifecycle
+#     scripts by default, and pnpm-workspace.yaml does not allow any, so the
+#     root manifest's own `prepare` is the live route -- which is why
+#     package.json is a code-owned path.)
 #   * The bootstrap branch. The ancestor check accepts ANY ancestor, so a
 #     BASE_SHA pointing at a `dev` commit from before this script landed passes
 #     every check and then legitimately finds the blob absent. And the `script=`
-#     path is a plain assignment in the PR-editable workflow: renaming it to
-#     something base lacks fires the same branch and reads as a refactor.
+#     path is a plain assignment in the PR-editable workflow: renaming it to a
+#     path the base revision does not have fires the same branch, and reads as
+#     a refactor.
 #   * A sufficiently patient stub `psql` -- see the liveness probe below for
 #     exactly how far that probe goes and where it stops.
 #
@@ -171,15 +180,17 @@ fi
 # print, and the pg_extension read-back below is one more string. That was
 # demonstrated against this script. `expected_md5` is also computed with a
 # $PATH-resolved `md5sum`, which the same $GITHUB_PATH delivery path can
-# replace with a constant. A smaller stub does not even need to answer: it can
-# fail `create extension` and print `pg_cron, pg_net` for the availability query
-# to take the skip-and-exit-0 branch.
+# replace with a constant. A smaller stub still has to answer the probe -- it
+# runs first -- but need not fake the assertions: it can then fail
+# `create extension` and print `pg_cron, pg_net` for the availability query to
+# take the skip-and-exit-0 branch.
 #
 # What the probe actually does is raise the floor from "any program that exits
 # 0" to "a program that parses the query and answers it plausibly". That is
 # worth having and it is all it is. The boundary that stops a shim being
-# installed at all is owner review of `.github/` and `scripts/ci/` -- see
-# .github/CODEOWNERS.
+# installed at all is owner review of the paths in .github/CODEOWNERS -- which
+# includes package.json, because the `prepare` hook that can install the shim
+# runs inside this job's own `pnpm install`, with no workflow edit.
 nonce="cron-gate-$$-$(date +%s%N)-${RANDOM}"
 expected_md5=$(printf '%s' "$nonce" | md5sum | cut -d' ' -f1)
 # (The nonce is interpolated by the shell, not by psql: psql does not expand -v

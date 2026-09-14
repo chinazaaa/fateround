@@ -789,10 +789,13 @@ jobs:
       # workflow edit at all; that was demonstrated printing "enforcement logic is pinned."
       # while installing a script whose body was `exit 0`.
       #
-      # What actually closes the class is owner review of `.github/` and `scripts/ci/`, since
-      # every known bypass needs an edit in one of them -- see .github/CODEOWNERS, and note the
-      # caveat recorded there that CODEOWNERS only blocks a merge once a ruleset requires
-      # code-owner review. The steps below are defence in depth behind that, worth keeping
+      # What actually closes the class is owner review of the paths in .github/CODEOWNERS --
+      # `.github/`, `scripts/`, and the install surface of this job (package.json, whose
+      # `prepare` hook runs inside `pnpm install`, plus pnpm-lock.yaml, pnpm-workspace.yaml,
+      # .npmrc and .husky/). Every known bypass needs an edit to one of those, and the $PATH
+      # route above needs no workflow edit at all, which is why the list is wider than
+      # `.github/`. Note the caveat recorded in that file: CODEOWNERS only blocks a merge once a
+      # ruleset requires code-owner review. The steps below are defence in depth behind that, worth keeping
       # because they turn a quiet assertion tweak into a visible edit of an owned path.
       - name: Extract the HTTP cron scheduling gate from the base revision
         env:
@@ -826,7 +829,7 @@ jobs:
             exit 0
           fi
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "::error::Unhandled event '$EVENT_NAME'. This step knows how to pin the gate for 'pull_request' and how to run it unpinned for 'push', and deliberately refuses anything else rather than guessing -- a merge_group run, for example, has no pull request context and must not silently execute the queued changes' own copy of the gate."
+            echo "::error::Unhandled event '$EVENT_NAME'. This step knows how to pin the gate for 'pull_request' and how to run it unpinned for 'push', and refuses anything else rather than guessing. If you are adding a trigger: when the checked-out commit is itself trusted (as with workflow_dispatch on dev/main), add the event to the 'push' allow-list above; when it is not (as with merge_group, which carries no pull request context and must not run the queued changes' own copy of the gate), teach this step how to find the trusted base for that event first."
             exit 1
           fi
 
@@ -845,8 +848,9 @@ jobs:
           #
           # This closes the depth-1 spelling, not the bootstrap branch: see the note on the
           # ancestor check below, and `script=` above is itself a PR-editable assignment --
-          # renaming it to a path base does not have reaches the bootstrap branch legitimately
-          # and reads as a refactor. Reviewing that rename is what .github/CODEOWNERS is for.
+          # renaming it to a path the base revision does not have reaches the bootstrap branch
+          # legitimately, and reads as a refactor. Reviewing that rename is what
+          # .github/CODEOWNERS is for.
           if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             echo "::error::Base commit $BASE_SHA is not present in this clone, so the HTTP cron scheduling gate cannot be pinned to it. This job's checkout must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy -- a shallow clone is not a bootstrap."
             exit 1

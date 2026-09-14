@@ -21,6 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Full history: the extract step below reads the gate script out of the base commit,
+          # whose objects a depth-1 clone would not have. A missing base commit is now a hard
+          # failure there rather than a silent fallback, so removing this breaks the job loudly
+          # instead of quietly disabling the gate.
+          #
+          # Do NOT add `filter: blob:none` here. It does not currently bypass the gate only
+          # because this repository is public and the runner can lazily fetch the missing blob
+          # anonymously. If fateround is ever made private that lazy fetch stops working, and a
+          # blobless clone becomes a one-word way to make the script's blob look absent from
+          # base — which lands on the bootstrap branch and runs the PR's own copy.
           fetch-depth: 0
           # Don't leave a usable token in .git/config for anything this job runs.
           persist-credentials: false
@@ -35,9 +45,12 @@ jobs:
       #
       # Scope, honestly: this closes some bypasses, not the class. This step, its inputs and this
       # job's checkout options are all in this file, which the pull request can edit — and the
-      # `git` commands implementing the pinning are themselves $PATH lookups. Owner review of
-      # `.github/` and `scripts/ci/` is the real boundary; see .github/CODEOWNERS (and the caveat
-      # there that it only blocks a merge once a ruleset requires code-owner review).
+      # `git` commands implementing the pinning are themselves $PATH lookups. The real boundary is
+      # owner review of the paths in .github/CODEOWNERS: `.github/`, `scripts/`, and the install
+      # surface a job executes on its own (package.json's `prepare` hook, pnpm-lock.yaml,
+      # pnpm-workspace.yaml, .npmrc, .husky/) — that last group because reaching it needs no
+      # workflow edit. See that file, including the caveat that it only blocks a merge once a
+      # ruleset requires code-owner review.
       - name: Extract the gate script from the base revision
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -61,10 +74,11 @@ jobs:
           # infrastructure error; only a genuinely absent blob is the bootstrap case.
           #
           # Two things this does not close, recorded so nobody assumes otherwise: `script=` is a
-          # PR-editable assignment, so renaming it to a path base lacks reaches the bootstrap
-          # branch legitimately; and `filter: blob:none` on the checkout would do the same if this
-          # repository were ever made private (today the runner can lazily fetch the blob
-          # anonymously because it is public). Both are visible edits to owned paths.
+          # PR-editable assignment, so renaming it to a path the base revision does not have
+          # reaches the bootstrap branch legitimately; and `filter: blob:none` on the checkout
+          # above would do the same if this repository were ever made private (today the runner
+          # can lazily fetch the missing blob anonymously because it is public). Both are visible
+          # edits to owned paths.
           if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             echo "::error::Base commit $BASE_SHA is not present in this clone, so the gate cannot be pinned to it. The checkout above must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy — a shallow clone is not a bootstrap."
             exit 1

@@ -3,15 +3,31 @@
 # WHY THIS FILE EXISTS
 # The `RLS Boundaries (local)` HTTP cron gate and the Mobile Rollout Gate both run their
 # enforcement logic from the pull request's BASE revision rather than from the pull request
-# itself. That base-pinning removes some bypasses, but it cannot remove the general one: the
-# workflow step that invokes a gate, the environment it passes in, the $PATH it runs under and
-# the job's checkout options are all in `.github/`, and a pull request that can edit `.github/`
-# can weaken or delete any check in it. Reviews of PR #1174 demonstrated several working
-# bypasses, and every single one of them required editing a file under `.github/` or
-# `scripts/ci/`.
+# itself. That base-pinning removes some bypasses, but it cannot remove the general one: a pull
+# request that can change what CI executes can weaken or delete any check CI runs. Reviews of
+# PR #1174 demonstrated several working bypasses, and each one needed an edit to a file matched
+# below.
 #
-# So owner review of those two paths -- not any assertion inside a gate script -- is the actual
+# So owner review of these paths -- not any assertion inside a gate script -- is the actual
 # boundary. Everything the gates do themselves is defence in depth behind this file.
+#
+# WHAT HAS TO BE COVERED, AND WHY IT IS MORE THAN `.github/`
+# Workflow files are the obvious half. The other half is everything a workflow step already
+# executes on its own, because reaching those needs NO workflow edit at all:
+#
+#   * The root `package.json`'s `prepare` script (`husky || true`) runs during every
+#     `pnpm install --frozen-lockfile`, which the `RLS Boundaries (local)` job does about ten
+#     steps before it runs the base-pinned gate. A `prepare` that also drops a `git` or `psql`
+#     shim onto $GITHUB_PATH defeats the pinning while the log still prints "enforcement logic
+#     is pinned." -- demonstrated during review. `packageManager` is pnpm@10.23.0, which blocks
+#     DEPENDENCY lifecycle scripts by default, so the root manifest's own `prepare` is the live
+#     route; pnpm-workspace.yaml's `allowBuilds` is the switch that would re-open the dependency
+#     one.
+#   * The lockfile and .npmrc decide what that install actually fetches and from where.
+#   * Workflow-invoked scripts live in more places than scripts/ci: the migration security gate
+#     is scripts/check-migration-security.mjs and the forbidden-pattern scan is
+#     scripts/forbidden-pattern-scan.sh, so the whole of scripts/ is covered rather than just
+#     the base-pinned subdirectory.
 #
 # IMPORTANT: THIS FILE ALONE DOES NOT ENFORCE ANYTHING.
 # GitHub only requires a code owner's approval when a ruleset or classic branch protection on
@@ -21,8 +37,18 @@
 # without it. Turning the requirement on for `dev` and `main` is a repository-settings change.
 # Until that is done, treat the paths below as convention.
 
-# Workflow definitions, action pins, permissions blocks, and the CODEOWNERS file itself.
+# Workflow definitions, action pins, permissions blocks, and this file.
 /.github/ @billmal071
 
-# The base-pinned gate scripts the workflows above execute.
-/scripts/ci/ @billmal071
+# Every script a workflow executes -- the base-pinned gates in scripts/ci, and the other
+# enforcement scripts (check-migration-security.mjs, forbidden-pattern-scan.sh) beside them.
+/scripts/ @billmal071
+
+# The install surface of the job that runs the gates: the `prepare` hook that runs inside
+# `pnpm install`, what husky wires up, what the install resolves, and the dependency
+# build-script allow-list.
+/package.json @billmal071
+/pnpm-lock.yaml @billmal071
+/pnpm-workspace.yaml @billmal071
+/.npmrc @billmal071
+/.husky/ @billmal071
