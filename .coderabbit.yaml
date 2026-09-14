@@ -4,17 +4,19 @@
 # repo and unversioned. Two of those defaults cost us real time (see auto_review below).
 #
 # NOTE: there is no "auto-resolve review threads" option. CodeRabbit resolves threads IT authored
-# once a later review pass confirms the fix, and never resolves threads authored by a human. On a
-# base branch that requires conversation resolution, that means a fixed-but-not-yet-reconfirmed
-# thread still blocks the merge. Resolve those yourself, with the reasoning in the reply.
+# once a later review pass confirms the fix, and never resolves threads authored by a human. Leave
+# its threads for that later pass to resolve rather than resolving them by hand: a thread still
+# open after a re-review is evidence the fix did not land, and hand-resolving hides that. Nothing
+# blocks on it — no ruleset or branch protection here requires conversation resolution. Reply on
+# the thread with the reasoning either way.
 #
 # Schema: https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
 language: en-US
 
 reviews:
   profile: chill
-  # Don't let a review block a merge on its own; the branch policy already gates on unresolved
-  # conversations, and doubling that up makes a nitpick as expensive as a defect.
+  # Don't let a review block a merge on its own; the review loop in CONTRIBUTING.md is the gate,
+  # and making a nitpick cost a formal "changes requested" makes it as expensive as a defect.
   request_changes_workflow: false
   high_level_summary: true
   review_status: true
