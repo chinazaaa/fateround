@@ -770,27 +770,82 @@ jobs:
       # applies the PR's own copy of the guard migration). Only the enforcement logic -- which
       # file counts as the guard, the preconditions it is given, and what `cron.job` must look
       # like afterwards -- is pinned to what the base branch already trusts.
+      #
+      # Scope, so the comment above is not read as more than it is: this removes ONE bypass
+      # (rewriting the assertions). These two steps, the environment they pass in, the $PATH
+      # they run under and this job's checkout options are all still in this file, which the
+      # pull request can edit -- and a pull request can delete the steps outright. Making the
+      # INVOCATION un-editable too needs `pull_request_target`, a reusable workflow called at
+      # `@dev`, or CODEOWNERS on `.github/`; all out of scope here.
       - name: Extract the HTTP cron scheduling gate from the base revision
         env:
-          # On a `pull_request` event this is the base branch's tip. This workflow also runs on
-          # PUSH to dev/main, where there is no pull request and the pushed commit IS the
-          # trusted revision, so fall back to it.
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          # The base branch's tip on a `pull_request` event, and EMPTY on anything else. There
+          # is deliberately no `|| github.sha` fallback: `github.sha` on a pull request is the
+          # PR's own merge commit, so that fallback made `git show` resolve against the tree
+          # under review while the log still claimed the gate was pinned to base. The event is
+          # branched on explicitly below instead, so the two cases cannot be confused.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/gate"
           dest="$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh"
-          if git show "$BASE_SHA:scripts/ci/http-cron-scheduling-gate.sh" > "$dest" 2>/dev/null; then
+          script=scripts/ci/http-cron-scheduling-gate.sh
+
+          # This workflow also runs on PUSH to dev/main. There is no pull request there, the
+          # pushed commit IS the trusted revision, and there is nothing to pin against -- so
+          # say exactly that rather than printing a pinning claim that is not true.
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "Event is '$EVENT_NAME', not a pull request: the checked-out commit is itself the trusted revision, so the gate runs from the checkout. Nothing is pinned on this path and nothing needs to be."
+            cp "$script" "$dest"
+            exit 0
+          fi
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "::error::This is a pull_request event but github.event.pull_request.base.sha is empty, so there is no base revision to pin the gate to. Refusing to run the gate from the pull request's own copy."
+            exit 1
+          fi
+
+          # Distinguish "the clone does not have the base commit" from "the base commit does
+          # not have the script". They are NOT the same thing, and collapsing them is a
+          # complete bypass: drop `fetch-depth: 0` above (it reads like a clone-cost tweak),
+          # replace the script with `exit 0`, and a depth-1 clone makes `git show` fail for
+          # missing OBJECTS -- the fallback then installs the PR's own copy and the check goes
+          # green with zero enforcement. A base commit that is not present is an infrastructure
+          # error, so hard-fail on it; only a genuinely absent blob is the bootstrap case.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error::Base commit $BASE_SHA is not present in this clone, so the HTTP cron scheduling gate cannot be pinned to it. This job's checkout must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy -- a shallow clone is not a bootstrap."
+            exit 1
+          fi
+
+          # And it has to be a plausible BASE. `github.sha` on a pull_request event is the PR's
+          # OWN merge commit, so pointing BASE_SHA at it would resolve the script out of the
+          # tree under review while every log line still said "pinned to base". Reject a
+          # BASE_SHA that is the checked-out commit, and require it to be an ancestor of it
+          # (the real base tip always is -- it is a parent of the merge commit).
+          head_sha=$(git rev-parse HEAD)
+          base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
+          if [ "$base_resolved" = "$head_sha" ]; then
+            echo "::error::BASE_SHA resolves to the checked-out commit itself ($head_sha). That is the revision under review, not a base to pin against -- github.sha on a pull_request event is the PR's own merge commit and must not be used here."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$base_resolved" "$head_sha"; then
+            echo "::error::BASE_SHA ($base_resolved) is not an ancestor of the checked-out commit ($head_sha), so it is not the base this pull request is being merged into. Refusing to treat it as the pinning revision."
+            exit 1
+          fi
+
+          if git cat-file -e "$BASE_SHA:$script" 2>/dev/null; then
+            git show "$BASE_SHA:$script" > "$dest"
             echo "Using the HTTP cron scheduling gate from the base revision ($BASE_SHA) -- enforcement logic is pinned."
           else
-            # BOOTSTRAP: the base branch does not have the script yet, because it reaches `dev`
-            # for the first time in the very PR that introduces it. Pinning to base protects an
-            # ESTABLISHED gate from being edited by the PR under review; on that first PR there
-            # is no established gate, so falling back to this PR's copy is no weaker than the
-            # gate having been inline (which is what it replaces). Every subsequent run takes
-            # the branch above.
-            echo "::warning::HTTP cron scheduling gate script absent on base ($BASE_SHA) -- bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
-            cp scripts/ci/http-cron-scheduling-gate.sh "$dest"
+            # BOOTSTRAP, and only this: the base commit is present and verifiably does not
+            # contain the script, because it reaches `dev` for the first time in the very PR
+            # that introduces it. Pinning to base protects an ESTABLISHED gate from being
+            # edited by the PR under review; on that first PR there is no established gate, so
+            # falling back to this PR's copy is no weaker than the gate having been inline
+            # (which is what it replaces). Every subsequent run takes the branch above.
+            echo "::warning::HTTP cron scheduling gate script absent from base commit $BASE_SHA (the commit itself is present) -- bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
+            cp "$script" "$dest"
           fi
 
       - name: HTTP cron jobs are scheduled once the GUCs are set

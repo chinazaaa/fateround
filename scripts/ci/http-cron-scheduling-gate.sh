@@ -3,9 +3,27 @@
 #
 # The enforcement half of the `RLS Boundaries (local)` job's HTTP cron check.
 # `.github/workflows/ci.yml` extracts THIS FILE from the pull request's BASE
-# revision and runs it from outside the working tree, so a pull request cannot
-# edit the assertions that are checking it. A required check that executes code
-# the pull request can edit is not a gate.
+# revision and runs it from outside the working tree, so the assertion LOGIC
+# below is not editable by the pull request it is judging. A required check that
+# executes code the pull request can edit is not a gate.
+#
+# ── Scope of that claim, and the residual hole ────────────────────────────────
+# Base-pinning the verifier removes ONE bypass: rewriting the assertions. It
+# does not make this check unbypassable, and nothing here should be read as
+# saying it does. The step that invokes this script, the environment it passes
+# in, the $PATH it runs under and the job's checkout options all still live in
+# `.github/workflows/ci.yml`, which the pull request can edit -- and a pull
+# request can delete the step outright.
+#
+# What this file hardens is what it can reach from inside: the base commit has
+# to be present in the clone before any fallback to the PR's own copy is
+# allowed, so a shallow clone is a hard failure rather than a silent
+# "bootstrap"; `psql` is resolved by absolute path instead of a $PATH lookup;
+# and the stack has to answer a liveness probe that a stub `psql` cannot fake.
+# Closing the rest requires the INVOCATION to be un-editable too --
+# `pull_request_target`, a reusable workflow called at `@dev`, or CODEOWNERS on
+# `.github/`. Those are deliberately out of scope for this change; the hole is
+# narrower than it was, not closed.
 #
 # The split that makes that worth anything:
 #
@@ -61,6 +79,19 @@
 
 set -euo pipefail
 
+# `psql` by ABSOLUTE PATH, never a $PATH lookup. $PATH inside this job is not
+# something this script gets to control: the invoking step can prepend to it,
+# and `pnpm install --frozen-lockfile` earlier in the same job runs
+# package.json's `prepare` script, which can append to $GITHUB_PATH without any
+# workflow edit at all. A two-line `#!/bin/sh` / `exit 0` shim named `psql`
+# ahead of the real binary is otherwise enough to make every assertion below
+# report success with no database in existence.
+PSQL=/usr/bin/psql
+if [ ! -f "$PSQL" ] || [ ! -x "$PSQL" ]; then
+  echo "::error::$PSQL is not an executable file. This gate resolves psql by absolute path on purpose and will not fall back to a \$PATH lookup; if the runner image moved the binary, change the path here (in the base-pinned script) rather than reintroducing the lookup."
+  exit 1
+fi
+
 # The Supabase CLI's fixed local-stack DSN. A literal, not an input -- see the
 # header: letting the tree under review choose the database it is judged against
 # would defeat the base-pinning entirely.
@@ -90,19 +121,42 @@ fi
 # nobody reads, which is precisely the silent-skip class this step exists to
 # eliminate. Same precedent as "Refusing to run a security gate against a
 # half-started stack" earlier in this job.
-if ! psql "$DB" -v ON_ERROR_STOP=1 -q -c "select 1;" >/dev/null; then
+#
+# And `select 1;` is not evidence of a database: any program that exits 0
+# satisfies it, which is exactly how a stub `psql` turns this gate green. So
+# demand output only a real PostgreSQL server can produce and check it: the md5
+# of a nonce generated here at run time (so no canned string can match), the
+# server version, and a catalog row count.
+nonce="cron-gate-$$-$(date +%s%N)-${RANDOM}"
+expected_md5=$(printf '%s' "$nonce" | md5sum | cut -d' ' -f1)
+# (The nonce is interpolated by the shell, not by psql: psql does not expand -v
+# variables inside a -c/-tAc command string. It is generated here from $$, the
+# clock and $RANDOM, so it contains nothing that needs quoting.)
+if ! probe=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc \
+    "select md5('$nonce') || '|' || current_setting('server_version_num') || '|' || (select count(*) from pg_catalog.pg_proc);"); then
   echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to run the HTTP cron scheduling gate against a half-started stack."
   exit 1
 fi
+probe_md5=${probe%%|*}
+probe_rest=${probe#*|}
+probe_version=${probe_rest%%|*}
+probe_procs=${probe_rest##*|}
+if [ "$probe_md5" != "$expected_md5" ] \
+   || ! [ "$probe_version" -ge 130000 ] 2>/dev/null \
+   || ! [ "$probe_procs" -ge 1000 ] 2>/dev/null; then
+  echo "::error::The psql liveness probe did not come back from a real PostgreSQL server (got '$probe'). Refusing to run the HTTP cron scheduling gate: something other than the local stack answered -- check whether a psql shim is shadowing $PSQL, or whether the stack came up at all."
+  exit 1
+fi
+echo "Local Postgres answered the liveness probe (server_version_num $probe_version)."
 
-if ! psql "$DB" -v ON_ERROR_STOP=1 -q \
+if ! "$PSQL" "$DB" -v ON_ERROR_STOP=1 -q \
     -c "create extension if not exists pg_cron;" \
     -c "create extension if not exists pg_net;"; then
   # The connection was healthy a moment ago, so narrow the cause before
   # skipping: only "the extension is not available in this image" is an
   # environment difference. Anything else -- including the connection dying in
   # between -- is a real failure.
-  if ! unavailable=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+  if ! unavailable=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc \
       "select coalesce(string_agg(e, ', '), '') from unnest(array['pg_cron','pg_net']) e where not exists (select 1 from pg_available_extensions a where a.name = e);"); then
     echo "::error::create extension failed and the follow-up availability probe could not connect either. Refusing to skip the HTTP cron scheduling gate on an unhealthy stack."
     exit 1
@@ -114,6 +168,20 @@ if ! psql "$DB" -v ON_ERROR_STOP=1 -q \
   echo "::warning::Not available in this local stack: $unavailable -- HTTP cron scheduling gate skipped."
   exit 0
 fi
+
+# `create extension` having exited 0 is again not evidence. Read the catalog
+# back: both extensions must actually be installed, with versions.
+installed=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc \
+  "select coalesce(string_agg(extname || '=' || extversion, ',' order by extname), '') from pg_extension where extname in ('pg_cron','pg_net');")
+case "$installed" in
+  pg_cron=?*,pg_net=?*)
+    echo "Extensions installed: $installed"
+    ;;
+  *)
+    echo "::error::pg_cron and pg_net are not both present in pg_extension after create extension (got '$installed'). Refusing to run the HTTP cron scheduling gate without the extensions it asserts against."
+    exit 1
+    ;;
+esac
 
 # Set the two GUCs at SESSION level, in the SAME psql session that then runs the
 # guard. `alter database postgres set app.api_base = ...` does not work here:
@@ -133,13 +201,13 @@ fi
 #
 # Re-run the guard migration with the preconditions satisfied. Its own assertion
 # raises, and ON_ERROR_STOP turns that into a failed step.
-psql "$DB" -v ON_ERROR_STOP=1 \
+"$PSQL" "$DB" -v ON_ERROR_STOP=1 \
   -c "set app.api_base = 'http://127.0.0.1:3000';" \
   -c "set app.cron_secret = 'ci-not-a-real-secret';" \
   -f "$guard_migration_path"
 
 echo "Scheduled cron jobs:"
-psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule from cron.job order by jobname;"
+"$PSQL" "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule from cron.job order by jobname;"
 
 # Independent of the migration's internal check, so a future edit that drops
 # that check still cannot make this gate pass vacuously.
@@ -159,7 +227,7 @@ psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule from cron.job order b
 # cron.job and so that the function's https transport gate cannot be bypassed. A
 # route/Authorization substring test therefore cannot pass for it and must not
 # be reintroduced -- it is asserted by exact command match below.
-bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
+bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
   select coalesce(string_agg(format('%s (%s)', expected.jobname, checked.problem), '; ' order by expected.jobname), '')
     from (values
             ('scheduled_games_push_tick'::text, '* * * * *'::text, '/api/scheduled/tick'::text),
@@ -189,7 +257,7 @@ echo "Both direct-HTTP cron jobs are present with the expected schedule and rout
 # guard migration re-inlining net.http_post over the tick call: anything other
 # than the bare tick invocation means baked-in credentials and a bypassed
 # transport gate.
-bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
+bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
   select coalesce(
            case
              when j.jobid is null then 'absent from cron.job'

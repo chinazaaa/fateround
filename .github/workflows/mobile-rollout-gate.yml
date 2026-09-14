@@ -39,16 +39,53 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/gate"
           dest="$RUNNER_TEMP/gate/mobile-rollout-gate.mjs"
-          if git show "$BASE_SHA:scripts/ci/mobile-rollout-gate.mjs" > "$dest" 2>/dev/null; then
+          script=scripts/ci/mobile-rollout-gate.mjs
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "::error::github.event.pull_request.base.sha is empty, so there is no base revision to pin the gate to. Refusing to run the gate from the pull request's own copy."
+            exit 1
+          fi
+
+          # Distinguish "the clone does not have the base commit" from "the base commit does not
+          # have the script" — they are NOT the same thing, and treating any `git show` failure as
+          # the second one is a complete bypass: drop `fetch-depth: 0` above (it reads like a
+          # clone-cost tweak), replace the script with `exit 0`, and a depth-1 clone makes
+          # `git show` fail for missing OBJECTS. The fallback then installs the PR's own copy and
+          # the check goes green with zero enforcement. A missing base commit is an
+          # infrastructure error; only a genuinely absent blob is the bootstrap case.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error::Base commit $BASE_SHA is not present in this clone, so the gate cannot be pinned to it. The checkout above must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy — a shallow clone is not a bootstrap."
+            exit 1
+          fi
+
+          # And it has to be a plausible BASE. `github.sha` on a pull_request event is the PR's
+          # OWN merge commit, so pointing BASE_SHA at it would read the gate out of the tree under
+          # review while the log still said "pinned". Reject a BASE_SHA that is the checked-out
+          # commit, and require it to be an ancestor of it (the real base tip always is — it is a
+          # parent of the merge commit).
+          head_sha=$(git rev-parse HEAD)
+          base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
+          if [ "$base_resolved" = "$head_sha" ]; then
+            echo "::error::BASE_SHA resolves to the checked-out commit itself ($head_sha). That is the revision under review, not a base to pin against — github.sha on a pull_request event is the PR's own merge commit and must not be used here."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$base_resolved" "$head_sha"; then
+            echo "::error::BASE_SHA ($base_resolved) is not an ancestor of the checked-out commit ($head_sha), so it is not the base this pull request is being merged into. Refusing to treat it as the pinning revision."
+            exit 1
+          fi
+
+          if git cat-file -e "$BASE_SHA:$script" 2>/dev/null; then
+            git show "$BASE_SHA:$script" > "$dest"
             echo "Using the gate script from the base revision ($BASE_SHA) — enforcement logic is pinned."
           else
-            # BOOTSTRAP: the base branch does not have the gate yet, because this workflow reaches
-            # `main` for the first time in the very PR it is guarding. Pinning to base protects an
-            # ESTABLISHED gate from being edited by the PR under review; on the first promotion
-            # there is no established gate, so falling back to this PR's copy is no weaker than
-            # main not having the workflow at all. Every subsequent run takes the branch above.
-            echo "::warning::Gate script absent on base ($BASE_SHA) — bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
-            cp scripts/ci/mobile-rollout-gate.mjs "$dest"
+            # BOOTSTRAP, and only this: the base commit is present and verifiably does not contain
+            # the gate, because this workflow reaches `main` for the first time in the very PR it
+            # is guarding. Pinning to base protects an ESTABLISHED gate from being edited by the PR
+            # under review; on the first promotion there is no established gate, so falling back to
+            # this PR's copy is no weaker than main not having the workflow at all. Every
+            # subsequent run takes the branch above.
+            echo "::warning::Gate script absent from base commit $BASE_SHA (the commit itself is present) — bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
+            cp "$script" "$dest"
           fi
 
       - name: Check for revokes that break installed mobile builds
