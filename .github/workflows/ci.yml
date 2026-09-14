@@ -200,18 +200,32 @@ jobs:
           # skipping every migration behind it. Unique versions are enforced by
           # the migrations-check job, so a non-zero exit here is a genuine problem
           # a human must look at, not something to paper over.
-          # ── Production revoke guard ───────────────────────────────────────────
-          # This job applies migrations to PRODUCTION on a push to main and needs only
-          # [build, migrations-check]. The Mobile Rollout Gate is a SEPARATE workflow on
-          # pull_request -> main, so it constrains this only if branch protection requires it —
-          # and `main` has no protection at all. Without this guard a column revoke reaches
-          # production while installed builds still select that column, PostgREST fails the WHOLE
-          # request with 42501, and OTA cannot rescue an installed binary.
+          # ── Revoke guard (runs for BOTH environments) ─────────────────────────
+          # This job applies migrations on a push to main (Production project) or to dev (Preview
+          # project) and needs only [build, migrations-check]. The Mobile Rollout Gate is a
+          # SEPARATE workflow on pull_request -> main, so it constrains this only if branch
+          # protection requires it — and `main` has no protection at all. Without this guard a
+          # column revoke reaches the target project while installed builds still select that
+          # column, PostgREST fails the WHOLE request with 42501, and OTA cannot rescue an
+          # installed binary. That is just as true of Preview: the dev mobile build is a
+          # different artifact at a different rollout state, and Preview serves installed
+          # internal/test builds that break in exactly the same way. So the guard runs on every
+          # ref this job runs for (the job-level `if:` already limits that to dev and main).
+          #
+          # MOBILE_ROLLOUT_ACK is read as `vars.MOBILE_ROLLOUT_ACK`, and GitHub resolves `vars`
+          # environment-first, so setting it on the GitHub ENVIRONMENT (Production for main,
+          # Preview for dev) makes the acknowledgement per-environment with no workflow change.
+          # That separation is the point: acknowledging a revoke for Production must not silently
+          # authorise the same revoke against Preview, or vice versa. Environment-first is a
+          # precedence, not an isolation: a REPOSITORY-level MOBILE_ROLLOUT_ACK would fall through
+          # to any environment that has not defined its own, and would then authorise both. There
+          # is deliberately no repository-level value (checked 2026-09-13, both environments and
+          # the repo have none) — set this variable ONLY on an environment, never repo-wide.
           #
           # The acknowledgement names the VERSIONS it authorises — it is not a boolean. A blanket
-          # "1" would persist as a repository variable long after the release it was set for, and
-          # the NEXT revoke would then reach production with no rollout behind it. Requiring the
-          # exact version means a stale value authorises only the migration it was set for, and
+          # "1" would persist as a variable long after the release it was set for, and the NEXT
+          # revoke would then reach that project with no rollout behind it. Requiring the exact
+          # version means a stale value authorises only the migration it was set for, and
           # forgetting to clear it is inert rather than dangerous.
           #
           #   MOBILE_ROLLOUT_ACK="20261121120000"                     one migration
@@ -227,38 +241,45 @@ jobs:
           #
           # The revoke test reads CONTENT, not the filename: 20261003120000 is still called
           # `sec_uno_hide_piles` but is now the ADDITIVE half of a split and is safe to apply.
-          if [ "${GITHUB_REF_NAME:-}" = "main" ]; then
-            listing=$(supabase migration list --linked 2>/dev/null || true)
-            local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
-            if [ "$local_total" = "0" ]; then
-              echo "::error::Could not parse 'supabase migration list' output, so pending revokes cannot be identified."
-              echo "Failing closed rather than pushing to production blind. Check the CLI output format."
-              exit 1
-            fi
-            pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
-            unacked=""
-            for version in $pending; do
-              for file in supabase/migrations/"$version"_*.sql; do
-                [ -f "$file" ] || continue
-                sed 's/--.*//' "$file" | grep -qiE '\brevoke\b' || continue
-                # acknowledged only if this exact version is listed
-                case " ${MOBILE_ROLLOUT_ACK:-} " in
-                  *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK." ;;
-                  *) unacked="$unacked  $file (version $version)\n" ;;
-                esac
-              done
-            done
-            if [ -n "$unacked" ]; then
-              echo "::error::Refusing to apply unacknowledged REVOKE migrations to PRODUCTION:"
-              printf "%b" "$unacked"
-              echo "These revoke columns installed builds still request; PostgREST fails the whole query"
-              echo "with 42501 and OTA cannot rescue an installed build."
-              echo "Ship a compatible mobile build, let old installs drain, then set the repository"
-              echo "variable MOBILE_ROLLOUT_ACK to the exact version(s) above, space-separated."
-              exit 1
-            fi
-            echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes."
+          case "${GITHUB_REF_NAME:-}" in
+            main) GUARD_ENV="Production" ;;
+            *)    GUARD_ENV="Preview" ;;
+          esac
+          GUARD_TARGET="$GUARD_ENV (ref ${GITHUB_REF_NAME:-unknown}, Supabase project $REF)"
+          listing=$(supabase migration list --linked 2>/dev/null || true)
+          local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
+          if [ "$local_total" = "0" ]; then
+            echo "::error::Could not parse 'supabase migration list' output, so pending revokes cannot be identified."
+            echo "Failing closed rather than pushing to $GUARD_TARGET blind. Check the CLI output format."
+            exit 1
           fi
+          pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
+          unacked=""
+          for version in $pending; do
+            for file in supabase/migrations/"$version"_*.sql; do
+              [ -f "$file" ] || continue
+              sed 's/--.*//' "$file" | grep -qiE '\brevoke\b' || continue
+              # acknowledged only if this exact version is listed
+              case " ${MOBILE_ROLLOUT_ACK:-} " in
+                *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK for $GUARD_ENV." ;;
+                *) unacked="$unacked  $file (version $version)\n" ;;
+              esac
+            done
+          done
+          if [ -n "$unacked" ]; then
+            echo "::error::Refusing to apply unacknowledged REVOKE migrations to $GUARD_TARGET:"
+            printf "%b" "$unacked"
+            echo "These revoke columns installed builds still request; PostgREST fails the whole query"
+            echo "with 42501 and OTA cannot rescue an installed build."
+            echo "Ship a compatible mobile build for this target, let old installs drain, then set"
+            echo "MOBILE_ROLLOUT_ACK to the exact version(s) above, space-separated, on the GitHub"
+            echo "ENVIRONMENT being deployed — here that is the '$GUARD_ENV' environment"
+            echo "(Settings -> Environments -> $GUARD_ENV -> Environment variables), NOT the"
+            echo "repository-wide variable: a Production acknowledgement must not authorise"
+            echo "Preview, nor a Preview one Production."
+            exit 1
+          fi
+          echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes for $GUARD_TARGET."
 
           supabase db push --include-all
 
