@@ -32,6 +32,12 @@ jobs:
       # script is therefore extracted from the base commit to a path outside the working tree and
       # run from there. It still INSPECTS the PR's migrations (via HEAD_SHA) — only the
       # enforcement logic is pinned to what main already trusts.
+      #
+      # Scope, honestly: this closes some bypasses, not the class. This step, its inputs and this
+      # job's checkout options are all in this file, which the pull request can edit — and the
+      # `git` commands implementing the pinning are themselves $PATH lookups. Owner review of
+      # `.github/` and `scripts/ci/` is the real boundary; see .github/CODEOWNERS (and the caveat
+      # there that it only blocks a merge once a ruleset requires code-owner review).
       - name: Extract the gate script from the base revision
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -53,6 +59,12 @@ jobs:
           # `git show` fail for missing OBJECTS. The fallback then installs the PR's own copy and
           # the check goes green with zero enforcement. A missing base commit is an
           # infrastructure error; only a genuinely absent blob is the bootstrap case.
+          #
+          # Two things this does not close, recorded so nobody assumes otherwise: `script=` is a
+          # PR-editable assignment, so renaming it to a path base lacks reaches the bootstrap
+          # branch legitimately; and `filter: blob:none` on the checkout would do the same if this
+          # repository were ever made private (today the runner can lazily fetch the blob
+          # anonymously because it is public). Both are visible edits to owned paths.
           if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             echo "::error::Base commit $BASE_SHA is not present in this clone, so the gate cannot be pinned to it. The checkout above must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy — a shallow clone is not a bootstrap."
             exit 1
@@ -62,7 +74,9 @@ jobs:
           # OWN merge commit, so pointing BASE_SHA at it would read the gate out of the tree under
           # review while the log still said "pinned". Reject a BASE_SHA that is the checked-out
           # commit, and require it to be an ancestor of it (the real base tip always is — it is a
-          # parent of the merge commit).
+          # parent of the merge commit). ANY ancestor passes, so an old `main` commit from before
+          # the gate landed still reaches the bootstrap branch; that edit is visible in this
+          # file's diff, which is what CODEOWNERS is for.
           head_sha=$(git rev-parse HEAD)
           base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
           if [ "$base_resolved" = "$head_sha" ]; then

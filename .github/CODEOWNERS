@@ -1,0 +1,28 @@
+# Code owners for the CI enforcement surface.
+#
+# WHY THIS FILE EXISTS
+# The `RLS Boundaries (local)` HTTP cron gate and the Mobile Rollout Gate both run their
+# enforcement logic from the pull request's BASE revision rather than from the pull request
+# itself. That base-pinning removes some bypasses, but it cannot remove the general one: the
+# workflow step that invokes a gate, the environment it passes in, the $PATH it runs under and
+# the job's checkout options are all in `.github/`, and a pull request that can edit `.github/`
+# can weaken or delete any check in it. Reviews of PR #1174 demonstrated several working
+# bypasses, and every single one of them required editing a file under `.github/` or
+# `scripts/ci/`.
+#
+# So owner review of those two paths -- not any assertion inside a gate script -- is the actual
+# boundary. Everything the gates do themselves is defence in depth behind this file.
+#
+# IMPORTANT: THIS FILE ALONE DOES NOT ENFORCE ANYTHING.
+# GitHub only requires a code owner's approval when a ruleset or classic branch protection on
+# the target branch turns on "Require review from Code Owners". At the time this file was added
+# the repository's only ruleset was non_fast_forward + deletion, and `dev` had no classic
+# protection, so CODEOWNERS was advisory: it requested owner review and nothing blocked a merge
+# without it. Turning the requirement on for `dev` and `main` is a repository-settings change.
+# Until that is done, treat the paths below as convention.
+
+# Workflow definitions, action pins, permissions blocks, and the CODEOWNERS file itself.
+/.github/ @billmal071
+
+# The base-pinned gate scripts the workflows above execute.
+/scripts/ci/ @billmal071

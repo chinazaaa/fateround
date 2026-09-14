@@ -354,7 +354,15 @@ jobs:
           # the base commit's objects have to be in the clone. The default fetch-depth of 1 on a
           # `pull_request` event fetches only the refs/pull/N/merge commit, and `git show
           # <base sha>:...` would then fail for every PR -- i.e. every run would silently take
-          # the bootstrap path and the pinning would never actually happen.
+          # the bootstrap path and the pinning would never actually happen. That is now a hard
+          # failure in the extract step rather than a silent fallback, so removing this line
+          # breaks the job loudly instead of quietly disabling the gate.
+          #
+          # Do NOT add `filter: blob:none` here. It does not currently bypass the gate only
+          # because this repository is public and the runner can lazily fetch the missing blob
+          # anonymously. If fateround is ever made private, that lazy fetch stops working and a
+          # blobless clone becomes a one-word way to make `git cat-file -e "$BASE_SHA:<script>"`
+          # fail, which lands on the bootstrap branch and runs the PR's own copy.
           fetch-depth: 0
           persist-credentials: false
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -771,12 +779,21 @@ jobs:
       # file counts as the guard, the preconditions it is given, and what `cron.job` must look
       # like afterwards -- is pinned to what the base branch already trusts.
       #
-      # Scope, so the comment above is not read as more than it is: this removes ONE bypass
-      # (rewriting the assertions). These two steps, the environment they pass in, the $PATH
-      # they run under and this job's checkout options are all still in this file, which the
-      # pull request can edit -- and a pull request can delete the steps outright. Making the
-      # INVOCATION un-editable too needs `pull_request_target`, a reusable workflow called at
-      # `@dev`, or CODEOWNERS on `.github/`; all out of scope here.
+      # Scope, so the comment above is not read as more than it is. This removes some bypasses,
+      # not the class. These two steps, the environment they pass in, the $PATH they run under
+      # and this job's checkout options are all still in this file, which the pull request can
+      # edit -- and a pull request can delete the steps outright. Worse, the pinning itself is
+      # implemented with $PATH lookups (`git cat-file`, `git show`, `git rev-parse`,
+      # `git merge-base`), and `pnpm install --frozen-lockfile` runs ~10 steps above, so
+      # package.json's `prepare` hook can install a `git` shim through $GITHUB_PATH with no
+      # workflow edit at all; that was demonstrated printing "enforcement logic is pinned."
+      # while installing a script whose body was `exit 0`.
+      #
+      # What actually closes the class is owner review of `.github/` and `scripts/ci/`, since
+      # every known bypass needs an edit in one of them -- see .github/CODEOWNERS, and note the
+      # caveat recorded there that CODEOWNERS only blocks a merge once a ruleset requires
+      # code-owner review. The steps below are defence in depth behind that, worth keeping
+      # because they turn a quiet assertion tweak into a visible edit of an owned path.
       - name: Extract the HTTP cron scheduling gate from the base revision
         env:
           # The base branch's tip on a `pull_request` event, and EMPTY on anything else. There
@@ -795,10 +812,22 @@ jobs:
           # This workflow also runs on PUSH to dev/main. There is no pull request there, the
           # pushed commit IS the trusted revision, and there is nothing to pin against -- so
           # say exactly that rather than printing a pinning claim that is not true.
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "Event is '$EVENT_NAME', not a pull request: the checked-out commit is itself the trusted revision, so the gate runs from the checkout. Nothing is pinned on this path and nothing needs to be."
+          #
+          # `push` is allow-listed rather than "anything that is not a pull_request", so a new
+          # trigger cannot inherit the unpinned path by accident. `merge_group` is the one that
+          # matters: this workflow has no merge_group trigger today, but if a merge queue is
+          # ever enabled, merge-group runs carry no pull_request context and would otherwise
+          # slide into this branch and execute the queued PR's own copy of the gate. Adding
+          # merge_group means teaching this step how to pin there (the queue's base is
+          # discoverable from the merge-group ref), not widening this condition.
+          if [ "$EVENT_NAME" = "push" ]; then
+            echo "Event is 'push': the checked-out commit is itself the trusted revision, so the gate runs from the checkout. Nothing is pinned on this path and nothing needs to be."
             cp "$script" "$dest"
             exit 0
+          fi
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "::error::Unhandled event '$EVENT_NAME'. This step knows how to pin the gate for 'pull_request' and how to run it unpinned for 'push', and deliberately refuses anything else rather than guessing -- a merge_group run, for example, has no pull request context and must not silently execute the queued changes' own copy of the gate."
+            exit 1
           fi
 
           if [ -z "$BASE_SHA" ]; then
@@ -813,6 +842,11 @@ jobs:
           # missing OBJECTS -- the fallback then installs the PR's own copy and the check goes
           # green with zero enforcement. A base commit that is not present is an infrastructure
           # error, so hard-fail on it; only a genuinely absent blob is the bootstrap case.
+          #
+          # This closes the depth-1 spelling, not the bootstrap branch: see the note on the
+          # ancestor check below, and `script=` above is itself a PR-editable assignment --
+          # renaming it to a path base does not have reaches the bootstrap branch legitimately
+          # and reads as a refactor. Reviewing that rename is what .github/CODEOWNERS is for.
           if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             echo "::error::Base commit $BASE_SHA is not present in this clone, so the HTTP cron scheduling gate cannot be pinned to it. This job's checkout must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy -- a shallow clone is not a bootstrap."
             exit 1
@@ -823,6 +857,11 @@ jobs:
           # tree under review while every log line still said "pinned to base". Reject a
           # BASE_SHA that is the checked-out commit, and require it to be an ancestor of it
           # (the real base tip always is -- it is a parent of the merge commit).
+          #
+          # ANY ancestor passes, which is as strict as this can be without hardcoding the base
+          # branch: a BASE_SHA pointing at an old `dev` commit from before the gate script
+          # landed satisfies both checks and then legitimately takes the bootstrap branch. That
+          # edit is visible in the diff of this file, which is the point of CODEOWNERS.
           head_sha=$(git rev-parse HEAD)
           base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
           if [ "$base_resolved" = "$head_sha" ]; then

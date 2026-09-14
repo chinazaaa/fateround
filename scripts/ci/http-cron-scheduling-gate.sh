@@ -7,23 +7,47 @@
 # below is not editable by the pull request it is judging. A required check that
 # executes code the pull request can edit is not a gate.
 #
-# ── Scope of that claim, and the residual hole ────────────────────────────────
-# Base-pinning the verifier removes ONE bypass: rewriting the assertions. It
-# does not make this check unbypassable, and nothing here should be read as
-# saying it does. The step that invokes this script, the environment it passes
-# in, the $PATH it runs under and the job's checkout options all still live in
-# `.github/workflows/ci.yml`, which the pull request can edit -- and a pull
-# request can delete the step outright.
+# ── Scope of that claim: read this before trusting it ─────────────────────────
+# Base-pinning the verifier removes SOME bypasses. It does not make this check
+# unbypassable, and three independent reviews of PR #1174 each found working
+# bypasses of what the then-current comments claimed. What follows is the honest
+# accounting; the real boundary is .github/CODEOWNERS, because every bypass
+# below needs an edit under `.github/` or `scripts/ci/`.
 #
-# What this file hardens is what it can reach from inside: the base commit has
-# to be present in the clone before any fallback to the PR's own copy is
-# allowed, so a shallow clone is a hard failure rather than a silent
-# "bootstrap"; `psql` is resolved by absolute path instead of a $PATH lookup;
-# and the stack has to answer a liveness probe that a stub `psql` cannot fake.
-# Closing the rest requires the INVOCATION to be un-editable too --
-# `pull_request_target`, a reusable workflow called at `@dev`, or CODEOWNERS on
-# `.github/`. Those are deliberately out of scope for this change; the hole is
-# narrower than it was, not closed.
+# CLOSED (verified by running each one against this script):
+#   * Rewriting the assertions in the PR's own copy: the copy that runs comes
+#     from base, so edits to the tree's copy have no effect.
+#   * De-pinning by dropping `fetch-depth: 0`: a base commit missing from the
+#     clone is now a hard failure, not a silent "bootstrap".
+#   * Pointing BASE_SHA at `github.sha` (the PR's own merge commit), at an
+#     orphan commit, or at any commit that is not an ancestor of the checkout.
+#   * A `psql` shim that wins on $PATH order, and a shim that just `exit 0`s.
+#
+# NOT CLOSED, and not closeable from inside this file:
+#   * The invocation. The step that runs this script, the environment it passes
+#     in, the $PATH it runs under and the job's checkout options are all in
+#     `.github/workflows/ci.yml`. A pull request can edit them, or delete the
+#     step outright.
+#   * $PATH generally. `git cat-file`, `git show`, `git rev-parse` and
+#     `git merge-base` -- the commands that implement the pinning -- are $PATH
+#     lookups, and `pnpm install --frozen-lockfile` runs about ten steps before
+#     the extract step, so package.json's `prepare` hook can install a `git`
+#     shim via $GITHUB_PATH with no workflow edit. A demonstration printed
+#     "enforcement logic is pinned." while installing a script whose body was
+#     `exit 0`. The same route reaches `md5sum` and, via passwordless sudo on
+#     hosted runners, /usr/bin/psql itself.
+#   * The bootstrap branch. The ancestor check accepts ANY ancestor, so a
+#     BASE_SHA pointing at a `dev` commit from before this script landed passes
+#     every check and then legitimately finds the blob absent. And the `script=`
+#     path is a plain assignment in the PR-editable workflow: renaming it to
+#     something base lacks fires the same branch and reads as a refactor.
+#   * A sufficiently patient stub `psql` -- see the liveness probe below for
+#     exactly how far that probe goes and where it stops.
+#
+# None of that makes the gate worthless: it still catches the class of mistake
+# it was written for (#1167), and a bypass now has to be a deliberate, visible
+# edit to an owned path rather than a quiet tweak to an assertion. It is defence
+# in depth behind owner review, not a substitute for it.
 #
 # The split that makes that worth anything:
 #
@@ -75,17 +99,28 @@
 # image change into a red required check. Everything after that point is
 # hard-asserted -- and the soft-skip is scoped strictly to "the extensions are
 # unavailable", never to "psql exited non-zero", so a `supabase start` flake
-# cannot quietly turn this gate into a green no-op.
+# cannot quietly turn this gate into a green no-op. (A deliberately crafted stub
+# `psql` CAN still steer itself down that branch by failing `create extension`
+# and answering the availability query with both names. Scoping the skip stops
+# accidents, not an attacker who can install a shim; see the scope section
+# above.)
 
 set -euo pipefail
 
-# `psql` by ABSOLUTE PATH, never a $PATH lookup. $PATH inside this job is not
-# something this script gets to control: the invoking step can prepend to it,
-# and `pnpm install --frozen-lockfile` earlier in the same job runs
-# package.json's `prepare` script, which can append to $GITHUB_PATH without any
+# `psql` by ABSOLUTE PATH rather than a $PATH lookup. $PATH inside this job is
+# not something this script gets to control: the invoking step can prepend to
+# it, and `pnpm install --frozen-lockfile` earlier in the same job runs
+# package.json's `prepare` script, which can append to $GITHUB_PATH with no
 # workflow edit at all. A two-line `#!/bin/sh` / `exit 0` shim named `psql`
 # ahead of the real binary is otherwise enough to make every assertion below
 # report success with no database in existence.
+#
+# ABSOLUTE IS NOT THE SAME AS TRUSTED, and this line does not make psql
+# trustworthy. GitHub's hosted runners give the job passwordless sudo, so the
+# same `prepare` hook can `sudo cp` a shim over this path -- and on those images
+# /usr/bin/psql is a symlink to /usr/share/postgresql-common/pg_wrapper, so a
+# write through it hits every psql caller in the job, not just this one. Pinning
+# the path defeats a $PATH-order shim and nothing stronger.
 PSQL=/usr/bin/psql
 if [ ! -f "$PSQL" ] || [ ! -x "$PSQL" ]; then
   echo "::error::$PSQL is not an executable file. This gate resolves psql by absolute path on purpose and will not fall back to a \$PATH lookup; if the runner image moved the binary, change the path here (in the base-pinned script) rather than reintroducing the lookup."
@@ -123,10 +158,28 @@ fi
 # half-started stack" earlier in this job.
 #
 # And `select 1;` is not evidence of a database: any program that exits 0
-# satisfies it, which is exactly how a stub `psql` turns this gate green. So
-# demand output only a real PostgreSQL server can produce and check it: the md5
-# of a nonce generated here at run time (so no canned string can match), the
-# server version, and a catalog row count.
+# satisfies it, which is exactly how a trivial stub `psql` turns this gate
+# green. The probe below asks for output a canned string cannot match -- the md5
+# of a nonce generated at run time, the server version and a catalog row count
+# -- and checks all three.
+#
+# BE CLEAR ABOUT WHAT THIS BUYS. It is NOT unfakeable, and an earlier version of
+# this comment wrongly said a stub could not fake it. A stub is handed the nonce
+# verbatim in its own argv (it is right there in `select md5('<nonce>')`), so
+# ~12 lines of shell can extract it, run md5sum itself, and echo
+# `<md5>|160002|3412`; the version and the row count are just constants to
+# print, and the pg_extension read-back below is one more string. That was
+# demonstrated against this script. `expected_md5` is also computed with a
+# $PATH-resolved `md5sum`, which the same $GITHUB_PATH delivery path can
+# replace with a constant. A smaller stub does not even need to answer: it can
+# fail `create extension` and print `pg_cron, pg_net` for the availability query
+# to take the skip-and-exit-0 branch.
+#
+# What the probe actually does is raise the floor from "any program that exits
+# 0" to "a program that parses the query and answers it plausibly". That is
+# worth having and it is all it is. The boundary that stops a shim being
+# installed at all is owner review of `.github/` and `scripts/ci/` -- see
+# .github/CODEOWNERS.
 nonce="cron-gate-$$-$(date +%s%N)-${RANDOM}"
 expected_md5=$(printf '%s' "$nonce" | md5sum | cut -d' ' -f1)
 # (The nonce is interpolated by the shell, not by psql: psql does not expand -v
@@ -170,7 +223,9 @@ if ! "$PSQL" "$DB" -v ON_ERROR_STOP=1 -q \
 fi
 
 # `create extension` having exited 0 is again not evidence. Read the catalog
-# back: both extensions must actually be installed, with versions.
+# back: both extensions must actually be installed, with versions. (Also fakeable
+# by a stub that prints the string -- this rules out a real stack that silently
+# did not install them, not a hostile shim.)
 installed=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc \
   "select coalesce(string_agg(extname || '=' || extversion, ',' order by extname), '') from pg_extension where extname in ('pg_cron','pg_net');")
 case "$installed" in
