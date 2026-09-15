@@ -371,21 +371,138 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # The HTTP cron scheduling gate below runs its verifier out of the BASE revision, so
-          # the base commit's objects have to be in the clone. The default fetch-depth of 1 on a
-          # `pull_request` event fetches only the refs/pull/N/merge commit, and `git show
-          # <base sha>:...` would then fail for every PR -- i.e. every run would silently take
-          # the bootstrap path and the pinning would never actually happen. That is now a hard
-          # failure in the extract step rather than a silent fallback, so removing this line
-          # breaks the job loudly instead of quietly disabling the gate.
-          #
-          # Do NOT add `filter: blob:none` here. It does not currently bypass the gate only
-          # because this repository is public and the runner can lazily fetch the missing blob
-          # anonymously. If fateround is ever made private, that lazy fetch stops working and a
-          # blobless clone becomes a one-word way to make `git cat-file -e "$BASE_SHA:<script>"`
-          # fail, which lands on the bootstrap branch and runs the PR's own copy.
-          fetch-depth: 0
+          # Don't leave a usable token in .git/config for anything this job runs.
           persist-credentials: false
+          # The deploy-equivalent cron gate has to know which migrations this
+          # branch ADDS, which means reaching the base revision. A shallow clone
+          # cannot, and the gate hard-fails rather than guessing -- so the whole
+          # history is fetched here. The step below needs the base commit for the
+          # same reason: it reads both gate scripts out of it.
+          #
+          # Do NOT add `filter: blob:none` here. It does not currently bypass the
+          # gates only because this repository is public and the runner can lazily
+          # fetch the missing blob anonymously. If fateround is ever made private
+          # that lazy fetch stops working, and a blobless clone becomes a one-word
+          # way to make a gate script's blob look absent from base -- which lands
+          # on the bootstrap branch and runs the pull request's own copy.
+          fetch-depth: 0
+
+      # ── Base-pinned enforcement: extract the gate scripts from BASE ─────────
+      # Both cron gates below execute a script out of the pull request's BASE revision rather
+      # than out of the pull request. A required check that executes code the pull request can
+      # edit is not a gate: a PR that changed what production schedules could also rewrite the
+      # assertions to exit 0 and the check would still report success. `contents: read` does not
+      # help -- the problem is immutability, not token scope.
+      #
+      # The split is deliberate. Everything else in this job is FIXTURE, and stays the pull
+      # request's: `supabase start` applies THIS PR's migrations from scratch, and that is the
+      # point -- they are the thing under test. The scripts still inspect this checkout. What
+      # comes from base is the enforcement decisions and every expected value; see each script's
+      # header.
+      #
+      # Placed HERE, before `pnpm install`, on purpose: `git` is a $PATH lookup, and the root
+      # `prepare` hook runs during that install, so extracting afterwards left the extraction
+      # itself subvertible by a `git` shim on $GITHUB_PATH. It cannot reach an extraction that
+      # has already happened.
+      #
+      # Scope, so this is not read as more than it is: it removes some bypasses, not the class.
+      # These steps, the environment they pass in and this job's checkout options are all still
+      # in this file, which the pull request can edit -- and the steps can be deleted. What
+      # actually closes the class is owner review of the paths in .github/CODEOWNERS
+      # (`.github/`, `scripts/`, and this job's install surface: package.json, pnpm-lock.yaml,
+      # pnpm-workspace.yaml, .npmrc, .husky/), with the caveat recorded there that CODEOWNERS
+      # blocks a merge only once a ruleset requires code-owner review.
+      - name: Extract the base-pinned cron gate scripts from the base revision
+        env:
+          # The base branch's tip on a `pull_request` event, and EMPTY on anything else. There
+          # is deliberately no `|| github.sha` fallback: `github.sha` on a pull request is the
+          # PR's own merge commit, so that fallback made `git show` resolve against the tree
+          # under review while the log still claimed the gate was pinned to base. The event is
+          # branched on explicitly below instead, so the two cases cannot be confused.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          # A BASH_ENV file set via $GITHUB_ENV by any earlier step would be sourced before this
+          # script body and could define a shell function named `git`. Pinned empty, as on every
+          # step in this gate.
+          BASH_ENV: ''
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gate"
+          scripts="deploy-cron-inventory-gate.sh http-cron-scheduling-gate.sh"
+
+          # This workflow also runs on PUSH to dev/main. There is no pull request there, the
+          # pushed commit IS the trusted revision, and there is nothing to pin against -- so say
+          # exactly that rather than printing a pinning claim that is not true.
+          #
+          # `push` is allow-listed rather than "anything that is not a pull_request", so a new
+          # trigger cannot inherit the unpinned path by accident.
+          if [ "$EVENT_NAME" = "push" ]; then
+            echo "Event is 'push': the checked-out commit is itself the trusted revision, so the gates run from the checkout. Nothing is pinned on this path and nothing needs to be."
+            for s in $scripts; do cp "scripts/ci/$s" "$RUNNER_TEMP/gate/$s"; done
+            exit 0
+          fi
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "::error::Unhandled event '$EVENT_NAME'. This step knows how to pin the gates for 'pull_request' and how to run them unpinned for 'push', and refuses anything else rather than guessing. If you are adding a trigger: when the checked-out commit is itself trusted (as with workflow_dispatch on dev/main), add the event to the 'push' allow-list above; when it is not (as with merge_group, which carries no pull request context and must not run the queued changes' own copy of a gate), teach this step how to find the trusted base for that event first."
+            exit 1
+          fi
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "::error::This is a pull_request event but github.event.pull_request.base.sha is empty, so there is no base revision to pin the gates to. Refusing to run them from the pull request's own copy."
+            exit 1
+          fi
+
+          # Distinguish "the clone does not have the base commit" from "the base commit does not
+          # have the script". They are NOT the same thing, and collapsing them is a complete
+          # bypass: drop `fetch-depth: 0` above (it reads like a clone-cost tweak), replace a
+          # script with `exit 0`, and a depth-1 clone makes `git show` fail for missing OBJECTS
+          # -- a fallback would then install the PR's own copy and the check would go green with
+          # zero enforcement. A base commit that is not present is an infrastructure error.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error::Base commit $BASE_SHA is not present in this clone, so the cron gates cannot be pinned to it. This job's checkout must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copies -- a shallow clone is not a bootstrap."
+            exit 1
+          fi
+
+          # And it has to be a plausible BASE. `github.sha` on a pull_request event is the PR's
+          # OWN merge commit, so pointing BASE_SHA at it would resolve the scripts out of the
+          # tree under review while every log line still said "pinned to base". Reject a
+          # BASE_SHA that is the checked-out commit, and require it to be an ancestor of it (the
+          # real base tip always is -- it is a parent of the merge commit). ANY ancestor passes,
+          # which is as strict as this gets without hardcoding the base branch.
+          head_sha=$(git rev-parse HEAD)
+          base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
+          if [ "$base_resolved" = "$head_sha" ]; then
+            echo "::error::BASE_SHA resolves to the checked-out commit itself ($head_sha). That is the revision under review, not a base to pin against -- github.sha on a pull_request event is the PR's own merge commit and must not be used here."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$base_resolved" "$head_sha"; then
+            echo "::error::BASE_SHA ($base_resolved) is not an ancestor of the checked-out commit ($head_sha), so it is not the base this pull request is being merged into. Refusing to treat it as the pinning revision."
+            exit 1
+          fi
+
+          for s in $scripts; do
+            if git cat-file -e "$BASE_SHA:scripts/ci/$s" 2>/dev/null; then
+              git show "$BASE_SHA:scripts/ci/$s" > "$RUNNER_TEMP/gate/$s"
+              echo "Using scripts/ci/$s from the base revision ($BASE_SHA) -- enforcement logic is pinned."
+            else
+              # BOOTSTRAP, and only this: the base commit is present and verifiably does not
+              # contain the script, because it reaches `dev` for the first time in the very PR
+              # that introduces it. Pinning to base protects an ESTABLISHED gate from being
+              # edited by the PR under review; on that first PR there is no established gate, so
+              # falling back to this PR's copy is no weaker than the gate having been inline
+              # (which is what it replaces). Every subsequent run takes the branch above.
+              #
+              # DELETE THIS BRANCH once this PR has landed on `dev`. From then on every base
+              # commit has both scripts, so it can never fire legitimately again -- and what is
+              # left is a bypass: a pull request can edit its own copy to exit 0, and anything
+              # that makes the blob look absent from base (renaming a path above, or
+              # `filter: blob:none` on the checkout if this repository is ever made private)
+              # gets that copy executed. Replace it with a hard failure, exactly as
+              # .github/workflows/mobile-rollout-gate.yml now does: that gate's first promotion
+              # is long past, so its fallback was removed and a missing blob is fatal there.
+              echo "::warning::scripts/ci/$s is absent from base commit $BASE_SHA (the commit itself is present) -- bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
+              cp "scripts/ci/$s" "$RUNNER_TEMP/gate/$s"
+            fi
+          done
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -399,6 +516,46 @@ jobs:
       # Applies every migration in supabase/migrations from scratch, in order.
       - name: Start local Supabase
         run: supabase start
+
+      # ── The deploy-equivalent cron.job gate (issues #1166/#1167/#1175) ───────
+      # Enforcement lives in scripts/ci/deploy-cron-inventory-gate.sh, extracted above from the
+      # BASE revision and run from there. That file's header carries the whole rationale: why
+      # cron.job immediately after `supabase start` is the state a DEPLOY produces, what has to
+      # be true for that to hold (no supabase/roles.sql or seed.sql, no redirected
+      # db.seed.sql_paths, every added migration sorting after the scheduling guard), and why
+      # this is a different question from the HTTP cron gate further down.
+      #
+      # What stays here, because it cannot move: this step runs with
+      # `continue-on-error: true` and only REPORTS, so the RLS suite -- the security gate that
+      # is this job's main purpose -- still runs when the inventory is wrong. The verdict is
+      # enforced afterwards from `steps.deploy_cron_state.outcome`, a value the runner records
+      # and no later step can forge. Both properties are the workflow's to hold, not a script's.
+      #
+      # It must also stay IMMEDIATELY after `supabase start`, before anything in this job
+      # touches cron.job. The extract step above is before `supabase start`, so nothing has been
+      # inserted between them.
+      - name: cron.job matches the deploy-equivalent inventory
+        id: deploy_cron_state
+        # Report, do not abort: see above. The verdict is enforced after the RLS
+        # suite, from this step's runner-recorded outcome.
+        continue-on-error: true
+        env:
+          # Where the tree under test is checked out. `github.workspace` is supplied by
+          # Actions, not by the pull request; the DSN and every expected value are literals
+          # inside the base-pinned script on purpose -- a PR-supplied DSN alone would be
+          # enough to redirect a gate at a decoy database.
+          REPO_DIR: ${{ github.workspace }}
+          # `run:` steps execute as `bash -e {0}`, and bash SOURCES $BASH_ENV
+          # before the script body. Every step can write to $GITHUB_ENV, whose
+          # runner-side blocklist is a single entry (NODE_OPTIONS), so any
+          # earlier step -- including the root `prepare` hook that
+          # `pnpm install --frozen-lockfile` runs several steps above -- can set
+          # BASH_ENV to a file that defines a shell function named `psql`, or
+          # re-exports any variable this step reads. A step-level `env:` entry
+          # takes precedence over a $GITHUB_ENV one, so pinning it empty means
+          # bash sources nothing. Every step in this gate carries it.
+          BASH_ENV: ''
+        run: bash "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh"
 
       # The local stack's URL and keys. These are the Supabase CLI's fixed demo credentials --
       # public, documented, identical on every developer's machine, and worthless outside this
@@ -820,6 +977,7 @@ jobs:
           if [ -n "$bad" ]; then
             echo "::error::Case 4 (https): $JOB is wrong or missing in cron.job: $bad"
             echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
+            echo "TO FIX: if the change was intended, update the expectation row for this job in THIS step and its row in the \`expected\` VALUES list of \`cron.job matches the deploy-equivalent inventory\` above. A job whose command no longer matches is either a migration that repointed it or one that registered it with the URL and bearer baked in."
             exit 1
           fi
 
@@ -846,152 +1004,73 @@ jobs:
 
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
-      # ── HTTP cron scheduling gate (issue #1167) ──────────────────────────────
-      # Enforcement lives in scripts/ci/http-cron-scheduling-gate.sh, which is run from the
-      # BASE revision rather than this pull request's. See that file's header for what the gate
-      # asserts and why; what follows is only how it is invoked.
+      # The enforcement half of `cron.job matches the deploy-equivalent
+      # inventory`. That step runs with `continue-on-error` so that a cron
+      # finding cannot abort this job before the RLS boundary suite -- the gate
+      # this job exists for -- but its verdict still has to be binding, and it
+      # has to be read from something the steps in between cannot rewrite.
       #
-      # A required check that executes code the pull request can edit is not a gate: a PR that
-      # broke the cron scheduling could also rewrite the assertions to exit 0 and the check
-      # would still report success. `contents: read` does not help -- the problem is
-      # immutability, not token scope. So the verifier is extracted from the base commit to a
-      # path outside the working tree and run from there.
+      # `steps.<id>.outcome` is exactly that: the runner records it when the step
+      # ends, and no later step can change it. That is the whole reason the
+      # inventory is asserted up there against the live database instead of being
+      # written to a file for this step to judge -- a CSV plus a SHA-256 sidecar
+      # in RUNNER_TEMP was forged in about fifteen lines by the vitest suite that
+      # runs in between, which the pull request owns.
       #
-      # The split is deliberate. Everything ABOVE in this job is fixture: `supabase start`
-      # applies THIS PR's migrations from scratch, and that is exactly right -- the PR's
-      # migrations are the thing under test. The verifier still inspects the PR's tree (it
-      # applies the PR's own copy of the guard migration). Only the enforcement logic -- which
-      # file counts as the guard, the preconditions it is given, and what `cron.job` must look
-      # like afterwards -- is pinned to what the base branch already trusts.
-      #
-      # Scope, so the comment above is not read as more than it is. This removes some bypasses,
-      # not the class. These two steps, the environment they pass in, the $PATH they run under
-      # and this job's checkout options are all still in this file, which the pull request can
-      # edit -- and a pull request can delete the steps outright. Worse, the pinning itself is
-      # implemented with $PATH lookups (`git cat-file`, `git show`, `git rev-parse`,
-      # `git merge-base`), and `pnpm install --frozen-lockfile` runs ~10 steps above, so
-      # package.json's `prepare` hook can install a `git` shim through $GITHUB_PATH with no
-      # workflow edit at all; that was demonstrated printing "enforcement logic is pinned."
-      # while installing a script whose body was `exit 0`.
-      #
-      # What actually closes the class is owner review of the paths in .github/CODEOWNERS --
-      # `.github/`, `scripts/`, and the install surface of this job (package.json, whose
-      # `prepare` hook runs inside `pnpm install`, plus pnpm-lock.yaml, pnpm-workspace.yaml,
-      # .npmrc and .husky/). Every known bypass needs an edit to one of those, and the $PATH
-      # route above needs no workflow edit at all, which is why the list is wider than
-      # `.github/`. Note the caveat recorded in that file: CODEOWNERS only blocks a merge once a
-      # ruleset requires code-owner review. The steps below are defence in depth behind that, worth keeping
-      # because they turn a quiet assertion tweak into a visible edit of an owned path.
-      - name: Extract the HTTP cron scheduling gate from the base revision
+      # `if: always()` so the cron verdict is reported even when the RLS suite
+      # failed; a failure there still fails the job on its own.
+      - name: The deploy-equivalent cron gate must have passed
+        if: always()
         env:
-          # The base branch's tip on a `pull_request` event, and EMPTY on anything else. There
-          # is deliberately no `|| github.sha` fallback: `github.sha` on a pull request is the
-          # PR's own merge commit, so that fallback made `git show` resolve against the tree
-          # under review while the log still claimed the gate was pinned to base. The event is
-          # branched on explicitly below instead, so the two cases cannot be confused.
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          EVENT_NAME: ${{ github.event_name }}
+          CRON_GATE_OUTCOME: ${{ steps.deploy_cron_state.outcome }}
+          # Load-bearing, not hygiene. Without it the RLS suite immediately
+          # above -- which the pull request owns -- writes BASH_ENV=/tmp/x.sh to
+          # $GITHUB_ENV, and that file re-exports CRON_GATE_OUTCOME=success
+          # inside this step's own shell, turning a failed inventory green. The
+          # runner's record of the outcome is unforgeable; the shell that reads
+          # it was not. See the note on the anchor step.
+          BASH_ENV: ''
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/gate"
-          dest="$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh"
-          script=scripts/ci/http-cron-scheduling-gate.sh
+          case "$CRON_GATE_OUTCOME" in
+            success)
+              echo "The deploy-equivalent cron inventory passed."
+              ;;
+            skipped|'')
+              echo "::error::\`cron.job matches the deploy-equivalent inventory\` did not run (outcome: '${CRON_GATE_OUTCOME:-<unset>}'). It must stay immediately after \`supabase start\`, before anything mutates cron.job -- without it nothing in CI checks what a deploy would schedule."
+              exit 1
+              ;;
+            *)
+              echo "::error::\`cron.job matches the deploy-equivalent inventory\` failed (outcome: $CRON_GATE_OUTCOME). Scroll up to that step for the specific difference: it is the state a DEPLOY would produce, so it is what production would run."
+              exit 1
+              ;;
+          esac
 
-          # This workflow also runs on PUSH to dev/main. There is no pull request there, the
-          # pushed commit IS the trusted revision, and there is nothing to pin against -- so
-          # say exactly that rather than printing a pinning claim that is not true.
-          #
-          # `push` is allow-listed rather than "anything that is not a pull_request", so a new
-          # trigger cannot inherit the unpinned path by accident. `merge_group` is the one that
-          # matters: this workflow has no merge_group trigger today, but if a merge queue is
-          # ever enabled, merge-group runs carry no pull_request context and would otherwise
-          # slide into this branch and execute the queued PR's own copy of the gate. Adding
-          # merge_group means teaching this step how to pin there (the queue's base is
-          # discoverable from the merge-group ref), not widening this condition.
-          if [ "$EVENT_NAME" = "push" ]; then
-            echo "Event is 'push': the checked-out commit is itself the trusted revision, so the gate runs from the checkout. Nothing is pinned on this path and nothing needs to be."
-            cp "$script" "$dest"
-            exit 0
-          fi
-          if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "::error::Unhandled event '$EVENT_NAME'. This step knows how to pin the gate for 'pull_request' and how to run it unpinned for 'push', and refuses anything else rather than guessing. If you are adding a trigger: when the checked-out commit is itself trusted (as with workflow_dispatch on dev/main), add the event to the 'push' allow-list above; when it is not (as with merge_group, which carries no pull request context and must not run the queued changes' own copy of the gate), teach this step how to find the trusted base for that event first."
-            exit 1
-          fi
-
-          if [ -z "$BASE_SHA" ]; then
-            echo "::error::This is a pull_request event but github.event.pull_request.base.sha is empty, so there is no base revision to pin the gate to. Refusing to run the gate from the pull request's own copy."
-            exit 1
-          fi
-
-          # Distinguish "the clone does not have the base commit" from "the base commit does
-          # not have the script". They are NOT the same thing, and collapsing them is a
-          # complete bypass: drop `fetch-depth: 0` above (it reads like a clone-cost tweak),
-          # replace the script with `exit 0`, and a depth-1 clone makes `git show` fail for
-          # missing OBJECTS -- the fallback then installs the PR's own copy and the check goes
-          # green with zero enforcement. A base commit that is not present is an infrastructure
-          # error, so hard-fail on it; only a genuinely absent blob is the bootstrap case.
-          #
-          # This closes the depth-1 spelling, not the bootstrap branch: see the note on the
-          # ancestor check below, and `script=` above is itself a PR-editable assignment --
-          # renaming it to a path the base revision does not have reaches the bootstrap branch
-          # legitimately, and reads as a refactor. Reviewing that rename is what
-          # .github/CODEOWNERS is for.
-          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            echo "::error::Base commit $BASE_SHA is not present in this clone, so the HTTP cron scheduling gate cannot be pinned to it. This job's checkout must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy -- a shallow clone is not a bootstrap."
-            exit 1
-          fi
-
-          # And it has to be a plausible BASE. `github.sha` on a pull_request event is the PR's
-          # OWN merge commit, so pointing BASE_SHA at it would resolve the script out of the
-          # tree under review while every log line still said "pinned to base". Reject a
-          # BASE_SHA that is the checked-out commit, and require it to be an ancestor of it
-          # (the real base tip always is -- it is a parent of the merge commit).
-          #
-          # ANY ancestor passes, which is as strict as this can be without hardcoding the base
-          # branch: a BASE_SHA pointing at an old `dev` commit from before the gate script
-          # landed satisfies both checks and then legitimately takes the bootstrap branch. That
-          # edit is visible in the diff of this file, which is the point of CODEOWNERS.
-          head_sha=$(git rev-parse HEAD)
-          base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
-          if [ "$base_resolved" = "$head_sha" ]; then
-            echo "::error::BASE_SHA resolves to the checked-out commit itself ($head_sha). That is the revision under review, not a base to pin against -- github.sha on a pull_request event is the PR's own merge commit and must not be used here."
-            exit 1
-          fi
-          if ! git merge-base --is-ancestor "$base_resolved" "$head_sha"; then
-            echo "::error::BASE_SHA ($base_resolved) is not an ancestor of the checked-out commit ($head_sha), so it is not the base this pull request is being merged into. Refusing to treat it as the pinning revision."
-            exit 1
-          fi
-
-          if git cat-file -e "$BASE_SHA:$script" 2>/dev/null; then
-            git show "$BASE_SHA:$script" > "$dest"
-            echo "Using the HTTP cron scheduling gate from the base revision ($BASE_SHA) -- enforcement logic is pinned."
-          else
-            # BOOTSTRAP, and only this: the base commit is present and verifiably does not
-            # contain the script, because it reaches `dev` for the first time in the very PR
-            # that introduces it.
-            #
-            # DELETE THIS BRANCH once that PR has landed on `dev`. From then on every base
-            # commit has the script, so this can never fire legitimately again -- and what is
-            # left is a bypass: a pull request can edit its own copy of the gate to exit 0, and
-            # anything that makes the blob look absent from base (renaming `script=` above,
-            # `filter: blob:none` on the checkout if this repository is ever made private) gets
-            # that copy executed. Replace the whole else-branch with a hard failure, exactly as
-            # .github/workflows/mobile-rollout-gate.yml now does: that gate's first promotion is
-            # long past, so its fallback was removed and a missing blob is fatal there. Pinning to base protects an ESTABLISHED gate from being
-            # edited by the PR under review; on that first PR there is no established gate, so
-            # falling back to this PR's copy is no weaker than the gate having been inline
-            # (which is what it replaces). Every subsequent run takes the branch above.
-            echo "::warning::HTTP cron scheduling gate script absent from base commit $BASE_SHA (the commit itself is present) -- bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
-            cp "$script" "$dest"
-          fi
-
+      # ── HTTP cron scheduling gate (issue #1167) ──────────────────────────────
+      # Enforcement lives in scripts/ci/http-cron-scheduling-gate.sh, extracted above from the
+      # BASE revision and run from there. That file's header carries the rationale: why the GUCs
+      # have to be set and the guard re-run for this assertion to mean anything, why the
+      # migrations this branch adds after the guard are re-applied with them set, and -- at
+      # length -- why this is NOT the deploy-equivalent assertion and must never be treated as
+      # one (issue #1175).
+      #
+      # Runs LAST, after the RLS suite, because it mutates the database (it registers cron jobs)
+      # and must not perturb the security gate that is this job's main purpose.
       - name: HTTP cron jobs are scheduled once the GUCs are set
         env:
-          # Where the tree under test is checked out. `github.workspace` is supplied by Actions,
-          # not by the pull request. The local stack's DSN and every expected value are
-          # literals inside the base-pinned script on purpose -- a PR-supplied DSN alone would
-          # be enough to redirect the gate at a decoy database.
+          # Where the tree under test is checked out. `github.workspace` is supplied by
+          # Actions, not by the pull request; the DSN and every expected value are literals
+          # inside the base-pinned script on purpose -- a PR-supplied DSN alone would be
+          # enough to redirect a gate at a decoy database.
           REPO_DIR: ${{ github.workspace }}
+          # Runner-held state from the deploy-equivalent step, not a file any
+          # step in between could rewrite.
+          CRON_REAPPLY_MIGRATIONS: ${{ steps.deploy_cron_state.outputs.reapply }}
+          CRON_REAPPLY_COMPUTED: ${{ steps.deploy_cron_state.outputs.computed }}
+          # Otherwise a BASH_ENV file set via $GITHUB_ENV by any earlier step
+          # can define a shell function named `psql` that shadows the binary for
+          # every assertion below. See the note on the anchor step.
+          BASH_ENV: ''
         run: bash "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh"
 
   security:
