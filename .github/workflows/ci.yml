@@ -394,8 +394,18 @@ jobs:
       # ── The deploy-equivalent cron.job gate (issues #1166/#1167/#1175) ───────
       #
       # cron.job immediately after `supabase start` is what applying this PR's
-      # migration set from scratch produces -- the state a deploy produces. It
-      # exists only here: `Idle-reaper cron guard branches are exercised`
+      # migration set produces -- the state a deploy produces, PROVIDED nothing
+      # but migrations shaped it. That proviso is checked below and is not free:
+      # `supabase start` runs supabase/roles.sql and then supabase/seed.sql
+      # AFTER the migrations (MigrateAndSeed -> applyMigrationFiles,
+      # applySeedFiles), seeding is on by default with sql_paths ["seed.sql"],
+      # and both files are PR-authored. A post-guard migration that schedules a
+      # rogue job plus a seed.sql that unschedules it again leaves this step
+      # looking at a clean database while production, which never runs seed.sql,
+      # keeps the job. Neither file exists in this repo today, so the gate
+      # requires that to stay true rather than trying to model them.
+      #
+      # The state exists only here: `Idle-reaper cron guard branches are exercised`
       # unschedules and reschedules reap_idle_active_games as part of its
       # fixtures, and the HTTP cron gate re-runs the scheduling guard, so by the
       # end of this job the deploy-equivalent state is gone.
@@ -437,10 +447,52 @@ jobs:
         # Report, do not abort: see above. The verdict is enforced after the RLS
         # suite, from this step's runner-recorded outcome.
         continue-on-error: true
+        env:
+          # `run:` steps execute as `bash -e {0}`, and bash SOURCES $BASH_ENV
+          # before the script body. Every step can write to $GITHUB_ENV, whose
+          # runner-side blocklist is a single entry (NODE_OPTIONS), so any
+          # earlier step -- including the root `prepare` hook that
+          # `pnpm install --frozen-lockfile` runs several steps above -- can set
+          # BASH_ENV to a file that defines a shell function named `psql`, or
+          # re-exports any variable this step reads. A step-level `env:` entry
+          # takes precedence over a $GITHUB_ENV one, so pinning it empty means
+          # bash sources nothing. Every step in this gate carries it.
+          BASH_ENV: ''
         run: |
           set -euo pipefail
           DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           GUARD_MIGRATION_FILE=20261124120000_noisy_http_cron_scheduling_guard.sql
+
+          # ── Did anything but migrations shape this database? ─────────────────
+          #
+          # `supabase start` applies supabase/roles.sql and supabase/seed.sql
+          # after the migrations, and both are PR-authored, so "this is what the
+          # migrations produced" is only true while neither exists. A seed that
+          # unschedules a job a migration registered leaves cron.job clean here
+          # and leaves the job in place on production, which never runs it.
+          #
+          # This is a statement about the TREE, not about the diff: it holds
+          # however the file arrived. The two names are exactly what
+          # `supabase start` executes by default -- supabase/tests/*.sql is NOT
+          # in that set (those are pgTAP files for `supabase test db`, which this
+          # job never runs), so they are deliberately not listed. A [db.seed]
+          # sql_paths entry could point somewhere else entirely, including
+          # outside supabase/, which is why the config is checked too.
+          stray_sql=""
+          for f in supabase/roles.sql supabase/seed.sql; do
+            [ -f "$f" ] && stray_sql="$stray_sql $f"
+          done
+          if [ -n "$stray_sql" ]; then
+            echo "::error::SQL that \`supabase start\` executes after the migrations is present in this branch:$stray_sql"
+            echo "supabase/roles.sql and supabase/seed.sql are applied by \`supabase start\` AFTER every migration, and seeding is on by default. Production never runs them, so anything they do to cron.job makes the state this gate inspects differ from the state a deploy produces -- a seed that unschedules a job a migration registered is enough to turn this gate green while production keeps the job."
+            echo "TO FIX: if the repo is genuinely adopting seeding, this gate has to be taught to account for it (assert before the seed runs, or prove the seed cannot touch cron.job) -- it cannot simply be allowed through."
+            exit 1
+          fi
+          if grep -q 'sql_paths' supabase/config.toml; then
+            echo "::error::supabase/config.toml configures sql_paths, which redirects what \`supabase start\` executes after the migrations."
+            echo "Same reason as above: production applies migrations only, so any other SQL running here makes this gate inspect a state a deploy would not produce."
+            exit 1
+          fi
 
           # ── Is this state deploy-equivalent at all? ──────────────────────────
           #
@@ -486,8 +538,10 @@ jobs:
           # anyone willing to edit it in the same commit is not stopped -- not by
           # this rule, not by the declared-jobname lists below, and not by the
           # verdict step. What it stops is the accident, and it makes the
-          # deliberate version a visible edit to a code-owned path that a
-          # reviewer reading the diff will see. That is the whole claim.
+          # deliberate version a visible edit, in the diff, to the file that
+          # does the checking -- something a reviewer reading the pull request
+          # will see. (Not an enforced boundary: this repo has no CODEOWNERS
+          # today. Visibility is the entire claim.)
           #
           # The base is HEAD's FIRST PARENT, not github.event.pull_request.base.sha.
           # On a pull_request event the checkout is refs/pull/N/merge, whose
@@ -502,11 +556,7 @@ jobs:
           # production has already applied and what an added file must sort after.
           base_sha=$(git rev-parse --verify --quiet 'HEAD^1' || true)
           if [ -z "$base_sha" ]; then
-            echo "::error::HEAD has no first parent, so there is no base revision to compare migrations against. The deploy-equivalent cron gate cannot tell which migrations this branch adds and will not guess."
-            exit 1
-          fi
-          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-            echo "::error::Base revision $base_sha is not present in this clone. This job's checkout needs \`fetch-depth: 0\`."
+            echo "::error::HEAD has no first parent, so there is no base revision to compare migrations against. Usually this means the checkout is shallow -- this job needs \`fetch-depth: 0\` -- or HEAD is a root commit. Either way the gate cannot tell which migrations this branch adds and will not guess."
             exit 1
           fi
           head_sha=$(git rev-parse --verify 'HEAD^2' 2>/dev/null || git rev-parse --verify HEAD)
@@ -524,8 +574,14 @@ jobs:
           # select at all -- see the comment above.
           added=$(git diff --no-renames --name-only --diff-filter=A "$fork_point" "$head_sha" -- supabase/migrations/ | sed 's#.*/##' | LC_ALL=C sort)
 
+          # Where this branch is headed decides how strict the ordering rule is
+          # below. GITHUB_BASE_REF is the PR's target branch and is empty on a
+          # push, where GITHUB_REF_NAME is the branch being pushed.
+          target_branch="${GITHUB_BASE_REF:-${GITHUB_REF_NAME:-}}"
+
           reapply_list=""
-          out_of_order=""
+          before_guard=""
+          behind_base=""
           bad_prefix=""
           while IFS= read -r f; do
             [ -n "$f" ] || continue
@@ -533,9 +589,30 @@ jobs:
               [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.sql) : ;;
               *) bad_prefix="$bad_prefix $f"; continue ;;
             esac
-            if [ "$f" = "$base_last" ] || [ "$(printf '%s\n%s\n' "$f" "$base_last" | LC_ALL=C sort | head -n1)" != "$base_last" ]; then
-              out_of_order="$out_of_order $f"
+            # Two different situations, and conflating them was wrong. Sorting
+            # at or before the SCHEDULING GUARD is the bypass this gate exists
+            # for: the guard re-runs during `supabase start` and overwrites
+            # whatever an earlier file did, so CI sees a clean cron.job while
+            # production -- where the guard is already recorded and will not
+            # re-run -- applies the earlier file last and keeps its version.
+            # That is always an error.
+            if [ "$f" = "$GUARD_MIGRATION_FILE" ] || [ "$(printf '%s\n%s\n' "$f" "$GUARD_MIGRATION_FILE" | LC_ALL=C sort | head -n1)" != "$GUARD_MIGRATION_FILE" ]; then
+              before_guard="$before_guard $f"
               continue
+            fi
+            # Sorting after the guard but before the base branch's newest
+            # migration is a different thing: another migration landed on the
+            # base while this branch was open. On a PR into dev that is routine
+            # and does not affect production -- prod migrates on push to main,
+            # where both files are still pending and will apply in version order
+            # together -- so it is a warning. It is still worth saying, because
+            # the dev project HAS already applied the other file and will take
+            # this one after it. On a promotion into main it is the reverse and
+            # genuinely blocking: main holding a migration dev does not means an
+            # unsynced hotfix, and the promotion really would apply dev's
+            # backlog out of order against the production project.
+            if [ "$f" = "$base_last" ] || [ "$(printf '%s\n%s\n' "$f" "$base_last" | LC_ALL=C sort | head -n1)" != "$base_last" ]; then
+              behind_base="$behind_base $f"
             fi
             if [ "$(printf '%s\n%s\n' "$f" "$GUARD_MIGRATION_FILE" | LC_ALL=C sort | head -n1)" = "$GUARD_MIGRATION_FILE" ] && [ "$f" != "$GUARD_MIGRATION_FILE" ]; then
               reapply_list="$reapply_list$(printf 'supabase/migrations/%s\n' "$f")"$'\n'
@@ -558,13 +635,21 @@ jobs:
             echo "Apply order is decided by filename, so a prefix of any other length cannot be reasoned about -- a 15-digit one sorts before a 14-digit one with a larger value. Rename with \`supabase migration new <name>\`."
             exit 1
           fi
-          if [ -n "$out_of_order" ]; then
-            echo "::error::Migration(s) added by this branch sort at or before the last migration already on the base branch ($base_last):$out_of_order"
-            echo "CI applies every migration from scratch in filename order, while the deploy applies only what the remote history is missing -- so a file that sorts earlier than an already-applied one runs BEFORE it here and AFTER it on production. The two then disagree about what cron.job ends up as, and this gate would be judging the wrong state. Give the migration a filename that sorts after $base_last."
-            echo "If this is a dev -> main promotion, the cause is the other direction: main has a migration dev does not (an unsynced hotfix), so dev's pending migrations sort below it. Merge main back into dev first -- CONTRIBUTING.md requires that sync anyway, and until it happens the promotion really would apply those migrations out of order on the production project."
+          if [ -n "$before_guard" ]; then
+            echo "::error::Migration(s) added by this branch sort at or before the cron scheduling guard ($GUARD_MIGRATION_FILE):$before_guard"
+            echo "The guard is already applied on both hosted projects and will not run again there, but \`supabase start\` re-runs it here -- and it unconditionally reschedules all three of its jobs. So a migration that sorts before it is overwritten in CI and wins on production, and this gate would be judging a state no deploy produces. Give the migration a filename that sorts after $GUARD_MIGRATION_FILE."
             exit 1
           fi
-          echo "Every migration this branch adds sorts after $base_last, so CI and the deploy apply them in the same order."
+          if [ -n "$behind_base" ]; then
+            if [ "$target_branch" = "main" ]; then
+              echo "::error::This is a promotion into main, and migration(s) it brings sort before main's newest migration ($base_last):$behind_base"
+              echo "main holding a migration dev does not means a hotfix landed there without the sync-back CONTRIBUTING.md requires. Until that sync happens the promotion really would apply these out of order against the production project, which has already applied $base_last. Merge main back into dev first."
+              exit 1
+            fi
+            echo "::warning::Migration(s) added by this branch sort before the newest migration already on $target_branch ($base_last):$behind_base -- another migration landed while this branch was open."
+            echo "Not blocking, and nothing to do about it: production migrates on push to main, where these are all still pending and will apply together in version order. The $target_branch project has already applied $base_last and will take these after it, so if both touch the same object, check that order is harmless there."
+          fi
+          echo "No migration this branch adds sorts at or before $GUARD_MIGRATION_FILE, so CI and the deploy agree about what the scheduling guard leaves behind."
           if [ -n "$reapply_list" ]; then
             echo "Added after the scheduling guard, to be re-applied with the GUCs set by the HTTP cron gate:"
             printf '%s' "$reapply_list" | sed 's/^/  /'
@@ -692,7 +777,7 @@ jobs:
           if [ -n "$bad" ]; then
             echo "::error::cron.job does not match the deploy-equivalent inventory after applying this PR's migrations: $bad"
             echo "This is the state a DEPLOY would produce -- what production runs. Unlike the HTTP cron gate below it is not overwritten by re-running the scheduling guard, so a difference here is a difference production would get. See issue #1175."
-            echo "TO FIX: if a migration in this PR changed a job on purpose, update its row in the \`expected\` VALUES list in THIS step, and -- for scheduled_games_push_tick and warn_idle_waiting_lobbies -- the expectation rows and the declared-jobname array in the HTTP cron gate below. If a job is new, add a row here and its name to that array. If you did not mean to change a cron job, a migration in this PR is scheduling something nobody asked for."
+            echo "TO FIX: if a migration in this PR changed a job on purpose, update its row in the \`expected\` VALUES list in THIS step, and -- for scheduled_games_push_tick and warn_idle_waiting_lobbies -- the expectation rows in the direct-HTTP \`values\` list and the declared-jobname array of the rogue check, both in the HTTP cron gate below. If a job is new, add a row here and its name to that array. If you did not mean to change a cron job, a migration in this PR is scheduling something nobody asked for."
             exit 1
           fi
 
@@ -1190,6 +1275,13 @@ jobs:
         if: always()
         env:
           CRON_GATE_OUTCOME: ${{ steps.deploy_cron_state.outcome }}
+          # Load-bearing, not hygiene. Without it the RLS suite immediately
+          # above -- which the pull request owns -- writes BASH_ENV=/tmp/x.sh to
+          # $GITHUB_ENV, and that file re-exports CRON_GATE_OUTCOME=success
+          # inside this step's own shell, turning a failed inventory green. The
+          # runner's record of the outcome is unforgeable; the shell that reads
+          # it was not. See the note on the anchor step.
+          BASH_ENV: ''
         run: |
           set -euo pipefail
           case "$CRON_GATE_OUTCOME" in
@@ -1257,6 +1349,10 @@ jobs:
           # step in between could rewrite.
           CRON_REAPPLY_MIGRATIONS: ${{ steps.deploy_cron_state.outputs.reapply }}
           CRON_REAPPLY_COMPUTED: ${{ steps.deploy_cron_state.outputs.computed }}
+          # Otherwise a BASH_ENV file set via $GITHUB_ENV by any earlier step
+          # can define a shell function named `psql` that shadows the binary for
+          # every assertion below. See the note on the anchor step.
+          BASH_ENV: ''
         run: |
           set -euo pipefail
           DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
