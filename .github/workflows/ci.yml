@@ -1229,7 +1229,7 @@ jobs:
           if [ -n "$bad" ]; then
             echo "::error::Case 4 (https): $JOB is wrong or missing in cron.job: $bad"
             echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
-            echo "TO FIX: if the change was intended, update the expectation row for this job in THIS step and its row in the \`expected\` VALUES list of \`cron.job matched the deploy-equivalent inventory\` above. A job whose command no longer matches is either a migration that repointed it or one that registered it with the URL and bearer baked in."
+            echo "TO FIX: if the change was intended, update the expectation row for this job in THIS step and its row in the \`expected\` VALUES list of \`cron.job matches the deploy-equivalent inventory\` above. A job whose command no longer matches is either a migration that repointed it or one that registered it with the URL and bearer baked in."
             exit 1
           fi
 
@@ -1443,7 +1443,7 @@ jobs:
           # cron was in an English comment, which would then be re-executed for
           # nothing. So the list is computed WITHOUT reading the files: it is
           # exactly the migrations this branch ADDS that sort after the guard,
-          # written out by `cron.job matched the deploy-equivalent inventory`
+          # written out by `cron.job matches the deploy-equivalent inventory`
           # from `git diff --diff-filter=A` against the base revision. Those are
           # precisely the files production applies after the already-recorded
           # guard, whatever SQL they happen to contain.
@@ -1650,7 +1650,7 @@ jobs:
                    ]);")
           if [ -n "$bad" ]; then
             echo "::error::Undeclared cron job(s) in cron.job after running the scheduling guard: $bad"
-            echo "TO FIX: every cron job this repo schedules must be declared. If the job is legitimate, add its name to the array in this step, a full expectation row to \`cron.job matched the deploy-equivalent inventory\` above, and -- if it is a GUC-gated HTTP job -- an expectation row to the direct-HTTP check earlier in this step. If it is not legitimate, a migration in this PR is scheduling something nobody asked for."
+            echo "TO FIX: every cron job this repo schedules must be declared. If the job is legitimate, add its name to the array in this step, a full expectation row to \`cron.job matches the deploy-equivalent inventory\` above, and -- if it is a GUC-gated HTTP job -- an expectation row to the direct-HTTP check earlier in this step. If it is not legitimate, a migration in this PR is scheduling something nobody asked for."
             exit 1
           fi
           echo "cron.job contains no undeclared jobs."
