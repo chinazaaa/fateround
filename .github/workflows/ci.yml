@@ -386,194 +386,76 @@ jobs:
       - name: Start local Supabase
         run: supabase start
 
-      # ── Deploy-equivalent cron.job inventory (issues #1166 / #1167 / #1175) ──
+      # ── Snapshot cron.job as `supabase start` left it (issue #1175) ──────────
       #
-      # This is the FIRST of the two assertion points on cron.job in this job,
-      # and they answer DIFFERENT questions. Read both before changing either.
+      # READ-ONLY, and it asserts nothing. Both of those are deliberate.
       #
-      #   * HERE, immediately after `supabase start`, cron.job holds exactly what
-      #     applying THIS PULL REQUEST'S migration set from scratch, in order,
-      #     produces. That is the state a deploy produces, so this is the only
-      #     assertion in CI that answers "what will production actually run?".
-      #   * LATER, `HTTP cron jobs are scheduled once the GUCs are set` re-runs
-      #     20261124120000_noisy_http_cron_scheduling_guard.sql with both GUCs
-      #     set and asserts again. That answers "does the guard's happy path
-      #     still schedule the right things when its preconditions are met?" --
-      #     a question this step cannot answer, because the GUCs are unset here.
+      # The state this captures -- cron.job immediately after applying this PR's
+      # migration set from scratch -- exists only here. `Idle-reaper cron guard
+      # branches are exercised` unschedules and reschedules
+      # reap_idle_active_games repeatedly as part of its fixtures, and the HTTP
+      # gate re-runs the scheduling guard, so by the end of this job the
+      # deploy-equivalent state is gone. It therefore has to be captured here.
       #
-      # The later step CANNOT stand in for this one (issue #1175). The guard
-      # migration unconditionally unschedules and reschedules all three of its
-      # jobs from literals in its own file, so assertions made after it observe
-      # what it just wrote, not what the migration set produced. The asymmetry is
-      # what makes that exploitable: in production 20261124 is already applied
-      # and will not re-run, so a LATER migration wins; in this job it is
-      # force-re-run last, so it always wins. A PR adding a later migration that
-      # re-registers the reaper as an inlined net.http_post with a baked-in
-      # bearer -- the exact #1166 regression the gate cites -- used to pass green.
+      # But it must not be ASSERTED here. This job's main purpose is the RLS
+      # boundary suite, and a step that can fail before that suite runs would
+      # let a cron-inventory problem mask a security regression -- the same
+      # reasoning that puts the HTTP cron gate last. So this step only copies
+      # rows out to a file, and `cron.job matched the deploy-equivalent
+      # inventory` does the judging after the suite has run.
       #
-      # So, when triage starts from a red run:
-      #   * THIS step red  => a migration in this PR changed what a DEPLOY
-      #     schedules. Production would get the state printed below.
-      #   * the LATER step red => the guard migration's own scheduling path is
-      #     broken. A deploy of an already-migrated database would be unaffected.
-      #
-      # It must stay BEFORE `Idle-reaper cron guard branches are exercised`,
-      # which unschedules and reschedules reap_idle_active_games repeatedly as
-      # part of its fixtures: after that step the deploy-equivalent state does
-      # not exist anywhere in this runner any more.
-      - name: cron.job matches the deploy-equivalent inventory
+      # Nothing is written to the database, so the snapshot cannot perturb the
+      # suite either.
+      - name: Snapshot cron.job as `supabase start` left it
         run: |
           set -euo pipefail
           DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          SNAPSHOT_DIR="${RUNNER_TEMP:-/tmp}"
 
-          # Connectivity is hard-failed, the extensions are soft-skipped, and the
-          # two are kept apart on purpose -- same reasoning as the later gate: a
-          # `supabase start` flake must not quietly turn a security gate into a
-          # green no-op.
+          # Connectivity is hard-failed and the extensions are soft-skipped, and
+          # the two are kept apart: a `supabase start` flake must not turn a
+          # security gate into a green no-op.
           if ! psql "$DB" -v ON_ERROR_STOP=1 -q -c "select 1;" >/dev/null; then
-            echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to run the deploy-equivalent cron inventory against a half-started stack."
+            echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to snapshot cron.job from a half-started stack."
             exit 1
           fi
 
-          # Deliberately NOT `create extension if not exists pg_cron` here. This
-          # step's whole point is to look at the state the migrations left; if
-          # they did not install pg_cron, installing it now would manufacture an
-          # empty cron.job and turn "nothing was scheduled" into a confusing
-          # per-job "absent" list. So: no cron.job means the migrations took
-          # their pg_cron-unavailable branch, which is only legitimate when
-          # pg_cron really is missing from this image.
+          # Deliberately NOT `create extension if not exists pg_cron`. The point
+          # is to record the state the MIGRATIONS left; installing the extension
+          # now would manufacture an empty cron.job and turn "nothing was
+          # scheduled" into a confusing per-job "absent" list later.
+          #
+          # pg_net availability is recorded alongside it because it changes what
+          # the migrations schedule: 20261123120000 and 20261124120000 both
+          # return before registering reap_idle_active_games when pg_net is
+          # missing, so on such an image the reaper is legitimately absent.
+          # 20261005120000 schedules its two pure-SQL jobs BEFORE its own pg_net
+          # check, so those are present either way.
           cron_present=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "select to_regclass('cron.job') is not null;")
+          pg_net_available=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "select exists (select 1 from pg_available_extensions where name = 'pg_net');")
+
           if [ "$cron_present" != "t" ]; then
             if ! unavailable=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
                 "select coalesce(string_agg(e, ', '), '') from unnest(array['pg_cron','pg_net']) e where not exists (select 1 from pg_available_extensions a where a.name = e);"); then
-              echo "::error::cron.job does not exist and the follow-up availability probe could not connect either. Refusing to skip the deploy-equivalent cron inventory on an unhealthy stack."
+              echo "::error::cron.job does not exist and the follow-up availability probe could not connect either. Refusing to record a skip on an unhealthy stack."
               exit 1
             fi
             if [ -z "$unavailable" ]; then
               echo "::error::cron.job does not exist even though pg_cron is listed in pg_available_extensions. The migrations should have created the extension and scheduled the jobs -- that is a real failure, not an environment difference."
               exit 1
             fi
-            echo "::warning::Not available in this local stack: $unavailable -- deploy-equivalent cron inventory skipped."
+            printf 'pg_cron=f\npg_net=%s\n' "$pg_net_available" > "$SNAPSHOT_DIR/cron-deploy-state.status"
+            echo "::warning::Not available in this local stack: $unavailable -- the deploy-equivalent cron inventory will be skipped."
             exit 0
           fi
 
-          echo "cron.job as \`supabase start\` left it:"
-          psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, active, database, username, nodename, command from cron.job order by jobname, jobid;"
+          printf 'pg_cron=t\npg_net=%s\n' "$pg_net_available" > "$SNAPSHOT_DIR/cron-deploy-state.status"
+          psql "$DB" -v ON_ERROR_STOP=1 -q -c \
+            "\copy (select jobid, jobname, schedule, command, active, database, username, nodename, nodeport from cron.job order by jobid) to stdout with (format csv)" \
+            > "$SNAPSHOT_DIR/cron-deploy-state.csv"
 
-          # A FULL INVENTORY, not a whitelist-of-three presence check (#1175
-          # finding 5). Every row in cron.job is accounted for: each declared job
-          # is checked for presence/absence, schedule, command, and the four
-          # columns that decide whether it runs at all and against what
-          # (`active`, `database`, `username`, `nodename`); and any row whose
-          # jobname is not declared here is reported as rogue. Without the
-          # inventory half, an extra job posting to an attacker host is simply
-          # invisible to this gate.
-          #
-          # ADDING A LEGITIMATE CRON JOB: this step will fail with
-          # "is in cron.job but is not a declared job", printing the jobname,
-          # schedule and command it found. The fix is to paste those three values
-          # into the `expected` VALUES list below (and, if the job is scheduled
-          # only when app.api_base / app.cron_secret are set, mark it `false` in
-          # the `scheduled_without_gucs` column and add it to the later gate's
-          # expectations too). That is the intended workflow, not a workaround --
-          # a cron job that reaches production without being declared here is
-          # precisely what this gate exists to stop.
-          #
-          # `scheduled_without_gucs = false` means the migration that registers
-          # the job is gated on app.api_base / app.cron_secret, which CI never
-          # sets at DATABASE level. Those jobs must therefore be ABSENT here, and
-          # their presence is itself the defect: it means a migration baked a URL
-          # and a bearer token into cron.job instead of reading them at run time.
-          #
-          # Commands are compared with runs of whitespace collapsed. Every other
-          # byte must match, so a repointed URL, an added comment, a swapped
-          # net.http_get, or an extra statement all fail; only a reindentation of
-          # the migration's dollar-quoted literal is tolerated. (The reaper is
-          # additionally compared byte-for-byte below, as it always has been.)
-          bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
-            with expected(jobname, schedule, command, scheduled_without_gucs) as (
-              values
-                ('close_idle_waiting_lobbies'::text, '*/2 * * * *'::text, 'select close_idle_waiting_lobbies(15);'::text, true),
-                ('drop_stale_unconfirmed_rsvps', '*/2 * * * *', 'select drop_stale_unconfirmed_rsvps();', true),
-                ('notification_dispatches_gc', '17 * * * *', 'delete from public.notification_dispatches where sent_at < now() - interval ''24 hours'';', true),
-                ('open_scheduled_games_due', '* * * * *', 'select open_scheduled_games_due();', true),
-                ('reap_idle_active_games', '*/15 * * * *', 'select public.reap_idle_active_games_tick();', true),
-                ('scheduled_games_push_tick', '* * * * *', null, false),
-                ('warn_idle_waiting_lobbies', '*/2 * * * *', null, false)
-            ),
-            actual as (
-              select jobid, jobname, schedule, command, active, database, username, nodename,
-                     btrim(regexp_replace(command, '\s+', ' ', 'g')) as norm
-                from cron.job
-            ),
-            rogue as (
-              select format('%s is in cron.job but is not a declared job (schedule %L, command %L)',
-                            coalesce(a.jobname, '<a row with no jobname>'), a.schedule, a.command) as problem
-                from actual a
-               where a.jobname is null
-                  or not exists (select 1 from expected e where e.jobname = a.jobname)
-            ),
-            declared as (
-              select format('%s (%s)', e.jobname, checked.problem) as problem
-                from expected e
-                left join actual a on a.jobname = e.jobname
-                cross join lateral (
-                  select case
-                           when a.jobid is null and e.scheduled_without_gucs then 'absent from cron.job'
-                           when a.jobid is not null and not e.scheduled_without_gucs
-                             then format('is in cron.job even though app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time: command is %L', a.command)
-                           when a.jobid is null then null
-                           when a.schedule is distinct from e.schedule
-                             then format('schedule is %L, expected %L', a.schedule, e.schedule)
-                           when a.norm is distinct from e.command
-                             then format('command is %L, expected %L (whitespace-normalised)', a.norm, e.command)
-                           when a.active is distinct from true
-                             then 'is registered but cron.job.active is false, so it never fires -- present-and-disabled is the #1167 failure mode, not a fix for it'
-                           when a.database is distinct from 'postgres'
-                             then format('is registered against database %L, expected %L -- a job in another database does nothing useful here', a.database, 'postgres')
-                           when a.username is distinct from 'postgres'
-                             then format('runs as %L, expected %L', a.username, 'postgres')
-                           when a.nodename is distinct from 'localhost'
-                             then format('is registered against nodename %L, expected %L -- anything else sends this job somewhere other than this server', a.nodename, 'localhost')
-                         end as problem
-                ) as checked
-               where checked.problem is not null
-            )
-            select coalesce(string_agg(problem, '; ' order by problem), '')
-              from (select problem from rogue union all select problem from declared) as problems;")
-          if [ -n "$bad" ]; then
-            echo "::error::cron.job does not match the deploy-equivalent inventory after applying this PR's migrations: $bad"
-            echo "This is the state a DEPLOY would produce -- it is what production runs, and unlike the later gate it is not overwritten by re-running the scheduling guard. See issue #1175."
-            exit 1
-          fi
-
-          # The reaper, byte-for-byte, at the deploy-equivalent point. The
-          # inventory above already compared it whitespace-normalised; this
-          # repeats it exactly because #1166 is the regression that matters most
-          # here, and because the later gate makes the identical byte-exact
-          # assertion -- a PR that satisfies one and not the other is telling you
-          # something. Anything other than the bare tick invocation means the
-          # route and the CRON_SECRET bearer are baked into cron.job rather than
-          # re-read each run, and the function's https transport gate (CWE-319)
-          # is bypassed.
-          bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
-            select coalesce(
-                     case
-                       when j.jobid is null then 'absent from cron.job'
-                       when j.schedule is distinct from '*/15 * * * *'
-                         then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-                       when j.command is distinct from 'select public.reap_idle_active_games_tick();'
-                         then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
-                     end, '')
-              from (select 1) as one
-              left join cron.job j on j.jobname = 'reap_idle_active_games';")
-          if [ -n "$bad" ]; then
-            echo "::error::reap_idle_active_games is wrong or missing in the cron.job state this PR's migrations produce: $bad"
-            echo "It must be registered as the tick call, not as an inlined net.http_post: the URL and the CRON_SECRET bearer must be re-read at run time (rotation-safe) and must pass the function's https transport gate (CWE-319)."
-            echo "A LATER migration that re-registers it is what this assertion point exists to catch -- the scheduling guard is already applied on production and will not re-run to undo it. See issue #1175."
-            exit 1
-          fi
-          echo "cron.job matches the deploy-equivalent inventory."
+          echo "cron.job as \`supabase start\` left it (pg_net available: $pg_net_available):"
+          psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, active, database, username, nodename, nodeport, command from cron.job order by jobname, jobid;"
 
       # The local stack's URL and keys. These are the Supabase CLI's fixed demo credentials --
       # public, documented, identical on every developer's machine, and worthless outside this
@@ -995,6 +877,7 @@ jobs:
           if [ -n "$bad" ]; then
             echo "::error::Case 4 (https): $JOB is wrong or missing in cron.job: $bad"
             echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
+            echo "TO FIX: if the change was intended, update the expectation row for this job in THIS step and its row in the \`expected\` VALUES list of \`cron.job matched the deploy-equivalent inventory\` above. A job whose command no longer matches is either a migration that repointed it or one that registered it with the URL and bearer baked in."
             exit 1
           fi
 
@@ -1020,6 +903,232 @@ jobs:
           echo "All idle-reaper guard branches behaved as specified."
 
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
+
+      # ── The deploy-equivalent cron.job inventory (issues #1166/#1167/#1175) ──
+      #
+      # The FIRST of this job's two assertion points on cron.job. It judges the
+      # snapshot taken immediately after `supabase start`, which is the state
+      # applying this PR's migration set produces -- the state a deploy
+      # produces. The SECOND point is the HTTP cron gate below, which re-runs
+      # the scheduling guard with the GUCs set and asserts again. They answer
+      # different questions and neither substitutes for the other:
+      #
+      #   * THIS one red => a migration in this PR changed what a DEPLOY
+      #     schedules. Production would get the state printed by the snapshot.
+      #   * the LATER one red => the guard migration's own scheduling path is
+      #     broken. An already-migrated database would be unaffected.
+      #
+      # Why the later point cannot do this job (issue #1175): the guard
+      # migration unconditionally unschedules and reschedules all three of its
+      # jobs from literals in its own file, so assertions made after it observe
+      # what it just wrote. On production 20261124 is already applied and will
+      # not re-run, so a LATER migration is what wins there; in this job it is
+      # force-re-run, so it always wins here.
+      - name: cron.job matched the deploy-equivalent inventory
+        run: |
+          set -euo pipefail
+          DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          SNAPSHOT_DIR="${RUNNER_TEMP:-/tmp}"
+          GUARD_VERSION=20261124120000
+
+          # ── Ordering: the snapshot is only deploy-equivalent if CI and
+          # production apply this PR's migrations in the same relative order.
+          #
+          # They do not do so automatically. `supabase start` applies every file
+          # from scratch in filename order, while the deploy runs
+          # `supabase db push --include-all`, which applies whatever is missing
+          # from the remote history table on top of what is already recorded --
+          # and `migrations-check` enforces version UNIQUENESS, not
+          # monotonicity. So a back-dated file, say 20261123130000_*.sql, sorts
+          # BEFORE the scheduling guard here (the guard re-runs afterwards and
+          # overwrites whatever it did) but applies AFTER the already-recorded
+          # guard on production, where it wins. Both assertion points stay green
+          # and production runs the back-dated file's version of the job.
+          #
+          # Rather than reconstruct the remote history (which would need the
+          # base branch, a deeper checkout, and trust in both), forbid the
+          # ordering trap outright: no migration at or before the guard's
+          # version may touch cron unless it is one of the six that already do.
+          # Any NEW cron migration must sort after the guard, and then CI's
+          # order and production's order agree by construction. The list is
+          # closed on purpose -- adding to it is how you would reintroduce the
+          # bypass, so it should not happen without someone saying why.
+          declared_cron_migrations="20261001120000 20261002120000 20261005120000 20261015120000 20261123120000 20261124120000"
+          backdated=""
+          for f in supabase/migrations/*.sql; do
+            base=$(basename "$f")
+            version=${base%%_*}
+            case "$version" in
+              ''|*[!0-9]*) echo "::error::$base does not start with a numeric <version>_ prefix, so its apply order cannot be reasoned about. Rename it per CONTRIBUTING.md."; exit 1 ;;
+            esac
+            # 10#$version forces base-10: a leading zero would otherwise be read
+            # as octal and a version containing 8 or 9 would abort the step.
+            [ "$((10#$version))" -le "$((10#$GUARD_VERSION))" ] || continue
+            grep -q 'cron\.' "$f" || continue
+            case " $declared_cron_migrations " in
+              *" $version "*) continue ;;
+            esac
+            backdated="$backdated $base"
+          done
+          if [ -n "$backdated" ]; then
+            echo "::error::Migration(s) at or before the scheduling guard ($GUARD_VERSION) touch pg_cron but are not among the six that already do:$backdated"
+            echo "A cron migration that sorts before the guard is applied BEFORE it here and AFTER it on production (supabase db push --include-all applies whatever the remote history is missing), so CI would see the guard's version of cron.job and production would see this file's. Give the migration a version greater than $GUARD_VERSION."
+            exit 1
+          fi
+          echo "No cron migration sorts at or before the scheduling guard except the six declared ones."
+
+          # ── The snapshot. Absent means the snapshot step did not run, which is
+          # not something to shrug at: it is the only record of the state this
+          # assertion is about.
+          status_file="$SNAPSHOT_DIR/cron-deploy-state.status"
+          snapshot_file="$SNAPSHOT_DIR/cron-deploy-state.csv"
+          if [ ! -f "$status_file" ]; then
+            echo "::error::$status_file is missing. \`Snapshot cron.job as \\\`supabase start\\\` left it\` did not run, so the deploy-equivalent state was never recorded and this gate cannot run. Restore that step -- it must stay immediately after \`supabase start\`, before anything mutates cron.job."
+            exit 1
+          fi
+          pg_cron_present=$(sed -n 's/^pg_cron=//p' "$status_file")
+          pg_net_available=$(sed -n 's/^pg_net=//p' "$status_file")
+          if [ "$pg_cron_present" != "t" ]; then
+            echo "::warning::pg_cron was not available when the snapshot was taken -- deploy-equivalent cron inventory skipped."
+            exit 0
+          fi
+          if [ ! -f "$snapshot_file" ]; then
+            echo "::error::$status_file says pg_cron was present but $snapshot_file is missing. Refusing to pass a cron gate with no state to judge."
+            exit 1
+          fi
+
+          # `reap_idle_active_games` is the one declared job whose presence
+          # depends on pg_net: 20261123120000 and 20261124120000 both return
+          # before scheduling it when pg_net is unavailable. That is a separate
+          # axis from the two GUC-gated jobs -- for those, presence is itself the
+          # defect (it means a migration baked a URL and a bearer token into
+          # cron.job), whereas the reaper is simply not expected on an image
+          # without pg_net.
+          if [ "$pg_net_available" = "t" ]; then
+            reaper_must_exist=true
+            reaper_absent_reason=null
+          else
+            reaper_must_exist=false
+            reaper_absent_reason="'pg_net is unavailable in this stack, so both cron migrations return before scheduling it'"
+            echo "::warning::pg_net is unavailable in this stack, so reap_idle_active_games is expected to be absent."
+          fi
+
+          # A FULL INVENTORY, not a whitelist-of-three presence check (#1175).
+          # Every row in the snapshot is accounted for: each declared job is
+          # checked for presence/absence, schedule, command, and the five columns
+          # that decide whether it runs at all and against what -- `active`,
+          # `database`, `username`, `nodename`, `nodeport`. Any row whose jobname
+          # is not declared is reported as rogue. Without the inventory half, an
+          # extra job posting to an attacker host is invisible here.
+          #
+          # Commands are compared in full with runs of whitespace collapsed --
+          # and the whitespace class is spelled out as ASCII rather than written
+          # `\s`. In this image's en_US.UTF-8 locale Postgres's `\s` also matches
+          # U+2000, U+2003, U+2028, U+2029 and U+3000, which the SQL lexer does
+          # NOT accept: `select<U+2003>close_idle_waiting_lobbies(15);` would
+          # normalise to the expected text while erroring every time pg_cron ran
+          # it. A job that exists and fails on every tick is exactly the #1167
+          # failure mode. Only ASCII whitespace is collapsed, so that a
+          # reindentation of a migration's dollar-quoted literal is tolerated and
+          # nothing else is.
+          bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tA -q \
+            -c "create temp table deploy_cron_job (jobid bigint, jobname text, schedule text, command text, active boolean, database text, username text, nodename text, nodeport int);" \
+            -c "\copy deploy_cron_job from '$snapshot_file' with (format csv)" \
+            -c "
+            with expected(jobname, schedule, command, must_exist, absent_reason) as (
+              values
+                ('close_idle_waiting_lobbies'::text, '*/2 * * * *'::text, 'select close_idle_waiting_lobbies(15);'::text, true, null::text),
+                ('drop_stale_unconfirmed_rsvps', '*/2 * * * *', 'select drop_stale_unconfirmed_rsvps();', true, null),
+                ('notification_dispatches_gc', '17 * * * *', 'delete from public.notification_dispatches where sent_at < now() - interval ''24 hours'';', true, null),
+                ('open_scheduled_games_due', '* * * * *', 'select open_scheduled_games_due();', true, null),
+                ('reap_idle_active_games', '*/15 * * * *', 'select public.reap_idle_active_games_tick();', $reaper_must_exist, $reaper_absent_reason),
+                ('scheduled_games_push_tick', '* * * * *', null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time'),
+                ('warn_idle_waiting_lobbies', '*/2 * * * *', null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time')
+            ),
+            actual as (
+              select jobid, jobname, schedule, command, active, database, username, nodename, nodeport,
+                     btrim(regexp_replace(command, '[ \t\r\n\f\v]+', ' ', 'g')) as norm
+                from deploy_cron_job
+            ),
+            rogue as (
+              select format('%s is in cron.job but is not a declared job (schedule %L, command %L)',
+                            coalesce(a.jobname, '<a row with no jobname>'), a.schedule, a.command) as problem
+                from actual a
+               where a.jobname is null
+                  or not exists (select 1 from expected e where e.jobname = a.jobname)
+            ),
+            declared as (
+              select format('%s (%s)', e.jobname, checked.problem) as problem
+                from expected e
+                left join actual a on a.jobname = e.jobname
+                cross join lateral (
+                  select case
+                           when a.jobid is null and e.must_exist then 'absent from cron.job'
+                           when a.jobid is not null and not e.must_exist
+                             then format('is in cron.job even though %s: command %L', e.absent_reason, a.command)
+                           when a.jobid is null then null
+                           when a.schedule is distinct from e.schedule
+                             then format('schedule is %L, expected %L', a.schedule, e.schedule)
+                           when a.norm is distinct from e.command
+                                and btrim(regexp_replace(a.command, '\s+', ' ', 'g')) is not distinct from e.command
+                             then format('command matches %L only if NON-ASCII whitespace is treated as whitespace. It contains a character such as U+2000/U+2003/U+2028/U+2029/U+3000, which Postgres regex \s matches but the SQL lexer does not -- pg_cron would raise a syntax error on every tick. Raw command: %L', e.command, a.command)
+                           when a.norm is distinct from e.command
+                             then format('command is %L, expected %L (ASCII whitespace normalised)', a.norm, e.command)
+                           when a.active is distinct from true
+                             then 'is registered but cron.job.active is false, so it never fires -- present-and-disabled is the #1167 failure mode, not a fix for it'
+                           when a.database is distinct from 'postgres'
+                             then format('is registered against database %L, expected %L -- a job in another database does nothing useful here', a.database, 'postgres')
+                           when a.username is distinct from 'postgres'
+                             then format('runs as %L, expected %L', a.username, 'postgres')
+                           when a.nodename is distinct from 'localhost'
+                             then format('is registered against nodename %L, expected %L -- anything else sends this job somewhere other than this server', a.nodename, 'localhost')
+                           when a.nodeport is distinct from current_setting('port')::int
+                             then format('is registered against nodeport %L, expected %L -- with cron.use_background_workers off pg_cron dials nodename:nodeport', a.nodeport, current_setting('port'))
+                         end as problem
+                ) as checked
+               where checked.problem is not null
+            )
+            select coalesce(string_agg(problem, '; ' order by problem), '')
+              from (select problem from rogue union all select problem from declared) as problems;")
+          if [ -n "$bad" ]; then
+            echo "::error::cron.job did not match the deploy-equivalent inventory after applying this PR's migrations: $bad"
+            echo "This is the state a DEPLOY would produce -- what production runs. Unlike the HTTP cron gate below it is not overwritten by re-running the scheduling guard, so a difference here is a difference production would get. See issue #1175."
+            echo "TO FIX: if a migration in this PR changed a job on purpose, update its row in the \`expected\` VALUES list in THIS step, and -- for scheduled_games_push_tick and warn_idle_waiting_lobbies -- the expectation rows and the declared-jobname array in the HTTP cron gate below. If a job is new, add a row here and its name to that array. If you did not mean to change a cron job, a migration in this PR is scheduling something nobody asked for."
+            exit 1
+          fi
+
+          # The reaper, byte-for-byte, at the deploy-equivalent point. The
+          # inventory above already compared it with ASCII whitespace
+          # normalised; this repeats it exactly, because #1166 is the regression
+          # that matters most here and because the HTTP cron gate makes the
+          # identical byte-exact assertion -- a PR that satisfies one and not the
+          # other is telling you something. Anything other than the bare tick
+          # invocation means the route and the CRON_SECRET bearer are baked into
+          # cron.job rather than re-read each run, and the function's https
+          # transport gate (CWE-319) is bypassed.
+          if [ "$pg_net_available" = "t" ]; then
+            bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tA -q \
+              -c "create temp table deploy_cron_job (jobid bigint, jobname text, schedule text, command text, active boolean, database text, username text, nodename text, nodeport int);" \
+              -c "\copy deploy_cron_job from '$snapshot_file' with (format csv)" \
+              -c "
+              select coalesce(
+                       case
+                         when j.jobid is null then 'absent from cron.job'
+                         when j.schedule is distinct from '*/15 * * * *'
+                           then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
+                         when j.command is distinct from 'select public.reap_idle_active_games_tick();'
+                           then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
+                       end, '')
+                from (select 1) as one
+                left join deploy_cron_job j on j.jobname = 'reap_idle_active_games';")
+            if [ -n "$bad" ]; then
+              echo "::error::reap_idle_active_games was wrong or missing in the cron.job state this PR's migrations produce: $bad"
+              echo "It must be registered as the tick call, not as an inlined net.http_post: the URL and the CRON_SECRET bearer must be re-read at run time (rotation-safe) and must pass the function's https transport gate (CWE-319)."
+              echo "TO FIX: find the migration in this PR that re-registers reap_idle_active_games and delete that registration. A LATER migration that re-registers it is what this assertion point exists to catch -- the scheduling guard is already applied on production and will not re-run to undo it. See issue #1175."
+              exit 1
+            fi
+          fi
+          echo "cron.job matched the deploy-equivalent inventory."
 
       # ── HTTP cron scheduling gate (issue #1167) ──────────────────────────────
       # The scheduling migrations no-op silently when `app.api_base` /
@@ -1135,10 +1244,45 @@ jobs:
           # fails closed.
           API_BASE='http://127.0.0.1:3000'
           CRON_SECRET='ci-not-a-real-secret'
+
+          # Re-running ONLY the guard is not enough (issue #1175). On production
+          # the guard is already applied; what actually runs on a deploy is the
+          # migrations that come AFTER it, and those are the ones that get the
+          # last word on cron.job. A new migration that copy-pastes the
+          # GUC-gated scheduling block out of 20261005120000 or 20261015120000 --
+          # the idiomatic way to add one -- no-ops during `supabase start`
+          # because CI never sets the GUCs at database level, so the
+          # deploy-equivalent snapshot correctly sees nothing, and it would never
+          # be executed with the GUCs set anywhere in this job either. It could
+          # point scheduled_games_push_tick at any host with the real bearer and
+          # stay green. So: apply them here too, in order, in this same GUC-set
+          # session, exactly as production would.
+          #
+          # Only migrations that touch cron are re-applied. Re-running unrelated
+          # DDL would risk failing on a migration that is simply not idempotent,
+          # which is not this gate's business; the cron blocks in this repo are
+          # idempotent by construction (unschedule, then schedule).
+          GUARD_VERSION=20261124120000
+          later_cron_migrations=()
+          for f in supabase/migrations/*.sql; do
+            base=$(basename "$f")
+            version=${base%%_*}
+            case "$version" in
+              ''|*[!0-9]*) continue ;;
+            esac
+            [ "$((10#$version))" -gt "$((10#$GUARD_VERSION))" ] || continue
+            grep -q 'cron\.' "$f" || continue
+            echo "Also applying $base with both GUCs set (it applies after the guard on production too)."
+            later_cron_migrations+=(-f "$f")
+          done
+
+          # psql runs repeated -c/-f options in order on one connection, so the
+          # two SETs are still in effect for every -f that follows.
           psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = '$API_BASE';" \
             -c "set app.cron_secret = '$CRON_SECRET';" \
-            -f "$GUARD_MIGRATION"
+            -f "$GUARD_MIGRATION" \
+            ${later_cron_migrations[@]+"${later_cron_migrations[@]}"}
 
           echo "Scheduled cron jobs:"
           psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, active, database, username, nodename, command from cron.job order by jobname, jobid;"
@@ -1209,8 +1353,11 @@ jobs:
                          when j.jobid is null then 'absent from cron.job'
                          when j.schedule is distinct from expected.schedule
                            then format('schedule is %L, expected %L', j.schedule, expected.schedule)
-                         when btrim(regexp_replace(j.command, '\s+', ' ', 'g')) is distinct from expected.command
-                           then format('command is %L, expected %L (whitespace-normalised)', btrim(regexp_replace(j.command, '\s+', ' ', 'g')), expected.command)
+                         when btrim(regexp_replace(j.command, '[ \t\r\n\f\v]+', ' ', 'g')) is distinct from expected.command
+                              and btrim(regexp_replace(j.command, '\s+', ' ', 'g')) is not distinct from expected.command
+                           then format('command matches %L only if NON-ASCII whitespace is treated as whitespace. It contains a character such as U+2000/U+2003/U+2028/U+2029/U+3000, which Postgres regex \s matches but the SQL lexer does not -- pg_cron would raise a syntax error on every tick. Raw command: %L', expected.command, j.command)
+                         when btrim(regexp_replace(j.command, '[ \t\r\n\f\v]+', ' ', 'g')) is distinct from expected.command
+                           then format('command is %L, expected %L (ASCII whitespace normalised)', btrim(regexp_replace(j.command, '[ \t\r\n\f\v]+', ' ', 'g')), expected.command)
                          when j.active is distinct from true
                            then 'is registered but cron.job.active is false, so it never fires'
                          when j.database is distinct from 'postgres'
@@ -1219,6 +1366,8 @@ jobs:
                            then format('runs as %L, expected %L', j.username, 'postgres')
                          when j.nodename is distinct from 'localhost'
                            then format('is registered against nodename %L, expected %L', j.nodename, 'localhost')
+                         when j.nodeport is distinct from current_setting('port')::int
+                           then format('is registered against nodeport %L, expected %L', j.nodeport, current_setting('port'))
                        end as problem
               ) as checked
              where checked.problem is not null;")
@@ -1252,12 +1401,15 @@ jobs:
                          then format('runs as %L, expected %L', j.username, 'postgres')
                        when j.nodename is distinct from 'localhost'
                          then format('is registered against nodename %L, expected %L', j.nodename, 'localhost')
+                       when j.nodeport is distinct from current_setting('port')::int
+                         then format('is registered against nodeport %L, expected %L', j.nodeport, current_setting('port'))
                      end, '')
               from (select 1) as one
               left join cron.job j on j.jobname = 'reap_idle_active_games';")
           if [ -n "$bad" ]; then
             echo "::error::reap_idle_active_games is wrong or missing in cron.job after running the guard migration with both GUCs set: $bad"
             echo "It must be registered as the tick call, not as an inlined net.http_post: the URL and the CRON_SECRET bearer must be re-read at run time (rotation-safe) and must pass the function's https transport gate (CWE-319)."
+            echo "TO FIX: find the migration that re-registers reap_idle_active_games and delete that registration."
             exit 1
           fi
           echo "reap_idle_active_games is registered as the tick call with the expected schedule."
@@ -1273,10 +1425,14 @@ jobs:
           # names are re-checked at this point.
           #
           # ADDING A LEGITIMATE CRON JOB: this fails with "is in cron.job but is
-          # not a declared job", printing the jobname, schedule and command. Add
-          # the jobname to the list here and a full expectation row to the
-          # earlier step. A cron job reaching production without being declared
-          # in both places is exactly what this check exists to stop.
+          # not a declared job", printing the jobname, schedule and command.
+          # A pure-SQL job needs TWO edits: the jobname array just below, and a
+          # full expectation row in `cron.job matched the deploy-equivalent
+          # inventory` above. A GUC-gated HTTP job needs THREE: those two plus an
+          # expectation row in the direct-HTTP check earlier in this step, since
+          # it is absent from the deploy-equivalent snapshot and present here.
+          # A cron job reaching production without being declared in every one of
+          # those places is exactly what this check exists to stop.
           bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
             select coalesce(string_agg(format('%s is in cron.job but is not a declared job (schedule %L, command %L)',
                                               coalesce(j.jobname, '<a row with no jobname>'), j.schedule, j.command), '; ' order by j.jobid), '')
@@ -1293,7 +1449,7 @@ jobs:
                    ]);")
           if [ -n "$bad" ]; then
             echo "::error::Undeclared cron job(s) in cron.job after running the scheduling guard: $bad"
-            echo "Every cron job this repo schedules must be declared in this gate. If the job is legitimate, add it here and to the deploy-equivalent inventory step; if it is not, a migration in this PR is scheduling something nobody asked for."
+            echo "TO FIX: every cron job this repo schedules must be declared. If the job is legitimate, add its name to the array in this step, a full expectation row to \`cron.job matched the deploy-equivalent inventory\` above, and -- if it is a GUC-gated HTTP job -- an expectation row to the direct-HTTP check earlier in this step. If it is not legitimate, a migration in this PR is scheduling something nobody asked for."
             exit 1
           fi
           echo "cron.job contains no undeclared jobs."
