@@ -69,16 +69,15 @@ jobs:
           # have the script" — they are NOT the same thing, and treating any `git show` failure as
           # the second one is a complete bypass: drop `fetch-depth: 0` above (it reads like a
           # clone-cost tweak), replace the script with `exit 0`, and a depth-1 clone makes
-          # `git show` fail for missing OBJECTS. The fallback then installs the PR's own copy and
-          # the check goes green with zero enforcement. A missing base commit is an
-          # infrastructure error; only a genuinely absent blob is the bootstrap case.
+          # `git show` fail for missing OBJECTS, which a fallback would have turned into "run the
+          # PR's own copy". Both are fatal here — this workflow has no bootstrap fallback at all,
+          # see below — but they stay distinguishable because the fixes differ: fetch the base
+          # commit, versus restore the script on the base branch.
           #
-          # Two things this does not close, recorded so nobody assumes otherwise: `script=` is a
-          # PR-editable assignment, so renaming it to a path the base revision does not have
-          # reaches the bootstrap branch legitimately; and `filter: blob:none` on the checkout
-          # above would do the same if this repository were ever made private (today the runner
-          # can lazily fetch the missing blob anonymously because it is public). Both are visible
-          # edits to owned paths.
+          # Renaming the `script=` assignment above, or adding `filter: blob:none` to the checkout
+          # if this repository were ever made private, both still make the blob look absent from
+          # base. With no fallback to reach, they now turn this check red rather than running the
+          # pull request's own copy. Both are visible edits to owned paths regardless.
           if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             echo "::error::Base commit $BASE_SHA is not present in this clone, so the gate cannot be pinned to it. The checkout above must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy — a shallow clone is not a bootstrap."
             exit 1
@@ -89,8 +88,8 @@ jobs:
           # review while the log still said "pinned". Reject a BASE_SHA that is the checked-out
           # commit, and require it to be an ancestor of it (the real base tip always is — it is a
           # parent of the merge commit). ANY ancestor passes, so an old `main` commit from before
-          # the gate landed still reaches the bootstrap branch; that edit is visible in this
-          # file's diff, which is what CODEOWNERS is for.
+          # the gate landed would satisfy this check — and then hard-fail at the blob check below,
+          # because there is nothing to fall back to.
           head_sha=$(git rev-parse HEAD)
           base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
           if [ "$base_resolved" = "$head_sha" ]; then
@@ -102,19 +101,23 @@ jobs:
             exit 1
           fi
 
-          if git cat-file -e "$BASE_SHA:$script" 2>/dev/null; then
-            git show "$BASE_SHA:$script" > "$dest"
-            echo "Using the gate script from the base revision ($BASE_SHA) — enforcement logic is pinned."
-          else
-            # BOOTSTRAP, and only this: the base commit is present and verifiably does not contain
-            # the gate, because this workflow reaches `main` for the first time in the very PR it
-            # is guarding. Pinning to base protects an ESTABLISHED gate from being edited by the PR
-            # under review; on the first promotion there is no established gate, so falling back to
-            # this PR's copy is no weaker than main not having the workflow at all. Every
-            # subsequent run takes the branch above.
-            echo "::warning::Gate script absent from base commit $BASE_SHA (the commit itself is present) — bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
-            cp "$script" "$dest"
+          # NO BOOTSTRAP FALLBACK, deliberately. There used to be one, for the case where the base
+          # commit is present and simply does not contain the gate — which is what the very first
+          # promotion looked like, when this workflow reached `main` alongside the script it runs.
+          # That promotion happened long ago: scripts/ci/mobile-rollout-gate.mjs is on both `main`
+          # and `dev` today, and this workflow only triggers on `pull_request` with
+          # `branches: [main]`, so the base is always `main` and always has the script. The branch
+          # could never fire legitimately again while remaining a live bypass — a pull request
+          # could edit its own copy of the gate to exit 0, and anything that made the blob look
+          # absent from base would get that copy executed. So it fails closed. If this ever does
+          # fire, the fix is to restore the script on the base branch, never to run the pull
+          # request's copy.
+          if ! git cat-file -e "$BASE_SHA:$script" 2>/dev/null; then
+            echo "::error::$script is missing from base commit $BASE_SHA (the commit itself is present). The gate script must exist on the base branch; refusing to fall back to this pull request's own copy, which the pull request could have written to pass itself."
+            exit 1
           fi
+          git show "$BASE_SHA:$script" > "$dest"
+          echo "Using the gate script from the base revision ($BASE_SHA) — enforcement logic is pinned."
 
       - name: Check for revokes that break installed mobile builds
         env:

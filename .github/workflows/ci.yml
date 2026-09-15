@@ -968,7 +968,16 @@ jobs:
           else
             # BOOTSTRAP, and only this: the base commit is present and verifiably does not
             # contain the script, because it reaches `dev` for the first time in the very PR
-            # that introduces it. Pinning to base protects an ESTABLISHED gate from being
+            # that introduces it.
+            #
+            # DELETE THIS BRANCH once that PR has landed on `dev`. From then on every base
+            # commit has the script, so this can never fire legitimately again -- and what is
+            # left is a bypass: a pull request can edit its own copy of the gate to exit 0, and
+            # anything that makes the blob look absent from base (renaming `script=` above,
+            # `filter: blob:none` on the checkout if this repository is ever made private) gets
+            # that copy executed. Replace the whole else-branch with a hard failure, exactly as
+            # .github/workflows/mobile-rollout-gate.yml now does: that gate's first promotion is
+            # long past, so its fallback was removed and a missing blob is fatal there. Pinning to base protects an ESTABLISHED gate from being
             # edited by the PR under review; on that first PR there is no established gate, so
             # falling back to this PR's copy is no weaker than the gate having been inline
             # (which is what it replaces). Every subsequent run takes the branch above.
