@@ -396,13 +396,18 @@ jobs:
       # cron.job immediately after `supabase start` is what applying this PR's
       # migration set produces -- the state a deploy produces, PROVIDED nothing
       # but migrations shaped it. That proviso is checked below and is not free:
-      # `supabase start` runs supabase/roles.sql and then supabase/seed.sql
-      # AFTER the migrations (MigrateAndSeed -> applyMigrationFiles,
-      # applySeedFiles), seeding is on by default with sql_paths ["seed.sql"],
-      # and both files are PR-authored. A post-guard migration that schedules a
-      # rogue job plus a seed.sql that unschedules it again leaves this step
-      # looking at a clean database while production, which never runs seed.sql,
-      # keeps the job. Neither file exists in this repo today, so the gate
+      # `supabase start` executes two PR-authored SQL files of its own.
+      # supabase/roles.sql runs BEFORE the migrations (SetupDatabase ->
+      # SeedGlobals), and supabase/seed.sql runs AFTER them (MigrateAndSeed ->
+      # applyMigrationFiles, then applySeedFiles), with seeding on by default at
+      # sql_paths ["./seed.sql"]. seed.sql is the dangerous one, because running
+      # last it can undo what a migration did: a post-guard migration that
+      # schedules a rogue job plus a seed.sql that unschedules it again leaves
+      # this step looking at a clean database while production, which never runs
+      # seed.sql, keeps the job. roles.sql cannot do that from where it runs,
+      # but it is still PR-authored SQL executing inside `supabase start`, and
+      # this gate's premise is migrations and nothing else. Neither file exists
+      # in this repo today, so the gate
       # requires that to stay true rather than trying to model them.
       #
       # The state exists only here: `Idle-reaper cron guard branches are exercised`
@@ -465,11 +470,19 @@ jobs:
 
           # ── Did anything but migrations shape this database? ─────────────────
           #
-          # `supabase start` applies supabase/roles.sql and supabase/seed.sql
-          # after the migrations, and both are PR-authored, so "this is what the
-          # migrations produced" is only true while neither exists. A seed that
-          # unschedules a job a migration registered leaves cron.job clean here
-          # and leaves the job in place on production, which never runs it.
+          # `supabase start` executes supabase/roles.sql BEFORE the migrations
+          # (SeedGlobals) and supabase/seed.sql AFTER them (applySeedFiles), and
+          # both are PR-authored, so "this is what the migrations produced" is
+          # only true while neither exists. seed.sql is the one that can undo a
+          # migration: unscheduling a job a migration registered leaves cron.job
+          # clean here and leaves the job in place on production, which never
+          # runs it. roles.sql runs too early to do that, and is refused anyway
+          # because this gate's premise is migrations and nothing else.
+          #
+          # [db.migrations] schema_paths is NOT checked: applySchemaFiles is
+          # gated on viper.GetBool("EXPERIMENTAL"), which comes from a flag or
+          # environment variable rather than config.toml, and this job sets
+          # neither.
           #
           # This is a statement about the TREE, not about the diff: it holds
           # however the file arrived. The two names are exactly what
@@ -483,14 +496,36 @@ jobs:
             [ -f "$f" ] && stray_sql="$stray_sql $f"
           done
           if [ -n "$stray_sql" ]; then
-            echo "::error::SQL that \`supabase start\` executes after the migrations is present in this branch:$stray_sql"
-            echo "supabase/roles.sql and supabase/seed.sql are applied by \`supabase start\` AFTER every migration, and seeding is on by default. Production never runs them, so anything they do to cron.job makes the state this gate inspects differ from the state a deploy produces -- a seed that unschedules a job a migration registered is enough to turn this gate green while production keeps the job."
-            echo "TO FIX: if the repo is genuinely adopting seeding, this gate has to be taught to account for it (assert before the seed runs, or prove the seed cannot touch cron.job) -- it cannot simply be allowed through."
+            echo "::error::SQL that \`supabase start\` executes alongside the migrations is present in this branch:$stray_sql"
+            echo "\`supabase start\` runs supabase/roles.sql BEFORE the migrations and supabase/seed.sql AFTER them, with seeding on by default. Production runs neither, so anything they do to cron.job makes the state this gate inspects differ from the state a deploy produces -- a seed that unschedules a job a migration registered is enough to turn this gate green while production keeps the job."
+            echo "TO FIX: if the repo is genuinely adopting either file, this gate has to be taught to account for it -- for seed.sql, by asserting before applySeedFiles runs or by proving the seed cannot touch cron.job; for roles.sql, which runs before the migrations, by proving the same of it. Neither can simply be allowed through."
             exit 1
           fi
-          if grep -q 'sql_paths' supabase/config.toml; then
-            echo "::error::supabase/config.toml configures sql_paths, which redirects what \`supabase start\` executes after the migrations."
-            echo "Same reason as above: production applies migrations only, so any other SQL running here makes this gate inspect a state a deploy would not produce."
+          # The seed PATHS, from a real TOML parse rather than a grep for the
+          # string `sql_paths`. Two reasons the grep was wrong in both
+          # directions. TOML quoted keys accept \uXXXX escapes, so
+          # `"sql_p\u0061ths"` is a valid spelling of the same key that a
+          # substring test never sees -- and with a seed file that is not named
+          # seed.sql, the loop above misses it too, which was a complete bypass.
+          # In the other direction, `supabase init` writes the [db.seed] block
+          # with sql_paths = ["./seed.sql"] uncommented, so regenerating the
+          # config, or pasting the documented block, failed this job while
+          # changing nothing at all -- that value IS the default.
+          #
+          # So the test is on the decoded tree: every seed path must resolve to
+          # supabase/seed.sql, whose existence the loop above already refuses.
+          # Anything else is a redirect to SQL this gate has not accounted for.
+          # Seeding switched off entirely is fine -- then none of it runs.
+          # A file that will not parse is a hard failure, not a pass.
+          if ! seed_paths=$(python3 -c 'import tomllib,sys,os; cfg=tomllib.load(open(sys.argv[1],"rb")); seed=cfg.get("db",{}).get("seed",{}); paths=(seed.get("sql_paths") or []) if isinstance(seed,dict) else ["<db.seed is not a table>"]; off=isinstance(seed,dict) and seed.get("enabled") is False; print(" ".join([] if off else [str(p) for p in paths if os.path.normpath(os.path.join("supabase",str(p))) != os.path.join("supabase","seed.sql")]))' supabase/config.toml 2>&1); then
+            echo "::error::supabase/config.toml could not be parsed, so this gate cannot tell what \`supabase start\` will execute alongside the migrations: $(printf '%s\n' "$seed_paths" | tail -n1)"
+            printf '%s\n' "$seed_paths"
+            exit 1
+          fi
+          if [ -n "$seed_paths" ]; then
+            echo "::error::supabase/config.toml points db.seed.sql_paths at SQL other than supabase/seed.sql: $seed_paths"
+            echo "\`supabase start\` executes those files after every migration; production applies migrations only. Whatever they do to cron.job makes the state this gate inspects differ from the state a deploy produces, and unlike supabase/seed.sql the gate has no way to know they are there."
+            echo "TO FIX: this is about the seed PATHS, not about adding a seed file -- if the repo is genuinely adopting seeding, this gate has to be taught to account for it rather than have the paths widened past it."
             exit 1
           fi
 
