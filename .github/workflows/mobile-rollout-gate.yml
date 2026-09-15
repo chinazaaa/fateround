@@ -19,7 +19,7 @@ jobs:
     name: Mobile Rollout Gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Full history: the extract step below reads the gate script out of the base commit,
           # whose objects a depth-1 clone would not have. A missing base commit is now a hard
