@@ -372,6 +372,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # The deploy-equivalent cron gate has to know which migrations this
+          # branch ADDS, which means reaching the base revision. A shallow clone
+          # cannot, and the gate hard-fails rather than guessing -- so the whole
+          # history is fetched here. Nothing else in this job needs it.
+          fetch-depth: 0
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
@@ -411,10 +416,19 @@ jobs:
           set -euo pipefail
           DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           SNAPSHOT_DIR="${RUNNER_TEMP:-/tmp}"
+          status_file="$SNAPSHOT_DIR/cron-deploy-state.status"
+          snapshot_file="$SNAPSHOT_DIR/cron-deploy-state.csv"
 
-          # Connectivity is hard-failed and the extensions are soft-skipped, and
-          # the two are kept apart: a `supabase start` flake must not turn a
-          # security gate into a green no-op.
+          # The snapshot is written here and read by a later step, with the RLS
+          # vitest suite in between -- and that suite, its imports and
+          # vitest.config.* are all editable by the pull request being judged. So
+          # the two files are bound to this run and to each other: the status
+          # file names the run that produced it and carries the SHA-256 of the
+          # CSV, and the reader hard-fails on anything it does not recognise
+          # rather than treating it as "no cron here, skip". See the reader for
+          # what that buys and what it does not.
+          run_id="${GITHUB_RUN_ID:-local}/${GITHUB_RUN_ATTEMPT:-1}/${GITHUB_SHA:-none}"
+
           if ! psql "$DB" -v ON_ERROR_STOP=1 -q -c "select 1;" >/dev/null; then
             echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to snapshot cron.job from a half-started stack."
             exit 1
@@ -444,17 +458,19 @@ jobs:
               echo "::error::cron.job does not exist even though pg_cron is listed in pg_available_extensions. The migrations should have created the extension and scheduled the jobs -- that is a real failure, not an environment difference."
               exit 1
             fi
-            printf 'pg_cron=f\npg_net=%s\n' "$pg_net_available" > "$SNAPSHOT_DIR/cron-deploy-state.status"
+            rm -f "$snapshot_file"
+            printf 'run=%s\npg_cron=f\npg_net=%s\ncsv_sha256=none\n' "$run_id" "$pg_net_available" > "$status_file"
             echo "::warning::Not available in this local stack: $unavailable -- the deploy-equivalent cron inventory will be skipped."
             exit 0
           fi
 
-          printf 'pg_cron=t\npg_net=%s\n' "$pg_net_available" > "$SNAPSHOT_DIR/cron-deploy-state.status"
           psql "$DB" -v ON_ERROR_STOP=1 -q -c \
             "\copy (select jobid, jobname, schedule, command, active, database, username, nodename, nodeport from cron.job order by jobid) to stdout with (format csv)" \
-            > "$SNAPSHOT_DIR/cron-deploy-state.csv"
+            > "$snapshot_file"
+          csv_sha256=$(sha256sum "$snapshot_file" | cut -d' ' -f1)
+          printf 'run=%s\npg_cron=t\npg_net=%s\ncsv_sha256=%s\n' "$run_id" "$pg_net_available" "$csv_sha256" > "$status_file"
 
-          echo "cron.job as \`supabase start\` left it (pg_net available: $pg_net_available):"
+          echo "cron.job as \`supabase start\` left it (pg_net available: $pg_net_available, csv sha256 $csv_sha256):"
           psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, active, database, username, nodename, nodeport, command from cron.job order by jobname, jobid;"
 
       # The local stack's URL and keys. These are the Supabase CLI's fixed demo credentials --
@@ -925,75 +941,174 @@ jobs:
       # not re-run, so a LATER migration is what wins there; in this job it is
       # force-re-run, so it always wins here.
       - name: cron.job matched the deploy-equivalent inventory
+        env:
+          # Actions-provided, not settable by the pull request. Empty on `push`,
+          # where the fallback below uses the commit's first parent instead.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
           SNAPSHOT_DIR="${RUNNER_TEMP:-/tmp}"
-          GUARD_VERSION=20261124120000
+          GUARD_MIGRATION_FILE=20261124120000_noisy_http_cron_scheduling_guard.sql
+          reapply_list="$SNAPSHOT_DIR/cron-reapply.txt"
 
-          # ── Ordering: the snapshot is only deploy-equivalent if CI and
-          # production apply this PR's migrations in the same relative order.
+          # ── Is the snapshot actually deploy-equivalent? ──────────────────────
           #
-          # They do not do so automatically. `supabase start` applies every file
-          # from scratch in filename order, while the deploy runs
-          # `supabase db push --include-all`, which applies whatever is missing
-          # from the remote history table on top of what is already recorded --
-          # and `migrations-check` enforces version UNIQUENESS, not
-          # monotonicity. So a back-dated file, say 20261123130000_*.sql, sorts
-          # BEFORE the scheduling guard here (the guard re-runs afterwards and
-          # overwrites whatever it did) but applies AFTER the already-recorded
-          # guard on production, where it wins. Both assertion points stay green
-          # and production runs the back-dated file's version of the job.
+          # Only if CI and production apply this PR's migrations in the same
+          # relative order, and nothing makes them. `supabase start` applies
+          # every file from scratch in filename order; the deploy runs
+          # `supabase db push --include-all`, which applies whatever the remote
+          # history table is missing on top of what is already recorded; and
+          # `migrations-check` enforces version UNIQUENESS, not monotonicity. So
+          # a back-dated file sorts BEFORE the scheduling guard here -- the guard
+          # re-runs afterwards and overwrites whatever it did, leaving a clean
+          # snapshot -- and applies AFTER the already-recorded guard on
+          # production, where it wins. Both assertion points stay green and
+          # production runs the back-dated file's job.
           #
-          # Rather than reconstruct the remote history (which would need the
-          # base branch, a deeper checkout, and trust in both), forbid the
-          # ordering trap outright: no migration at or before the guard's
-          # version may touch cron unless it is one of the six that already do.
-          # Any NEW cron migration must sort after the guard, and then CI's
-          # order and production's order agree by construction. The list is
-          # closed on purpose -- adding to it is how you would reintroduce the
-          # bypass, so it should not happen without someone saying why.
-          declared_cron_migrations="20261001120000 20261002120000 20261005120000 20261015120000 20261123120000 20261124120000"
-          backdated=""
-          for f in supabase/migrations/*.sql; do
-            base=$(basename "$f")
-            version=${base%%_*}
-            case "$version" in
-              ''|*[!0-9]*) echo "::error::$base does not start with a numeric <version>_ prefix, so its apply order cannot be reasoned about. Rename it per CONTRIBUTING.md."; exit 1 ;;
-            esac
-            # 10#$version forces base-10: a leading zero would otherwise be read
-            # as octal and a version containing 8 or 9 would abort the step.
-            [ "$((10#$version))" -le "$((10#$GUARD_VERSION))" ] || continue
-            grep -q 'cron\.' "$f" || continue
-            case " $declared_cron_migrations " in
-              *" $version "*) continue ;;
-            esac
-            backdated="$backdated $base"
-          done
-          if [ -n "$backdated" ]; then
-            echo "::error::Migration(s) at or before the scheduling guard ($GUARD_VERSION) touch pg_cron but are not among the six that already do:$backdated"
-            echo "A cron migration that sorts before the guard is applied BEFORE it here and AFTER it on production (supabase db push --include-all applies whatever the remote history is missing), so CI would see the guard's version of cron.job and production would see this file's. Give the migration a version greater than $GUARD_VERSION."
+          # This was first written as `grep -q 'cron\.'` over the migration
+          # bodies. That was wrong in both directions and is not repeated here.
+          # It missed `SELECT CRON.schedule(...)` (SQL identifiers are
+          # case-insensitive), `select "cron"."schedule"(...)`, a newline before
+          # the dot, `set search_path = cron, public; select schedule(...)` and
+          # `execute 'select cr' || 'on.schedule(...)'` -- the first two being
+          # things an honest contributor might simply write -- while MATCHING a
+          # migration whose only sin was an English comment ending "...via
+          # cron.", which would then have been re-executed or rejected for
+          # nothing. A lexical test of SQL is always one quoting trick behind.
+          #
+          # So this does not look at file CONTENTS at all. The invariant that
+          # makes the two orders agree is purely about filenames: every migration
+          # this branch ADDS must sort after every migration the base branch
+          # already has. Then the added files apply last in CI and last on
+          # production, in the same mutual order, whatever they contain -- and
+          # the same added-file set is what the HTTP cron gate re-applies with
+          # the GUCs set, so neither rule depends on recognising SQL.
+          #
+          # Comparison is by FILENAME under the C collation, not by parsing the
+          # version as a number. `202611241200001_x.sql` is numerically greater
+          # than 20261124120000 but sorts BEFORE the guard's filename ('1' 0x31 <
+          # '_' 0x5F at position 15), so a numeric test called it "after the
+          # guard" while every glob and `LC_ALL=C sort` disagreed. Added files
+          # are additionally required to carry exactly the 14-digit prefix
+          # CONTRIBUTING.md specifies, which removes that whole class.
+          #
+          # HONEST SCOPE: this file is part of the pull request it judges, so
+          # anyone willing to edit the workflow in the same commit is not stopped
+          # by it -- neither here nor in the declared-jobname arrays further
+          # down. What it does is stop the accident, and make the deliberate
+          # version a visible edit to a code-owned path that a reviewer reading
+          # the diff will see. That is the whole claim.
+          base_sha="${PR_BASE_SHA:-}"
+          if [ -z "$base_sha" ]; then
+            base_sha=$(git rev-parse --verify --quiet 'HEAD^1' || true)
+          fi
+          if [ -z "$base_sha" ]; then
+            echo "::error::Could not resolve a base revision to compare migrations against (no pull_request base and HEAD has no first parent). The deploy-equivalent cron gate cannot tell which migrations this branch adds."
             exit 1
           fi
-          echo "No cron migration sorts at or before the scheduling guard except the six declared ones."
+          if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            echo "::error::Base revision $base_sha is not present in this clone. This job's checkout needs \`fetch-depth: 0\` -- a shallow clone cannot tell which migrations this branch adds, and the cron gate must not guess."
+            exit 1
+          fi
 
-          # ── The snapshot. Absent means the snapshot step did not run, which is
-          # not something to shrug at: it is the only record of the state this
-          # assertion is about.
+          base_last=$(git ls-tree --name-only "$base_sha" supabase/migrations/ \
+            | sed 's#.*/##' | LC_ALL=C sort | tail -n1)
+          if [ -z "$base_last" ]; then
+            echo "::error::The base revision $base_sha has no files under supabase/migrations/. Refusing to reason about migration ordering from an empty base."
+            exit 1
+          fi
+          added=$(git diff --name-only --diff-filter=A "$base_sha" HEAD -- supabase/migrations/ | sed 's#.*/##' | LC_ALL=C sort)
+
+          : > "$reapply_list"
+          out_of_order=""
+          bad_prefix=""
+          for f in $added; do
+            case "$f" in
+              [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.sql) : ;;
+              *) bad_prefix="$bad_prefix $f"; continue ;;
+            esac
+            # $f must sort strictly after the last filename on the base branch.
+            if [ "$f" = "$base_last" ] || [ "$(printf '%s\n%s\n' "$f" "$base_last" | LC_ALL=C sort | head -n1)" != "$base_last" ]; then
+              out_of_order="$out_of_order $f"
+              continue
+            fi
+            # Everything this branch adds after the scheduling guard is what
+            # production applies after the guard, so it is what the HTTP cron
+            # gate must re-run with the GUCs set.
+            if [ "$(printf '%s\n%s\n' "$f" "$GUARD_MIGRATION_FILE" | LC_ALL=C sort | head -n1)" = "$GUARD_MIGRATION_FILE" ] && [ "$f" != "$GUARD_MIGRATION_FILE" ]; then
+              printf '%s\n' "supabase/migrations/$f" >> "$reapply_list"
+            fi
+          done
+          if [ -n "$bad_prefix" ]; then
+            echo "::error::Migration(s) added by this branch do not carry the 14-digit UTC timestamp prefix CONTRIBUTING.md specifies:$bad_prefix"
+            echo "Apply order is decided by filename, so a prefix of any other length cannot be reasoned about -- a 15-digit one sorts before a 14-digit one with a larger value. Rename with \`supabase migration new <name>\`."
+            exit 1
+          fi
+          if [ -n "$out_of_order" ]; then
+            echo "::error::Migration(s) added by this branch sort at or before the last migration already on the base revision ($base_last):$out_of_order"
+            echo "CI applies every migration from scratch in filename order, while the deploy applies only what the remote history is missing -- so a file that sorts earlier than an already-applied one runs BEFORE it here and AFTER it on production. The two disagree about what cron.job ends up as, and the deploy-equivalent snapshot below would be judging the wrong state. Give the migration a filename that sorts after $base_last."
+            exit 1
+          fi
+          echo "Every migration this branch adds sorts after $base_last, so CI and the deploy apply them in the same order."
+          if [ -s "$reapply_list" ]; then
+            echo "Added after the scheduling guard, to be re-applied with the GUCs set by the HTTP cron gate:"
+            sed 's/^/  /' "$reapply_list"
+          else
+            echo "This branch adds no migration after the scheduling guard."
+          fi
+
+          # ── The snapshot. It was written before the RLS suite ran, and that
+          # suite is editable by the pull request, so everything below treats the
+          # two files as evidence to be checked rather than as a report to be
+          # believed: the status file must parse exactly, must name THIS run, and
+          # must carry the CSV's real hash. Anything else is a hard failure, not
+          # a skip -- an earlier version let an empty status file read as "pg_cron
+          # was unavailable" and silently disabled this entire gate.
+          #
+          # It is still only tamper-EVIDENT, not tamper-proof: the run
+          # identifiers are in the environment and sha256sum is a $PATH lookup.
+          # The point is that disabling the gate is no longer a one-line
+          # `writeFileSync('')`.
           status_file="$SNAPSHOT_DIR/cron-deploy-state.status"
           snapshot_file="$SNAPSHOT_DIR/cron-deploy-state.csv"
           if [ ! -f "$status_file" ]; then
             echo "::error::$status_file is missing. \`Snapshot cron.job as \\\`supabase start\\\` left it\` did not run, so the deploy-equivalent state was never recorded and this gate cannot run. Restore that step -- it must stay immediately after \`supabase start\`, before anything mutates cron.job."
             exit 1
           fi
+          expected_run="${GITHUB_RUN_ID:-local}/${GITHUB_RUN_ATTEMPT:-1}/${GITHUB_SHA:-none}"
+          status_run=$(sed -n 's/^run=//p' "$status_file")
           pg_cron_present=$(sed -n 's/^pg_cron=//p' "$status_file")
           pg_net_available=$(sed -n 's/^pg_net=//p' "$status_file")
+          status_csv_sha=$(sed -n 's/^csv_sha256=//p' "$status_file")
+          if [ "$(wc -l < "$status_file")" != "4" ] \
+             || [ "$status_run" != "$expected_run" ] \
+             || { [ "$pg_cron_present" != "t" ] && [ "$pg_cron_present" != "f" ]; } \
+             || { [ "$pg_net_available" != "t" ] && [ "$pg_net_available" != "f" ]; } \
+             || [ -z "$status_csv_sha" ]; then
+            echo "::error::$status_file is not the status file this run wrote (expected 4 lines, run=$expected_run, pg_cron and pg_net each exactly t or f, and a csv_sha256). Refusing to skip or to pass: something between the snapshot and here rewrote it."
+            echo "Contents follow."
+            cat "$status_file"
+            exit 1
+          fi
           if [ "$pg_cron_present" != "t" ]; then
-            echo "::warning::pg_cron was not available when the snapshot was taken -- deploy-equivalent cron inventory skipped."
+            # Do not take this on trust either -- ask the database. A skip is
+            # only legitimate when pg_cron genuinely is not in this image.
+            really_unavailable=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "select not exists (select 1 from pg_available_extensions where name = 'pg_cron');")
+            if [ "$really_unavailable" != "t" ]; then
+              echo "::error::The snapshot recorded pg_cron as unavailable, but pg_cron IS listed in pg_available_extensions on this stack. Refusing to skip the deploy-equivalent cron inventory on a status file the database contradicts."
+              exit 1
+            fi
+            echo "::warning::pg_cron is genuinely unavailable in this stack -- deploy-equivalent cron inventory skipped."
             exit 0
           fi
           if [ ! -f "$snapshot_file" ]; then
             echo "::error::$status_file says pg_cron was present but $snapshot_file is missing. Refusing to pass a cron gate with no state to judge."
+            exit 1
+          fi
+          actual_csv_sha=$(sha256sum "$snapshot_file" | cut -d' ' -f1)
+          if [ "$actual_csv_sha" != "$status_csv_sha" ]; then
+            echo "::error::$snapshot_file has changed since it was written (sha256 $actual_csv_sha, expected $status_csv_sha). The deploy-equivalent state is being judged against something other than what \`supabase start\` produced."
             exit 1
           fi
 
@@ -1258,31 +1373,51 @@ jobs:
           # stay green. So: apply them here too, in order, in this same GUC-set
           # session, exactly as production would.
           #
-          # Only migrations that touch cron are re-applied. Re-running unrelated
-          # DDL would risk failing on a migration that is simply not idempotent,
-          # which is not this gate's business; the cron blocks in this repo are
-          # idempotent by construction (unschedule, then schedule).
-          GUARD_VERSION=20261124120000
+          # WHICH migrations, and why not by grepping them for `cron.`: that
+          # predicate missed `SELECT CRON.schedule(...)`,
+          # `select "cron"."schedule"(...)`, a newline before the dot,
+          # `set search_path = cron` and string concatenation -- all of which
+          # schedule a job -- while matching migrations whose only mention of
+          # cron was in an English comment, which would then be re-executed for
+          # nothing. So the list is computed WITHOUT reading the files: it is
+          # exactly the migrations this branch ADDS that sort after the guard,
+          # written out by `cron.job matched the deploy-equivalent inventory`
+          # from `git diff --diff-filter=A` against the base revision. Those are
+          # precisely the files production applies after the already-recorded
+          # guard, whatever SQL they happen to contain.
+          #
+          # The cost of not reading them is that a migration which is not safe to
+          # apply twice fails here. That is a real constraint on post-guard
+          # migrations and it is deliberate: the alternative is a lexical filter,
+          # and this is the third round of narrowing one. The failure names the
+          # file and says what to do.
+          reapply_list="${RUNNER_TEMP:-/tmp}/cron-reapply.txt"
+          if [ ! -f "$reapply_list" ]; then
+            echo "::error::$reapply_list is missing. \`cron.job matched the deploy-equivalent inventory\` computes it and must run immediately before this step; without it this gate cannot know which of this PR's migrations production applies after the scheduling guard."
+            exit 1
+          fi
           later_cron_migrations=()
-          for f in supabase/migrations/*.sql; do
-            base=$(basename "$f")
-            version=${base%%_*}
-            case "$version" in
-              ''|*[!0-9]*) continue ;;
-            esac
-            [ "$((10#$version))" -gt "$((10#$GUARD_VERSION))" ] || continue
-            grep -q 'cron\.' "$f" || continue
-            echo "Also applying $base with both GUCs set (it applies after the guard on production too)."
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            if [ ! -f "$f" ]; then
+              echo "::error::$f is listed for re-application but is not in the checkout."
+              exit 1
+            fi
+            echo "Also applying $f with both GUCs set (it applies after the guard on production too)."
             later_cron_migrations+=(-f "$f")
-          done
+          done < "$reapply_list"
 
           # psql runs repeated -c/-f options in order on one connection, so the
           # two SETs are still in effect for every -f that follows.
-          psql "$DB" -v ON_ERROR_STOP=1 \
-            -c "set app.api_base = '$API_BASE';" \
-            -c "set app.cron_secret = '$CRON_SECRET';" \
-            -f "$GUARD_MIGRATION" \
-            ${later_cron_migrations[@]+"${later_cron_migrations[@]}"}
+          if ! psql "$DB" -v ON_ERROR_STOP=1 \
+              -c "set app.api_base = '$API_BASE';" \
+              -c "set app.cron_secret = '$CRON_SECRET';" \
+              -f "$GUARD_MIGRATION" \
+              ${later_cron_migrations[@]+"${later_cron_migrations[@]}"}; then
+            echo "::error::Re-applying the scheduling guard (and any migration this branch adds after it) with both GUCs set failed."
+            echo "If the failure is from one of the migrations listed above rather than from the guard's own assertion, that migration is not safe to apply twice. This gate has to run post-guard migrations with the GUCs set -- CI never sets them at database level, so a GUC-gated scheduling block is otherwise never executed anywhere in CI and could point a cron job at any host with the real bearer. Make the migration idempotent (\`if not exists\`, \`or replace\`, \`on conflict do nothing\`)."
+            exit 1
+          fi
 
           echo "Scheduled cron jobs:"
           psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, active, database, username, nodename, command from cron.job order by jobname, jobid;"
