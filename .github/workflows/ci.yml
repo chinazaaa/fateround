@@ -200,18 +200,32 @@ jobs:
           # skipping every migration behind it. Unique versions are enforced by
           # the migrations-check job, so a non-zero exit here is a genuine problem
           # a human must look at, not something to paper over.
-          # ── Production revoke guard ───────────────────────────────────────────
-          # This job applies migrations to PRODUCTION on a push to main and needs only
-          # [build, migrations-check]. The Mobile Rollout Gate is a SEPARATE workflow on
-          # pull_request -> main, so it constrains this only if branch protection requires it —
-          # and `main` has no protection at all. Without this guard a column revoke reaches
-          # production while installed builds still select that column, PostgREST fails the WHOLE
-          # request with 42501, and OTA cannot rescue an installed binary.
+          # ── Revoke guard (runs for BOTH environments) ─────────────────────────
+          # This job applies migrations on a push to main (Production project) or to dev (Preview
+          # project) and needs only [build, migrations-check]. The Mobile Rollout Gate is a
+          # SEPARATE workflow on pull_request -> main, so it constrains this only if branch
+          # protection requires it — and `main` has no protection at all. Without this guard a
+          # column revoke reaches the target project while installed builds still select that
+          # column, PostgREST fails the WHOLE request with 42501, and OTA cannot rescue an
+          # installed binary. That is just as true of Preview: the dev mobile build is a
+          # different artifact at a different rollout state, and Preview serves installed
+          # internal/test builds that break in exactly the same way. So the guard runs on every
+          # ref this job runs for (the job-level `if:` already limits that to dev and main).
+          #
+          # MOBILE_ROLLOUT_ACK is read as `vars.MOBILE_ROLLOUT_ACK`, and GitHub resolves `vars`
+          # environment-first, so setting it on the GitHub ENVIRONMENT (Production for main,
+          # Preview for dev) makes the acknowledgement per-environment with no workflow change.
+          # That separation is the point: acknowledging a revoke for Production must not silently
+          # authorise the same revoke against Preview, or vice versa. Environment-first is a
+          # precedence, not an isolation: a REPOSITORY-level MOBILE_ROLLOUT_ACK would fall through
+          # to any environment that has not defined its own, and would then authorise both. There
+          # is deliberately no repository-level value (checked 2026-09-13, both environments and
+          # the repo have none) — set this variable ONLY on an environment, never repo-wide.
           #
           # The acknowledgement names the VERSIONS it authorises — it is not a boolean. A blanket
-          # "1" would persist as a repository variable long after the release it was set for, and
-          # the NEXT revoke would then reach production with no rollout behind it. Requiring the
-          # exact version means a stale value authorises only the migration it was set for, and
+          # "1" would persist as a variable long after the release it was set for, and the NEXT
+          # revoke would then reach that project with no rollout behind it. Requiring the exact
+          # version means a stale value authorises only the migration it was set for, and
           # forgetting to clear it is inert rather than dangerous.
           #
           #   MOBILE_ROLLOUT_ACK="20261121120000"                     one migration
@@ -227,38 +241,45 @@ jobs:
           #
           # The revoke test reads CONTENT, not the filename: 20261003120000 is still called
           # `sec_uno_hide_piles` but is now the ADDITIVE half of a split and is safe to apply.
-          if [ "${GITHUB_REF_NAME:-}" = "main" ]; then
-            listing=$(supabase migration list --linked 2>/dev/null || true)
-            local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
-            if [ "$local_total" = "0" ]; then
-              echo "::error::Could not parse 'supabase migration list' output, so pending revokes cannot be identified."
-              echo "Failing closed rather than pushing to production blind. Check the CLI output format."
-              exit 1
-            fi
-            pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
-            unacked=""
-            for version in $pending; do
-              for file in supabase/migrations/"$version"_*.sql; do
-                [ -f "$file" ] || continue
-                sed 's/--.*//' "$file" | grep -qiE '\brevoke\b' || continue
-                # acknowledged only if this exact version is listed
-                case " ${MOBILE_ROLLOUT_ACK:-} " in
-                  *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK." ;;
-                  *) unacked="$unacked  $file (version $version)\n" ;;
-                esac
-              done
-            done
-            if [ -n "$unacked" ]; then
-              echo "::error::Refusing to apply unacknowledged REVOKE migrations to PRODUCTION:"
-              printf "%b" "$unacked"
-              echo "These revoke columns installed builds still request; PostgREST fails the whole query"
-              echo "with 42501 and OTA cannot rescue an installed build."
-              echo "Ship a compatible mobile build, let old installs drain, then set the repository"
-              echo "variable MOBILE_ROLLOUT_ACK to the exact version(s) above, space-separated."
-              exit 1
-            fi
-            echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes."
+          case "${GITHUB_REF_NAME:-}" in
+            main) GUARD_ENV="Production" ;;
+            *)    GUARD_ENV="Preview" ;;
+          esac
+          GUARD_TARGET="$GUARD_ENV (ref ${GITHUB_REF_NAME:-unknown}, Supabase project $REF)"
+          listing=$(supabase migration list --linked 2>/dev/null || true)
+          local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
+          if [ "$local_total" = "0" ]; then
+            echo "::error::Could not parse 'supabase migration list' output, so pending revokes cannot be identified."
+            echo "Failing closed rather than pushing to $GUARD_TARGET blind. Check the CLI output format."
+            exit 1
           fi
+          pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
+          unacked=""
+          for version in $pending; do
+            for file in supabase/migrations/"$version"_*.sql; do
+              [ -f "$file" ] || continue
+              sed 's/--.*//' "$file" | grep -qiE '\brevoke\b' || continue
+              # acknowledged only if this exact version is listed
+              case " ${MOBILE_ROLLOUT_ACK:-} " in
+                *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK for $GUARD_ENV." ;;
+                *) unacked="$unacked  $file (version $version)\n" ;;
+              esac
+            done
+          done
+          if [ -n "$unacked" ]; then
+            echo "::error::Refusing to apply unacknowledged REVOKE migrations to $GUARD_TARGET:"
+            printf "%b" "$unacked"
+            echo "These revoke columns installed builds still request; PostgREST fails the whole query"
+            echo "with 42501 and OTA cannot rescue an installed build."
+            echo "Ship a compatible mobile build for this target, let old installs drain, then set"
+            echo "MOBILE_ROLLOUT_ACK to the exact version(s) above, space-separated, on the GitHub"
+            echo "ENVIRONMENT being deployed — here that is the '$GUARD_ENV' environment"
+            echo "(Settings -> Environments -> $GUARD_ENV -> Environment variables), NOT the"
+            echo "repository-wide variable: a Production acknowledgement must not authorise"
+            echo "Preview, nor a Preview one Production."
+            exit 1
+          fi
+          echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes for $GUARD_TARGET."
 
           supabase db push --include-all
 
@@ -579,8 +600,10 @@ jobs:
           # sequence is the auto-generated net.http_request_queue_id_seq -- but that name
           # is an implementation detail of pg_net's DDL, and hardcoding it means a rename
           # upstream silently turns this whole assertion into dead code instead of failing.
-          # An unresolvable sequence is a HARD failure below for the same reason: a
-          # ::warning:: in an otherwise-green job is nobody's stop sign. A sequence that
+          # An unresolvable sequence is a HARD failure in expect_request_made below for
+          # the same reason: a ::warning:: in an otherwise-green job is nobody's stop
+          # sign. Case 1's negative check deliberately warns instead -- see the comment
+          # there for why, and note Case 3 hard-fails on the same probe. A sequence that
           # has never been drawn from reads as 'unused', which still compares unequal to
           # the first real value, so the advance check works from a cold database too.
           #
@@ -595,21 +618,31 @@ jobs:
           # concurrent enqueue would make it fail rather than pass, i.e. it fails safe.
           # request_seq runs inside $( ), so it cannot hand its diagnosis back in a
           # variable -- the assignment would die with the subshell. psql's stderr goes
-          # to a file instead (truncated per call), so the hard failure below can say
-          # WHY the probe broke: relation absent, permission denied and connection
-          # refused all collapse to "unavailable" otherwise.
-          SEQ_ERR="$(mktemp)"
+          # to a file instead, so the hard failure below can say WHY the probe broke:
+          # relation absent, permission denied and connection refused all collapse to
+          # "unavailable" otherwise.
+          #
+          # Each probe writes to its OWN file, named by the caller. A single shared file
+          # would be truncated by every later call including the successful ones, so the
+          # common failure shape -- `before` fails, the tick runs, `after` succeeds -- would
+          # leave the diagnosis empty and send the reader down the "pg_get_serial_sequence
+          # returned NULL" path for what was really a connection blip.
+          SEQ_ERR_BEFORE="$(mktemp)"
+          SEQ_ERR_AFTER="$(mktemp)"
+          Q_ERR="$(mktemp)"
           request_seq() {
+            # $1 = file this probe's psql stderr is captured in
             psql "$DB" -v ON_ERROR_STOP=1 -tAc \
               "select case
                         when pg_get_serial_sequence('net.http_request_queue', 'id') is null then 'unavailable'
                         else coalesce(
                           pg_sequence_last_value(pg_get_serial_sequence('net.http_request_queue', 'id')::regclass)::text,
                           'unused')
-                      end;" 2>"$SEQ_ERR" || echo unavailable
+                      end;" 2>"$1" || echo unavailable
           }
           seq_err() {
-            local e; e=$(tr -s '\n' ' ' < "$SEQ_ERR")
+            # $1 = the stderr file of the probe being quoted
+            local e; e=$(tr -s '\n' ' ' < "$1")
             if [ -z "${e// /}" ]; then
               echo "psql reported no error, so pg_get_serial_sequence('net.http_request_queue', 'id') returned NULL -- the pg_net queue table or its identity column is not what this probe expects."
             else
@@ -617,15 +650,28 @@ jobs:
             fi
           }
           expect_request_made() {
-            # $1 = case label, $2 = psql output, $3 = sequence value before the tick
+            # $1 = case label, $2 = psql output, $3 = sequence value before the tick,
+            # $4 = the file holding THAT probe's stderr (pairing the value with its own
+            # diagnosis here rather than assuming $SEQ_ERR_BEFORE, so a future caller
+            # probing into a different file cannot get a confidently wrong quote).
             if printf '%s\n' "$2" | grep -qF 'REAPER CRON GUARD'; then
               echo "::error::$1: the tick emitted a guard warning and therefore made no request, but this configuration must be accepted."
               printf '%s\n' "$2"
               exit 1
             fi
-            local after; after=$(request_seq)
+            local after; after=$(request_seq "$SEQ_ERR_AFTER")
             if [ "$3" = unavailable ] || [ "$after" = unavailable ]; then
-              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed. Last probe said: $(seq_err)"
+              # Quote the probe (or probes) that actually came back unavailable -- never
+              # whichever one happened to run last.
+              local why
+              if [ "$3" = unavailable ] && [ "$after" = unavailable ]; then
+                why="Both probes failed. The before probe said: $(seq_err "$4") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+              elif [ "$3" = unavailable ]; then
+                why="The before probe (the one that failed) said: $(seq_err "$4")"
+              else
+                why="The after probe (the one that failed) said: $(seq_err "$SEQ_ERR_AFTER")"
+              fi
+              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed. $why"
               exit 1
             fi
             if [ "$after" = "$3" ]; then
@@ -647,11 +693,26 @@ jobs:
           # gate stopped testing the thing it exists to catch while the function may
           # still be PUBLIC-executable. has_function_privilege() does resolve
           # PUBLIC-derived privileges, so this genuinely tests the revoke.
+          #
+          # psql's stderr goes to its own file rather than being merged with 2>&1: the
+          # merge is only wanted on the failure path, and on a SUCCESSFUL run any notice
+          # libpq prints (a client/server version mismatch, say) would be prepended to
+          # the value and fail the "exactly false" assertion for no reason.
           for role in anon authenticated; do
             granted=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
               "select case when to_regrole('$role') is null then 'no-role'
-                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;" 2>&1) \
-              || granted="probe-failed: $granted"
+                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;" 2>"$Q_ERR") \
+              || granted="probe-failed: $(tr -s '\n' ' ' < "$Q_ERR")"
+            # Keep any stderr from a SUCCESSFUL probe visible in the step log instead of
+            # discarding it; on the failure path it is already inside $granted.
+            case "$granted" in
+              probe-failed:*) ;;
+              *)
+                if [ -s "$Q_ERR" ]; then
+                  echo "  note: psql wrote to stderr while probing $role: $(tr -s '\n' ' ' < "$Q_ERR")"
+                fi
+                ;;
+            esac
             if [ "$granted" != "false" ]; then
               echo "::error::Case 0b: expected has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute') to be exactly false, got '$granted'. Postgres grants EXECUTE to PUBLIC by default, so a zero-arg function in the public schema is a POST /rest/v1/rpc/ endpoint for anyone with the anon key -- the migration must revoke it, and this check must be able to prove that it did."
               exit 1
@@ -660,12 +721,36 @@ jobs:
           done
 
           echo '--- Case 1: tick with both GUCs unset -> loud skip, no request'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 -c "$TICK" 2>&1) || { echo "::error::The tick failed with the GUCs unset; a missing setting must warn, not error."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_warning 'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) made NO request because required database settings are unset: app.api_base, app.cron_secret' "$out"
-          if [ "$before" != unavailable ] && [ "$(request_seq)" != "$before" ]; then
-            echo "::error::Case 1 (GUCs unset): the pg_net request sequence advanced, so a request was enqueued despite the guard warning."
+          # Deliberate asymmetry with expect_request_made, which HARD-fails on an
+          # unreadable probe: this is a NEGATIVE check, so an unreadable probe costs it
+          # its evidence and it declines to conclude anything rather than guessing.
+          #
+          # BOTH values have to be guarded, not just $before. An unreadable after-probe
+          # returns the literal string "unavailable", which compares unequal to a
+          # perfectly good "$before" -- so testing only $before would fire this branch on
+          # a connection blip and report that the guard leaked a request when nothing was
+          # enqueued, which is the exact false diagnosis the rest of this commit exists to
+          # eliminate.
+          #
+          # The skip is not silent: the probe's own stderr is quoted, and Case 3 hard-fails
+          # on this same probe further down (after cases 2/2b/2c), so a genuinely broken
+          # probe still stops the job rather than quietly hollowing this assertion out.
+          after=$(request_seq "$SEQ_ERR_AFTER")
+          if [ "$before" = unavailable ] || [ "$after" = unavailable ]; then
+            if [ "$before" = unavailable ] && [ "$after" = unavailable ]; then
+              why="both probes failed -- the before probe said: $(seq_err "$SEQ_ERR_BEFORE") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+            elif [ "$before" = unavailable ]; then
+              why="the before probe said: $(seq_err "$SEQ_ERR_BEFORE")"
+            else
+              why="the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+            fi
+            echo "::warning::Case 1 (GUCs unset): the pg_net request sequence could not be read ($before -> $after), so the no-request half of this case is unproven -- the guard warning matched above is all it asserts. Diagnosis: $why"
+          elif [ "$after" != "$before" ]; then
+            echo "::error::Case 1 (GUCs unset): the pg_net request sequence advanced ($before -> $after), so a request was enqueued despite the guard warning."
             exit 1
           fi
 
@@ -704,22 +789,22 @@ jobs:
           expect_scheduled 'Cases 1-2c (refusals must not unschedule the job)'
 
           echo '--- Case 3: http:// loopback -> allowed (the documented narrow exception)'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'http://127.0.0.1:3000';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
             -c "$TICK" 2>&1) || { echo "::error::Case 3 (loopback http): the tick errored. Loopback http:// is the documented exception -- infra/templates/user-data.sh.tftpl relies on it."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
-          expect_request_made 'Case 3 (loopback http)' "$out" "$before"
+          expect_request_made 'Case 3 (loopback http)' "$out" "$before" "$SEQ_ERR_BEFORE"
 
           echo '--- Case 4: https:// -> request made, and the job asserted independently of the migration'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
             -c "$TICK" 2>&1) || { echo "::error::Case 4 (https): the tick errored."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
-          expect_request_made 'Case 4 (https)' "$out" "$before"
+          expect_request_made 'Case 4 (https)' "$out" "$before" "$SEQ_ERR_BEFORE"
           psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, command from cron.job order by jobname;"
           bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
             select coalesce(
@@ -749,13 +834,13 @@ jobs:
           out=$(apply_migration) || { echo "::error::Case 5: the migration failed to apply with the GUCs unset."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
           expect_scheduled 'Case 5 (migration applied with no GUCs)'
-          before=$(request_seq)
+          before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 \
             -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
             -c "set app.cron_secret = 'ci-not-a-real-secret';" \
             -c "$TICK" 2>&1) || { echo "::error::Case 5: the tick errored after the GUCs were set."; printf '%s\n' "$out"; exit 1; }
           printf '%s\n' "$out"
-          expect_request_made 'Case 5 (GUCs set after the migration)' "$out" "$before"
+          expect_request_made 'Case 5 (GUCs set after the migration)' "$out" "$before" "$SEQ_ERR_BEFORE"
 
           echo "All idle-reaper guard branches behaved as specified."
 

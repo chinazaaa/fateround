@@ -87,29 +87,38 @@ it, or escalate for a human call.
   `coderabbit auth login` does the OAuth flow, `auth logout` / `auth org` round
   it out. If a review errors as unauthenticated, log in (or pass `--api-key`)
   rather than falling straight through to the bot.
-- The bot is the **fallback**: on the free tier this account gets roughly **one
+- The bot is the **second reviewer**, reached for when the CLI is unavailable —
+  but not a dependable one: on the free tier this account gets roughly **one
   review an hour**. While `auto_review` is disabled in `.coderabbit.yaml` (see
   the note there for why), reviews are on-demand — pushing does not burn one,
   but each `@coderabbitai review` does. The config is the source of truth for
   that; if it is ever re-enabled, every push spends a review again.
 - **A rate limit means wait, not downgrade.** The allowance is rolling, not
   spent for good: wait the window out and re-run rather than skipping the gate.
-  Both reviewers are in play and they do not compete — they draw on separate
-  allowances, so using one never starves the other, which is why "the CLI is
-  rate-limited" is a reason to fall back to the bot, never a reason to skip
-  review. Neither is a way to review more than the plan allows.
-- **Keep concurrent review-running subagents to two or three.** Roughly 3
-  reviews an hour is the whole budget, and you cannot query what's left;
-  dispatching six at once overruns it and starves the later ones into exactly
-  the downgrade the rule above forbids. Stagger them instead.
-- **The author's own read-through is not a review.** An agent that implements a
-  change and then writes its own assessment of that change is marking its own
-  homework. If CodeRabbit is unavailable, dispatch a **separate subagent that
-  did not write the code** to review it adversarially, and say in the PR
-  description which reviewer was used. Skipping this is what let #1166 and
-  #1168 be opened on code no independent reviewer had seen.
-- **A subagent owns the whole cycle for its PR** — review, fix, re-review — and
-  reports back when a review is clean, not after one round.
+  Neither reviewer is a way to review more than the plan allows, and the two
+  allowances being nominally separate does not make the bot a dependable
+  fallback: it has its own limit of roughly one review an hour and is often
+  exhausted on its own. On #1168, three `@coderabbitai review` comments over
+  about seventy minutes each came back "Review rate limited" before a fourth
+  finally ran; a request on #1174 was rate limited too. Both reviewers can be
+  shut at the same time. When they are, wait the window out or get an
+  independent human reviewer who did not write the code — a rate limit is never
+  a reason to skip the gate, and never a licence to fall back on your own
+  read-through.
+- **A green `CodeRabbit` check does not mean the PR was reviewed.** The check
+  reports success when nothing looked at the code at all: on #1174 it read
+  `CodeRabbit  pass  "Review rate limited"`, and earlier on the same PR, before
+  a review was requested, `CodeRabbit  pass  "Review skipped: automatic reviews
+  are disabled"`. Read the check's **description text, not its colour**, and
+  confirm a review actually happened by finding the review itself on the PR —
+  its summary comment or its review threads — rather than by the status going
+  green.
+- **The author's own read-through is not a review.** Writing a change and then
+  writing your own assessment of it is marking your own homework. If CodeRabbit
+  is unavailable, get a second reviewer who did not write the code to go through
+  it adversarially, and say in the PR description which reviewer was used.
+  Skipping this is what let #1166 and #1168 be opened on code no independent
+  reviewer had seen.
 
 #### Gotchas the loop taught us
 
@@ -143,9 +152,9 @@ Each of these cost a review round on a real PR here:
   already regressed `{"gameId": null}`. Reject structurally-impossible findings
   (syntax errors, "does not parse", missing code) with the `tsc`/prettier/test
   output as the evidence.
-- **A cycle is complete only on a clean pass**, or on an explicit written review
-  by a reviewer that did not write the code standing in for one. "Waiting on CI
-  and the CodeRabbit retry" is not a completed cycle, and neither is the
+- **The loop is finished only on a clean pass**, or on an explicit written
+  review by someone who did not write the code standing in for one. "Waiting on
+  CI and the CodeRabbit retry" is not a finished loop, and neither is the
   author's own read-through. When the CLI is rate-limited, get that independent
   review, keep working, and re-run when the window opens.
 - **A characterization test pins _current_ behaviour, so when a PR deliberately
@@ -165,10 +174,16 @@ Every finding gets a decision, and the decision goes on the thread:
   to silence a reviewer.
 - **Right but out of scope** → split it into a stacked PR and record that PR on
   the thread.
-- Then **resolve the thread yourself, with the reasoning in the reply** (same
-  convention as the note in `.coderabbit.yaml` — CodeRabbit won't resolve a
-  fixed thread until a later pass reconfirms it, and it blocks the merge
-  meanwhile).
+- **Don't resolve CodeRabbit's threads by hand** (same convention as the note in
+  `.coderabbit.yaml`). CodeRabbit resolves the threads it authored once a later
+  pass confirms the fix, and that is what makes thread state worth reading: **a
+  thread still unresolved after a re-review is evidence the fix did not land.**
+  Resolving it yourself throws that signal away and makes a thread that was
+  never really fixed look identical to one that was. Nothing here forces the
+  tidy-up either — no ruleset or branch protection on this repo blocks a merge
+  on unresolved conversations. So reply on every thread as above, leave the
+  resolving to the re-review, and treat a thread still open after one as a cue
+  to check whether the fix actually landed.
 
 ### Refactors: characterization tests first
 
