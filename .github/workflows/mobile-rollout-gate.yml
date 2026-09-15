@@ -19,8 +19,18 @@ jobs:
     name: Mobile Rollout Gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          # Full history: the extract step below reads the gate script out of the base commit,
+          # whose objects a depth-1 clone would not have. A missing base commit is now a hard
+          # failure there rather than a silent fallback, so removing this breaks the job loudly
+          # instead of quietly disabling the gate.
+          #
+          # Do NOT add `filter: blob:none` here. It does not currently bypass the gate only
+          # because this repository is public and the runner can lazily fetch the missing blob
+          # anonymously. If fateround is ever made private that lazy fetch stops working, and a
+          # blobless clone becomes a one-word way to make the script's blob look absent from
+          # base — which lands on the bootstrap branch and runs the PR's own copy.
           fetch-depth: 0
           # Don't leave a usable token in .git/config for anything this job runs.
           persist-credentials: false
@@ -32,6 +42,15 @@ jobs:
       # script is therefore extracted from the base commit to a path outside the working tree and
       # run from there. It still INSPECTS the PR's migrations (via HEAD_SHA) — only the
       # enforcement logic is pinned to what main already trusts.
+      #
+      # Scope, honestly: this closes some bypasses, not the class. This step, its inputs and this
+      # job's checkout options are all in this file, which the pull request can edit — and the
+      # `git` commands implementing the pinning are themselves $PATH lookups. The real boundary is
+      # owner review of the paths in .github/CODEOWNERS: `.github/`, `scripts/`, and the install
+      # surface a job executes on its own (package.json's `prepare` hook, pnpm-lock.yaml,
+      # pnpm-workspace.yaml, .npmrc, .husky/) — that last group because reaching it needs no
+      # workflow edit. See that file, including the caveat that it only blocks a merge once a
+      # ruleset requires code-owner review.
       - name: Extract the gate script from the base revision
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -39,17 +58,66 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/gate"
           dest="$RUNNER_TEMP/gate/mobile-rollout-gate.mjs"
-          if git show "$BASE_SHA:scripts/ci/mobile-rollout-gate.mjs" > "$dest" 2>/dev/null; then
-            echo "Using the gate script from the base revision ($BASE_SHA) — enforcement logic is pinned."
-          else
-            # BOOTSTRAP: the base branch does not have the gate yet, because this workflow reaches
-            # `main` for the first time in the very PR it is guarding. Pinning to base protects an
-            # ESTABLISHED gate from being edited by the PR under review; on the first promotion
-            # there is no established gate, so falling back to this PR's copy is no weaker than
-            # main not having the workflow at all. Every subsequent run takes the branch above.
-            echo "::warning::Gate script absent on base ($BASE_SHA) — bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
-            cp scripts/ci/mobile-rollout-gate.mjs "$dest"
+          script=scripts/ci/mobile-rollout-gate.mjs
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "::error::github.event.pull_request.base.sha is empty, so there is no base revision to pin the gate to. Refusing to run the gate from the pull request's own copy."
+            exit 1
           fi
+
+          # Distinguish "the clone does not have the base commit" from "the base commit does not
+          # have the script" — they are NOT the same thing, and treating any `git show` failure as
+          # the second one is a complete bypass: drop `fetch-depth: 0` above (it reads like a
+          # clone-cost tweak), replace the script with `exit 0`, and a depth-1 clone makes
+          # `git show` fail for missing OBJECTS, which a fallback would have turned into "run the
+          # PR's own copy". Both are fatal here — this workflow has no bootstrap fallback at all,
+          # see below — but they stay distinguishable because the fixes differ: fetch the base
+          # commit, versus restore the script on the base branch.
+          #
+          # Renaming the `script=` assignment above, or adding `filter: blob:none` to the checkout
+          # if this repository were ever made private, both still make the blob look absent from
+          # base. With no fallback to reach, they now turn this check red rather than running the
+          # pull request's own copy. Both are visible edits to owned paths regardless.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error::Base commit $BASE_SHA is not present in this clone, so the gate cannot be pinned to it. The checkout above must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copy — a shallow clone is not a bootstrap."
+            exit 1
+          fi
+
+          # And it has to be a plausible BASE. `github.sha` on a pull_request event is the PR's
+          # OWN merge commit, so pointing BASE_SHA at it would read the gate out of the tree under
+          # review while the log still said "pinned". Reject a BASE_SHA that is the checked-out
+          # commit, and require it to be an ancestor of it (the real base tip always is — it is a
+          # parent of the merge commit). ANY ancestor passes, so an old `main` commit from before
+          # the gate landed would satisfy this check — and then hard-fail at the blob check below,
+          # because there is nothing to fall back to.
+          head_sha=$(git rev-parse HEAD)
+          base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
+          if [ "$base_resolved" = "$head_sha" ]; then
+            echo "::error::BASE_SHA resolves to the checked-out commit itself ($head_sha). That is the revision under review, not a base to pin against — github.sha on a pull_request event is the PR's own merge commit and must not be used here."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$base_resolved" "$head_sha"; then
+            echo "::error::BASE_SHA ($base_resolved) is not an ancestor of the checked-out commit ($head_sha), so it is not the base this pull request is being merged into. Refusing to treat it as the pinning revision."
+            exit 1
+          fi
+
+          # NO BOOTSTRAP FALLBACK, deliberately. There used to be one, for the case where the base
+          # commit is present and simply does not contain the gate — which is what the very first
+          # promotion looked like, when this workflow reached `main` alongside the script it runs.
+          # That promotion happened long ago: scripts/ci/mobile-rollout-gate.mjs is on both `main`
+          # and `dev` today, and this workflow only triggers on `pull_request` with
+          # `branches: [main]`, so the base is always `main` and always has the script. The branch
+          # could never fire legitimately again while remaining a live bypass — a pull request
+          # could edit its own copy of the gate to exit 0, and anything that made the blob look
+          # absent from base would get that copy executed. So it fails closed. If this ever does
+          # fire, the fix is to restore the script on the base branch, never to run the pull
+          # request's copy.
+          if ! git cat-file -e "$BASE_SHA:$script" 2>/dev/null; then
+            echo "::error::$script is missing from base commit $BASE_SHA (the commit itself is present). The gate script must exist on the base branch; refusing to fall back to this pull request's own copy, which the pull request could have written to pass itself."
+            exit 1
+          fi
+          git show "$BASE_SHA:$script" > "$dest"
+          echo "Using the gate script from the base revision ($BASE_SHA) — enforcement logic is pinned."
 
       - name: Check for revokes that break installed mobile builds
         env:
