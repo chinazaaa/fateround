@@ -244,23 +244,76 @@ fi
 # themselves are no longer in the pull request's copy at all: this
 # script is extracted from the base revision and run from there.
 #
-# The base is HEAD's FIRST PARENT, not github.event.pull_request.base.sha.
-# On a pull_request event the checkout is refs/pull/N/merge, whose
-# first parent is the base branch as it stands NOW; base.sha is frozen
-# at event time, so re-running an older run compared new-dev against
-# old-dev and attributed another PR's migrations to this branch. On a
-# push, HEAD^1 is the previous tip of the branch being pushed, which is
-# the same question. Which files this branch ADDED is then measured
-# from the merge base rather than from the base tip, so a migration the
-# base gained while this PR was open is not attributed to this PR --
-# while base_last still comes from the base TIP, because that is what
-# production has already applied and what an added file must sort after.
-base_sha=$(git rev-parse --verify --quiet 'HEAD^1' || true)
-if [ -z "$base_sha" ]; then
-  echo "::error::HEAD has no first parent, so there is no base revision to compare migrations against. Usually this means the checkout is shallow -- this job needs \`fetch-depth: 0\` -- or HEAD is a root commit. Either way the gate cannot tell which migrations this branch adds and will not guess."
+# On a PULL_REQUEST event the base is HEAD's FIRST PARENT, not
+# github.event.pull_request.base.sha. The checkout is refs/pull/N/merge,
+# whose first parent is the base branch as it stands NOW; base.sha is
+# frozen at event time, so re-running an older run compared new-dev
+# against old-dev and attributed another PR's migrations to this branch.
+#
+# On a PUSH, HEAD^1 is the WRONG question, and this was a real hole.
+# HEAD^1 is the parent of the LAST commit in the push, not the tip the
+# branch had before the push. A fast-forward push of B..C onto a branch
+# sitting at A makes HEAD^1 = B, so everything B added is invisible to
+# the diff below -- and a back-dated migration introduced in B walks
+# straight past the `before_guard` check that the identical file in C
+# would have been caught by. What the push actually moved is
+# github.event.before, handed in as PUSH_BEFORE_SHA by the step that runs
+# this script. It is empty on every other event, so the first-parent rule
+# above still governs there.
+#
+# However it is chosen, the base is VALIDATED before it is used: it must
+# resolve to a commit present in this clone, it must not be the
+# checked-out commit itself, and it must be an ancestor of it. Failing
+# any of those is a hard failure and never a fallback -- the same rule,
+# for the same reason, that the extract step in ci.yml applies to
+# BASE_SHA. An all-zero PUSH_BEFORE_SHA (the push that CREATES a branch)
+# is refused too: there is no previous tip to compare against, and
+# quietly reverting to HEAD^1 would reinstate exactly the omission above.
+#
+# Ancestry is asserted against the CHECKED-OUT commit, not against
+# head_sha, and the difference matters on a pull_request event: there
+# head_sha is HEAD^2, the PR's own tip, and HEAD^1 is its SIBLING rather
+# than its ancestor whenever the base branch has moved since the branch
+# forked -- which is the normal case. Both are parents of the merge
+# commit, so the checked-out commit is the one revision both are
+# genuinely beneath. On a push, where there is no merge commit, the
+# checked-out commit and head_sha are the same thing.
+#
+# Which files this branch ADDED is then measured from the merge base
+# rather than from the base tip, so a migration the base gained while
+# this PR was open is not attributed to this PR -- while base_last still
+# comes from the base TIP, because that is what production has already
+# applied and what an added file must sort after.
+checkout_sha=$(git rev-parse --verify HEAD)
+head_sha=$(git rev-parse --verify 'HEAD^2' 2>/dev/null || git rev-parse --verify HEAD)
+if [ -n "${PUSH_BEFORE_SHA:-}" ]; then
+  case "$PUSH_BEFORE_SHA" in
+    *[!0]*) base_sha="$PUSH_BEFORE_SHA" ;;
+    *)
+      echo "::error::PUSH_BEFORE_SHA is the all-zero SHA, which means this push CREATED the branch and there is no previous tip to compare migrations against. Refusing to fall back to HEAD^1: on a multi-commit push that is the parent of the last commit rather than the tip before the push, and it would hide every migration the earlier commits of the push added."
+      exit 1
+      ;;
+  esac
+else
+  base_sha=$(git rev-parse --verify --quiet 'HEAD^1' || true)
+  if [ -z "$base_sha" ]; then
+    echo "::error::HEAD has no first parent, so there is no base revision to compare migrations against. Usually this means the checkout is shallow -- this job needs \`fetch-depth: 0\` -- or HEAD is a root commit. Either way the gate cannot tell which migrations this branch adds and will not guess."
+    exit 1
+  fi
+fi
+if ! git cat-file -e "$base_sha^{commit}" 2>/dev/null; then
+  echo "::error::The base revision $base_sha is not a commit in this clone, so the gate cannot tell which migrations this branch adds. This job needs \`fetch-depth: 0\` so that the whole history of the branch being pushed is present."
   exit 1
 fi
-head_sha=$(git rev-parse --verify 'HEAD^2' 2>/dev/null || git rev-parse --verify HEAD)
+base_sha=$(git rev-parse --verify "$base_sha^{commit}")
+if [ "$base_sha" = "$checkout_sha" ]; then
+  echo "::error::The base revision resolves to the checked-out commit itself ($checkout_sha). That is the revision under test, not a base to compare it against -- diffing it with itself reports that this branch adds no migrations at all, which would pass this gate without inspecting anything."
+  exit 1
+fi
+if ! git merge-base --is-ancestor "$base_sha" "$checkout_sha"; then
+  echo "::error::The base revision $base_sha is not an ancestor of the checked-out commit $checkout_sha, so it is not the revision this branch is being compared against. Refusing to guess. On a push this usually means the branch was force-pushed, and the migrations this gate would have to judge are no longer reachable from what was pushed."
+  exit 1
+fi
 fork_point=$(git merge-base "$base_sha" "$head_sha")
 
 base_last=$(git ls-tree --name-only "$base_sha" supabase/migrations/ \

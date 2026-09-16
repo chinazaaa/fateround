@@ -545,6 +545,16 @@ jobs:
           # inside the base-pinned script on purpose -- a PR-supplied DSN alone would be
           # enough to redirect a gate at a decoy database.
           REPO_DIR: ${{ github.workspace }}
+          # The tip this branch had BEFORE the push, which is the revision the
+          # migration comparison has to measure from on a push event. HEAD^1 is
+          # NOT that: it is the parent of the LAST commit pushed, so on a
+          # multi-commit fast-forward push everything the earlier commits added
+          # is invisible -- including a back-dated migration, which is exactly
+          # what the gate exists to catch. Empty on every event that is not a
+          # push, where the script keeps using HEAD's first parent (correct for a
+          # pull_request merge commit). Supplied by Actions from the event
+          # payload, not by the pull request.
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
           # `run:` steps execute as `bash -e {0}`, and bash SOURCES $BASH_ENV
           # before the script body. Every step can write to $GITHUB_ENV, whose
           # runner-side blocklist is a single entry (NODE_OPTIONS), so any
