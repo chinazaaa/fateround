@@ -265,7 +265,7 @@ CRON_SECRET='ci-not-a-real-secret'
 # outputs; the steps in between -- including the PR-owned vitest suite
 # -- cannot rewrite one. A file in RUNNER_TEMP could simply be emptied,
 # which would silently restore the bypass this re-application closes.
-if [ "$CRON_REAPPLY_COMPUTED" != "yes" ]; then
+if [ "${CRON_REAPPLY_COMPUTED:-}" != "yes" ]; then
   echo "::error::\`cron.job matches the deploy-equivalent inventory\` did not publish a re-apply list. It must run immediately after \`supabase start\`; without it this gate cannot know which of this PR's migrations production applies after the scheduling guard."
   exit 1
 fi
@@ -278,7 +278,7 @@ while IFS= read -r f; do
   fi
   echo "Also applying $f with both GUCs set (it applies after the guard on production too)."
   later_cron_migrations+=(-f "$f")
-done <<< "$CRON_REAPPLY_MIGRATIONS"
+done <<< "${CRON_REAPPLY_MIGRATIONS:-}"
 
 # psql runs repeated -c/-f options in order on one connection, so the
 # two SETs are still in effect for every -f that follows.
