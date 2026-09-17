@@ -3,9 +3,10 @@ import { NextRequest } from 'next/server'
 
 /**
  * `quoteBodySchema` is a deliberate shape-only guard (`z.record(z.string(), z.any())`), so
- * `gameId` arrives as any JSON value. POST and DELETE both guard it with a bare truthiness
- * check and then call `gameId.toUpperCase()`, so a truthy non-string (`5`, `true`, `{}`)
- * throws an unhandled TypeError that surfaces as a 500 instead of a 400.
+ * `gameId` arrives as any JSON value. POST and DELETE both used to guard it with a bare
+ * truthiness check and then call `gameId.toUpperCase()`, so a truthy non-string (`5`, `true`,
+ * `{}`) threw an unhandled TypeError that surfaced as a 500 instead of a 400. Both now answer
+ * the same "Missing required fields" 400 a missing gameId gets.
  *
  * This file pins the whole `gameId` matrix for both handlers. The `null`, absent and
  * empty-string rows must never move: the route treats all three as "absent" and answers
@@ -114,12 +115,17 @@ describe.each([
     expect(fromSpy).not.toHaveBeenCalled()
   })
 
-  // --- truthy non-string gameId: the bug, pinned as it behaves today --------------------
+  // --- truthy non-string gameId: the bug ------------------------------------------------
+  // Pin moved deliberately: these rows asserted the unhandled TypeError (a 500) against the
+  // pre-fix route and now assert the clean 400.
 
-  it.each(NON_STRING)('throws an unhandled TypeError for %s gameId (surfaces as a 500)', async (_l, gameId) => {
-    await expect(handler()(request({ gameId, ...extra }, method))).rejects.toThrow(TypeError)
+  it.each(NON_STRING)('rejects %s gameId with 400 "Missing required fields", no auth, no DB', async (_l, gameId) => {
+    const res = await handler()(request({ gameId, ...extra }, method))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
     expect(assertHostGameSpy).not.toHaveBeenCalled()
     expect(assertPlayerSpy).not.toHaveBeenCalled()
+    expect(fromSpy).not.toHaveBeenCalled()
   })
 
   // --- combined gates: a non-string gameId together with a second failing gate ----------
@@ -163,10 +169,11 @@ describe('POST /api/wst-quotes — gameId type vs question validation', () => {
 
 describe('DELETE /api/wst-quotes — gameId type vs quoteId validation', () => {
   // A whitespace-only quoteId clears the first guard, so the gameId normalisation is reached
-  // before the quoteId gate — both failing at once must still produce one clean 400.
-  it('throws for a non-string gameId with a whitespace-only quoteId', async () => {
-    await expect(DELETE(request({ gameId: 5, resumeToken: 'resume-tok', quoteId: '   ' }, 'DELETE'))).rejects.toThrow(
-      TypeError
-    )
+  // before the quoteId gate — both failing at once must still produce one clean 400. Pin moved
+  // deliberately: this asserted the unhandled TypeError before the fix.
+  it('rejects a non-string gameId with a whitespace-only quoteId with one 400', async () => {
+    const res = await DELETE(request({ gameId: 5, resumeToken: 'resume-tok', quoteId: '   ' }, 'DELETE'))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
   })
 })
