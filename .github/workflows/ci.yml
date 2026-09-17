@@ -532,17 +532,32 @@ jobs:
           # step 1 -- before any PR-controlled lifecycle code has executed -- and
           # needs only /usr/bin/sha256sum to be intact afterwards.
           #
-          # RESIDUAL, stated plainly: /usr/bin/sha256sum and /usr/bin/bash are
-          # absolute but not immutable. Hosted runners give the job passwordless
-          # sudo, so the same `prepare` hook could overwrite either binary, just
-          # as already documented for /usr/bin/psql. This raises the bar from
-          # "write a file in a temp directory" to "overwrite a system binary". It
-          # does not make it impossible.
+          # The digest is over the file's CONTENTS as read into a shell variable,
+          # not over the pathname. Each gate step re-reads its script into a
+          # variable, digests THAT, and executes THAT -- so what is hashed and
+          # what runs are the same bytes by construction, with no second open of
+          # a path an attacker could have replaced in between. Both sides
+          # normalise identically (command substitution strips trailing newlines;
+          # `printf '%s\n'` puts exactly one back), so the two digests are
+          # comparable. Appended trailing newlines are the only bytes that can
+          # differ, and they are not in the snapshot that executes.
+          #
+          # RESIDUAL, stated plainly: /usr/bin/sha256sum, /usr/bin/cat and
+          # /usr/bin/bash are absolute but not immutable. Hosted runners give the
+          # job passwordless sudo, so the same `prepare` hook could overwrite any
+          # of them, just as already documented for /usr/bin/psql. This raises the
+          # bar from "write a file in a temp directory" to "overwrite a system
+          # binary". It does not make it impossible.
           for s in $scripts; do
-            line=$(/usr/bin/sha256sum -- "$RUNNER_TEMP/gate/$s")
+            content=$(/usr/bin/cat -- "$RUNNER_TEMP/gate/$s")
+            if [ -z "$content" ]; then
+              echo "::error::$RUNNER_TEMP/gate/$s is empty after extraction. Refusing to record a digest for an empty gate script."
+              exit 1
+            fi
+            line=$(printf '%s\n' "$content" | /usr/bin/sha256sum)
             digest=${line%% *}
             if ! [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
-              echo "::error::Could not compute a SHA-256 for $RUNNER_TEMP/gate/$s (got '$line'). Refusing to continue without a digest to check the extracted copy against."
+              echo "::error::Could not compute a SHA-256 for the contents of $RUNNER_TEMP/gate/$s (got '$line'). Refusing to continue without a digest to check the extracted copy against."
               exit 1
             fi
             case "$s" in
@@ -553,7 +568,7 @@ jobs:
                 exit 1
                 ;;
             esac
-            echo "Recorded sha256 $digest for $s (pinned to base: $([ "$digest_only" = yes ] && echo no || echo yes))."
+            echo "Recorded sha256 $digest for the contents of $s (pinned to base: $([ "$digest_only" = yes ] && echo no || echo yes))."
           done
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -628,9 +643,26 @@ jobs:
           # by every step, and PR-controlled code has run since the extraction
           # (`pnpm install`'s `prepare` hook; and for the HTTP gate, the vitest
           # RLS suite as well), so "it was pinned when it was written" is not the
-          # same as "it is base's bytes now". Absolute sha256sum, absolute bash:
-          # neither is resolved through $PATH. See the extract step for what this
-          # does and does not buy.
+          # same as "it is base's bytes now".
+          #
+          # SNAPSHOT, then hash the snapshot, then run the snapshot. Hashing a
+          # PATHNAME and then handing that same pathname to bash is a race: the
+          # file is opened twice, and PR-controlled code can replace it in
+          # between -- a detached process with RUNNER_TRACKING_ID cleared outlives
+          # its own step and runs as the same user, so it can rewrite the file in
+          # a loop until a rewrite lands inside that window. /dev/fd/N does not
+          # fix it either: on Linux it resolves to the same inode, which survives
+          # a rename but not an in-place truncate-and-rewrite of a file the
+          # attacker owns. Reading the contents into a variable closes the window
+          # by construction -- one open, and the bytes that are hashed are the
+          # bytes that execute.
+          #
+          # The script is fed to bash through a process substitution rather than
+          # on stdin, so the gate's own stdin stays /dev/null and no child of it
+          # can swallow part of the script. Neither gate script reads stdin (both
+          # `read` loops are fed by herestrings) and neither refers to $0 or
+          # BASH_SOURCE, so nothing about running it this way changes what it
+          # does; that was checked before this was written.
           #
           # An unset, empty or malformed digest is treated exactly like a
           # mismatch. "Nothing to check" must never read as "nothing wrong".
@@ -638,14 +670,19 @@ jobs:
             echo "::error::The extract step recorded no usable SHA-256 for deploy-cron-inventory-gate.sh (got '${GATE_SHA256:-<unset>}'). An unset, empty or malformed digest is treated exactly like a mismatch: refusing to run an unverified copy."
             exit 1
           fi
-          line=$(/usr/bin/sha256sum -- "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh")
-          actual=${line%% *}
-          if [ "$actual" != "$GATE_SHA256" ]; then
-            echo "::error::$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh has sha256 $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+          snapshot=$(/usr/bin/cat -- "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh")
+          if [ -z "$snapshot" ]; then
+            echo "::error::$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh is empty. Refusing to run an empty gate script."
             exit 1
           fi
-          echo "deploy-cron-inventory-gate.sh matches the digest recorded at extraction ($actual)."
-          exec /usr/bin/bash "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh"
+          line=$(printf '%s\n' "$snapshot" | /usr/bin/sha256sum)
+          actual=${line%% *}
+          if [ "$actual" != "$GATE_SHA256" ]; then
+            echo "::error::The contents of $RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh hash to $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+            exit 1
+          fi
+          echo "deploy-cron-inventory-gate.sh matches the digest recorded at extraction ($actual); running the verified snapshot."
+          exec /usr/bin/bash <(printf '%s\n' "$snapshot") < /dev/null
 
       # The local stack's URL and keys. These are the Supabase CLI's fixed demo credentials --
       # public, documented, identical on every developer's machine, and worthless outside this
@@ -1171,9 +1208,26 @@ jobs:
           # by every step, and PR-controlled code has run since the extraction
           # (`pnpm install`'s `prepare` hook; and for the HTTP gate, the vitest
           # RLS suite as well), so "it was pinned when it was written" is not the
-          # same as "it is base's bytes now". Absolute sha256sum, absolute bash:
-          # neither is resolved through $PATH. See the extract step for what this
-          # does and does not buy.
+          # same as "it is base's bytes now".
+          #
+          # SNAPSHOT, then hash the snapshot, then run the snapshot. Hashing a
+          # PATHNAME and then handing that same pathname to bash is a race: the
+          # file is opened twice, and PR-controlled code can replace it in
+          # between -- a detached process with RUNNER_TRACKING_ID cleared outlives
+          # its own step and runs as the same user, so it can rewrite the file in
+          # a loop until a rewrite lands inside that window. /dev/fd/N does not
+          # fix it either: on Linux it resolves to the same inode, which survives
+          # a rename but not an in-place truncate-and-rewrite of a file the
+          # attacker owns. Reading the contents into a variable closes the window
+          # by construction -- one open, and the bytes that are hashed are the
+          # bytes that execute.
+          #
+          # The script is fed to bash through a process substitution rather than
+          # on stdin, so the gate's own stdin stays /dev/null and no child of it
+          # can swallow part of the script. Neither gate script reads stdin (both
+          # `read` loops are fed by herestrings) and neither refers to $0 or
+          # BASH_SOURCE, so nothing about running it this way changes what it
+          # does; that was checked before this was written.
           #
           # An unset, empty or malformed digest is treated exactly like a
           # mismatch. "Nothing to check" must never read as "nothing wrong".
@@ -1181,14 +1235,19 @@ jobs:
             echo "::error::The extract step recorded no usable SHA-256 for http-cron-scheduling-gate.sh (got '${GATE_SHA256:-<unset>}'). An unset, empty or malformed digest is treated exactly like a mismatch: refusing to run an unverified copy."
             exit 1
           fi
-          line=$(/usr/bin/sha256sum -- "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh")
-          actual=${line%% *}
-          if [ "$actual" != "$GATE_SHA256" ]; then
-            echo "::error::$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh has sha256 $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+          snapshot=$(/usr/bin/cat -- "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh")
+          if [ -z "$snapshot" ]; then
+            echo "::error::$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh is empty. Refusing to run an empty gate script."
             exit 1
           fi
-          echo "http-cron-scheduling-gate.sh matches the digest recorded at extraction ($actual)."
-          exec /usr/bin/bash "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh"
+          line=$(printf '%s\n' "$snapshot" | /usr/bin/sha256sum)
+          actual=${line%% *}
+          if [ "$actual" != "$GATE_SHA256" ]; then
+            echo "::error::The contents of $RUNNER_TEMP/gate/http-cron-scheduling-gate.sh hash to $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+            exit 1
+          fi
+          echo "http-cron-scheduling-gate.sh matches the digest recorded at extraction ($actual); running the verified snapshot."
+          exec /usr/bin/bash <(printf '%s\n' "$snapshot") < /dev/null
 
   security:
     name: Security Scan
