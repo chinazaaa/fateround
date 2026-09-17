@@ -58,6 +58,11 @@ export async function POST(req: NextRequest) {
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
   const { quote, options, correctIndex } = parsed
 
+  // `gameId` comes off a shape-only schema, so it can be any JSON value: a truthy non-string
+  // cleared the guard above and then threw on .toUpperCase(). Treat it as a missing field.
+  if (typeof gameId !== 'string') {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
   const gameIdUpper = gameId.toUpperCase()
   const quoteIdTrimmed = typeof quoteId === 'string' ? quoteId.trim() : ''
   const now = new Date().toISOString()
@@ -142,6 +147,11 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  // `gameId` comes off a shape-only schema, so it can be any JSON value: a truthy non-string
+  // cleared the guard above and then threw on .toUpperCase(). Treat it as a missing field.
+  if (typeof gameId !== 'string') {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
   const gameIdUpper = gameId.toUpperCase()
   const quoteIdTrimmed = typeof quoteId === 'string' ? quoteId.trim() : ''
   if (!quoteIdTrimmed) {
