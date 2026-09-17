@@ -6,7 +6,9 @@ import { NextRequest } from 'next/server'
  * `gameId` arrives as any JSON value. POST and DELETE both used to guard it with a bare
  * truthiness check and then call `gameId.toUpperCase()`, so a truthy non-string (`5`, `true`,
  * `{}`) threw an unhandled TypeError that surfaced as a 500 instead of a 400. Both now answer
- * the same "Missing required fields" 400 a missing gameId gets.
+ * the same "Missing required fields" 400 a missing gameId gets, on the player path and on the
+ * host path — which skips the token gate, so the new typeof guard is the only thing standing
+ * between a non-string gameId and `.toUpperCase()` there.
  *
  * This file pins the whole `gameId` matrix for both handlers. The `null`, absent and
  * empty-string rows must never move: the route treats all three as "absent" and answers
@@ -126,6 +128,45 @@ describe.each([
     expect(assertHostGameSpy).not.toHaveBeenCalled()
     expect(assertPlayerSpy).not.toHaveBeenCalled()
     expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  // The host path skips the resume-token gate entirely, so the typeof guard is the only gate
+  // left between a non-string gameId and .toUpperCase(). Without this row, deleting the guard
+  // would leave the host regression unpinned.
+  it.each(NON_STRING)(
+    'rejects %s gameId with 400 "Missing required fields" on the host path too',
+    async (_l, gameId) => {
+      const res = await handler()(request({ gameId, hostToken: 'host-tok', ...extraNoToken }, method))
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
+      expect(assertHostGameSpy).not.toHaveBeenCalled()
+      expect(assertPlayerSpy).not.toHaveBeenCalled()
+      expect(fromSpy).not.toHaveBeenCalled()
+    }
+  )
+
+  // A *falsy* non-string never reaches the new guard — it is turned away by the original
+  // truthiness gate, one gate earlier than a truthy one. Pinned so the difference is visible.
+  it.each([
+    ['0', 0],
+    ['false', false],
+  ])('treats a falsy non-string gameId (%s) as absent, at the original gate', async (_l, gameId) => {
+    const res = await handler()(request({ gameId, ...extra }, method))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
+    expect(assertHostGameSpy).not.toHaveBeenCalled()
+    expect(assertPlayerSpy).not.toHaveBeenCalled()
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  // gameId is uppercased but never trimmed (unlike quoteId on the next line), so a
+  // whitespace-only value reaches auth verbatim. Unchanged by this PR; pinned as the nearest
+  // neighbour of the inputs it does change.
+  it('passes a whitespace-only gameId through to auth untrimmed', async () => {
+    const res = await handler()(request({ gameId: '   ', ...extra }, method))
+    expect(res.status).toBe(404)
+    await expect(res.json()).resolves.toEqual({ error: 'Auth reached' })
+    expect(assertPlayerSpy).toHaveBeenCalledWith(expect.anything(), '   ', 'resume-tok')
   })
 
   // --- combined gates: a non-string gameId together with a second failing gate ----------
