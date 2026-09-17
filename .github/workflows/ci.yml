@@ -379,12 +379,13 @@ jobs:
           # history is fetched here. The step below needs the base commit for the
           # same reason: it reads both gate scripts out of it.
           #
-          # Do NOT add `filter: blob:none` here. It does not currently bypass the
-          # gates only because this repository is public and the runner can lazily
-          # fetch the missing blob anonymously. If fateround is ever made private
-          # that lazy fetch stops working, and a blobless clone becomes a one-word
-          # way to make a gate script's blob look absent from base -- which lands
-          # on the bootstrap branch and runs the pull request's own copy.
+          # Do NOT add `filter: blob:none` here either. It does not currently break
+          # the gates only because this repository is public and the runner can
+          # lazily fetch the missing blob anonymously. If fateround is ever made
+          # private that lazy fetch stops working, and a blobless clone becomes a
+          # one-word way to make a gate script's blob look absent from base --
+          # which now fails the job rather than running the pull request's copy,
+          # but fails it for a reason nobody will guess from the diff.
           fetch-depth: 0
 
       # ── Base-pinned enforcement: extract the gate scripts from BASE ─────────
@@ -456,7 +457,9 @@ jobs:
           # bypass: drop `fetch-depth: 0` above (it reads like a clone-cost tweak), replace a
           # script with `exit 0`, and a depth-1 clone makes `git show` fail for missing OBJECTS
           # -- a fallback would then install the PR's own copy and the check would go green with
-          # zero enforcement. A base commit that is not present is an infrastructure error.
+          # zero enforcement. Both causes are fatal (there is no fallback at all, see below),
+          # but they keep distinct messages because the fixes differ: fetch the base commit,
+          # versus restore the script on the base branch.
           if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
             echo "::error::Base commit $BASE_SHA is not present in this clone, so the cron gates cannot be pinned to it. This job's checkout must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copies -- a shallow clone is not a bootstrap."
             exit 1
@@ -479,29 +482,25 @@ jobs:
             exit 1
           fi
 
+          # NO BOOTSTRAP FALLBACK, deliberately. There used to be one, for the case where the
+          # base commit is present and simply does not contain a script -- which is what the
+          # first run looked like when these scripts reached `dev` in the very PR that
+          # introduced them. Both are on `dev` now (#1178), so every base commit has them and
+          # the branch could never fire legitimately again, while it remained a live bypass: a
+          # pull request can edit its own copy of a gate to exit 0, and anything that makes the
+          # blob look absent from base (renaming a path above, or `filter: blob:none` on the
+          # checkout if this repository is ever made private) would get that copy executed.
+          # Fail closed instead. If this ever does fire, the fix is to restore the script on the
+          # base branch, never to run the pull request's copy. Same shape as
+          # .github/workflows/mobile-rollout-gate.yml, whose fallback was removed for exactly
+          # this reason.
           for s in $scripts; do
-            if git cat-file -e "$BASE_SHA:scripts/ci/$s" 2>/dev/null; then
-              git show "$BASE_SHA:scripts/ci/$s" > "$RUNNER_TEMP/gate/$s"
-              echo "Using scripts/ci/$s from the base revision ($BASE_SHA) -- enforcement logic is pinned."
-            else
-              # BOOTSTRAP, and only this: the base commit is present and verifiably does not
-              # contain the script, because it reaches `dev` for the first time in the very PR
-              # that introduces it. Pinning to base protects an ESTABLISHED gate from being
-              # edited by the PR under review; on that first PR there is no established gate, so
-              # falling back to this PR's copy is no weaker than the gate having been inline
-              # (which is what it replaces). Every subsequent run takes the branch above.
-              #
-              # DELETE THIS BRANCH once this PR has landed on `dev`. From then on every base
-              # commit has both scripts, so it can never fire legitimately again -- and what is
-              # left is a bypass: a pull request can edit its own copy to exit 0, and anything
-              # that makes the blob look absent from base (renaming a path above, or
-              # `filter: blob:none` on the checkout if this repository is ever made private)
-              # gets that copy executed. Replace it with a hard failure, exactly as
-              # .github/workflows/mobile-rollout-gate.yml now does: that gate's first promotion
-              # is long past, so its fallback was removed and a missing blob is fatal there.
-              echo "::warning::scripts/ci/$s is absent from base commit $BASE_SHA (the commit itself is present) -- bootstrap run, using this PR's copy. Enforcement logic is NOT pinned for this run only."
-              cp "scripts/ci/$s" "$RUNNER_TEMP/gate/$s"
+            if ! git cat-file -e "$BASE_SHA:scripts/ci/$s" 2>/dev/null; then
+              echo "::error::scripts/ci/$s is missing from base commit $BASE_SHA (the commit itself is present). The gate script must exist on the base branch; refusing to fall back to this pull request's own copy, which would let the pull request supply the enforcement code that judges it."
+              exit 1
             fi
+            git show "$BASE_SHA:scripts/ci/$s" > "$RUNNER_TEMP/gate/$s"
+            echo "Using scripts/ci/$s from the base revision ($BASE_SHA) -- enforcement logic is pinned."
           done
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
