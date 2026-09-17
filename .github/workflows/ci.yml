@@ -414,6 +414,7 @@ jobs:
       # pnpm-workspace.yaml, .npmrc, .husky/), with the caveat recorded there that CODEOWNERS
       # blocks a merge only once a ruleset requires code-owner review.
       - name: Extract the base-pinned cron gate scripts from the base revision
+        id: extract_gates
         env:
           # The base branch's tip on a `pull_request` event, and EMPTY on anything else. There
           # is deliberately no `|| github.sha` fallback: `github.sha` on a pull request is the
@@ -440,8 +441,10 @@ jobs:
           if [ "$EVENT_NAME" = "push" ]; then
             echo "Event is 'push': the checked-out commit is itself the trusted revision, so the gates run from the checkout. Nothing is pinned on this path and nothing needs to be."
             for s in $scripts; do cp "scripts/ci/$s" "$RUNNER_TEMP/gate/$s"; done
-            exit 0
-          fi
+            # Falls through to the digest tail: the copies still have to be
+            # tamper-checked before they run, whatever they were copied from.
+            digest_only=yes
+          else
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "::error::Unhandled event '$EVENT_NAME'. This step knows how to pin the gates for 'pull_request' and how to run them unpinned for 'push', and refuses anything else rather than guessing. If you are adding a trigger: when the checked-out commit is itself trusted (as with workflow_dispatch on dev/main), add the event to the 'push' allow-list above; when it is not (as with merge_group, which carries no pull request context and must not run the queued changes' own copy of a gate), teach this step how to find the trusted base for that event first."
             exit 1
@@ -501,6 +504,56 @@ jobs:
             fi
             git show "$BASE_SHA:scripts/ci/$s" > "$RUNNER_TEMP/gate/$s"
             echo "Using scripts/ci/$s from the base revision ($BASE_SHA) -- enforcement logic is pinned."
+          done
+          fi
+          : "${digest_only:=no}"
+
+          # ── Digest what was extracted, so the COPY can be checked too ───────
+          #
+          # Pinning the source is not the same as pinning what runs. These files
+          # live in $RUNNER_TEMP, which every later step can write to, and
+          # `pnpm install --frozen-lockfile` -- three steps below -- runs the root
+          # package.json's `prepare` hook. That hook can simply overwrite
+          # $RUNNER_TEMP/gate/*.sh, and the two gate steps would then execute the
+          # pull request's code from a path that looks pinned. Base-SHA
+          # validation, `contents: read` and `BASH_ENV: ''` do nothing about it:
+          # the bytes were pinned, the FILE was not.
+          #
+          # So record a SHA-256 of each extracted file as a STEP OUTPUT and have
+          # each gate step re-check its own script immediately before running it.
+          # A step output is held by the runner: a later step cannot retroactively
+          # rewrite another step's outputs, which is exactly the property a status
+          # file in $RUNNER_TEMP would not have had.
+          #
+          # Why digests rather than re-extracting just before each run: a late
+          # `git show` would put the trust back on `git` (a $PATH lookup, and by
+          # then the install has run) plus the .git directory in the workspace,
+          # which every step can also write to. Digesting keeps the extraction at
+          # step 1 -- before any PR-controlled lifecycle code has executed -- and
+          # needs only /usr/bin/sha256sum to be intact afterwards.
+          #
+          # RESIDUAL, stated plainly: /usr/bin/sha256sum and /usr/bin/bash are
+          # absolute but not immutable. Hosted runners give the job passwordless
+          # sudo, so the same `prepare` hook could overwrite either binary, just
+          # as already documented for /usr/bin/psql. This raises the bar from
+          # "write a file in a temp directory" to "overwrite a system binary". It
+          # does not make it impossible.
+          for s in $scripts; do
+            line=$(/usr/bin/sha256sum -- "$RUNNER_TEMP/gate/$s")
+            digest=${line%% *}
+            if ! [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::Could not compute a SHA-256 for $RUNNER_TEMP/gate/$s (got '$line'). Refusing to continue without a digest to check the extracted copy against."
+              exit 1
+            fi
+            case "$s" in
+              deploy-cron-inventory-gate.sh) echo "deploy_sha256=$digest" >> "$GITHUB_OUTPUT" ;;
+              http-cron-scheduling-gate.sh)  echo "http_sha256=$digest" >> "$GITHUB_OUTPUT" ;;
+              *)
+                echo "::error::No step output is defined for $s, so its digest cannot be recorded and the gate steps could not check it. Add one here when adding a script to the list above."
+                exit 1
+                ;;
+            esac
+            echo "Recorded sha256 $digest for $s (pinned to base: $([ "$digest_only" = yes ] && echo no || echo yes))."
           done
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -564,7 +617,35 @@ jobs:
           # takes precedence over a $GITHUB_ENV one, so pinning it empty means
           # bash sources nothing. Every step in this gate carries it.
           BASH_ENV: ''
-        run: bash "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh"
+          # The digest recorded by `Extract the base-pinned cron gate scripts`,
+          # held by the runner as that step's output rather than in a file any
+          # step in between could rewrite.
+          GATE_SHA256: ${{ steps.extract_gates.outputs.deploy_sha256 }}
+        run: |
+          set -euo pipefail
+          # Re-check the extracted copy against the digest the extract step
+          # recorded, immediately before executing it. $RUNNER_TEMP is writable
+          # by every step, and PR-controlled code has run since the extraction
+          # (`pnpm install`'s `prepare` hook; and for the HTTP gate, the vitest
+          # RLS suite as well), so "it was pinned when it was written" is not the
+          # same as "it is base's bytes now". Absolute sha256sum, absolute bash:
+          # neither is resolved through $PATH. See the extract step for what this
+          # does and does not buy.
+          #
+          # An unset, empty or malformed digest is treated exactly like a
+          # mismatch. "Nothing to check" must never read as "nothing wrong".
+          if ! [[ "${GATE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::The extract step recorded no usable SHA-256 for deploy-cron-inventory-gate.sh (got '${GATE_SHA256:-<unset>}'). An unset, empty or malformed digest is treated exactly like a mismatch: refusing to run an unverified copy."
+            exit 1
+          fi
+          line=$(/usr/bin/sha256sum -- "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh")
+          actual=${line%% *}
+          if [ "$actual" != "$GATE_SHA256" ]; then
+            echo "::error::$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh has sha256 $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+            exit 1
+          fi
+          echo "deploy-cron-inventory-gate.sh matches the digest recorded at extraction ($actual)."
+          exec /usr/bin/bash "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh"
 
       # The local stack's URL and keys. These are the Supabase CLI's fixed demo credentials --
       # public, documented, identical on every developer's machine, and worthless outside this
@@ -1080,7 +1161,34 @@ jobs:
           # can define a shell function named `psql` that shadows the binary for
           # every assertion below. See the note on the anchor step.
           BASH_ENV: ''
-        run: bash "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh"
+          # Checked AGAIN here, independently of the inventory step: the vitest
+          # RLS suite runs in between and the pull request owns it.
+          GATE_SHA256: ${{ steps.extract_gates.outputs.http_sha256 }}
+        run: |
+          set -euo pipefail
+          # Re-check the extracted copy against the digest the extract step
+          # recorded, immediately before executing it. $RUNNER_TEMP is writable
+          # by every step, and PR-controlled code has run since the extraction
+          # (`pnpm install`'s `prepare` hook; and for the HTTP gate, the vitest
+          # RLS suite as well), so "it was pinned when it was written" is not the
+          # same as "it is base's bytes now". Absolute sha256sum, absolute bash:
+          # neither is resolved through $PATH. See the extract step for what this
+          # does and does not buy.
+          #
+          # An unset, empty or malformed digest is treated exactly like a
+          # mismatch. "Nothing to check" must never read as "nothing wrong".
+          if ! [[ "${GATE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::The extract step recorded no usable SHA-256 for http-cron-scheduling-gate.sh (got '${GATE_SHA256:-<unset>}'). An unset, empty or malformed digest is treated exactly like a mismatch: refusing to run an unverified copy."
+            exit 1
+          fi
+          line=$(/usr/bin/sha256sum -- "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh")
+          actual=${line%% *}
+          if [ "$actual" != "$GATE_SHA256" ]; then
+            echo "::error::$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh has sha256 $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+            exit 1
+          fi
+          echo "http-cron-scheduling-gate.sh matches the digest recorded at extraction ($actual)."
+          exec /usr/bin/bash "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh"
 
   security:
     name: Security Scan
