@@ -73,7 +73,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // question_packs_game_type_check constraint in route.field-types.test.ts. It is consulted
       // directly rather than aliased to a local const: a local copy is a place for the route to
       // drift from the pinned list again, which is the whole bug this fixes.
-      if (!QUESTION_PACK_GAME_TYPES.includes(game_type))
+      // Widened to `readonly string[]` for the membership test only: the list is `as const` so
+      // that a union type can be derived from it, and `.includes` on a literal-typed tuple
+      // refuses the `string` that arrives on the request body.
+      if (!(QUESTION_PACK_GAME_TYPES as readonly string[]).includes(game_type))
         return NextResponse.json({ error: 'Invalid game_type' }, { status: 400 })
       updates.game_type = game_type
     }
