@@ -71,12 +71,55 @@ describe('library client pages derive their game types from the shared module', 
     expect(read(rel)).toMatch(/from '@\/lib\/question-pack-game-type-meta'/)
   })
 
-  it.each(SITES)('%s declares no local list of game-type slugs', (rel) => {
+  /**
+   * Distinct pack slugs each page may name as string literals at all.
+   *
+   * Counted from the current source: the admin preview renderer dispatches on 6, and the submit
+   * form's CSV validators and preview branches legitimately dispatch on all 14, so for that file
+   * the count is a ceiling rather than a real constraint and the union/map guards below are what
+   * protect it. The public library page names none at all, so any slug appearing there is a
+   * regression on its own.
+   *
+   * A counting guard rather than a shape guard on purpose: the first version of this test matched
+   * only bracketed array literals, so it missed a restated union and a local label map — the
+   * exact two defects this PR removed.
+   */
+  const MAX_SLUGS_NAMED: Record<(typeof SITES)[number], number> = {
+    'app/admin/library/page.tsx': 6,
+    'app/library/page.tsx': 0,
+    'app/library/submit/page.tsx': 14,
+  }
+
+  const slugsNamedIn = (source: string) =>
+    QUESTION_PACK_GAME_TYPES.filter((gameType) => new RegExp(`['"\`]${gameType}['"\`]`).test(source))
+
+  it.each(SITES)('%s names no more game-type slugs than its dispatch branches', (rel) => {
+    const named = slugsNamedIn(read(rel))
+    expect(named.length, `${rel} names ${named.join(', ')} — derive them instead of restating`).toBeLessThanOrEqual(
+      MAX_SLUGS_NAMED[rel]
+    )
+  })
+
+  it.each(SITES)('%s restates no union of game-type slugs', (rel) => {
     const source = read(rel)
-    // A local copy would have to name at least two pack types as string literals in one
-    // declaration. `GAME_TYPE_FORMATS` in the submit page is keyed, not a list of slugs.
-    const listLiterals = source.match(/\[[^[\]]*'(?:trivia|would_you_rather|word_grouping)'[^[\]]*\]/g) ?? []
-    expect(listLiterals, `${rel} should derive its game types, not restate them`).toEqual([])
+    // `'trivia' |` or `| 'trivia'` — a hand-written union like the one this PR deleted from
+    // src/app/library/page.tsx, which a count alone would miss when the slugs are already named.
+    // The `(?!\\|)` / `(?<!\\|)` guards keep `gameType === 'describe_it' || …` out of it.
+    const union = QUESTION_PACK_GAME_TYPES.flatMap(
+      (gameType) =>
+        source.match(new RegExp(`((?<!\\|)\\|(?!\\|)\\s*'${gameType}'|'${gameType}'\\s*\\|(?!\\|))`, 'g')) ?? []
+    )
+    expect(union, `${rel} should alias QuestionPackGameType, not restate it`).toEqual([])
+  })
+
+  it.each(SITES)('%s declares no local label/colour map keyed by game type', (rel) => {
+    const source = read(rel)
+    // A `trivia: { … label: … }` entry — the shape of the duplicated GAME_TYPE_META this PR
+    // deleted from both library pages.
+    const maps = QUESTION_PACK_GAME_TYPES.flatMap(
+      (gameType) => source.match(new RegExp(`\\b${gameType}:\\s*\\{[^}]*\\b(?:label|color):`, 'g')) ?? []
+    )
+    expect(maps, `${rel} should use QUESTION_PACK_GAME_TYPE_META, not its own`).toEqual([])
   })
 
   it('the submit form derives its picker rows from the shared order', () => {

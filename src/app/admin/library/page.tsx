@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '@/components/ui/PageShell'
 import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
-import { QUESTION_PACK_GAME_TYPE_ORDER, questionPackGameTypeMeta } from '@/lib/question-pack-game-type-meta'
+import {
+  QUESTION_PACK_GAME_TYPE_META,
+  QUESTION_PACK_GAME_TYPE_ORDER,
+  questionPackGameTypeMeta,
+} from '@/lib/question-pack-game-type-meta'
 
 interface QuestionPack {
   id: string
@@ -340,7 +344,11 @@ function PackCard({
             <label className="text-xs font-medium text-muted">Game type</label>
             <div className="flex gap-2 flex-wrap">
               {QUESTION_PACK_GAME_TYPE_ORDER.map((gt) => {
-                const m = questionPackGameTypeMeta(gt)
+                // Indexed directly, not through `questionPackGameTypeMeta`: `gt` comes from the
+                // order array, which the meta is exhaustive over by construction. A `?? gt`
+                // fallback here would re-admit the raw-slug rendering this PR removes. The badge
+                // above still goes through the helper — `pack.game_type` is off the wire.
+                const m = QUESTION_PACK_GAME_TYPE_META[gt]
                 return (
                   <button
                     key={gt}
@@ -348,11 +356,11 @@ function PackCard({
                     onClick={() => setGameType(gt)}
                     className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
                       gameType === gt
-                        ? `${m?.color ?? ''} border-current`
+                        ? `${m.color} border-current`
                         : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
                     }`}
                   >
-                    {m?.label ?? gt}
+                    {m.label}
                   </button>
                 )
               })}

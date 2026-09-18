@@ -1,4 +1,4 @@
-import { QUESTION_PACK_GAME_TYPES, type QuestionPackGameType } from '@/lib/question-pack-game-types'
+import type { QuestionPackGameType } from '@/lib/question-pack-game-types'
 
 export interface QuestionPackGameTypeMeta {
   /** Human label for the type. Shown on pack badges, the admin picker and the public filter. */
@@ -86,7 +86,9 @@ export const QUESTION_PACK_GAME_TYPE_META = {
  * exhaustive against the constraint by type, and ES key order for non-numeric keys is insertion
  * order, so this array is exhaustive by construction and cannot drift from either.
  */
-export const QUESTION_PACK_GAME_TYPE_ORDER = Object.keys(QUESTION_PACK_GAME_TYPE_META) as QuestionPackGameType[]
+export const QUESTION_PACK_GAME_TYPE_ORDER: readonly QuestionPackGameType[] = Object.freeze(
+  Object.keys(QUESTION_PACK_GAME_TYPE_META) as QuestionPackGameType[]
+)
 
 /**
  * Meta for a `game_type` that arrived as a plain string (an API response, a DB row). Returns
@@ -101,5 +103,9 @@ export function questionPackGameTypeMeta(gameType: string): QuestionPackGameType
   return (QUESTION_PACK_GAME_TYPE_META as Record<string, QuestionPackGameTypeMeta>)[gameType]
 }
 
-/** `QUESTION_PACK_GAME_TYPES` re-exported so a consumer needs only this module. */
-export { QUESTION_PACK_GAME_TYPES, type QuestionPackGameType }
+/**
+ * Re-exported for convenience. Only the *type* — the value keeps a single import path,
+ * `@/lib/question-pack-game-types`, because two ways to reach one constant is the ambiguity this
+ * module exists to remove.
+ */
+export type { QuestionPackGameType }
