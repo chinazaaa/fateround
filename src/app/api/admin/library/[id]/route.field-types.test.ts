@@ -1,13 +1,17 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
+import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
 
 /**
  * PATCH /api/admin/library/[id] — per-field type matrix.
  *
  * `libraryPatchSchema` is deliberately permissive (`z.unknown().optional()` for the fields the
  * handler runtime-checks), so every such field arrives as whatever JSON value the admin client
- * sent and the route's own guards are the only gate. `title`, `author_name`, `tags`, `questions`
- * and `price_coins` each guard the *type* before they use it. `description` did not:
+ * sent and the route's own guards are the only gate. `title`, `author_name`, `tags` and
+ * `questions` each guard the *type* before they use it; `game_type` and `status` are typed
+ * `z.string().optional()` in the schema, so zod turns a non-string away before the handler runs;
+ * `price_coins` reaches the DB through a coercion rather than a type check (see its block near
+ * the bottom — a separate, unfixed issue this file pins as-is). `description` did neither:
  *
  *     if (description !== null && typeof description === 'string' && description.length > 500)
  *
@@ -152,7 +156,10 @@ describe('PATCH /api/admin/library/[id] — the action fork', () => {
     ['approve', 'approved'],
     ['reject', 'rejected'],
   ])('action=%s ignores every other field, description included', async (action, status) => {
-    const res = await patch({ action, description: ['a', 'b'], title: 5 })
+    // `title` is a VALID string on purpose: a non-string title would 400 in the field-edit
+    // branch, so `lastUpdate()` would throw before the assertion and the `title` pin could
+    // never fail. A valid title is written in that branch, so this pin has teeth.
+    const res = await patch({ action, description: ['a', 'b'], title: 'A Pack' })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ success: true })
     const update = lastUpdate()
@@ -320,6 +327,29 @@ describe('PATCH /api/admin/library/[id] — gate precedence', () => {
     expect(fromSpy).not.toHaveBeenCalled()
   })
 
+  // PINS MOVED DELIBERATELY. The description block sits above FOUR later gates, not just tags,
+  // so a non-string description now answers ahead of each of them where it used to fall
+  // through. Every one of these requests was a 400 before and is a 400 now — only the message
+  // moved — but all four are listed so the change is not discovered later by an admin client
+  // that branches on the error text.
+  it.each([
+    ['tags', { tags: 'easy' }, 'tags must be an array'],
+    ['status', { status: 'bogus' }, 'Invalid status'],
+    ['questions', { questions: [] }, 'questions must be a non-empty array'],
+    ['price_coins', { price_coins: -1 }, `price_coins must be an integer between 0 and ${MAX_PRICE_COINS}`],
+  ])('answers the description type gate ahead of the %s gate', async (_label, extra, wasMessage) => {
+    const res = await patch({ description: 5, ...extra })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid description' })
+    expect(fromSpy).not.toHaveBeenCalled()
+
+    // ...and that later gate still answers on its own, unchanged, with the message it used to
+    // answer this request with.
+    const alone = await patch(extra)
+    expect(alone.status).toBe(400)
+    await expect(alone.json()).resolves.toEqual({ error: wasMessage })
+  })
+
   it('surfaces a database rejection of the update as a 500', async () => {
     state.updateError = { message: 'boom' }
     const res = await patch({ description: 'fine' })
@@ -332,7 +362,7 @@ describe('PATCH /api/admin/library/[id] — gate precedence', () => {
 // uses it, so none has the bug and NONE is changed by this PR. Pinned so that stays true.
 // ---------------------------------------------------------------------------------------------
 
-describe('PATCH /api/admin/library/[id] — the other fields already type-guard', () => {
+describe('PATCH /api/admin/library/[id] — the other fields are already type-gated', () => {
   it.each([...TRUTHY_NON_STRING, ...FALSY_NON_STRING, ['null', null] as [string, unknown]])(
     'rejects a non-string title (%s) with 400 "Invalid title"',
     async (_label, value) => {
@@ -360,26 +390,47 @@ describe('PATCH /api/admin/library/[id] — the other fields already type-guard'
     expect((await patch({ author_name: 'y'.repeat(61) })).status).toBe(400)
   })
 
+  // `game_type` and `status` are the two fields whose type gate is NOT in the handler: the
+  // schema types them `z.string().optional()`, so a non-string is turned away by zod and the
+  // body carries zod's message, not this file's `Invalid game_type` / `Invalid status`. The
+  // body is asserted so a schema 400 stays distinguishable from a route 400 — and so that
+  // moving either gate would be visible here.
   it.each([
     ['a number', 5],
     ['true', true],
     ['an object', {}],
     ['an array holding a valid type', ['trivia']],
     ['null', null],
-  ])('rejects a non-string game_type (%s) with a 400 before any write', async (_label, value) => {
+  ])('rejects a non-string game_type (%s) at the schema, before any write', async (_label, value) => {
     const res = await patch({ game_type: value })
     expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: expect.stringContaining('expected string') })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown STRING game_type in the handler, with "Invalid game_type"', async () => {
+    const res = await patch({ game_type: 'not_a_real_game' })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid game_type' })
     expect(fromSpy).not.toHaveBeenCalled()
   })
 
   it.each([...TRUTHY_NON_STRING, ...FALSY_NON_STRING, ['null', null] as [string, unknown]])(
-    'rejects a non-string status (%s) with a 400 before any write',
+    'rejects a non-string status (%s) at the schema, before any write',
     async (_label, value) => {
       const res = await patch({ status: value })
       expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: expect.stringContaining('expected string') })
       expect(fromSpy).not.toHaveBeenCalled()
     }
   )
+
+  it('rejects an unknown STRING status in the handler, with "Invalid status"', async () => {
+    const res = await patch({ status: 'bogus' })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid status' })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
 
   it.each([
     ...TRUTHY_NON_STRING.filter(([l]) => l !== 'a short array'),
@@ -433,5 +484,21 @@ describe('PATCH /api/admin/library/[id] — the other fields already type-guard'
     updateSpy.mockClear()
     await patch({ price_coins: 0 })
     expect(lastUpdate()).toEqual({ price_coins: 0 })
+  })
+
+  // NOT CHANGED BY THIS PR, and pinned as-is so the next person sees it rather than
+  // rediscovering it. `price_coins` reaches the DB through a *coercion*, not a type check:
+  // `Number('')` is 0, so a blank admin price input silently flips a paid pack to free, and
+  // `Number(' 250 ')` / `Number('0x10')` are accepted too. That is a different bug from the
+  // `description` one — it needs a decision about what the admin form actually posts for a
+  // cleared price field, not a `typeof` guard — so it is left for its own PR.
+  it.each([
+    ['an empty string', '', 0],
+    ['a whitespace string', '   ', 0],
+    ['a padded numeric string', ' 250 ', 250],
+    ['a hex string', '0x10', 16],
+  ])('TODAY: price_coins = %s is coerced and written as %s', async (_label, value, stored) => {
+    await patch({ price_coins: value })
+    expect(lastUpdate()).toEqual({ price_coins: stored })
   })
 })
