@@ -155,10 +155,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  // These fields come off the shape-only schema above, so each can be any JSON value, and a
+  // truthy non-string does not merely escape the caps below — it *bypasses* them: `(5).length`
+  // is `undefined` and `undefined > 100` is false, while `['a','b'].length` is 2. The value was
+  // then inserted verbatim into a `text` column, where PostgREST's json_populate_recordset
+  // coerces it ('5', 'true', '{}', '["a", "b"]') and stores it. Each guard sits with the cap it
+  // protects, so for well-typed input the order the gates answer in is unchanged; a falsy
+  // non-string still stops one gate earlier, at the truthiness check above.
+  if (typeof title !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   if (title.length > 100) return NextResponse.json({ error: 'Title too long' }, { status: 400 })
+  if (typeof author_name !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   if (author_name.length > 60) return NextResponse.json({ error: 'Author name too long' }, { status: 400 })
+  // `description` is optional, so null/absent stay "absent" and are written through as null —
+  // a schema-level `z.string().optional()` would 400 a null the route accepts today (#1163).
+  if (description !== null && description !== undefined && typeof description !== 'string')
+    return NextResponse.json({ error: 'Invalid description' }, { status: 400 })
   if (description && description.length > 500)
     return NextResponse.json({ error: 'Description too long' }, { status: 400 })
+  // `game_type` has no length cap; its only gate today is `question_packs_game_type_check` in
+  // the database, which rejects the coerced text and surfaces as a 500. Checked last so it
+  // stays the final gate, and only the 500 → 400 changes — an unknown *string* game_type is
+  // still left to the constraint.
+  if (typeof game_type !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
   const validTags = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy']
   const cleanTags = Array.isArray(tags)

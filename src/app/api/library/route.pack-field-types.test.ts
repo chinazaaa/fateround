@@ -224,19 +224,23 @@ describe.each([
   // the raw JSON value was inserted into a `text NOT NULL` column, where PostgREST's
   // json_populate_recordset coerces it to text ('5', 'true', '{}', '["a", "b"]') and stores it.
   // The length cap never even ran: `(5).length` is undefined and `['a','b'].length` is 2.
-  it.each(TRUTHY_NON_STRING)(`BEFORE: inserts ${field} = %s verbatim with 200`, async (_label, value) => {
-    const res = await post({ ...VALID, [field]: value })
-    expect(res.status).toBe(200)
-    expect(packInsertSpy).toHaveBeenCalledWith(expect.objectContaining({ [field]: value }))
-  })
+  it.each(TRUTHY_NON_STRING)(
+    `rejects ${field} = %s with 400 "Missing required fields" and no DB write`,
+    async (_label, value) => {
+      const res = await post({ ...VALID, [field]: value })
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
+      expect(fromSpy).not.toHaveBeenCalled()
+    }
+  )
 
   // An array with MORE elements than the cap was already rejected by the pre-fix route — with
   // this exact message — because `.length` on an array counts elements. Unchanged either way,
   // which is why the assertion below did not move; only the reason did.
-  it(`BEFORE: rejects a ${cap + 1}-element array ${field} with 400 "${message}"`, async () => {
+  it(`rejects a ${cap + 1}-element array ${field} with 400 "Missing required fields"`, async () => {
     const res = await post({ ...VALID, [field]: Array.from({ length: cap + 1 }, () => 'x') })
     expect(res.status).toBe(400)
-    await expect(res.json()).resolves.toEqual({ error: message })
+    await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
     expect(fromSpy).not.toHaveBeenCalled()
   })
 })
@@ -279,20 +283,21 @@ describe('POST /api/library — description', () => {
   // skipped the cap via the `description &&` short-circuit; the truthy ones via `.length`
   // being undefined (or, for a short array, an element count under 500).
   it.each([...TRUTHY_NON_STRING, ...FALSY_NON_STRING])(
-    'BEFORE: stores description = %s verbatim with 200',
+    'rejects description = %s with 400 "Invalid description" and no DB write',
     async (_label, value) => {
       const res = await post({ ...VALID, description: value })
-      expect(res.status).toBe(200)
-      expect(packInsertSpy).toHaveBeenCalledWith(expect.objectContaining({ description: value }))
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: 'Invalid description' })
+      expect(fromSpy).not.toHaveBeenCalled()
     }
   )
 
   // A 501-element array was already rejected pre-fix, with "Description too long", because
   // `.length` counted elements. Pin moved: it is now caught one gate earlier, by type.
-  it('BEFORE: rejects a 501-element array description with 400 "Description too long"', async () => {
+  it('rejects a 501-element array description with 400 "Invalid description"', async () => {
     const res = await post({ ...VALID, description: Array.from({ length: 501 }, () => 'x') })
     expect(res.status).toBe(400)
-    await expect(res.json()).resolves.toEqual({ error: 'Description too long' })
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid description' })
     expect(fromSpy).not.toHaveBeenCalled()
   })
 })
@@ -322,11 +327,12 @@ describe('POST /api/library — game_type', () => {
   // '{}', '["trivia"]') fails the check constraint and the route answered 500. Now a clean 400,
   // decided before the write — the same 500 → 400 change PR #1179 made for wst-quotes.
   it.each([...TRUTHY_NON_STRING, ['an array holding a valid type', ['trivia']] as [string, unknown]])(
-    'BEFORE: inserts game_type = %s verbatim with 200',
+    'rejects game_type = %s with 400 "Missing required fields" and no DB write',
     async (_label, value) => {
       const res = await post({ ...VALID, game_type: value })
-      expect(res.status).toBe(200)
-      expect(packInsertSpy).toHaveBeenCalledWith(expect.objectContaining({ game_type: value }))
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
+      expect(fromSpy).not.toHaveBeenCalled()
     }
   )
 })
@@ -352,10 +358,10 @@ describe('POST /api/library — combined gates', () => {
   // Pin moved deliberately: pre-fix a non-string title cleared its (bypassed) cap, so the
   // author_name cap answered. The title type gate now sits where the title cap sits, so it
   // answers first. Every gate here is a 400 either way; only the message moved.
-  it('BEFORE: a non-string title lets the author_name length gate answer', async () => {
+  it('answers the title type gate before the author_name length gate', async () => {
     const res = await post({ ...VALID, title: 5, author_name: 'y'.repeat(61) })
     expect(res.status).toBe(400)
-    await expect(res.json()).resolves.toEqual({ error: 'Author name too long' })
+    await expect(res.json()).resolves.toEqual({ error: 'Missing required fields' })
   })
 
   it('answers the title length gate before anything description-related', async () => {
