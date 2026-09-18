@@ -29,15 +29,26 @@ const libraryPatchSchema = z.object({
  *
  * This list had drifted four types behind that constraint: `crossword`, `word_search`,
  * `word_scramble` and `word_grouping` were rejected here with 400 "Invalid game_type" even
- * though the DB takes them, so a pack of one of those types could not be re-typed through the
- * admin editor at all. The drift came in with 20260717150000_wst_library_packs.sql, which
- * restated the constraint without carrying those types forward; 20260810120000 repaired the
- * constraint but this list was never brought back in step.
+ * though the DB takes them. That did not merely block re-typing a pack — src/app/admin/library/
+ * page.tsx sends `game_type` on *every* save, seeded from the pack's own current value, so
+ * editing any field of such a pack (title, price, questions, approval) was a 400. Packs of
+ * those four types were entirely uneditable through the admin UI, and src/app/library/submit/
+ * page.tsx lets the public submit all four, so they exist.
+ *
+ * The drift is one of omission, not removal: this list never held the three word-puzzle types.
+ * It widened DB-first each time and the route was simply not updated alongside —
+ * 20260712180000_crossword_word_search_library_packs.sql added crossword + word_search,
+ * 20260712{190000,200000}_word_scramble*.sql added word_scramble, and
+ * 20260810120000_word_grouping_library_packs.sql added word_grouping (that last migration also
+ * repairs a *constraint* regression in 20260717150000_wst_library_packs.sql, which is a
+ * separate matter from this list — 20260717150000 only ever added who_said_this here).
  *
  * Keep it equal to that constraint. Widening it past the constraint would turn a clean 400 into
- * a 500 from the DB; narrowing it strands packs the way this drift did.
+ * a 500 from the DB; narrowing it strands packs the way this drift did. The set-equality pin in
+ * route.field-types.test.ts is what enforces that in both directions, which is why this array
+ * is exported.
  */
-const VALID_GAME_TYPES = [
+export const VALID_GAME_TYPES = [
   'trivia',
   'would_you_rather',
   'most_likely_to',

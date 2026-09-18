@@ -518,16 +518,27 @@ describe('PATCH /api/admin/library/[id] — the other fields are already type-ga
 // half, and the two had drifted apart. Replaying every `alter table question_packs ... add
 // constraint question_packs_game_type_check` in migration-filename order against
 // public.ecr.aws/supabase/postgres:15.8.1.085 yields 14 accepted values, last set by
-// supabase/migrations/20260810120000_word_grouping_library_packs.sql — which itself repairs
-// 20260717150000_wst_library_packs.sql, a restatement that dropped quick_draw / crossword /
-// word_search / word_scramble on the way past.
+// supabase/migrations/20260810120000_word_grouping_library_packs.sql.
 //
-// The route listed 10 of those 14. `crossword`, `word_search`, `word_scramble` and
-// `word_grouping` were rejected with 400 "Invalid game_type" even though an INSERT and an
-// UPDATE of each was verified accepted by the constraint, so a pack of one of those types could
-// not be re-typed through the admin editor at all. This PR widens the list to the 14 the DB
-// takes — the opposite risk direction from #1179/#1180/#1181/#1182, so every row below asserts
-// the *update payload* as well as the status, and the values in neither list stay 400.
+// The route listed 10 of those 14. The drift is one of omission rather than removal: the route
+// list never held the three word-puzzle types, because each migration widened the DB without
+// updating the route — 20260712180000_crossword_word_search_library_packs.sql (crossword,
+// word_search), 20260712{190000,200000}_word_scramble*.sql (word_scramble) and
+// 20260810120000_word_grouping_library_packs.sql (word_grouping). `git log -L 25,36` on the
+// route confirms the list went 3 -> 8 -> +quick_draw -> +who_said_this and nothing else.
+// (20260810120000 also repairs a constraint regression left by 20260717150000_wst_library_packs
+// .sql; that is about the *constraint*, not this list, which 20260717150000 only added
+// who_said_this to.)
+//
+// `crossword`, `word_search`, `word_scramble` and `word_grouping` were therefore rejected with
+// 400 "Invalid game_type" even though an INSERT and an UPDATE of each was verified accepted by
+// the constraint. That made packs of those types entirely uneditable, not merely un-re-typable:
+// src/app/admin/library/page.tsx sends `game_type` on every save, seeded from the pack's own
+// value, so editing the title, price, questions or approval state of one 400'd too.
+//
+// This PR widens the list to the 14 the DB takes — the opposite risk direction from
+// #1179/#1180/#1181/#1182, so every row below asserts the *update payload* as well as the
+// status, and the values in neither list stay 400.
 //
 // Unchanged and pinned here so the widening cannot quietly take them with it: the schema's
 // `z.string().optional()` still turns `null` and every non-string away before the handler runs
@@ -653,12 +664,29 @@ describe('PATCH /api/admin/library/[id] — game_type on the short-circuit branc
 })
 
 /**
- * The list the route gates on must stay the list the DB accepts. This is the pin that would
- * have caught the drift: it is transcribed from
+ * The list the route gates on must stay the list the DB accepts — in BOTH directions. The
+ * expectation here is transcribed from
  * supabase/migrations/20260810120000_word_grouping_library_packs.sql, not from the route.
+ *
+ * Direction matters. A missing entry is the bug this PR fixes: a clean 400 on a value the DB
+ * would have taken. An EXTRA entry is worse and fails differently — the route would wave the
+ * value through to a constraint violation, which route.ts turns into a 500, not a 400. A pin
+ * that only walks the DB list and asserts 200 cannot see an extra: adding a fifth type such as
+ * 'wordle_room' (a real games.game_type in this repo, so a plausible copy-paste) leaves every
+ * such row green. Hence the set comparison against the route's own exported array.
  */
 describe('PATCH /api/admin/library/[id] — route list vs DB constraint', () => {
-  it('accepts exactly the 14 values question_packs_game_type_check accepts', async () => {
+  it('gates on exactly the values question_packs_game_type_check accepts — no missing, no extra', async () => {
+    const { VALID_GAME_TYPES } = await import('./route')
+    expect([...VALID_GAME_TYPES].sort()).toEqual([...DB_ACCEPTED_GAME_TYPES].sort())
+  })
+
+  it('names the same 14 values in the constraint order, so the transcription stays readable', async () => {
+    const { VALID_GAME_TYPES } = await import('./route')
+    expect(VALID_GAME_TYPES).toEqual([...DB_ACCEPTED_GAME_TYPES])
+  })
+
+  it('answers 200 for every one of those values end to end', async () => {
     const accepted: string[] = []
     for (const type of DB_ACCEPTED_GAME_TYPES) {
       fromSpy.mockClear()
