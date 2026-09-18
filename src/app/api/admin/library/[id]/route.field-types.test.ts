@@ -679,11 +679,13 @@ describe('PATCH /api/admin/library/[id] — game_type on the short-circuit branc
  * route holds no copy of its own — it calls QUESTION_PACK_GAME_TYPES.includes() at the point of
  * use — so there is nowhere for the handler to diverge from what is pinned here.
  *
- * The three tests below overlap deliberately and each fails somewhere the others do not: the set
- * comparison names the offending member, the ordered comparison keeps the transcription readable
- * against the migration, and the end-to-end loop is the only one that proves the handler
- * actually gates on THIS array — swap route.ts to consult some other list and the first two
- * would still pass.
+ * The three tests below overlap deliberately, though not equally. The ordered comparison is the
+ * real pin and strictly subsumes the sorted one: anything that fails the set comparison fails
+ * the ordered one too, and a pure reordering fails only the ordered one. The sorted test is kept
+ * for its failure message — it names the offending member instead of printing two long arrays —
+ * not for coverage. The end-to-end loop earns its place differently: it is the only one that
+ * exercises the handler, so it would catch the list being pinned here while the route gates on
+ * something else.
  */
 describe('PATCH /api/admin/library/[id] — route list vs DB constraint', () => {
   it('gates on exactly the values question_packs_game_type_check accepts — no missing, no extra', async () => {
