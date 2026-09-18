@@ -10,8 +10,8 @@ import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
  * sent and the route's own guards are the only gate. `title`, `author_name`, `tags` and
  * `questions` each guard the *type* before they use it; `game_type` and `status` are typed
  * `z.string().optional()` in the schema, so zod turns a non-string away before the handler runs;
- * `price_coins` reaches the DB through a coercion rather than a type check (see its block near
- * the bottom — a separate, unfixed issue this file pins as-is). `description` did neither:
+ * `price_coins` reaches the DB through a coercion rather than a type check (its full value
+ * matrix lives in route.price-coins.test.ts). `description` did neither:
  *
  *     if (description !== null && typeof description === 'string' && description.length > 500)
  *
@@ -486,19 +486,27 @@ describe('PATCH /api/admin/library/[id] — the other fields are already type-ga
     expect(lastUpdate()).toEqual({ price_coins: 0 })
   })
 
-  // NOT CHANGED BY THIS PR, and pinned as-is so the next person sees it rather than
-  // rediscovering it. `price_coins` reaches the DB through a *coercion*, not a type check:
-  // `Number('')` is 0, so a blank admin price input silently flips a paid pack to free, and
-  // `Number(' 250 ')` / `Number('0x10')` are accepted too. That is a different bug from the
-  // `description` one — it needs a decision about what the admin form actually posts for a
-  // cleared price field, not a `typeof` guard — so it is left for its own PR.
+  // PINS MOVED DELIBERATELY. The `TODAY:` rows this replaces recorded the unfixed coercion
+  // bug the block comment above still describes: `Number('')` is 0, so a blank price wrote
+  // `price_coins = 0` and silently made a paid pack free, and `Number('0x10')` was 16. The
+  // price block now only coerces an unambiguous decimal-integer string (padding trimmed), so
+  // '' and '0x10' are 400s; ' 250 ' is unchanged at 250. An explicit 0 still means free.
+  // The full matrix, both action shapes included, lives in route.price-coins.test.ts.
   it.each([
-    ['an empty string', '', 0],
-    ['a whitespace string', '   ', 0],
-    ['a padded numeric string', ' 250 ', 250],
-    ['a hex string', '0x10', 16],
-  ])('TODAY: price_coins = %s is coerced and written as %s', async (_label, value, stored) => {
-    await patch({ price_coins: value })
-    expect(lastUpdate()).toEqual({ price_coins: stored })
+    ['an empty string', ''],
+    ['a whitespace string', '   '],
+    ['a hex string', '0x10'],
+  ])('rejects a blank or ambiguous price_coins string (%s) with a 400', async (_label, value) => {
+    const res = await patch({ price_coins: value })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({
+      error: `price_coins must be an integer between 0 and ${MAX_PRICE_COINS}`,
+    })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  it('still coerces a padded decimal-integer string', async () => {
+    await patch({ price_coins: ' 250 ' })
+    expect(lastUpdate()).toEqual({ price_coins: 250 })
   })
 })
