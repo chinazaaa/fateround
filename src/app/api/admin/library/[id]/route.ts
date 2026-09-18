@@ -5,6 +5,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
+import { QUESTION_PACK_GAME_TYPES } from '@/lib/question-pack-game-types'
 
 // Permissive shape: fields the handler runtime-checks stay `unknown` so its
 // typeof/Array.isArray guards remain live (identical messages); game_type/status are
@@ -22,18 +23,6 @@ const libraryPatchSchema = z.object({
   price_coins: z.unknown().optional(),
 })
 
-const VALID_GAME_TYPES = [
-  'trivia',
-  'would_you_rather',
-  'most_likely_to',
-  'this_or_that',
-  'never_have_i_ever',
-  'describe_it',
-  'quick_draw',
-  'codewords',
-  'pick_a_number',
-  'who_said_this',
-]
 /** A plain decimal integer, padding aside. Leading zeros are fine; nothing else is. */
 const DECIMAL_INTEGER = /^\d+$/
 
@@ -80,7 +69,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       updates.title = title.trim()
     }
     if (game_type !== undefined) {
-      if (!VALID_GAME_TYPES.includes(game_type))
+      // The list itself lives in @/lib/question-pack-game-types, pinned set-equal to the
+      // question_packs_game_type_check constraint in route.field-types.test.ts. It is consulted
+      // directly rather than aliased to a local const: a local copy is a place for the route to
+      // drift from the pinned list again, which is the whole bug this fixes.
+      if (!QUESTION_PACK_GAME_TYPES.includes(game_type))
         return NextResponse.json({ error: 'Invalid game_type' }, { status: 400 })
       updates.game_type = game_type
     }
