@@ -510,3 +510,162 @@ describe('PATCH /api/admin/library/[id] — the other fields are already type-ga
     expect(lastUpdate()).toEqual({ price_coins: 250 })
   })
 })
+
+// ---------------------------------------------------------------------------------------------
+// game_type — the full value matrix against the DB's `question_packs_game_type_check`.
+//
+// The route's VALID_GAME_TYPES is only half the gate; the live CHECK constraint is the other
+// half, and the two had drifted apart. Replaying every `alter table question_packs ... add
+// constraint question_packs_game_type_check` in migration-filename order against
+// public.ecr.aws/supabase/postgres:15.8.1.085 yields 14 accepted values, last set by
+// supabase/migrations/20260810120000_word_grouping_library_packs.sql — which itself repairs
+// 20260717150000_wst_library_packs.sql, a restatement that dropped quick_draw / crossword /
+// word_search / word_scramble on the way past.
+//
+// The route listed 10 of those 14. `crossword`, `word_search`, `word_scramble` and
+// `word_grouping` were rejected with 400 "Invalid game_type" even though an INSERT and an
+// UPDATE of each was verified accepted by the constraint, so a pack of one of those types could
+// not be re-typed through the admin editor at all. This PR widens the list to the 14 the DB
+// takes — the opposite risk direction from #1179/#1180/#1181/#1182, so every row below asserts
+// the *update payload* as well as the status, and the values in neither list stay 400.
+//
+// Unchanged and pinned here so the widening cannot quietly take them with it: the schema's
+// `z.string().optional()` still turns `null` and every non-string away before the handler runs
+// (asserted above), `''` and a wrong-case `'Crossword'` are still handler 400s, an absent
+// game_type still writes nothing, and 'approve'/'reject' still short-circuit before the check.
+// ---------------------------------------------------------------------------------------------
+
+/** Every value `question_packs_game_type_check` accepts, in the order the migration lists them. */
+const DB_ACCEPTED_GAME_TYPES = [
+  'trivia',
+  'would_you_rather',
+  'most_likely_to',
+  'this_or_that',
+  'never_have_i_ever',
+  'describe_it',
+  'quick_draw',
+  'codewords',
+  'pick_a_number',
+  'crossword',
+  'word_search',
+  'word_scramble',
+  'word_grouping',
+  'who_said_this',
+] as const
+
+/** The ten the route already accepted before this PR — these rows must not move. */
+const ALREADY_ACCEPTED = [
+  'trivia',
+  'would_you_rather',
+  'most_likely_to',
+  'this_or_that',
+  'never_have_i_ever',
+  'describe_it',
+  'quick_draw',
+  'codewords',
+  'pick_a_number',
+  'who_said_this',
+] as const
+
+/** The four the DB accepts that the route rejected — the only rows this PR moves. */
+const NEWLY_ACCEPTED = ['crossword', 'word_search', 'word_scramble', 'word_grouping'] as const
+
+/**
+ * Both shapes that reach the field-edit branch. 'approve'/'reject' short-circuit and never
+ * reach the game_type check; every other value — absent included — falls through to it, so the
+ * matrix runs on both and cannot be passing through only one.
+ */
+const FIELD_EDIT_SHAPES: [string, Record<string, unknown>][] = [
+  ['action absent', {}],
+  ['action set to a non-matching value', { action: 'edit' }],
+]
+
+describe.each(FIELD_EDIT_SHAPES)('PATCH /api/admin/library/[id] — game_type (%s)', (_shape, base) => {
+  it.each(ALREADY_ACCEPTED)('accepts the already-accepted type %s and writes it through', async (type) => {
+    const res = await patch({ ...base, game_type: type })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ success: true })
+    expect(lastUpdate()).toEqual({ game_type: type })
+    expect(eqSpy).toHaveBeenCalledWith('id', PACK_ID)
+  })
+
+  it.each(NEWLY_ACCEPTED)(
+    'accepts the DB-valid type %s and writes it through (400 "Invalid game_type" before this PR)',
+    async (type) => {
+      const res = await patch({ ...base, game_type: type })
+      expect(res.status).toBe(200)
+      await expect(res.json()).resolves.toEqual({ success: true })
+      expect(lastUpdate()).toEqual({ game_type: type })
+      expect(eqSpy).toHaveBeenCalledWith('id', PACK_ID)
+    }
+  )
+
+  it.each([
+    ['a type in neither list', 'not_a_game'],
+    ['a wrong-case variant of a newly-accepted type', 'Crossword'],
+    ['a wrong-case variant of an already-accepted type', 'Trivia'],
+    ['an empty string', ''],
+    ['a hyphenated spelling the DB does not take', 'word-search'],
+    ['a padded spelling', ' crossword '],
+  ])('still rejects %s with 400 "Invalid game_type" and no write', async (_label, value) => {
+    const res = await patch({ ...base, game_type: value })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid game_type' })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects null game_type at the schema, before the handler — unchanged', async () => {
+    const res = await patch({ ...base, game_type: null })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: expect.stringContaining('expected string') })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  it('writes no game_type when the field is absent', async () => {
+    const res = await patch({ ...base, title: 'Pack' })
+    expect(res.status).toBe(200)
+    expect(lastUpdate()).toEqual({ title: 'Pack' })
+  })
+
+  it('rejects a body whose only field is an invalid game_type with the game_type 400, not the empty-updates 400', async () => {
+    const res = await patch({ ...base, game_type: 'word_hunt' })
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid game_type' })
+  })
+})
+
+describe('PATCH /api/admin/library/[id] — game_type on the short-circuit branches', () => {
+  it.each([
+    ['approve', 'approved'],
+    ['reject', 'rejected'],
+  ])('action=%s ignores game_type entirely, even an invalid one', async (action, status) => {
+    const res = await patch({ action, game_type: 'not_a_game' })
+    expect(res.status).toBe(200)
+    expect(lastUpdate()).toEqual(
+      status === 'approved' ? { status: 'approved', approved_at: expect.any(String) } : { status: 'rejected' }
+    )
+  })
+
+  it.each(NEWLY_ACCEPTED)('action=approve does not write a valid game_type (%s) either', async (type) => {
+    await patch({ action: 'approve', game_type: type })
+    expect(lastUpdate()).toEqual({ status: 'approved', approved_at: expect.any(String) })
+  })
+})
+
+/**
+ * The list the route gates on must stay the list the DB accepts. This is the pin that would
+ * have caught the drift: it is transcribed from
+ * supabase/migrations/20260810120000_word_grouping_library_packs.sql, not from the route.
+ */
+describe('PATCH /api/admin/library/[id] — route list vs DB constraint', () => {
+  it('accepts exactly the 14 values question_packs_game_type_check accepts', async () => {
+    const accepted: string[] = []
+    for (const type of DB_ACCEPTED_GAME_TYPES) {
+      fromSpy.mockClear()
+      updateSpy.mockClear()
+      const res = await patch({ game_type: type })
+      if (res.status === 200) accepted.push(type)
+    }
+    expect(accepted).toEqual([...DB_ACCEPTED_GAME_TYPES])
+  })
+})

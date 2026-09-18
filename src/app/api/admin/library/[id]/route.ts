@@ -22,6 +22,21 @@ const libraryPatchSchema = z.object({
   price_coins: z.unknown().optional(),
 })
 
+/**
+ * The values `question_packs.game_type` accepts, transcribed from the live CHECK constraint in
+ * supabase/migrations/20260810120000_word_grouping_library_packs.sql (the last migration to
+ * restate `question_packs_game_type_check`) and kept in its order.
+ *
+ * This list had drifted four types behind that constraint: `crossword`, `word_search`,
+ * `word_scramble` and `word_grouping` were rejected here with 400 "Invalid game_type" even
+ * though the DB takes them, so a pack of one of those types could not be re-typed through the
+ * admin editor at all. The drift came in with 20260717150000_wst_library_packs.sql, which
+ * restated the constraint without carrying those types forward; 20260810120000 repaired the
+ * constraint but this list was never brought back in step.
+ *
+ * Keep it equal to that constraint. Widening it past the constraint would turn a clean 400 into
+ * a 500 from the DB; narrowing it strands packs the way this drift did.
+ */
 const VALID_GAME_TYPES = [
   'trivia',
   'would_you_rather',
@@ -32,6 +47,10 @@ const VALID_GAME_TYPES = [
   'quick_draw',
   'codewords',
   'pick_a_number',
+  'crossword',
+  'word_search',
+  'word_scramble',
+  'word_grouping',
   'who_said_this',
 ]
 /** A plain decimal integer, padding aside. Leading zeros are fine; nothing else is. */
