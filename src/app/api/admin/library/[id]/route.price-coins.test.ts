@@ -16,8 +16,10 @@ import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
  *     if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > MAX_PRICE_COINS) ...
  *
  * `Number('')` is 0. Finite, an integer, in range — so an empty string passed every guard and
- * wrote `price_coins = 0`, turning a paid pack free. `Number('   ')` is 0 too, and
- * `Number('0x10')` / `Number('1e3')` accepted notations nobody types into a number input.
+ * wrote `price_coins = 0`, turning a paid pack free. `Number('   ')` is 0 too. And because bare
+ * `Number()` reads every numeric notation JS knows, a mistyped price was written rather than
+ * reported: `'0x10'` -> 16, `'1e3'` -> 1000, `'2.5e2'` / `'250.'` -> 250, `'0b101'` -> 5,
+ * `'-0'` -> 0 (`-0 < 0` is false, so it passed the range guard too).
  *
  * What the only first-party client actually posts, from `src/app/admin/library/page.tsx`:
  *
@@ -35,8 +37,10 @@ import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
  * fix is emphatically NOT "reject falsy". The distinction drawn is between an explicit zero
  * (the number `0`, or the string `'0'`) and a blank/ambiguous string.
  *
- * Strings stay accepted, but only as an unambiguous decimal integer after trimming: `' 250 '`
- * is still 250 (padding is not ambiguity), while `'0x10'`, `'1e3'`, `''` and `'   '` are 400s.
+ * Strings stay accepted, but only as a plain decimal integer after trimming: `' 250 '` is still
+ * 250 (padding is not ambiguity) and leading zeros still parse, while every other string shape —
+ * blank, hex, binary, octal, exponent, signed, fractional — now gets the route's existing price
+ * 400. The rows below are a sample of that set, not an exhaustive list of it.
  *
  * Per-field validation is point-of-use, exactly as in PRs #1179/#1180/#1181; the schema keeps
  * `price_coins: z.unknown().optional()`. A schema-level `z.number()` would turn requests this
@@ -140,9 +144,9 @@ const ACCEPTED: [string, unknown, number][] = [
 ]
 
 /**
- * Inputs the route rejects. Every one of these was already a 400 before the empty-string fix —
- * the fix adds no rejections here, it only stops six ambiguous/blank *string* shapes from being coerced (see
- * the MOVED PINS block at the bottom).
+ * Inputs the route rejects. Every one of these was already a 400 before the empty-string fix, so
+ * nothing in this list moved. What the fix newly rejects is *strings that are not plain decimal
+ * integers*; the MOVED PINS block at the bottom samples that set.
  */
 const REJECTED: [string, unknown][] = [
   ['a non-numeric string', 'abc'],
@@ -234,8 +238,10 @@ describe('PATCH price_coins — the approve/reject short-circuits never price', 
 })
 
 describe('PATCH price_coins — blank and ambiguous strings', () => {
-  // MOVED PINS. These six rows previously asserted `TODAY:` behaviour — the values below the
-  // arrows are what the route wrote before this PR:
+  // MOVED PINS. These rows previously asserted `TODAY:` behaviour — the values below the arrows
+  // are what the route wrote before this PR. They are a representative sample, not the whole set:
+  // any string bare `Number()` could read now 400s, including '250.0', '2.5e2', '0b101', '0o17'
+  // and '-0', each of which used to be written as a price.
   //
   //   ''       ->  price_coins = 0      (a cleared field silently made a paid pack free)
   //   '   '    ->  price_coins = 0
@@ -253,11 +259,28 @@ describe('PATCH price_coins — blank and ambiguous strings', () => {
     ['a hex string', '0x10'],
     ['an exponent string', '1e3'],
     ['a plus-signed string', '+250'],
+    ['a trailing-dot string', '250.'],
+    ['an exponent-with-mantissa string', '2.5e2'],
+    ['a binary string', '0b101'],
+    ['an octal string', '0o17'],
+    ['negative zero as a string', '-0'],
   ])('rejects %s with a 400 and writes nothing', async (_label, value) => {
     const res = await patch({ price_coins: value })
     expect(res.status).toBe(400)
     await expect(res.json()).resolves.toEqual({ error: PRICE_ERROR })
     expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  // Unchanged by this PR and pinned so the "plain decimal integer" wording is not read as
+  // something stricter: a leading-zero string parsed before and still parses.
+  it.each([
+    ['007', '007', 7],
+    ['00250', '00250', 250],
+    ['0000', '0000', 0],
+  ])('still accepts a leading-zero string (%s) as %s', async (_label, value, stored) => {
+    const res = await patch({ price_coins: value })
+    expect(res.status).toBe(200)
+    expect(lastUpdate()).toEqual({ price_coins: stored })
   })
 
   it('still treats an explicit 0 as "make this pack free"', async () => {

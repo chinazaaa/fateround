@@ -34,16 +34,19 @@ const VALID_GAME_TYPES = [
   'pick_a_number',
   'who_said_this',
 ]
-/** An unambiguous decimal integer, optionally padded — what a number input produces. */
+/** A plain decimal integer, padding aside. Leading zeros are fine; nothing else is. */
 const DECIMAL_INTEGER = /^\d+$/
 
 /**
  * `price_coins` off the wire -> the number the route's range guard judges, or NaN for anything
- * that is not a price. Non-strings pass through untouched so the existing
- * `Number.isFinite`/`Number.isInteger` guards stay the only gate on them.
+ * that is not one. Numbers pass through untouched so the existing `Number.isFinite` /
+ * `Number.isInteger` / range guards stay the only gate on them; every other type is NaN, which
+ * those same guards already turned into the price 400 (they do not coerce, so `true`/`{}`/`[]`/
+ * `null` failed `Number.isFinite` before this existed).
  */
 function toPriceCoins(value: unknown): number {
-  if (typeof value !== 'string') return value as number
+  if (typeof value === 'number') return value
+  if (typeof value !== 'string') return NaN
   const trimmed = value.trim()
   return DECIMAL_INTEGER.test(trimmed) ? Number(trimmed) : NaN
 }
@@ -123,11 +126,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // the shop's pricing bounds. 0 is allowed — it flips a paid pack back to free without
       // needing a separate "unpublish price" endpoint.
       //
-      // A string is only coerced when it is an unambiguous decimal integer (padding trimmed).
-      // Bare `Number()` was not that: `Number('')` and `Number('   ')` are both 0 — finite,
-      // integer, in range — so a blank value silently re-priced a paid pack to free, and
-      // `Number('0x10')`/`Number('1e3')`/`Number('+250')` accepted notations nobody types into
-      // a number input. The admin form already resolves a cleared price to the *number* 0
+      // A string is only coerced when it is a plain decimal integer (padding trimmed). Bare
+      // `Number()` was not that: `Number('')` and `Number('   ')` are both 0 — finite, integer,
+      // in range — so a blank value silently re-priced a paid pack to free. It also read every
+      // other numeric notation JS knows, so a mistyped price was written rather than reported:
+      // `'0x10'` -> 16, `'1e3'` -> 1000, `'2.5e2'`/`'250.'` -> 250, `'0b101'` -> 5, `'-0'` -> 0.
+      // The admin form already resolves a cleared price to the *number* 0
       // before it posts (`priceCoins === '' ? 0 : Number(priceCoins)` in
       // src/app/admin/library/page.tsx) and cannot express "leave the price alone", so a blank
       // string is never this client and its intent is unknowable — it gets a 400 rather than a
