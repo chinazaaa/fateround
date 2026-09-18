@@ -12,8 +12,7 @@ import { NextRequest } from 'next/server'
  *     if (description !== null && typeof description === 'string' && description.length > 500)
  *
  * The `typeof description === 'string'` conjunct means a non-string never reaches the length
- * check — the guard passes and the next line writes the value through. This file pins that as
- * it stands today; the rows marked TODAY are the ones the fix commit moves. PostgREST's
+ * check — the guard passed and the next line wrote the value through. PostgREST's
  * `json_populate_recordset` then coerces the JSON value into the `description text` column
  * (5 -> '5', {"a":1} -> '{"a":1}', ["a","b"] -> '["a","b"]') rather than erroring, so this was a
  * silent data-integrity bug, not a 500: an admin edit could overwrite an approved pack's
@@ -248,31 +247,32 @@ describe.each([
     expect(fromSpy).not.toHaveBeenCalled()
   })
 
-  // ---- THE BUG, as it behaves TODAY. The `typeof description === 'string'` conjunct makes the
-  // length check unreachable for a non-string, so the guard passes and the raw JSON value is
-  // written straight through. PostgREST's json_populate_recordset then coerces it into the
-  // `description text` column instead of erroring, so nothing anywhere reports a problem. ----
+  // ---- THE BUG. PIN MOVED DELIBERATELY. Against the pre-fix route every row below returned
+  // 200 {"success":true} with the raw JSON value in the update payload: the
+  // `typeof description === 'string'` conjunct made the length check unreachable for a
+  // non-string, so the guard passed and PostgREST's json_populate_recordset coerced the value
+  // into the `description text` column instead of erroring. ----
 
   it.each([...TRUTHY_NON_STRING, ...FALSY_NON_STRING])(
-    'TODAY: description = %s returns 200 and writes the raw value through',
+    'rejects description = %s with 400 "Invalid description" and no write',
     async (_label, value) => {
       const res = await edit(value)
-      expect(res.status).toBe(200)
-      await expect(res.json()).resolves.toEqual({ success: true })
-      expect(lastUpdate()).toEqual({ description: value })
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: 'Invalid description' })
+      expect(fromSpy).not.toHaveBeenCalled()
     }
   )
 
-  // A 501-ELEMENT array is written through too: `typeof [] === 'string'` is false, so not even
-  // the element-count misreading of `.length` gets a chance to reject it. (This differs from
-  // /api/library POST in PR #1180, where a long array WAS rejected, by element count, for the
-  // wrong reason.) Both the short array above and this long one are pinned so the
-  // `.length`-on-array case is covered from both sides.
-  it('TODAY: a 501-element array description returns 200 and is written through', async () => {
-    const value = Array.from({ length: 501 }, () => 'x')
-    const res = await edit(value)
-    expect(res.status).toBe(200)
-    expect(lastUpdate()).toEqual({ description: value })
+  // PIN MOVED DELIBERATELY. A 501-ELEMENT array was written through pre-fix as well:
+  // `typeof [] === 'string'` is false, so not even the element-count misreading of `.length`
+  // got a chance to reject it. (This differs from /api/library POST in PR #1180, where a long
+  // array WAS rejected, by element count, for the wrong reason.) Both the short array above and
+  // this long one are pinned so the `.length`-on-array case is covered from both sides.
+  it('rejects a 501-element array description with 400 "Invalid description" and no write', async () => {
+    const res = await edit(Array.from({ length: 501 }, () => 'x'))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid description' })
+    expect(fromSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -302,10 +302,14 @@ describe('PATCH /api/admin/library/[id] — gate precedence', () => {
     expect(fromSpy).not.toHaveBeenCalled()
   })
 
-  it('TODAY: a non-string description raises no gate at all, so the tags gate answers', async () => {
+  // PIN MOVED DELIBERATELY. Pre-fix a non-string description raised no gate at all, so the
+  // downstream tags gate answered ("tags must be an array"). The description type gate now sits
+  // exactly where the description cap already sat, so description still answers before tags —
+  // which is the order an over-cap *string* has always produced (pinned directly below).
+  it('answers the description gates before the tags gate', async () => {
     const res = await patch({ description: 5, tags: 'easy' })
     expect(res.status).toBe(400)
-    await expect(res.json()).resolves.toEqual({ error: 'tags must be an array' })
+    await expect(res.json()).resolves.toEqual({ error: 'Invalid description' })
     expect(fromSpy).not.toHaveBeenCalled()
   })
 

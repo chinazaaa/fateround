@@ -74,7 +74,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       updates.author_name = author_name.trim()
     }
     if (description !== undefined) {
-      if (description !== null && typeof description === 'string' && description.length > 500)
+      // `description` arrives as `unknown` off the shape-only schema, and the `typeof
+      // description === 'string'` conjunct this replaces meant a non-string did not merely
+      // escape the cap below — it *bypassed* it, and the raw JSON value was written into the
+      // `description text` column, where PostgREST's json_populate_recordset coerces it
+      // (5 -> '5', {"a":1} -> '{"a":1}', ["a","b"] -> '["a","b"]') instead of erroring.
+      //
+      // null stays "clear the field" and is checked first, exactly as before — a schema-level
+      // `z.string().optional()` would 400 a null this route accepts today (#1163 / #1153).
+      if (description !== null && typeof description !== 'string')
+        return NextResponse.json({ error: 'Invalid description' }, { status: 400 })
+      if (description !== null && description.length > 500)
         return NextResponse.json({ error: 'Description too long' }, { status: 400 })
       updates.description = description === '' ? null : (description ?? null)
     }
