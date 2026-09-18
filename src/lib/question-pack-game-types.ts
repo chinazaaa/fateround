@@ -44,4 +44,11 @@ export const QUESTION_PACK_GAME_TYPES = [
   'word_scramble',
   'word_grouping',
   'who_said_this',
-]
+] as const satisfies readonly string[]
+
+/**
+ * One of the values the constraint accepts. Derived from the list above so a type can never be
+ * restated out of step with it — the client-side drift this list was extracted to end had
+ * `src/app/library/page.tsx` carrying its own hand-written union that was four values short.
+ */
+export type QuestionPackGameType = (typeof QUESTION_PACK_GAME_TYPES)[number]

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '@/components/ui/PageShell'
 import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
+import { previewText } from '@/lib/question-pack-preview'
 
 interface QuestionPack {
   id: string
@@ -593,16 +594,4 @@ function PackCard({
       )}
     </div>
   )
-}
-
-function previewText(gameType: string, q: unknown): string {
-  if (typeof q === 'string') return q
-  if (!q || typeof q !== 'object') return String(q)
-  const obj = q as Record<string, unknown>
-  if (gameType === 'trivia') return String(obj.question ?? '')
-  if (gameType === 'would_you_rather' || gameType === 'this_or_that') return `${obj.optionA} or ${obj.optionB}`
-  if (gameType === 'crossword') return `${obj.answer ?? ''} — ${obj.clue ?? ''}`
-  if (gameType === 'word_search') return String(obj.word ?? '')
-  if (gameType === 'word_scramble') return obj.hint ? `${obj.word} — ${obj.hint}` : String(obj.word ?? '')
-  return JSON.stringify(q)
 }
