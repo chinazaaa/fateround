@@ -5,6 +5,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
+import { QUESTION_PACK_GAME_TYPES } from '@/lib/question-pack-game-types'
 
 // Permissive shape: fields the handler runtime-checks stay `unknown` so its
 // typeof/Array.isArray guards remain live (identical messages); game_type/status are
@@ -22,48 +23,6 @@ const libraryPatchSchema = z.object({
   price_coins: z.unknown().optional(),
 })
 
-/**
- * The values `question_packs.game_type` accepts, transcribed from the live CHECK constraint in
- * supabase/migrations/20260810120000_word_grouping_library_packs.sql (the last migration to
- * restate `question_packs_game_type_check`) and kept in its order.
- *
- * This list had drifted four types behind that constraint: `crossword`, `word_search`,
- * `word_scramble` and `word_grouping` were rejected here with 400 "Invalid game_type" even
- * though the DB takes them. That did not merely block re-typing a pack — src/app/admin/library/
- * page.tsx sends `game_type` on *every* save, seeded from the pack's own current value, so
- * editing any field of such a pack (title, price, questions, approval) was a 400. Packs of
- * those four types were entirely uneditable through the admin UI, and src/app/library/submit/
- * page.tsx lets the public submit all four, so they exist.
- *
- * The drift is one of omission, not removal: this list never held the three word-puzzle types.
- * It widened DB-first each time and the route was simply not updated alongside —
- * 20260712180000_crossword_word_search_library_packs.sql added crossword + word_search,
- * 20260712{190000,200000}_word_scramble*.sql added word_scramble, and
- * 20260810120000_word_grouping_library_packs.sql added word_grouping (that last migration also
- * repairs a *constraint* regression in 20260717150000_wst_library_packs.sql, which is a
- * separate matter from this list — 20260717150000 only ever added who_said_this here).
- *
- * Keep it equal to that constraint. Widening it past the constraint would turn a clean 400 into
- * a 500 from the DB; narrowing it strands packs the way this drift did. The set-equality pin in
- * route.field-types.test.ts is what enforces that in both directions, which is why this array
- * is exported.
- */
-export const VALID_GAME_TYPES = [
-  'trivia',
-  'would_you_rather',
-  'most_likely_to',
-  'this_or_that',
-  'never_have_i_ever',
-  'describe_it',
-  'quick_draw',
-  'codewords',
-  'pick_a_number',
-  'crossword',
-  'word_search',
-  'word_scramble',
-  'word_grouping',
-  'who_said_this',
-]
 /** A plain decimal integer, padding aside. Leading zeros are fine; nothing else is. */
 const DECIMAL_INTEGER = /^\d+$/
 
@@ -110,7 +69,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       updates.title = title.trim()
     }
     if (game_type !== undefined) {
-      if (!VALID_GAME_TYPES.includes(game_type))
+      // The list itself lives in @/lib/question-pack-game-types, pinned set-equal to the
+      // question_packs_game_type_check constraint in route.field-types.test.ts. It is consulted
+      // directly rather than aliased to a local const: a local copy is a place for the route to
+      // drift from the pinned list again, which is the whole bug this fixes.
+      if (!QUESTION_PACK_GAME_TYPES.includes(game_type))
         return NextResponse.json({ error: 'Invalid game_type' }, { status: 400 })
       updates.game_type = game_type
     }

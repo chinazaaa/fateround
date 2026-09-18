@@ -521,11 +521,13 @@ describe('PATCH /api/admin/library/[id] — the other fields are already type-ga
 // supabase/migrations/20260810120000_word_grouping_library_packs.sql.
 //
 // The route listed 10 of those 14. The drift is one of omission rather than removal: the route
-// list never held the three word-puzzle types, because each migration widened the DB without
-// updating the route — 20260712180000_crossword_word_search_library_packs.sql (crossword,
-// word_search), 20260712{190000,200000}_word_scramble*.sql (word_scramble) and
-// 20260810120000_word_grouping_library_packs.sql (word_grouping). `git log -L 25,36` on the
-// route confirms the list went 3 -> 8 -> +quick_draw -> +who_said_this and nothing else.
+// list never held crossword, word_search, word_scramble or word_grouping at all. Each of those
+// four migrations widened the DB without updating the route —
+// 20260712180000_crossword_word_search_library_packs.sql (crossword, word_search),
+// 20260712{190000,200000}_word_scramble*.sql (word_scramble) and
+// 20260810120000_word_grouping_library_packs.sql (word_grouping) — whereas quick_draw and
+// who_said_this were added here alongside theirs. `git log -L 25,36` on the route confirms the
+// list went 3 -> 8 -> +quick_draw -> +who_said_this and nothing else.
 // (20260810120000 also repairs a constraint regression left by 20260717150000_wst_library_packs
 // .sql; that is about the *constraint*, not this list, which 20260717150000 only added
 // who_said_this to.)
@@ -673,17 +675,25 @@ describe('PATCH /api/admin/library/[id] — game_type on the short-circuit branc
  * value through to a constraint violation, which route.ts turns into a 500, not a 400. A pin
  * that only walks the DB list and asserts 200 cannot see an extra: adding a fifth type such as
  * 'wordle_room' (a real games.game_type in this repo, so a plausible copy-paste) leaves every
- * such row green. Hence the set comparison against the route's own exported array.
+ * such row green. Hence the set comparison against the list module the route consults. The
+ * route holds no copy of its own — it calls QUESTION_PACK_GAME_TYPES.includes() at the point of
+ * use — so there is nowhere for the handler to diverge from what is pinned here.
+ *
+ * The three tests below overlap deliberately and each fails somewhere the others do not: the set
+ * comparison names the offending member, the ordered comparison keeps the transcription readable
+ * against the migration, and the end-to-end loop is the only one that proves the handler
+ * actually gates on THIS array — swap route.ts to consult some other list and the first two
+ * would still pass.
  */
 describe('PATCH /api/admin/library/[id] — route list vs DB constraint', () => {
   it('gates on exactly the values question_packs_game_type_check accepts — no missing, no extra', async () => {
-    const { VALID_GAME_TYPES } = await import('./route')
-    expect([...VALID_GAME_TYPES].sort()).toEqual([...DB_ACCEPTED_GAME_TYPES].sort())
+    const { QUESTION_PACK_GAME_TYPES } = await import('@/lib/question-pack-game-types')
+    expect([...QUESTION_PACK_GAME_TYPES].sort()).toEqual([...DB_ACCEPTED_GAME_TYPES].sort())
   })
 
   it('names the same 14 values in the constraint order, so the transcription stays readable', async () => {
-    const { VALID_GAME_TYPES } = await import('./route')
-    expect(VALID_GAME_TYPES).toEqual([...DB_ACCEPTED_GAME_TYPES])
+    const { QUESTION_PACK_GAME_TYPES } = await import('@/lib/question-pack-game-types')
+    expect(QUESTION_PACK_GAME_TYPES).toEqual([...DB_ACCEPTED_GAME_TYPES])
   })
 
   it('answers 200 for every one of those values end to end', async () => {
