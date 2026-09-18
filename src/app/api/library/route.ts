@@ -159,7 +159,7 @@ export async function POST(req: NextRequest) {
   // truthy non-string does not merely escape the caps below — it *bypasses* them: `(5).length`
   // is `undefined` and `undefined > 100` is false, while `['a','b'].length` is 2. The value was
   // then inserted verbatim into a `text` column, where PostgREST's json_populate_recordset
-  // coerces it ('5', 'true', '{}', '["a", "b"]') and stores it. Each guard sits with the cap it
+  // coerces it ('5', 'true', '{}', '["a","b"]') and stores it. Each guard sits with the cap it
   // protects, so for well-typed input the order the gates answer in is unchanged; a falsy
   // non-string still stops one gate earlier, at the truthiness check above.
   if (typeof title !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })

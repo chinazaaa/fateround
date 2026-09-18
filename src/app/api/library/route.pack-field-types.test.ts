@@ -222,7 +222,7 @@ describe.each([
 
   // THE BUG. Pin moved deliberately: against the pre-fix route each of these returned 200 and
   // the raw JSON value was inserted into a `text NOT NULL` column, where PostgREST's
-  // json_populate_recordset coerces it to text ('5', 'true', '{}', '["a", "b"]') and stores it.
+  // json_populate_recordset coerces it to text ('5', 'true', '{}', '["a","b"]') and stores it.
   // The length cap never even ran: `(5).length` is undefined and `['a','b'].length` is 2.
   it.each(TRUTHY_NON_STRING)(
     `rejects ${field} = %s with 400 "Missing required fields" and no DB write`,
