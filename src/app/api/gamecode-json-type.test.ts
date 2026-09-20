@@ -23,6 +23,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `null`, absent and `''` are falsy and already hit `if (!gameId)`. Their rows MUST NOT move: a
  * schema-level `z.string()` would turn `null` into an "expected string, received null" 400 on a
  * request these routes handle today (CONTRIBUTING.md — #1163 / #1153).
+ *
+ * After the fix, three groups of rows in this file carry a PIN MOVED note — they asserted the
+ * 500 that was the defect. Everything else in the file is byte-identical to what ran green
+ * against the unchanged routes.
  */
 
 const {
@@ -431,15 +435,20 @@ describe.each(ROUTES.map((r) => [r.name, r] as const))('POST %s — gameCode typ
       expect(fromSpy).not.toHaveBeenCalled()
     })
 
-    // --- truthy non-string gameCode: THE BUG ---------------------------------------------
-    // Pinned here against the UNCHANGED routes as the 500 the swallowed TypeError produces.
-    it.each(NON_STRING)('answers %s gameCode with the catch-all 500', async (_label, gameCode) => {
+    // --- non-string gameCode: THE BUG ----------------------------------------------------
+    // PIN MOVED. Against the unchanged routes these rows asserted `500` with
+    // `route.catchFallback` — the swallowed TypeError. That 500 was the defect, so the
+    // assertion moves with the fix to the 400 a malformed gameCode has always deserved,
+    // worded exactly as the route's own missing-field answer.
+    it.each(NON_STRING)('rejects %s gameCode with 400, no rate limit, no DB', async (_label, gameCode) => {
       const res = await post(route.handler, route.path, { gameCode, ...extras() })
-      expect(res.status).toBe(500)
-      await expect(res.json()).resolves.toEqual({ error: route.catchFallback })
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: route.missingError })
       expect(rateLimitSpy).not.toHaveBeenCalled()
       expect(fromSpy).not.toHaveBeenCalled()
       expect(writes).toEqual([])
+      // The 500 this used to answer must be gone for good.
+      expect(res.status).not.toBe(500)
     })
   })
 
@@ -527,11 +536,14 @@ describe('hostToken / q — the same unchecked cast on the host-only routes', ()
       expect(fromSpy).not.toHaveBeenCalled()
     })
 
-    it.each(NON_STRING)('answers %s hostToken with the catch-all 500', async (_label, hostToken) => {
+    // PIN MOVED, same reason as the gameCode rows: these asserted `500` with
+    // `route.fallback` against the unchanged routes.
+    it.each(NON_STRING)('rejects %s hostToken with 400, no DB', async (_label, hostToken) => {
       const res = await post(route.handler, route.path, { gameCode: LOWER, hostToken, q: 'abba' })
-      expect(res.status).toBe(500)
-      await expect(res.json()).resolves.toEqual({ error: route.fallback })
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: 'gameCode and hostToken are required' })
       expect(fromSpy).not.toHaveBeenCalled()
+      expect(res.status).not.toBe(500)
     })
 
     it('treats an absent hostToken as absent: 400', async () => {
@@ -549,13 +561,18 @@ describe('hostToken / q — the same unchecked cast on the host-only routes', ()
     })
   })
 
-  it('spotify/search: a non-string q answers with the catch-all 500', async () => {
+  // PIN MOVED. Against the unchanged route a non-string `q` answered 500 'Spotify search
+  // failed'. This is the one field whose repaired answer is NOT a 400: /api/spotify/search has
+  // no 400 for a bad query — `if (!q) return { tracks: [] }` is its own gate for a query it
+  // cannot use, and an unusable `q` now lands there instead of throwing.
+  it.each(NON_STRING)('spotify/search: %s q short-circuits to an empty track list, no DB', async (_label, q) => {
     tables = { games: { data: { host_token: HOST_TOKEN }, error: null } }
-    for (const [, q] of NON_STRING) {
-      const res = await post(spotifySearch, '/api/spotify/search', { gameCode: LOWER, hostToken: HOST_TOKEN, q })
-      expect(res.status).toBe(500)
-      await expect(res.json()).resolves.toEqual({ error: 'Spotify search failed' })
-    }
+    const res = await post(spotifySearch, '/api/spotify/search', { gameCode: LOWER, hostToken: HOST_TOKEN, q })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({ tracks: [] })
+    expect(fromSpy).not.toHaveBeenCalled()
+    expect(searchTracksSpy).not.toHaveBeenCalled()
+    expect(res.status).not.toBe(500)
   })
 
   it.each(HANDLED_AS_ABSENT)('spotify/search: %s q short-circuits to an empty track list, no DB', async (_label, q) => {

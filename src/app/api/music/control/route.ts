@@ -33,8 +33,12 @@ export async function POST(req: NextRequest) {
       musicEnabled?: boolean
       session?: SessionPatch | null
     }
-    const gameCode = body.gameCode?.trim().toUpperCase()
-    const hostToken = body.hostToken?.trim()
+    // `gameCode` and `hostToken` come off an unchecked `as {...}` cast, so each can be any
+    // JSON value. A non-string cleared `?.` (which short-circuits on nullish, not falsy) and
+    // threw on .trim(); the catch below turned that into a 500. Reading each one as a
+    // string-or-nothing sends it to the gate it already has for '' and null.
+    const gameCode = typeof body.gameCode === 'string' ? body.gameCode.trim().toUpperCase() : undefined
+    const hostToken = typeof body.hostToken === 'string' ? body.hostToken.trim() : undefined
     if (!gameCode || !hostToken) {
       return NextResponse.json({ error: 'gameCode and hostToken are required' }, { status: 400 })
     }

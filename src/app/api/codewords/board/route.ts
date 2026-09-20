@@ -39,7 +39,11 @@ export async function POST(req: NextRequest) {
       hostToken?: string
       resumeToken?: string
     }
-    const gameCode = body.gameCode?.toUpperCase()
+    // `gameCode` comes off an unchecked `as {...}` cast, so it can be any JSON value. A
+    // non-string cleared `?.` (which short-circuits on nullish, not falsy) and threw on
+    // .toUpperCase(); the catch below turned that into a 500. Answer the same "missing
+    // field" 400 that null, an absent field and '' already get.
+    const gameCode = typeof body.gameCode === 'string' ? body.gameCode.toUpperCase() : undefined
     if (!gameCode) return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
 
     const limited = await enforceRateLimit(req, RATE_LIMITS.codewordsBoard)
