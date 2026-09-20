@@ -5,6 +5,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { assertAdminRequest } from '@/lib/admin-api'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
+import { validatePackQuestions } from '@/lib/question-pack-questions'
 import { QUESTION_PACK_GAME_TYPES } from '@/lib/question-pack-game-types'
 
 // Permissive shape: fields the handler runtime-checks stay `unknown` so its
@@ -111,11 +112,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (status === 'approved') updates.approved_at = new Date().toISOString()
     }
     if (questions !== undefined) {
-      if (!Array.isArray(questions) || questions.length === 0)
-        return NextResponse.json({ error: 'questions must be a non-empty array' }, { status: 400 })
-      if (questions.length > 500) return NextResponse.json({ error: 'Too many questions (max 500)' }, { status: 400 })
-      updates.questions = questions
-      updates.question_count = questions.length
+      // Same rule, same messages, as the public submit path — the two writers of this column
+      // used to disagree, and neither looked at elements. See src/lib/question-pack-questions.ts.
+      const checked = validatePackQuestions(questions)
+      if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 })
+      // `question_count` still counts *elements*, not usable ones, and stays the length of the
+      // exact array stored. With every element now a non-blank string or a plain object, the
+      // count no longer overstates the pack by unusable-shape entries; narrowing it further
+      // would mean per-game-type parsing at write time, which this PR declines (see the
+      // strictness note in src/lib/question-pack-questions.ts) and which would be a behaviour
+      // change needing its own pins.
+      updates.questions = checked.questions
+      updates.question_count = checked.questions.length
     }
     if (price_coins !== undefined) {
       // Coerce number-like inputs but reject anything that isn't a non-negative integer within

@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { parseJsonBody } from '@/lib/parse-body'
+import { validatePackQuestions } from '@/lib/question-pack-questions'
 
 // Shape-only guard: the field semantics below are unchanged, so this schema deliberately
 // declares no keys — a narrower one would strip fields this handler still reads. Values stay
@@ -178,6 +179,16 @@ export async function POST(req: NextRequest) {
   // still left to the constraint.
   if (typeof game_type !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
+  // Last of the 400 gates, so no existing message's ordering moves: a body that is also over a
+  // length cap still answers with that cap's message, exactly as before. `Array.isArray` in the
+  // `Missing required fields` gate above already sent a non-array / absent / null `questions`
+  // away, so this only ever sees an array — and everything an array has to satisfy is now the
+  // one rule both writers of this column share (src/lib/question-pack-questions.ts). Before this
+  // PR the public path had no cap and no element check at all, while the admin PATCH capped at
+  // 500: an anonymous caller could store an arbitrarily large array of anything.
+  const checkedQuestions = validatePackQuestions(questions)
+  if (!checkedQuestions.ok) return NextResponse.json({ error: checkedQuestions.error }, { status: 400 })
+
   const validTags = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy']
   const cleanTags = Array.isArray(tags)
     ? tags.filter((t: unknown) => typeof t === 'string' && validTags.includes(t))
@@ -192,8 +203,8 @@ export async function POST(req: NextRequest) {
       game_type,
       author_name,
       description: description ?? null,
-      questions,
-      question_count: questions.length,
+      questions: checkedQuestions.questions,
+      question_count: checkedQuestions.questions.length,
       status: 'pending',
       tags: cleanTags,
     })
