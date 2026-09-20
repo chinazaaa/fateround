@@ -55,7 +55,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   assertAdminRequest.mockReset()
-  assertAdminRequest.mockResolvedValue({ email: 'Admin@Example.com ' })
+  assertAdminRequest.mockResolvedValue({ email: 'Admin@Example.com' })
   rpc.mockReset()
   rpc.mockResolvedValue({
     data: { outcome: 'ok', new_balance: 1100, spent_today: 100, cap: 5000 },

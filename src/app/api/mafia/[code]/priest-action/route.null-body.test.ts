@@ -20,9 +20,12 @@ import { NextRequest } from 'next/server'
 
 vi.mock('server-only', () => ({}))
 
-const { assertPlayer, markGameFinished, tables } = vi.hoisted(() => ({
+const { assertPlayer, markGameFinished, inserts, tables } = vi.hoisted(() => ({
   assertPlayer: vi.fn(),
   markGameFinished: vi.fn(),
+  // Records every `.insert(payload)` so the system-message text — which is the only
+  // consumer of the `players` fixture — is actually asserted rather than merely fed in.
+  inserts: vi.fn(),
   tables: {
     mafiaSession: { data: null as unknown, error: null as unknown },
     playerStates: { data: null as unknown, error: null as unknown },
@@ -70,8 +73,9 @@ vi.mock('@/lib/supabase-admin', () => ({
           op = 'update'
           return chain
         },
-        insert: () => {
+        insert: (payload: unknown) => {
           op = 'insert'
+          inserts(table, payload)
           return chain
         },
         maybeSingle: async () => result(),
@@ -113,6 +117,7 @@ beforeEach(() => {
   assertPlayer.mockResolvedValue({ error: null, status: 200, player: { id: 'p1' }, id: 'ABCD' })
   markGameFinished.mockReset()
   markGameFinished.mockResolvedValue({ error: null, won: true })
+  inserts.mockReset()
   tables.mafiaSession = { data: { game_id: 'ABCD', phase: 'day', day_number: 2 }, error: null }
   // Fresh copies each test: the route mutates playerStates in place.
   tables.playerStates = { data: [{ ...PRIEST }, { ...INNOCENT }, { ...MAFIOSO }, { ...VILLAGER }], error: null }
@@ -185,6 +190,17 @@ describe('POST /api/mafia/[code]/priest-action — null JSON body', () => {
     const res = await post('{"resumeToken":"tok1","targetPlayerId":"p3"}')
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ success: true, targetWasMafia: true })
+    // The broadcast is built from the `players` name lookup joined to the seat numbers in
+    // `mafia_player_states`; assert it verbatim so the fixture cannot rot into a lie.
+    expect(inserts).toHaveBeenCalledWith(
+      'mafia_chat_messages',
+      expect.objectContaining({
+        game_id: 'ABCD',
+        sender_player_id: 'system',
+        message: '⛪ #1 Priest threw holy water on #3 Mafioso — they were Mafia and have been killed!',
+        scope: 'day',
+      })
+    )
     // Killing the only mafioso ends the game for the village.
     expect(markGameFinished).toHaveBeenCalledWith(expect.anything(), 'ABCD')
   })
