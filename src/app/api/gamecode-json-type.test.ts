@@ -793,3 +793,113 @@ describe('downstream branches are untouched', () => {
     expect(writes).toEqual([])
   })
 })
+
+// ---------------------------------------------------------------------------------------------
+// codewords/board's `resumeToken` — the same class, reached through `??` rather than `?.`.
+//
+// `normalizeResumeToken(body.resumeToken ?? '')` (route line 72) guards NULLISH only, and
+// `normalizeResumeToken` (src/lib/utils.ts:52) starts with `raw.trim()`, so any non-string threw
+// and the handler catch answered 500. Its siblings already defend this — describe-it/my-word:76
+// and quick-draw/my-word:81 both wrap the value in `String(...)`; this was the lone omission.
+//
+// Unlike the gameCode rows the repaired answer is NOT a 400: this route has no resumeToken gate
+// to fall into. A non-string is treated as absent, which is exactly what `''` and any token
+// under four characters already do — the spymaster branch is skipped, `maySeeKey` stays false,
+// and the caller gets a 200 with the key masked. Same reasoning as spotify/search's `q`.
+// ---------------------------------------------------------------------------------------------
+
+describe('codewords/board — resumeToken type matrix', () => {
+  const BOARD = { id: 'b1', key: ['red', 'blue', 'assassin'], revealed_indices: [0] }
+  /** Masked: revealed cells survive, unrevealed become null. */
+  const MASKED = {
+    board: { ...BOARD, key: ['red', null, null], key_totals: { red: 1, blue: 1, assassin: 1 } },
+  }
+  const UNMASKED = { board: { ...BOARD, key_totals: { red: 1, blue: 1, assassin: 1 } } }
+
+  /** A live game whose host token is HOST_TOKEN, with a board dealt. */
+  function arrangeLive(playerRow: unknown = null, role: unknown = null) {
+    tables = {
+      codewords_boards: { data: BOARD, error: null },
+      games: { data: { status: 'live', host_token: HOST_TOKEN }, error: null },
+      players: { data: playerRow, error: null },
+      codewords_player_roles: { data: role, error: null },
+    }
+  }
+
+  it.each(NON_STRING)('treats %s resumeToken as absent: 200 with the key masked', async (_label, resumeToken) => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, resumeToken })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(MASKED)
+    // The spymaster lookup is skipped entirely — no players query is issued.
+    expect(eqCalls.some((c) => c.table === 'players')).toBe(false)
+    expect(res.status).not.toBe(500)
+  })
+
+  it.each(HANDLED_AS_ABSENT)('treats %s resumeToken as absent: 200 with the key masked', async (_l, resumeToken) => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, resumeToken })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(MASKED)
+    expect(eqCalls.some((c) => c.table === 'players')).toBe(false)
+  })
+
+  it('treats an absent resumeToken as absent: 200 with the key masked', async () => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(MASKED)
+    expect(eqCalls.some((c) => c.table === 'players')).toBe(false)
+  })
+
+  // A token under four characters is the existing "unusable token" case a non-string now joins.
+  it('treats a too-short resumeToken as absent: 200 with the key masked', async () => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, resumeToken: 'ab' })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(MASKED)
+    expect(eqCalls.some((c) => c.table === 'players')).toBe(false)
+  })
+
+  // --- the paths a real token still reaches, unchanged --------------------------------------
+
+  it('still unmasks the key for a spymaster', async () => {
+    arrangeLive({ id: 'p1' }, { role: 'spymaster' })
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, resumeToken: PLAYER_TOKEN })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(UNMASKED)
+    expect(eqCalls).toContainEqual({ table: 'players', column: 'resume_token', value: PLAYER_TOKEN })
+  })
+
+  it('still masks the key for a non-spymaster operative', async () => {
+    arrangeLive({ id: 'p1' }, { role: 'operative' })
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, resumeToken: PLAYER_TOKEN })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(MASKED)
+  })
+
+  it('still unmasks the key for the host', async () => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, hostToken: HOST_TOKEN })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(UNMASKED)
+  })
+
+  it('still unmasks the key for everyone once the game is finished', async () => {
+    arrangeLive()
+    tables.games = { data: { status: 'finished', host_token: HOST_TOKEN }, error: null }
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(UNMASKED)
+  })
+
+  // `hostToken` on this route reaches secretMatches -> timingSafeEqual -> TextEncoder.encode(),
+  // which coerces any value via ToString and cannot throw, so it needs no guard. Pinned so that
+  // stays true: a non-string hostToken is simply not a match.
+  it.each(NON_STRING)('a %s hostToken is not a match and does not throw', async (_label, hostToken) => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, hostToken })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(MASKED)
+  })
+})

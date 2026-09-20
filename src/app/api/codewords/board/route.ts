@@ -69,7 +69,13 @@ export async function POST(req: NextRequest) {
     // 3. A spymaster, resolved from their secret resume token — never from a client-supplied
     //    playerId, which is public and forgeable (see src/lib/game-admin.ts).
     if (!maySeeKey) {
-      const token = normalizeResumeToken(body.resumeToken ?? '')
+      // `?? ''` guards nullish only, and normalizeResumeToken starts with `raw.trim()`, so a
+      // non-string threw and the catch below turned it into a 500. Treat it as absent — the
+      // same path `''` and any token under four characters already take, leaving maySeeKey
+      // false and the key masked. The sibling routes wrap this in String(...) instead
+      // (describe-it/my-word, quick-draw/my-word); typeof also spares the pointless lookup
+      // that String({}) would otherwise issue for '[object Object]'.
+      const token = normalizeResumeToken(typeof body.resumeToken === 'string' ? body.resumeToken : '')
       if (token.length >= 4) {
         const { data: player } = await supabase
           .from('players')
