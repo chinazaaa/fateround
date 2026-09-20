@@ -27,14 +27,20 @@ type SessionPatch = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as {
+    // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+    // `.catch` never fires and every `body.x` read below would throw on null.
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as {
       gameCode?: string
       hostToken?: string
       musicEnabled?: boolean
       session?: SessionPatch | null
     }
-    const gameCode = body.gameCode?.trim().toUpperCase()
-    const hostToken = body.hostToken?.trim()
+    // `gameCode` and `hostToken` come off an unchecked `as {...}` cast, so each can be any
+    // JSON value. A non-string cleared `?.` (which short-circuits on nullish, not falsy) and
+    // threw on .trim(); the catch below turned that into a 500. Reading each one as a
+    // string-or-nothing sends it to the gate it already has for '' and null.
+    const gameCode = typeof body.gameCode === 'string' ? body.gameCode.trim().toUpperCase() : undefined
+    const hostToken = typeof body.hostToken === 'string' ? body.hostToken.trim() : undefined
     if (!gameCode || !hostToken) {
       return NextResponse.json({ error: 'gameCode and hostToken are required' }, { status: 400 })
     }
@@ -69,7 +75,11 @@ export async function POST(req: NextRequest) {
         album_art: s.album_art ?? null,
         duration_ms: typeof s.duration_ms === 'number' ? s.duration_ms : null,
         is_playing: Boolean(s.is_playing),
-        position_ms: Math.max(0, Math.round(s.position_ms ?? 0)),
+        // NaN would serialize to an explicit JSON null, and music_sessions.position_ms is
+        // `integer NOT NULL default 0` — a default does not cover an explicit null, so the
+        // upsert would fail the constraint and answer 500. Every value that already
+        // coerced to a finite number still does; only NaN changes, to the column default.
+        position_ms: Number.isFinite(Math.round(s.position_ms ?? 0)) ? Math.max(0, Math.round(s.position_ms ?? 0)) : 0,
         updated_at: new Date().toISOString(),
       }
       const { error } = await supabase.from('music_sessions').upsert(row, { onConflict: 'game_id' })

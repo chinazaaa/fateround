@@ -32,12 +32,18 @@ import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as {
+    // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+    // `.catch` never fires and every `body.x` read below would throw on null.
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as {
       gameCode?: string
       resumeToken?: string
       hostToken?: string
     }
-    const gameId = body.gameCode?.toUpperCase()
+    // `gameCode` comes off an unchecked `as {...}` cast, so it can be any JSON value. A
+    // non-string cleared `?.` (which short-circuits on nullish, not falsy) and threw on
+    // .toUpperCase(); the catch below turned that into a 500. Answer the same "missing
+    // field" 400 that null, an absent field and '' already get.
+    const gameId = typeof body.gameCode === 'string' ? body.gameCode.toUpperCase() : undefined
     if (!gameId) return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
 
     // Reuses the hands bucket: same shape of traffic (one small read per state change, by every
