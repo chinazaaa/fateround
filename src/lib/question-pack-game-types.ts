@@ -25,9 +25,9 @@
  * *constraint* regression left by 20260717150000_wst_library_packs.sql — a separate matter from
  * this list, which 20260717150000 only added who_said_this to.
  *
- * Other copies of this list still exist in the admin and public library pages and disagree with
- * the constraint; they are deliberately left alone for a follow-up, and this module is where
- * they should converge.
+ * The copies of this list that used to sit in the admin and public library pages have since been
+ * converged onto this module (see src/lib/question-pack-game-type-meta.ts, which derives the
+ * picker order and the per-type label/colour from it and is exhaustive by construction).
  */
 export const QUESTION_PACK_GAME_TYPES = [
   'trivia',
