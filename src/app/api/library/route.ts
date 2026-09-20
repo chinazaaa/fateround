@@ -174,9 +174,11 @@ export async function POST(req: NextRequest) {
   if (description && description.length > 500)
     return NextResponse.json({ error: 'Description too long' }, { status: 400 })
   // `game_type` has no length cap; its only gate today is `question_packs_game_type_check` in
-  // the database, which rejects the coerced text and surfaces as a 500. Checked last so it
-  // stays the final gate, and only the 500 → 400 changes — an unknown *string* game_type is
-  // still left to the constraint.
+  // the database, which rejects the coerced text and surfaces as a 500. Checked last of the
+  // per-field gates so it stays after them, and only the 500 → 400 changes — an unknown
+  // *string* game_type is still left to the constraint. (The `questions` rule below is the one
+  // gate placed after this, and only because it is new: putting it earlier would change which
+  // message a body failing two gates gets.)
   if (typeof game_type !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
   // Last of the 400 gates, so no existing message's ordering moves: a body that is also over a
