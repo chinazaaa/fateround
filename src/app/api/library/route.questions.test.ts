@@ -155,6 +155,26 @@ describe('POST /api/library — questions length', () => {
   })
 })
 
+/**
+ * The `questions` gate is placed LAST among the route's 400s, so no pre-existing message's
+ * ordering moves. That is the load-bearing claim of the placement, so it is pinned rather than
+ * argued: each body below fails its own gate *and* the questions rule, and must still answer
+ * with the older message.
+ */
+describe('POST /api/library — gate ordering is unchanged', () => {
+  it.each<[string, Record<string, unknown>, string]>([
+    ['title over the cap', { title: 'x'.repeat(101) }, 'Title too long'],
+    ['author_name over the cap', { author_name: 'a'.repeat(61) }, 'Author name too long'],
+    ['description over the cap', { description: 'd'.repeat(501) }, 'Description too long'],
+    ['a non-string description', { description: 5 }, 'Invalid description'],
+    ['a non-string game_type', { game_type: 5 }, 'Missing required fields'],
+  ])('answers with the older message for %s alongside a bad questions', async (_label, override, error) => {
+    const res = await post({ ...BASE, ...override, questions: [5] })
+    expect({ status: res.status, body: await res.json() }).toEqual({ status: 400, body: { error } })
+    expect(packInsertSpy).not.toHaveBeenCalled()
+  })
+})
+
 describe('POST /api/library — questions elements', () => {
   it.each<[string, unknown[]]>([
     ['a string', ['q1']],
