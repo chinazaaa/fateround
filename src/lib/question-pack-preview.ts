@@ -157,18 +157,41 @@ const PREVIEWERS = {
 /** Exported for the pin test, which asserts set equality against the accepted list both ways. */
 export const PREVIEWED_GAME_TYPES = Object.keys(PREVIEWERS) as readonly QuestionPackGameType[]
 
+/**
+ * Shown when an item cannot be rendered at all. Unreachable from the only caller today (see
+ * `previewText`), but it is what makes the declared `: string` return type true rather than a
+ * type-lie a future caller could fall through.
+ */
+export const UNRENDERABLE_PREVIEW = '[unrenderable question]'
+
 export function previewText(gameType: string, q: unknown): string {
   if (typeof q === 'string') return q
-  if (!q || typeof q !== 'object') return String(q)
-  const obj = q as Record<string, unknown>
-  // hasOwnProperty, not `gameType in PREVIEWERS`: `game_type` comes off the wire, and a value
-  // like "constructor" or "toString" would otherwise hit Object.prototype and be "callable".
-  if (Object.prototype.hasOwnProperty.call(PREVIEWERS, gameType)) {
-    const preview = PREVIEWERS[gameType as QuestionPackGameType](obj)
-    if (preview !== null) return preview
+  // Totality is enforced here, at the boundary, rather than inside each branch. The six
+  // pre-existing previewers are kept exactly as they were — they interpolate `q`'s fields into
+  // template literals, so a throwing getter or a hostile `toString` would abort them — and
+  // JSON.stringify itself throws on a circular reference or a throwing `toJSON`, and returns
+  // `undefined` when a `toJSON` yields undefined.
+  //
+  // None of that is reachable from the one caller (src/app/admin/library/page.tsx:513), whose
+  // items all come from `JSON.parse`: plain objects, JSON value types only, no getters, no
+  // prototype tricks, no cycles. Guarding here instead of rewriting the six keeps their output
+  // byte-identical for every reachable input — those pins are this change's evidence that it
+  // altered no existing behaviour — while still making the function total.
+  try {
+    if (!q || typeof q !== 'object') return String(q)
+    const obj = q as Record<string, unknown>
+    // hasOwnProperty, not `gameType in PREVIEWERS`: `game_type` comes off the wire, and a value
+    // like "constructor" or "toString" would otherwise hit Object.prototype and be "callable".
+    if (Object.prototype.hasOwnProperty.call(PREVIEWERS, gameType)) {
+      const preview = PREVIEWERS[gameType as QuestionPackGameType](obj)
+      if (preview !== null) return preview
+    }
+    // Reached for anything unrecognised — a game_type the DB constraint has grown that this build
+    // predates — and for a known type whose item holds nothing renderable. Showing the raw JSON is
+    // how origin/dev behaved for both, and on a moderation screen it beats showing nothing.
+    const json = JSON.stringify(q)
+    return typeof json === 'string' ? json : UNRENDERABLE_PREVIEW
+  } catch {
+    return UNRENDERABLE_PREVIEW
   }
-  // Reached for anything unrecognised — a game_type the DB constraint has grown that this build
-  // predates — and for a known type whose item holds nothing renderable. Showing the raw JSON is
-  // how origin/dev behaved for both, and on a moderation screen it beats showing nothing.
-  return JSON.stringify(q)
 }

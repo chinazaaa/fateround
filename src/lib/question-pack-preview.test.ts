@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PREVIEWED_GAME_TYPES, previewText } from '@/lib/question-pack-preview'
+import { PREVIEWED_GAME_TYPES, UNRENDERABLE_PREVIEW, previewText } from '@/lib/question-pack-preview'
 import { QUESTION_PACK_GAME_TYPES } from '@/lib/question-pack-game-types'
 
 /**
@@ -344,6 +344,107 @@ describe('every accepted game_type has a preview', () => {
       const out = previewText(gt, q)
       expect(out, `${gt} previewed as raw JSON`).not.toBe(JSON.stringify(q))
       expect(out.length, `${gt} previewed as empty`).toBeGreaterThan(0)
+    }
+  })
+})
+
+/**
+ * UNREACHABLE FROM THE CURRENT CALLER — do not read these as live paths.
+ *
+ * `previewText`'s only caller is src/app/admin/library/page.tsx:513, and every item it passes
+ * comes from `JSON.parse` (the fetch at page.tsx:51-52, and the questions editor at :168 whose
+ * result round-trips back through :70). JSON.parse yields plain objects holding JSON value types
+ * only: no getters, no `toJSON` hooks, no cycles, no symbols. So nothing below can occur today.
+ *
+ * They are pinned anyway because the declared `: string` return type has to be true for a future
+ * caller that does not source its items from JSON — CodeRabbit flagged exactly that. The
+ * guarding is done once at the boundary rather than inside each previewer, so the six
+ * pre-existing branches keep the byte-identical output UNCHANGED_SIX pins.
+ */
+describe('previewText — totality on input the current caller cannot produce', () => {
+  it('returns the diagnostic for a getter that throws, on a legacy branch', () => {
+    const q = {
+      get question() {
+        throw new Error('boom')
+      },
+    }
+    expect(previewText('trivia', q)).toBe(UNRENDERABLE_PREVIEW)
+  })
+
+  it('returns the diagnostic for a getter that throws, on the JSON fallback', () => {
+    const q = {
+      get anything() {
+        throw new Error('boom')
+      },
+    }
+    expect(previewText('some_future_type', q)).toBe(UNRENDERABLE_PREVIEW)
+  })
+
+  it('returns the diagnostic for a toJSON that throws', () => {
+    const q = {
+      toJSON() {
+        throw new Error('boom')
+      },
+    }
+    expect(previewText('some_future_type', q)).toBe(UNRENDERABLE_PREVIEW)
+  })
+
+  it('returns the diagnostic for a circular reference', () => {
+    const q: Record<string, unknown> = { a: 1 }
+    q.self = q
+    expect(() => JSON.stringify(q)).toThrow()
+    expect(previewText('some_future_type', q)).toBe(UNRENDERABLE_PREVIEW)
+  })
+
+  it('returns the diagnostic when serialization yields undefined', () => {
+    const q = {
+      toJSON() {
+        return undefined
+      },
+    }
+    expect(JSON.stringify(q)).toBeUndefined()
+    expect(previewText('some_future_type', q)).toBe(UNRENDERABLE_PREVIEW)
+  })
+
+  it('returns the diagnostic for a hostile toString on a template-literal branch', () => {
+    const q = {
+      optionA: {
+        toString() {
+          throw new Error('boom')
+        },
+      },
+      optionB: 'B',
+    }
+    expect(previewText('would_you_rather', q)).toBe(UNRENDERABLE_PREVIEW)
+  })
+
+  it('always returns a string, never throws, across every accepted type', () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    const hostile: unknown[] = [
+      circular,
+      {
+        toJSON() {
+          throw new Error('boom')
+        },
+      },
+      {
+        toJSON() {
+          return undefined
+        },
+      },
+      {
+        get question() {
+          throw new Error('boom')
+        },
+      },
+      { optionA: Symbol('s'), optionB: Symbol('s') },
+    ]
+    for (const gt of [...QUESTION_PACK_GAME_TYPES, 'some_future_type']) {
+      for (const q of hostile) {
+        expect(() => previewText(gt, q)).not.toThrow()
+        expect(typeof previewText(gt, q)).toBe('string')
+      }
     }
   })
 })
