@@ -16,6 +16,16 @@ import { QUESTION_PACK_GAME_TYPES } from '@/lib/question-pack-game-types'
  * "undefined" a missing optionB renders, the "[object Object]" an object `word` renders, and the
  * "" a non-matching object renders. Any change here is a regression, not a tidy-up.
  */
+/** The six that already had a branch, named once so the eight can be derived rather than retyped. */
+const PRE_EXISTING_SIX: readonly string[] = [
+  'trivia',
+  'would_you_rather',
+  'this_or_that',
+  'crossword',
+  'word_search',
+  'word_scramble',
+]
+
 const UNCHANGED_SIX: [string, unknown, string][] = [
   ['trivia', 'a raw string question', 'a raw string question'],
   ['trivia', null, 'null'],
@@ -154,44 +164,56 @@ describe('previewText — shared guards', () => {
 })
 
 /**
- * The eight that used to fall through to JSON.stringify. Each row is
- * [label, item, expected]; every type gets a well-formed item, a missing field, a wrong-typed
- * field, and (via the shared block below) non-object values.
+ * The eight that used to fall through to JSON.stringify. Each row is [label, item, expected];
+ * every type gets a well-formed item, a missing field, a wrong-typed field, and (via the shared
+ * block below) non-object values.
+ *
+ * An item with nothing renderable in it still shows its raw JSON — a preview line reading just
+ * "3. " would be strictly less than what origin/dev showed, on the one screen where an admin has
+ * to see what they are approving. Those rows are spelled out here rather than asserted
+ * generically, so the fallback cannot quietly become a blank line again.
  */
 const NEW_EIGHT: Record<string, [string, unknown, string][]> = {
   most_likely_to: [
     ['well-formed', { question: 'Who is most likely to move abroad?' }, 'Who is most likely to move abroad?'],
-    ['missing question', { prompt: 'nope' }, ''],
-    ['wrong-typed question', { question: { a: 1 } }, ''],
+    ['missing question', { prompt: 'nope' }, '{"prompt":"nope"}'],
+    ['wrong-typed question', { question: { a: 1 } }, '{"question":{"a":1}}'],
     ['numeric question', { question: 42 }, '42'],
+    ['empty question', { question: '' }, '{"question":""}'],
   ],
   never_have_i_ever: [
     ['well-formed', { question: 'been skydiving' }, 'been skydiving'],
-    ['missing question', {}, ''],
-    ['wrong-typed question', { question: ['a'] }, ''],
+    ['missing question', {}, '{}'],
+    ['wrong-typed question', { question: ['a'] }, '{"question":["a"]}'],
   ],
   pick_a_number: [
     ['well-formed', { question: 'What is your biggest regret?' }, 'What is your biggest regret?'],
-    ['missing question', {}, ''],
-    ['wrong-typed question', { question: null }, ''],
+    ['missing question', {}, '{}'],
+    ['wrong-typed question', { question: null }, '{"question":null}'],
   ],
   describe_it: [
     ['well-formed', { word: 'umbrella' }, 'umbrella'],
-    ['missing word', { prompt: 'umbrella' }, ''],
-    ['wrong-typed word', { word: { a: 1 } }, ''],
+    ['missing word', { prompt: 'umbrella' }, '{"prompt":"umbrella"}'],
+    ['wrong-typed word', { word: { a: 1 } }, '{"word":{"a":1}}'],
   ],
   quick_draw: [
+    // `question` first: quick_draw is dispatched to parseStoredMltQuestions
+    // (src/lib/custom-questions.ts:854), which is the only consumer that reads an object item and
+    // it reads `question` (:839). `prompt` and `word` follow as plausible hand-edits.
+    ['well-formed (question)', { question: 'a cat riding a skateboard' }, 'a cat riding a skateboard'],
     ['well-formed (prompt)', { prompt: 'a cat riding a skateboard' }, 'a cat riding a skateboard'],
     ['well-formed (word)', { word: 'lighthouse' }, 'lighthouse'],
-    ['prompt wins over word', { prompt: 'a prompt', word: 'a word' }, 'a prompt'],
-    ['missing both', {}, ''],
+    ['question wins', { question: 'the question', prompt: 'the prompt', word: 'the word' }, 'the question'],
+    ['prompt beats word', { prompt: 'a prompt', word: 'a word' }, 'a prompt'],
+    ['empty prompt falls through to word', { prompt: '', word: 'lighthouse' }, 'lighthouse'],
+    ['missing all three', {}, '{}'],
     ['wrong-typed prompt falls back to word', { prompt: { a: 1 }, word: 'lighthouse' }, 'lighthouse'],
-    ['wrong-typed both', { prompt: ['a'], word: { b: 2 } }, ''],
+    ['wrong-typed everywhere', { prompt: ['a'], word: { b: 2 } }, '{"prompt":["a"],"word":{"b":2}}'],
   ],
   codewords: [
     ['well-formed', { word: 'Alien' }, 'Alien'],
-    ['missing word', { value: 'Alien' }, ''],
-    ['wrong-typed word', { word: ['Alien'] }, ''],
+    ['missing word', { value: 'Alien' }, '{"value":"Alien"}'],
+    ['wrong-typed word', { word: ['Alien'] }, '{"word":["Alien"]}'],
   ],
   word_grouping: [
     [
@@ -206,12 +228,12 @@ const NEW_EIGHT: Record<string, [string, unknown, string][]> = {
       },
       'Fruits · Colours · Rivers · ___ boat',
     ],
-    ['missing groups', { puzzle: '1' }, ''],
-    ['wrong-typed groups', { groups: 'Fruits' }, ''],
+    ['missing groups', { puzzle: '1' }, '{"puzzle":"1"}'],
+    ['wrong-typed groups', { groups: 'Fruits' }, '{"groups":"Fruits"}'],
     ['group missing category', { groups: [{ words: ['a'] }, { category: 'Colours' }] }, 'Colours'],
     ['wrong-typed category', { groups: [{ category: { a: 1 } }, { category: 'Colours' }] }, 'Colours'],
     ['non-object group', { groups: ['Fruits', null, { category: 'Colours' }] }, 'Colours'],
-    ['empty groups', { groups: [] }, ''],
+    ['empty groups', { groups: [] }, '{"groups":[]}'],
   ],
   who_said_this: [
     [
@@ -229,7 +251,7 @@ const NEW_EIGHT: Record<string, [string, unknown, string][]> = {
     ['fractional correctIndex', { quote: 'Believe it!', options: ['Naruto'], correctIndex: 0.5 }, 'Believe it!'],
     ['string correctIndex', { quote: 'Believe it!', options: ['Naruto'], correctIndex: '0' }, 'Believe it!'],
     ['wrong-typed option at index', { quote: 'Believe it!', options: [{ a: 1 }], correctIndex: 0 }, 'Believe it!'],
-    ['nothing usable', {}, ''],
+    ['nothing usable', {}, '{}'],
   ],
 }
 
@@ -240,77 +262,40 @@ describe('previewText — the eight types that used to render raw JSON', () => {
         expect(previewText(gameType, q)).toBe(expected)
       })
 
-      it('never renders raw JSON for an object item', () => {
-        for (const [, q] of cases) {
-          expect(previewText(gameType, q)).not.toBe(JSON.stringify(q))
+      /**
+       * The regression guard, not a tautology: an item this type CAN render must not fall through
+       * to JSON, and no item of any kind may render as a blank line. A previous version of this
+       * assertion only checked `!== JSON.stringify(q)`, which passed for the malformed rows
+       * precisely because they rendered as nothing.
+       */
+      it('renders the well-formed rows itself and never renders nothing', () => {
+        for (const [label, q, expected] of cases) {
+          const out = previewText(gameType, q)
+          expect(out.length, `${label} previewed as a blank line`).toBeGreaterThan(0)
+          if (label.startsWith('well-formed')) {
+            expect(out, `${label} fell through to JSON`).not.toBe(JSON.stringify(q))
+          }
+          expect(out).toBe(expected)
         }
-      })
-
-      it('handles non-object items the shared way', () => {
-        expect(previewText(gameType, 'a bare string')).toBe('a bare string')
-        expect(previewText(gameType, null)).toBe('null')
-        expect(previewText(gameType, undefined)).toBe('undefined')
-        expect(previewText(gameType, 3)).toBe('3')
       })
     })
   }
-})
 
-describe('previewText — never throws on hostile input', () => {
-  const hostile: unknown[] = [
-    {},
-    [],
-    [1, 2, 3],
-    Object.create(null),
-    { question: Symbol('s') },
-    { word: Symbol('s') },
-    { prompt: Symbol('s') },
-    { quote: Symbol('s'), options: [Symbol('s')], correctIndex: 0 },
-    {
-      groups: [
-        {
-          get category() {
-            throw new Error('boom')
-          },
-        },
-      ],
-    },
-    { groups: { length: 2 } },
-    {
-      question: {
-        toString: () => {
-          throw new Error('boom')
-        },
-      },
-    },
-    {
-      word: {
-        toString: () => {
-          throw new Error('boom')
-        },
-      },
-    },
-  ]
-
-  // Only the eight new branches: the six pre-existing ones interpolate unknown values into
-  // template literals and can still throw on a hostile `toString` — pre-existing behaviour this
-  // change deliberately leaves byte-identical rather than folding a fix in silently.
-  const newTypes = [
-    'most_likely_to',
-    'never_have_i_ever',
-    'pick_a_number',
-    'describe_it',
-    'quick_draw',
-    'codewords',
-    'word_grouping',
-    'who_said_this',
-  ]
-
-  it.each(newTypes)('%s survives every hostile item', (gameType) => {
-    for (const q of hostile) {
-      expect(() => previewText(gameType, q)).not.toThrow()
-      expect(typeof previewText(gameType, q)).toBe('string')
+  it('handles non-object items the shared way, whatever the type', () => {
+    for (const gameType of Object.keys(NEW_EIGHT)) {
+      expect(previewText(gameType, 'a bare string')).toBe('a bare string')
+      expect(previewText(gameType, null)).toBe('null')
+      expect(previewText(gameType, undefined)).toBe('undefined')
+      expect(previewText(gameType, 3)).toBe('3')
     }
+  })
+
+  it('covers exactly the eight types that are not the pre-existing six', () => {
+    expect(Object.keys(NEW_EIGHT).sort()).toEqual(
+      PREVIEWED_GAME_TYPES.filter((gt) => !PRE_EXISTING_SIX.includes(gt))
+        .slice()
+        .sort()
+    )
   })
 })
 

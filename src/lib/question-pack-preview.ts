@@ -40,7 +40,27 @@ function read(o: unknown, key: string): unknown {
   }
 }
 
-type QuestionPreviewer = (q: Record<string, unknown>) => string
+/**
+ * First non-empty rendering among `keys`, or null if none of them holds a usable scalar. An
+ * empty string counts as absent everywhere, so `{ prompt: '', question: 'a cat' }` previews the
+ * question rather than a blank line.
+ */
+function firstField(q: Record<string, unknown>, keys: readonly string[]): string | null {
+  for (const key of keys) {
+    const v = field(read(q, key))
+    if (v !== '') return v
+  }
+  return null
+}
+
+/**
+ * `null` means "nothing usable in this item" and sends the caller to the raw-JSON fallback.
+ * Returning '' instead would print a preview line reading just "3. " — strictly less than the
+ * JSON this function replaced, on the one screen where an admin has to see what they are
+ * approving. Only the new branches can return null; the six pre-existing ones always return the
+ * string they always returned, '' included.
+ */
+type QuestionPreviewer = (q: Record<string, unknown>) => string | null
 
 /**
  * Most Likely To / Never Have I Ever / Pick a Number.
@@ -51,7 +71,7 @@ type QuestionPreviewer = (q: Record<string, unknown>) => string
  * `parseStoredMltQuestions` reads `item.question` when the item is an object
  * (src/lib/custom-questions.ts:834-841). Matches the `trivia` branch's field choice.
  */
-const promptQuestion: QuestionPreviewer = (q) => field(read(q, 'question'))
+const promptQuestion: QuestionPreviewer = (q) => firstField(q, ['question'])
 
 const PREVIEWERS = {
   // --- Unchanged from the original in src/app/admin/library/page.tsx. Output must stay
@@ -75,15 +95,18 @@ const PREVIEWERS = {
    * (src/lib/describe-it-words.ts:284), so an object item is already malformed; `word` is read
    * because that is the column the submitted CSV carries.
    */
-  describe_it: (q) => field(read(q, 'word')),
+  describe_it: (q) => firstField(q, ['word']),
 
   /**
    * Quick Draw shares Describe It's validator, so submitted packs are bare strings too
-   * (src/app/library/submit/page.tsx:554). `prompt` is tried first because that is the one real
-   * object shape in the codebase for a Quick Draw item — `QuickDrawPrompt { prompt: string }`,
-   * src/lib/quick-draw-prompts.ts:5-7 — with `word` as the submitted-CSV column behind it.
+   * (src/app/library/submit/page.tsx:554). `question` comes first because that is the field the
+   * only object-reading consumer actually plays: quick_draw is dispatched to
+   * `parseStoredMltQuestions` (src/lib/custom-questions.ts:854), which reads `item.question`
+   * (:839). `prompt` follows it (the built-in pool's `QuickDrawPrompt { prompt: string }`,
+   * src/lib/quick-draw-prompts.ts:5-7 — a different shape from a pack item, but a plausible
+   * hand-edit), then `word`, the column the submitted CSV carries.
    */
-  quick_draw: (q) => field(read(q, 'prompt')) || field(read(q, 'word')),
+  quick_draw: (q) => firstField(q, ['question', 'prompt', 'word']),
 
   /**
    * Codewords stores bare single words — `validateCodewords` runs the CSV's `word` column
@@ -91,7 +114,7 @@ const PREVIEWERS = {
    * (src/app/library/submit/page.tsx:181-190, dispatched at :555).
    * `parseStoredCodewordsWords` skips non-strings (src/lib/codewords-pool.ts:86).
    */
-  codewords: (q) => field(read(q, 'word')),
+  codewords: (q) => firstField(q, ['word']),
 
   /**
    * One Word Grouping item is a whole *puzzle*: `{ groups: { category, words, difficulty }[] }`
@@ -102,11 +125,9 @@ const PREVIEWERS = {
    */
   word_grouping: (q) => {
     const groups = read(q, 'groups')
-    if (!Array.isArray(groups)) return ''
-    return groups
-      .map((g) => field(read(g, 'category')))
-      .filter((c) => c !== '')
-      .join(' · ')
+    if (!Array.isArray(groups)) return null
+    const categories = groups.map((g) => field(read(g, 'category'))).filter((c) => c !== '')
+    return categories.length > 0 ? categories.join(' · ') : null
   },
 
   /**
@@ -124,7 +145,7 @@ const PREVIEWERS = {
       const answer = field(read(options, String(i)))
       if (answer) return quote ? `${quote} — ${answer}` : answer
     }
-    return quote
+    return quote === '' ? null : quote
   },
   // `satisfies Record<QuestionPackGameType, …>` is the point of this map: the union is derived
   // from QUESTION_PACK_GAME_TYPES, which is pinned set-equal to the question_packs_game_type_check
@@ -143,9 +164,11 @@ export function previewText(gameType: string, q: unknown): string {
   // hasOwnProperty, not `gameType in PREVIEWERS`: `game_type` comes off the wire, and a value
   // like "constructor" or "toString" would otherwise hit Object.prototype and be "callable".
   if (Object.prototype.hasOwnProperty.call(PREVIEWERS, gameType)) {
-    return PREVIEWERS[gameType as QuestionPackGameType](obj)
+    const preview = PREVIEWERS[gameType as QuestionPackGameType](obj)
+    if (preview !== null) return preview
   }
-  // Retained for anything unrecognised — a game_type the DB constraint has grown that this
-  // build predates, or a row written before a type was removed.
+  // Reached for anything unrecognised — a game_type the DB constraint has grown that this build
+  // predates — and for a known type whose item holds nothing renderable. Showing the raw JSON is
+  // how origin/dev behaved for both, and on a moderation screen it beats showing nothing.
   return JSON.stringify(q)
 }
