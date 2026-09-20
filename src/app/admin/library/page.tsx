@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Chip } from '@/components/ui/PageShell'
 import { MAX_PRICE_COINS } from '@/lib/coins/pricing'
+import {
+  QUESTION_PACK_GAME_TYPE_META,
+  QUESTION_PACK_GAME_TYPE_ORDER,
+  questionPackGameTypeMeta,
+} from '@/lib/question-pack-game-type-meta'
 
 interface QuestionPack {
   id: string
@@ -19,58 +24,6 @@ interface QuestionPack {
   price_coins: number
 }
 
-const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
-  trivia: { label: 'Trivia', color: 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25' },
-  who_said_this: {
-    label: 'Who Said This',
-    color: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25',
-  },
-  would_you_rather: {
-    label: 'Would You Rather',
-    color: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25',
-  },
-  most_likely_to: {
-    label: 'Most Likely To',
-    color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
-  },
-  this_or_that: {
-    label: 'This or That',
-    color: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25',
-  },
-  never_have_i_ever: {
-    label: 'Never Have I Ever',
-    color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
-  },
-  describe_it: {
-    label: 'Text Charades',
-    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
-  },
-  quick_draw: {
-    label: 'Quick Draw',
-    color: 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25',
-  },
-  codewords: {
-    label: 'Codewords',
-    color: 'text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/25',
-  },
-  pick_a_number: {
-    label: 'Pick a Number',
-    color: 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/25',
-  },
-  crossword: {
-    label: 'Crossword',
-    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
-  },
-  word_search: {
-    label: 'Word Search',
-    color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
-  },
-  word_scramble: {
-    label: 'Word Scramble',
-    color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
-  },
-}
-
 const TAG_META: Record<string, { label: string; color: string }> = {
   easy: { label: 'Easy', color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25' },
   intermediate: { label: 'Intermediate', color: 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/25' },
@@ -82,20 +35,6 @@ const TAG_META: Record<string, { label: string; color: string }> = {
 }
 
 const ALL_TAGS = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy']
-const ALL_GAME_TYPES = [
-  'trivia',
-  'would_you_rather',
-  'most_likely_to',
-  'this_or_that',
-  'never_have_i_ever',
-  'describe_it',
-  'quick_draw',
-  'codewords',
-  'pick_a_number',
-  'crossword',
-  'word_search',
-  'word_scramble',
-]
 const ALL_STATUSES = ['pending', 'approved', 'rejected']
 const STATUSES = ['pending', 'approved', 'rejected'] as const
 type Status = (typeof STATUSES)[number]
@@ -318,7 +257,7 @@ function PackCard({
   }
 
   const preview = (pack.questions as unknown[]).slice(0, 5)
-  const meta = GAME_TYPE_META[pack.game_type]
+  const meta = questionPackGameTypeMeta(pack.game_type)
 
   return (
     <div className="glass-card p-5 space-y-4">
@@ -404,8 +343,12 @@ function PackCard({
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted">Game type</label>
             <div className="flex gap-2 flex-wrap">
-              {ALL_GAME_TYPES.map((gt) => {
-                const m = GAME_TYPE_META[gt]
+              {QUESTION_PACK_GAME_TYPE_ORDER.map((gt) => {
+                // Indexed directly, not through `questionPackGameTypeMeta`: `gt` comes from the
+                // order array, which the meta is exhaustive over by construction. A `?? gt`
+                // fallback here would re-admit the raw-slug rendering this PR removes. The badge
+                // above still goes through the helper — `pack.game_type` is off the wire.
+                const m = QUESTION_PACK_GAME_TYPE_META[gt]
                 return (
                   <button
                     key={gt}
@@ -413,11 +356,11 @@ function PackCard({
                     onClick={() => setGameType(gt)}
                     className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
                       gameType === gt
-                        ? `${m?.color ?? ''} border-current`
+                        ? `${m.color} border-current`
                         : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--border-strong)]'
                     }`}
                   >
-                    {m?.label ?? gt}
+                    {m.label}
                   </button>
                 )
               })}
