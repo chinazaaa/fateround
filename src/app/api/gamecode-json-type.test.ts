@@ -24,32 +24,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * schema-level `z.string()` would turn `null` into an "expected string, received null" 400 on a
  * request these routes handle today (CONTRIBUTING.md — #1163 / #1153).
  *
- * After the fix, three groups of rows in this file carry a PIN MOVED note — they asserted the
+ * After the fix, five groups of rows in this file carry a PIN MOVED note — they asserted the
  * 500 that was the defect. Everything else in the file is byte-identical to what ran green
  * against the unchanged routes.
  */
 
-const {
-  rateLimitSpy,
-  resolveHandViewerSpy,
-  redactHandsSpy,
-  assertPlayerSpy,
-  searchTracksSpy,
-  secretMatchesSpy,
-  fromSpy,
-} = vi.hoisted(() => ({
-  rateLimitSpy: vi.fn(async () => null),
-  resolveHandViewerSpy: vi.fn(async () => 'p1' as string | null),
-  redactHandsSpy: vi.fn((rows: unknown[], viewerId: unknown) => [{ redactedFor: viewerId, count: rows.length }]),
-  assertPlayerSpy: vi.fn(async (_s: unknown, _code: string, _t: unknown, _o?: unknown) => ({
-    error: 'Auth reached',
-    status: 404,
-    player: null,
-  })),
-  searchTracksSpy: vi.fn(async () => [{ id: 't1' }]),
-  secretMatchesSpy: vi.fn(async (a: unknown, b: unknown) => typeof a === 'string' && a === b),
-  fromSpy: vi.fn(),
-}))
+const { rateLimitSpy, resolveHandViewerSpy, redactHandsSpy, assertPlayerSpy, searchTracksSpy, fromSpy } = vi.hoisted(
+  () => ({
+    rateLimitSpy: vi.fn(async () => null),
+    resolveHandViewerSpy: vi.fn(async () => 'p1' as string | null),
+    redactHandsSpy: vi.fn((rows: unknown[], viewerId: unknown) => [{ redactedFor: viewerId, count: rows.length }]),
+    assertPlayerSpy: vi.fn(async (_s: unknown, _code: string, _t: unknown, _o?: unknown) => ({
+      error: 'Auth reached',
+      status: 404,
+      player: null,
+    })),
+    searchTracksSpy: vi.fn(async () => [{ id: 't1' }]),
+    fromSpy: vi.fn(),
+  })
+)
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/rate-limit', () => ({
@@ -62,7 +55,6 @@ vi.mock('@/lib/hand-redaction', () => ({
 }))
 vi.mock('@/lib/game-admin', () => ({ assertPlayer: assertPlayerSpy }))
 vi.mock('@/lib/spotify', () => ({ searchTracks: searchTracksSpy }))
-vi.mock('@/lib/secret-compare', () => ({ secretMatches: secretMatchesSpy }))
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => ({ from: fromSpy }) }))
 
 // ---------------------------------------------------------------------------------------------
@@ -399,7 +391,6 @@ beforeEach(() => {
   ])
   assertPlayerSpy.mockResolvedValue({ error: 'Auth reached', status: 404, player: null })
   searchTracksSpy.mockResolvedValue([{ id: 't1' }])
-  secretMatchesSpy.mockImplementation(async (a: unknown, b: unknown) => typeof a === 'string' && a === b)
   fromSpy.mockImplementation((table: string) => makeChain(table))
   // internalErrorMessage logs the swallowed TypeError; keep the run readable.
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -893,13 +884,147 @@ describe('codewords/board — resumeToken type matrix', () => {
     await expect(res.json()).resolves.toEqual(UNMASKED)
   })
 
-  // `hostToken` on this route reaches secretMatches -> timingSafeEqual -> TextEncoder.encode(),
-  // which coerces any value via ToString and cannot throw, so it needs no guard. Pinned so that
-  // stays true: a non-string hostToken is simply not a match.
-  it.each(NON_STRING)('a %s hostToken is not a match and does not throw', async (_label, hostToken) => {
+  // `hostToken` here reaches secretMatches -> timingSafeEqual -> TextEncoder.encode(), which
+  // applies ToString and therefore cannot throw — so it needs no guard, and that is the only
+  // claim this block makes. `@/lib/secret-compare` is deliberately NOT mocked in this file, so
+  // these rows exercise the real digest comparison.
+  //
+  // It would be wrong to also claim "a non-string is never a match": ToString means a
+  // one-element array UNWRAPS to its element, so `['<the token>']` does match. That is not a
+  // privilege escalation — you must already know the token — but it is surprising enough to
+  // pin explicitly rather than leave a comment asserting the opposite.
+  it.each(NON_STRING)('a %s hostToken does not throw, and does not match', async (_label, hostToken) => {
     arrangeLive()
     const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, hostToken })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual(MASKED)
+  })
+
+  it('a single-element array hostToken DOES match, because TextEncoder applies ToString', async () => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, hostToken: [HOST_TOKEN] })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(UNMASKED)
+  })
+
+  it('a string hostToken still matches, through the real secretMatches', async () => {
+    arrangeLive()
+    const res = await post(codewordsBoard, '/api/codewords/board', { gameCode: LOWER, hostToken: HOST_TOKEN })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual(UNMASKED)
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// A JSON body of literal `null`. `req.json()` PARSES that successfully to `null`, so the
+// `.catch(() => ({}))` never fires and `body.gameCode` throws "Cannot read properties of null"
+// one step EARLIER than the typeof guards above can help. Same defect class, same swallow,
+// same spurious 500 — on every route in this file.
+// ---------------------------------------------------------------------------------------------
+
+describe('a literal `null` JSON body', () => {
+  /** Bypasses the object-only `post` helper so a raw `null` document can be sent. */
+  function postRaw(route: RouteCase, raw: string) {
+    return route.handler(
+      new Request(`http://localhost${route.path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: raw,
+        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+      }) as any
+    )
+  }
+
+  // PIN MOVED. Against the unchanged routes every row here asserted `500` with
+  // `route.catchFallback`. That 500 was the defect; a `null` body now answers the same
+  // missing-field 400 that a malformed body, a scalar body and an array body already did.
+  it.each(ROUTES.map((r) => [r.name, r] as const))('%s answers the missing-field 400', async (_n, route) => {
+    route.arrange()
+    const res = await postRaw(route, 'null')
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: route.missingError })
+    expect(res.status).not.toBe(500)
+  })
+
+  // Neighbours that already behave correctly, pinned so the fix cannot disturb them.
+  it.each(ROUTES.map((r) => [r.name, r] as const))('%s: malformed JSON is already a 400', async (_n, route) => {
+    route.arrange()
+    const res = await postRaw(route, '{not json')
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: route.missingError })
+  })
+
+  it.each(ROUTES.map((r) => [r.name, r] as const))('%s: a JSON scalar body is already a 400', async (_n, route) => {
+    route.arrange()
+    const res = await postRaw(route, '5')
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: route.missingError })
+  })
+
+  it.each(ROUTES.map((r) => [r.name, r] as const))('%s: a JSON array body is already a 400', async (_n, route) => {
+    route.arrange()
+    const res = await postRaw(route, '[]')
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: route.missingError })
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// music/control's `position_ms`. `Math.max(0, Math.round(s.position_ms ?? 0))` is the same `??`
+// shape: it does not throw, but a non-numeric value yields NaN, which serializes to JSON `null`
+// — and `music_sessions.position_ms` is `integer NOT NULL default 0`
+// (supabase/migrations/20260705130000_spotify_music.sql:30). A default does not cover an
+// EXPLICIT null, so the insert violates NOT NULL and the route answers 500: the same symptom.
+// `duration_ms`, one line above, already has a typeof guard; this one does not.
+// ---------------------------------------------------------------------------------------------
+
+describe('music/control position_ms', () => {
+  function patch(position_ms: unknown) {
+    tables = { games: { data: { id: UPPER, host_token: HOST_TOKEN }, error: null } }
+    return post(musicControl, '/api/music/control', {
+      gameCode: LOWER,
+      hostToken: HOST_TOKEN,
+      session: { track_uri: 'spotify:track:1', is_playing: true, position_ms },
+    })
+  }
+  const written = () => (writes.find((w) => w.op === 'upsert')?.payload as { position_ms: number }).position_ms
+
+  it.each([
+    ['a number', 5, 5],
+    ['a numeric string', '7', 7],
+    ['true', true, 1],
+    ['false', false, 0],
+    ['null', null, 0],
+    ['a negative number', -20, 0],
+    ['a fractional number', 10.6, 11],
+    // ToNumber unwraps a one-element array, so this is a number, not NaN.
+    ['a single-element numeric array', ['5'], 5],
+  ])('writes %s as %s', async (_label, value, expected) => {
+    await patch(value)
+    expect(written()).toBe(expected)
+  })
+
+  it('writes an absent position_ms as 0', async () => {
+    tables = { games: { data: { id: UPPER, host_token: HOST_TOKEN }, error: null } }
+    await post(musicControl, '/api/music/control', {
+      gameCode: LOWER,
+      hostToken: HOST_TOKEN,
+      session: { track_uri: 'spotify:track:1' },
+    })
+    expect(written()).toBe(0)
+  })
+
+  // PIN MOVED. Against the unchanged route these rows asserted NaN, which serializes to an
+  // explicit JSON null and fails the NOT NULL constraint as a 500. They now assert the column
+  // default, which is what every other unusable value already writes.
+  it.each([
+    ['an object', {}],
+    ['a multi-element array', ['5', '6']],
+    ['a non-numeric string', 'abc'],
+  ])('writes the column default for %s instead of a NOT NULL violation', async (_label, value) => {
+    await patch(value)
+    expect(written()).toBe(0)
+    expect(written()).not.toBeNaN()
+    expect(JSON.parse(JSON.stringify({ p: written() })).p).toBe(0)
   })
 })

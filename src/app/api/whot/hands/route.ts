@@ -18,7 +18,9 @@ import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as {
+    // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+    // `.catch` never fires and every `body.x` read below would throw on null.
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as {
       gameCode?: string
       resumeToken?: string
       hostToken?: string

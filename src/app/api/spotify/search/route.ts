@@ -12,7 +12,9 @@ import { searchTracks } from '@/lib/spotify'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { gameCode?: string; hostToken?: string; q?: string }
+    // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+    // `.catch` never fires and every `body.x` read below would throw on null.
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as { gameCode?: string; hostToken?: string; q?: string }
     // `gameCode`, `hostToken` and `q` come off an unchecked `as {...}` cast, so each can be
     // any JSON value. A non-string cleared `?.` (which short-circuits on nullish, not falsy)
     // and threw on .trim(); the catch below turned that into a 500. Reading each one as a
