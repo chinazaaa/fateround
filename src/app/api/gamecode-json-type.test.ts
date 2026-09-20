@@ -377,8 +377,10 @@ const NON_STRING: [string, unknown][] = [
 ]
 
 /**
- * The three values that are genuinely handled today, by `?.` (null/absent) or by the falsy gate
- * (''). These rows MUST NOT move — see the file header.
+ * The values that are genuinely handled today, by `?.` (null) or by the falsy gate (''). An
+ * absent field behaves identically and is covered by its own `it` alongside each use of this
+ * list, because it cannot be expressed as a value here. These rows MUST NOT move — see the
+ * file header.
  */
 const HANDLED_AS_ABSENT: [string, unknown][] = [
   ['null', null],
