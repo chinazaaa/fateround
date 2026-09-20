@@ -975,7 +975,9 @@ describe('a literal `null` JSON body', () => {
 // — and `music_sessions.position_ms` is `integer NOT NULL default 0`
 // (supabase/migrations/20260705130000_spotify_music.sql:30). A default does not cover an
 // EXPLICIT null, so the insert violates NOT NULL and the route answers 500: the same symptom.
-// `duration_ms`, one line above, already has a typeof guard; this one does not.
+// `duration_ms`, one line above, has a typeof guard but no range clamp, so it had the int4
+// half of the same problem. Two value classes change, not one: NaN AND Infinity (JSON reaches
+// Infinity through an overflowing literal such as 1e999), plus anything past the int4 bounds.
 // ---------------------------------------------------------------------------------------------
 
 describe('music/control position_ms', () => {
@@ -1012,6 +1014,78 @@ describe('music/control position_ms', () => {
       session: { track_uri: 'spotify:track:1' },
     })
     expect(written()).toBe(0)
+  })
+
+  // Both columns are int4 (supabase/migrations/20260705130000_spotify_music.sql:27,30), so a
+  // finite number past 2147483647 is "value out of range for type integer" — a 500 from the
+  // same class, which the NOT NULL fix alone did not close.
+  it.each([
+    ['int4 max', 2147483647, 2147483647],
+    ['one past int4 max', 2147483648, 2147483647],
+    ['1e12', 1e12, 2147483647],
+  ])('clamps %s to the int4 ceiling', async (_label, value, expected) => {
+    await patch(value)
+    expect(written()).toBe(expected)
+  })
+
+  // JSON's only route to Infinity is an overflowing literal. It is NOT NaN, so Number.isFinite
+  // is the thing that catches it; without a row here that half of the guard is untested.
+  it('writes 0 for an overflowing literal that parses to Infinity', async () => {
+    tables = { games: { data: { id: UPPER, host_token: HOST_TOKEN }, error: null } }
+    await musicControl(
+      new Request('http://localhost/api/music/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: `{"gameCode":"${LOWER}","hostToken":"${HOST_TOKEN}","session":{"track_uri":"u","position_ms":1e999}}`,
+        /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+      }) as any
+    )
+    expect(written()).toBe(0)
+  })
+
+  it.each([
+    ['int4 max', 2147483647, 2147483647],
+    ['one past int4 max', 2147483648, 2147483647],
+  ])('clamps duration_ms %s to the int4 ceiling', async (_label, value, expected) => {
+    tables = { games: { data: { id: UPPER, host_token: HOST_TOKEN }, error: null } }
+    await post(musicControl, '/api/music/control', {
+      gameCode: LOWER,
+      hostToken: HOST_TOKEN,
+      session: { track_uri: 'u', duration_ms: value },
+    })
+    const payload = writes.find((w) => w.op === 'upsert')?.payload as { duration_ms: number }
+    expect(payload.duration_ms).toBe(expected)
+  })
+
+  // duration_ms is nullable and is NOT normalised by the route — no Math.round, no floor at 0.
+  // The clamp must leave all of that exactly as it was and only remove out-of-range values.
+  it.each([
+    ['a fraction', 10.5, 10.5],
+    ['a negative', -5, -5],
+    ['a negative fraction', -10.5, -10.5],
+    ['zero', 0, 0],
+    ['int4 min', -2147483648, -2147483648],
+    ['past int4 min', -2147483649, -2147483648],
+  ])('passes duration_ms %s through unchanged apart from the range clamp', async (_l, value, expected) => {
+    tables = { games: { data: { id: UPPER, host_token: HOST_TOKEN }, error: null } }
+    await post(musicControl, '/api/music/control', {
+      gameCode: LOWER,
+      hostToken: HOST_TOKEN,
+      session: { track_uri: 'u', duration_ms: value },
+    })
+    const payload = writes.find((w) => w.op === 'upsert')?.payload as { duration_ms: number }
+    expect(payload.duration_ms).toBe(expected)
+  })
+
+  it('still writes a null duration_ms for a non-number', async () => {
+    tables = { games: { data: { id: UPPER, host_token: HOST_TOKEN }, error: null } }
+    await post(musicControl, '/api/music/control', {
+      gameCode: LOWER,
+      hostToken: HOST_TOKEN,
+      session: { track_uri: 'u', duration_ms: 'abc' },
+    })
+    const payload = writes.find((w) => w.op === 'upsert')?.payload as { duration_ms: number | null }
+    expect(payload.duration_ms).toBeNull()
   })
 
   // PIN MOVED. Against the unchanged route these rows asserted NaN, which serializes to an
