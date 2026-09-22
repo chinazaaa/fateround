@@ -23,9 +23,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * schema-level guard here would turn requests these routes answer today into a different
  * 400 (CONTRIBUTING.md — #1163 / #1153).
  *
- * The matrix runs PAST the gates, not into them: the rate limiter is stubbed to allow, and
- * the real `resolveHandViewer` resolves a real player row off the PostgREST stub, so the
- * valid rows assert redacted hands and not an auth short-circuit.
+ * The matrix runs PAST the gates, not into them: the rate limiter is stubbed to allow (but
+ * still checked against the genuine `handsFetch` rule), and `@/lib/hand-redaction` is left
+ * unmocked so the real `resolveHandViewer` and `redactHands` produce the `valid` rows' body —
+ * which is asserted as actually redacted, not merely success-shaped.
  */
 
 const { rateLimitSpy, rpcSpy, fromSpy } = vi.hoisted(() => ({
@@ -36,16 +37,21 @@ const { rateLimitSpy, rpcSpy, fromSpy } = vi.hoisted(() => ({
 
 vi.mock('server-only', () => ({}))
 
-// Only `enforceRateLimit` is replaced. `RATE_LIMITS` stays the REAL table, so
-// `RATE_LIMITS.handsFetch` is the genuine `{ bucket, max, windowSeconds }` rule and a rename
-// or removal of that key breaks this file instead of silently passing against a fake shape.
+// Only `enforceRateLimit` is replaced; the rest of the module is passed through.
+//
+// The `valid` rows assert the route asked for the genuine `handsFetch` rule, compared against
+// `vi.importActual` — NOT against the mocked module. Importing the constant from the mock would
+// fake both sides of the comparison at once and pass against any lie; importActual bypasses the
+// mock, so a route swapped onto a different bucket fails here.
 vi.mock('@/lib/rate-limit', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/rate-limit')>()
   return { ...actual, enforceRateLimit: rateLimitSpy }
 })
 
-// `@/lib/hand-redaction` is NOT mocked: `resolveHandViewer` runs for real against the stub
-// below (so the resume-token lookup is genuinely exercised) and `redactHands` is pure.
+// `@/lib/hand-redaction` is NOT mocked. The real `resolveHandViewer` runs against the stub
+// below — the stub ignores `.eq()` filters, so what that pins is the token being forwarded as
+// the filter value, not a row genuinely matching it — and the real `redactHands` (pure)
+// produces the response body, so the `valid` rows assert actual redaction.
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => ({ from: fromSpy, rpc: rpcSpy }) }))
 
 // ---------------------------------------------------------------------------------------------
@@ -92,23 +98,71 @@ function postRaw(handler: (req: any) => Promise<Response>, path: string, raw: st
 import { createHandsRoute } from './hands-route'
 import { POST as unoHands } from '@/app/api/uno/hands/route'
 
+/** The real rule, read past the mock — see the note on the rate-limit mock above. */
+const { RATE_LIMITS: REAL_RATE_LIMITS } = await vi.importActual<typeof import('@/lib/rate-limit')>('@/lib/rate-limit')
+
 const PLAYER_TOKEN = 'AAAA1111BBBB2222'
 
 /**
- * Every consumer of the factory. `uno/hands` is the only one in the tree today; the second
- * entry drives the factory directly with no `extraViewerIds`, which is the shape Crazy Eights
- * and Bingo will join with (docs/rls-hardening.md § "Phase 7"), and proves the body read is
- * the factory's and not UNO's.
+ * Every consumer of the factory, in its two genuinely distinct shapes.
+ *
+ * `uno/hands` is the only one in the tree today, and it is the WITH-`extraViewerIds` shape: the
+ * fixture below turns Team-Up on over a four-seat `turn_order`, so `unoTeammateId` really
+ * resolves p1's partner (p3) and the 200 shows TWO unredacted hands. The second entry drives
+ * the factory directly with no `extraViewerIds` — the shape Crazy Eights and Bingo will join
+ * with (docs/rls-hardening.md § "Phase 7") — and its 200 shows exactly one. The two expected
+ * bodies differ, so neither consumer can be deleted without a failure.
  */
 const plainHands = createHandsRoute({ table: 'whot_player_hands', tag: 'plain/hands' })
 
-const CONSUMERS: { name: string; path: string; handler: (req: never) => Promise<Response>; table: string }[] = [
-  { name: 'POST /api/uno/hands', path: '/api/uno/hands', handler: unoHands as never, table: 'uno_player_hands' },
+const HAND_ROWS = [
+  { player_id: 'p1', cards: ['A', 'B'] },
+  { player_id: 'p2', cards: ['C'] },
+  { player_id: 'p3', cards: ['D', 'E', 'F'] },
+  { player_id: 'p4', cards: [] },
+]
+
+/** `cards` in full for the viewer set, null for everyone else; `card_count` always survives. */
+function expectHands(...unredacted: string[]) {
+  return {
+    status: 200,
+    body: {
+      hands: HAND_ROWS.map((r) => ({
+        player_id: r.player_id,
+        cards: unredacted.includes(r.player_id) ? r.cards : null,
+        card_count: r.cards.length,
+      })),
+    },
+  }
+}
+
+type Consumer = {
+  name: string
+  path: string
+  handler: (req: never) => Promise<Response>
+  table: string
+  /** Extra columns the `games` row must carry for this consumer. */
+  game: Record<string, unknown>
+  ok: { status: number; body: unknown }
+}
+
+const CONSUMERS: Consumer[] = [
+  {
+    name: 'POST /api/uno/hands',
+    path: '/api/uno/hands',
+    handler: unoHands as never,
+    table: 'uno_player_hands',
+    // Team-Up ON, so UNO's extraViewerIds callback actually runs and adds the teammate.
+    game: { uno_team_mode: true },
+    ok: expectHands('p1', 'p3'),
+  },
   {
     name: 'createHandsRoute (no extraViewerIds)',
     path: '/api/plain/hands',
     handler: plainHands as never,
     table: 'whot_player_hands',
+    game: {},
+    ok: expectHands('p1'),
   },
 ]
 
@@ -134,17 +188,10 @@ const CONSUMERS: { name: string; path: string; handler: (req: never) => Promise<
  * └─────────────────────────┴────────────────────────────┴────────────────────────────┘
  */
 const MISSING = { status: 400, body: { error: 'gameCode is required' } }
-const OK = {
-  status: 200,
-  body: {
-    hands: [
-      { player_id: 'p1', cards: ['A', 'B'], card_count: 2 },
-      { player_id: 'p2', cards: null, card_count: 1 },
-    ],
-  },
-}
+/** Sentinel: the `valid` row's expectation is the per-consumer `ok` above, not a shared one. */
+const OK = null
 
-type Row = { label: string; raw: string; expected: { status: number; body: unknown }; pastGates?: boolean }
+type Row = { label: string; raw: string; expected: { status: number; body: unknown } | null; pastGates?: boolean }
 
 const BODIES: Row[] = [
   // PIN MOVED (the one row this change touches). Before the fix this row read
@@ -166,18 +213,15 @@ const BODIES: Row[] = [
   { label: 'valid, gameCode missing', raw: JSON.stringify({ resumeToken: PLAYER_TOKEN }), expected: MISSING },
 ]
 
-function seed(table: string) {
+function seed(consumer: Consumer) {
   tables = {
-    games: { data: { status: 'playing', uno_team_mode: false }, error: null },
+    games: { data: { status: 'playing', ...consumer.game }, error: null },
     players: { data: { id: 'p1' }, error: null },
-    uno_sessions: { data: { turn_order: ['p1', 'p2'] }, error: null },
-    [table]: {
-      data: [
-        { player_id: 'p1', cards: ['A', 'B'] },
-        { player_id: 'p2', cards: ['C'] },
-      ],
-      error: null,
-    },
+    // Four seats, so `unoTeammateId` has a same-parity partner to find for p1 (p3). A
+    // two-seat order would silently return null and make UNO indistinguishable from the
+    // no-extraViewerIds consumer.
+    uno_sessions: { data: { turn_order: ['p1', 'p2', 'p3', 'p4'] }, error: null },
+    [consumer.table]: { data: HAND_ROWS, error: null },
   }
 }
 
@@ -193,18 +237,23 @@ describe('createHandsRoute — request body matrix', () => {
     describe(consumer.name, () => {
       for (const body of BODIES) {
         it(`${body.label} body`, async () => {
-          seed(consumer.table)
+          seed(consumer)
           const res = await postRaw(consumer.handler as never, consumer.path, body.raw)
           const json = await res.json()
 
-          expect({ status: res.status, body: json }).toEqual(body.expected)
+          expect({ status: res.status, body: json }).toEqual(body.expected ?? consumer.ok)
 
           if (body.pastGates) {
-            // PAST the gates, not into them: the rate limiter ran and allowed, the code was
-            // upper-cased for the lookup, and the real resolveHandViewer matched the resume
-            // token against the players table — so the 200 is redacted hands, not a
-            // short-circuit that happens to be shaped like success.
+            // PAST the gates, not into them. The rate limiter ran and was asked for the REAL
+            // handsFetch rule; the game code was upper-cased for the lookup; the real
+            // resolveHandViewer forwarded the resume token as the `players` filter; and the
+            // real redactHands produced the body — so the 200 asserted above is genuinely
+            // redacted hands, not a short-circuit that happens to be shaped like success.
+            //
+            // The stub answers by table name and ignores `.eq()` filters, so this pins that
+            // the token was passed as the filter value, not that a row matched it.
             expect(rateLimitSpy).toHaveBeenCalledTimes(1)
+            expect(rateLimitSpy).toHaveBeenCalledWith(expect.anything(), REAL_RATE_LIMITS.handsFetch)
             expect(eqCalls).toContainEqual({ table: 'players', column: 'resume_token', value: PLAYER_TOKEN })
             expect(eqCalls).toContainEqual({ table: consumer.table, column: 'game_id', value: 'ABCD' })
           } else {
