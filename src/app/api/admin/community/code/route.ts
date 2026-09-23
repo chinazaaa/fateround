@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY is required.' }, { status: 503 })
   }
 
-  const body = await req.json().catch(() => ({}))
+  const body = (await req.json().catch(() => ({}))) ?? {}
   const code = typeof body.code === 'string' ? body.code.trim() : ''
   if (code.length < MANAGER_CODE_MIN_LENGTH) {
     return NextResponse.json({ error: `Code must be at least ${MANAGER_CODE_MIN_LENGTH} characters` }, { status: 400 })

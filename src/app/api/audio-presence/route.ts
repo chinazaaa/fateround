@@ -8,7 +8,7 @@ import { authorizedRoom, type AudioAuth } from '@/lib/audio-room-auth'
 // rather than erroring the caller.
 export async function POST(req: NextRequest) {
   try {
-    const { roomName, auth } = (await req.json().catch(() => ({}))) as {
+    const { roomName, auth } = ((await req.json().catch(() => ({}))) ?? {}) as {
       roomName?: string
       auth?: AudioAuth
     }
