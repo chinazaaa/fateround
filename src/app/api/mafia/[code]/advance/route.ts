@@ -10,7 +10,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   let body: { hostToken?: unknown; nextPhase?: unknown; isAuto?: unknown }
   try {
-    body = await req.json()
+    // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+    // `catch` never fires and the first read of `body` below — which sits OUTSIDE this
+    // try — would throw a TypeError and reject the handler instead of answering a status.
+    body = (await req.json()) ?? {}
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
