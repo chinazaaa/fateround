@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const blocked = serviceGuard()
   if (blocked) return blocked
 
-  const body = await req.json().catch(() => ({}))
+  const body = (await req.json().catch(() => ({}))) ?? {}
   const raw = typeof body.whatsappInviteUrl === 'string' ? body.whatsappInviteUrl.trim() : ''
 
   // Empty clears the link. Otherwise require a well-formed http(s) URL so we

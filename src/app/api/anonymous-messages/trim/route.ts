@@ -6,7 +6,7 @@ import { trimAnonymousMessagesIfDue } from '@/lib/anonymous-messages'
 const supabase = getSupabaseAnon()
 
 export async function POST(req: NextRequest) {
-  const raw = await req.json().catch(() => ({}))
+  const raw = (await req.json().catch(() => ({}))) ?? {}
   const gameId = String(raw.gameId ?? '').toUpperCase()
   if (!gameId) return NextResponse.json({ error: 'gameId is required' }, { status: 400 })
 
