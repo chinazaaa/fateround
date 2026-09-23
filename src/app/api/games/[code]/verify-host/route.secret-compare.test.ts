@@ -27,10 +27,34 @@ import {
  * That is what makes `secretMatches` a drop-in here, and the no-db-read assertions below
  * are what prove the early return still happens rather than the comparison absorbing it.
  *
- * `@/lib/secret-compare` is deliberately NOT mocked: the real digest comparison is what
- * is under test, and a stub asserting "a non-string never matches" would be a lie
- * (`TextEncoder.encode` applies ToString, so `['x']` encodes as `'x'`).
+ * `@/lib/secret-compare` is WRAPPED, never substituted — see `compareCalls` below.
  */
+
+/**
+ * A FAITHFUL wrapper around `@/lib/secret-compare`, not a substitute for it: it awaits the
+ * REAL `secretMatches` and only records the call. It decides nothing, so it cannot lie
+ * about what matches — in particular it cannot claim a non-string never matches, when in
+ * fact `TextEncoder.encode` applies ToString and `['<token>']` encodes as `'<token>'`.
+ *
+ * It exists because the swap at this site is observationally IDENTICAL — every status and
+ * body pinned above is the same under `===` and under `secretMatches`, which is the point.
+ * A behavioural test therefore cannot tell the two apart, so this records the mechanism:
+ * that the constant-time helper is the thing being called, with the supplied token first
+ * and the stored one second, and that it is NOT called when a guard short-circuits first.
+ */
+const compareCalls = vi.hoisted(() => [] as { supplied: unknown; stored: unknown; result: boolean }[])
+
+vi.mock('@/lib/secret-compare', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/secret-compare')>()
+  return {
+    ...actual,
+    secretMatches: async (supplied: string | null | undefined, stored: string | null | undefined) => {
+      const result = await actual.secretMatches(supplied, stored)
+      compareCalls.push({ supplied, stored, result })
+      return result
+    },
+  }
+})
 
 vi.mock('server-only', () => ({}))
 
@@ -61,6 +85,7 @@ beforeAll(async () => {
 }, 60_000)
 
 beforeEach(() => {
+  compareCalls.length = 0
   game = gameRow({ host_user_id: 'user-1' })
   gamesReads = 0
   updates = []
@@ -183,6 +208,33 @@ describe('POST /api/games/[code]/verify-host — gate precedence around the comp
     const res = await post({ hostToken: 'wrong' })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ ok: false, notFound: true })
+  })
+})
+
+describe('POST /api/games/[code]/verify-host — the comparison is the constant-time one', () => {
+  it('calls secretMatches(supplied, stored) for the correct token', async () => {
+    await post({ hostToken: HOST_TOKEN })
+    expect(compareCalls).toEqual([{ supplied: HOST_TOKEN, stored: HOST_TOKEN, result: true }])
+  })
+
+  it('calls secretMatches(supplied, stored) for a WRONG token too', async () => {
+    await post({ hostToken: 'wrong-token-entirely' })
+    expect(compareCalls).toEqual([{ supplied: 'wrong-token-entirely', stored: HOST_TOKEN, result: false }])
+  })
+
+  it('does NOT call secretMatches when the token short-circuits at gate 2', async () => {
+    await post({ hostToken: '' })
+    await post({})
+    await post({ hostToken: null })
+    await post({ hostToken: 12345 })
+    await post({ hostToken: [HOST_TOKEN] })
+    expect(compareCalls).toEqual([])
+  })
+
+  it('does NOT call secretMatches when the game is missing', async () => {
+    game = null
+    await post({ hostToken: HOST_TOKEN })
+    expect(compareCalls).toEqual([])
   })
 })
 

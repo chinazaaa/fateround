@@ -19,8 +19,34 @@ import { GAME_CODE, HOST_TOKEN, gameRow, jsonRequest, makeSupabaseStub, codePara
  * a wrong token with an unexpired one (must 403). Testing each gate alone would let a swap
  * silently flip which branch wins.
  *
- * `@/lib/secret-compare` is deliberately NOT mocked — the real comparison is under test.
+ * `@/lib/secret-compare` is WRAPPED, never substituted — see `compareCalls` below.
  */
+
+/**
+ * A FAITHFUL wrapper around `@/lib/secret-compare`, not a substitute for it: it awaits the
+ * REAL `secretMatches` and only records the call. It decides nothing, so it cannot lie
+ * about what matches — in particular it cannot claim a non-string never matches, when in
+ * fact `TextEncoder.encode` applies ToString and `['<token>']` encodes as `'<token>'`.
+ *
+ * It exists because the swap at this site is observationally IDENTICAL — every status and
+ * body pinned above is the same under `===` and under `secretMatches`, which is the point.
+ * A behavioural test therefore cannot tell the two apart, so this records the mechanism:
+ * that the constant-time helper is the thing being called, with the supplied token first
+ * and the stored one second, and that it is NOT called when a guard short-circuits first.
+ */
+const compareCalls = vi.hoisted(() => [] as { supplied: unknown; stored: unknown; result: boolean }[])
+
+vi.mock('@/lib/secret-compare', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/secret-compare')>()
+  return {
+    ...actual,
+    secretMatches: async (supplied: string | null | undefined, stored: string | null | undefined) => {
+      const result = await actual.secretMatches(supplied, stored)
+      compareCalls.push({ supplied, stored, result })
+      return result
+    },
+  }
+})
 
 vi.mock('server-only', () => ({}))
 
@@ -53,6 +79,7 @@ const PAST = () => new Date(Date.now() - 60_000).toISOString()
 const FUTURE = () => new Date(Date.now() + 600_000).toISOString()
 
 beforeEach(() => {
+  compareCalls.length = 0
   game = gameRow()
   session = { phase: 'night', phase_deadline: null }
   advanceCalls = []
@@ -132,20 +159,27 @@ describe('POST /api/mafia/[code]/advance — host-token branch', () => {
   })
 
   /**
-   * CURRENT behaviour, and the one case where `===` and `secretMatches` disagree:
-   * `'' === ''` is true, so an empty supplied token AUTHORIZES against an empty stored
-   * token. Pinned here as 200 so the swap that changes it has to change this line too,
-   * in the open, rather than absorbing it.
+   * THE ONE PIN THIS CHANGE MOVES — deliberate, and the only behaviour delta across all
+   * three swapped sites.
+   *
+   * Before: `'' === ''` is true, so an empty supplied token AUTHORIZED against an empty
+   * stored token (200). After: `secretMatches` requires both sides to be non-empty by
+   * design — "a missing value on either side is never a match" — so it is 403.
    *
    * Unreachable in production: `games.host_token` is `text not null`
    * (0001_base_schema.sql) and every writer sets it from `generateToken()`, which always
-   * returns 40 hex characters.
+   * returns 40 hex characters. An empty stored token would be a corrupt row, and refusing
+   * to treat it as an authenticator is the safer answer for one.
+   *
+   * The other two sites cannot express this case at all — verify-host short-circuits an
+   * empty supplied token before the comparison, and describe-it's zod `min(1)` rejects it
+   * with a 400 — which is why this is the whole of the delta.
    */
-  it('AUTHORIZES an empty token when the stored host_token is also EMPTY', async () => {
+  it('refuses an empty token when the stored host_token is also EMPTY (pin moved: was 200)', async () => {
     game = gameRow({ host_token: '' })
     const res = await post({ hostToken: '' })
-    expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual({ success: true })
+    expect(res.status).toBe(403)
+    await expect(res.json()).resolves.toEqual(UNAUTHORIZED)
   })
 
   it('rejects any token when the stored host_token is NULL', async () => {
@@ -200,6 +234,31 @@ describe('POST /api/mafia/[code]/advance — host branch vs. isAuto branch prece
     const res = await post({ isAuto: 'yes' })
     expect(res.status).toBe(403)
     await expect(res.json()).resolves.toEqual(UNAUTHORIZED)
+  })
+})
+
+describe('POST /api/mafia/[code]/advance — the comparison is the constant-time one', () => {
+  it('calls secretMatches(supplied, stored) for a supplied string token, right or wrong', async () => {
+    await post({ hostToken: HOST_TOKEN })
+    await post({ hostToken: 'wrong-token-entirely' })
+    expect(compareCalls).toEqual([
+      { supplied: HOST_TOKEN, stored: HOST_TOKEN, result: true },
+      { supplied: 'wrong-token-entirely', stored: HOST_TOKEN, result: false },
+    ])
+  })
+
+  it('does NOT call secretMatches for a non-string token (the typeof guard holds)', async () => {
+    await post({ hostToken: [HOST_TOKEN] })
+    await post({ hostToken: 12345 })
+    await post({ hostToken: null })
+    await post({})
+    expect(compareCalls).toEqual([])
+  })
+
+  it('does NOT call secretMatches when the 404 gate fires first', async () => {
+    game = null
+    await post({ hostToken: HOST_TOKEN })
+    expect(compareCalls).toEqual([])
   })
 })
 

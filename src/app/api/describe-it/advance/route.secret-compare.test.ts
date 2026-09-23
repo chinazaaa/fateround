@@ -19,8 +19,34 @@ import { GAME_CODE, HOST_TOKEN, gameRow, jsonRequest, makeSupabaseStub } from '@
  * are all rejected by the schema with 400 BEFORE this line — those cases are pinned here
  * as 400s rather than as `force` values, because that is what the route actually does.
  *
- * `@/lib/secret-compare` is deliberately NOT mocked — the real comparison is under test.
+ * `@/lib/secret-compare` is WRAPPED, never substituted — see `compareCalls` below.
  */
+
+/**
+ * A FAITHFUL wrapper around `@/lib/secret-compare`, not a substitute for it: it awaits the
+ * REAL `secretMatches` and only records the call. It decides nothing, so it cannot lie
+ * about what matches — in particular it cannot claim a non-string never matches, when in
+ * fact `TextEncoder.encode` applies ToString and `['<token>']` encodes as `'<token>'`.
+ *
+ * It exists because the swap at this site is observationally IDENTICAL — every status and
+ * body pinned above is the same under `===` and under `secretMatches`, which is the point.
+ * A behavioural test therefore cannot tell the two apart, so this records the mechanism:
+ * that the constant-time helper is the thing being called, with the supplied token first
+ * and the stored one second, and that it is NOT called when a guard short-circuits first.
+ */
+const compareCalls = vi.hoisted(() => [] as { supplied: unknown; stored: unknown; result: boolean }[])
+
+vi.mock('@/lib/secret-compare', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/secret-compare')>()
+  return {
+    ...actual,
+    secretMatches: async (supplied: string | null | undefined, stored: string | null | undefined) => {
+      const result = await actual.secretMatches(supplied, stored)
+      compareCalls.push({ supplied, stored, result })
+      return result
+    },
+  }
+})
 
 vi.mock('server-only', () => ({}))
 
@@ -48,6 +74,7 @@ beforeAll(async () => {
 }, 60_000)
 
 beforeEach(() => {
+  compareCalls.length = 0
   game = gameRow({ game_type: 'describe_it' })
   advanceCalls = []
   advanceResult = {}
@@ -117,6 +144,31 @@ describe('POST /api/describe-it/advance — force derivation from the host token
     game = gameRow({ game_type: 'describe_it', host_token: null })
     await post({ gameId: GAME_CODE })
     expect(forceOf()).toBe(false)
+  })
+})
+
+describe('POST /api/describe-it/advance — the comparison is the constant-time one', () => {
+  it('calls secretMatches(supplied, stored) when a token is supplied', async () => {
+    await post({ gameId: GAME_CODE, hostToken: HOST_TOKEN })
+    expect(compareCalls).toEqual([{ supplied: HOST_TOKEN, stored: HOST_TOKEN, result: true }])
+  })
+
+  it('calls secretMatches(supplied, stored) for a WRONG token too', async () => {
+    await post({ gameId: GAME_CODE, hostToken: 'wrong-token-entirely' })
+    expect(compareCalls).toEqual([{ supplied: 'wrong-token-entirely', stored: HOST_TOKEN, result: false }])
+  })
+
+  it('does NOT call secretMatches when no token is supplied (the short-circuit holds)', async () => {
+    await post({ gameId: GAME_CODE })
+    expect(compareCalls).toEqual([])
+  })
+
+  it('does NOT call secretMatches when the 404 or game-type gate fires first', async () => {
+    game = null
+    await post({ gameId: GAME_CODE, hostToken: HOST_TOKEN })
+    game = gameRow({ game_type: 'smash_marry_kill' })
+    await post({ gameId: GAME_CODE, hostToken: HOST_TOKEN })
+    expect(compareCalls).toEqual([])
   })
 })
 

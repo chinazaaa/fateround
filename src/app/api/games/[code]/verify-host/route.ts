@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { secretMatches } from '@/lib/secret-compare'
 
 /**
  * Validates a host token for a game. The client can no longer read `games.host_token`
@@ -32,7 +33,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await supabase.from('games').select('host_token, host_user_id').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ ok: false, notFound: true }, { status: 200 })
 
-  const ok = game.host_token === hostToken
+  // Constant-time, like every other host-token check in the app. This endpoint exists to
+  // answer "is this token right", which is the shape a timing oracle is most useful against,
+  // so it is the last place to spell the comparison differently from the rest.
+  const ok = await secretMatches(hostToken, game.host_token)
 
   if (ok && !game.host_user_id) {
     // Only run the auth call when a backfill is actually possible — every other
