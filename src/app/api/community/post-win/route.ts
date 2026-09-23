@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Leaderboard is not configured.' }, { status: 503 })
   }
 
-  const body = await req.json().catch(() => ({}))
+  const body = (await req.json().catch(() => ({}))) ?? {}
   const playerName = typeof body.playerName === 'string' ? body.playerName.trim() : ''
   // gameId identifies the in-app game (used to resolve the game type). roundKey
   // is a per-round token (the session row id) so replaying the same game lets the

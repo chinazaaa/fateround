@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const blocked = serviceGuard()
   if (blocked) return blocked
 
-  const body = await req.json().catch(() => ({}))
+  const body = (await req.json().catch(() => ({}))) ?? {}
 
   // Preferred path: admin picks a game type from the dropdown. We derive the
   // name/accent/slug from the game-type config so the leaderboard row maps
@@ -84,7 +84,7 @@ export async function PATCH(req: NextRequest) {
   const blocked = serviceGuard()
   if (blocked) return blocked
 
-  const body = await req.json().catch(() => ({}))
+  const body = (await req.json().catch(() => ({}))) ?? {}
   const id = typeof body.id === 'string' ? body.id : ''
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
