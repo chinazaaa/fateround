@@ -47,7 +47,11 @@ export interface HandsRouteConfig {
 export function createHandsRoute(config: HandsRouteConfig) {
   return async function POST(req: NextRequest) {
     try {
-      const body = (await req.json().catch(() => ({}))) as {
+      // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+      // `.catch` never fires and every `body.x` read below would throw on null. Same guard,
+      // for the same reason, as the hand-written siblings in api/whot|gofish|crazy-eights
+      // /hands — this factory was outside the api/ tree that sweep walked.
+      const body = ((await req.json().catch(() => ({}))) ?? {}) as {
         gameCode?: string
         resumeToken?: string
         hostToken?: string
