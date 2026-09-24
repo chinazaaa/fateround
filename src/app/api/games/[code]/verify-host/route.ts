@@ -33,9 +33,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   const { data: game } = await supabase.from('games').select('host_token, host_user_id').eq('id', gameId).maybeSingle()
   if (!game) return NextResponse.json({ ok: false, notFound: true }, { status: 200 })
 
-  // Constant-time, like every other host-token check in the app. This endpoint exists to
-  // answer "is this token right", which is the shape a timing oracle is most useful against,
-  // so it is the last place to spell the comparison differently from the rest.
+  // Constant-time (see src/lib/secret-compare.ts). This endpoint exists to answer
+  // "is this token right" and nothing else, which is the shape a timing oracle is most
+  // useful against — so it is worth getting right here regardless of what the rest of
+  // the codebase does. Other routes still compare host tokens with `===`; converting
+  // them is ongoing, and this comment is not a claim that it is finished.
   const ok = await secretMatches(hostToken, game.host_token)
 
   if (ok && !game.host_user_id) {

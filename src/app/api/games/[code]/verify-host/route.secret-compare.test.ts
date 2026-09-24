@@ -61,15 +61,21 @@ vi.mock('server-only', () => ({}))
 let game: Record<string, unknown> | null = gameRow()
 let gamesReads = 0
 let updates: unknown[] = []
+/** The `id` each `games` read filtered on — i.e. the code the ROUTE actually queried. */
+let readIds: unknown[] = []
+/** The `id` each `games` update filtered on. */
+let updateIds: unknown[] = []
 let profileId: string | null = null
 
 const supabase = makeSupabaseStub({
-  games: ({ op, payload }) => {
+  games: ({ op, payload, filters }) => {
     if (op === 'update') {
       updates.push(payload)
+      updateIds.push(filters.id)
       return { data: null, error: null }
     }
     gamesReads++
+    readIds.push(filters.id)
     return { data: game, error: null }
   },
 })
@@ -89,6 +95,8 @@ beforeEach(() => {
   game = gameRow({ host_user_id: 'user-1' })
   gamesReads = 0
   updates = []
+  readIds = []
+  updateIds = []
   profileId = null
 })
 
@@ -271,8 +279,29 @@ describe('POST /api/games/[code]/verify-host — host_user_id backfill side effe
     expect(updates).toEqual([])
   })
 
-  it('reads the game by its UPPERCASED code', async () => {
-    await post({ hostToken: HOST_TOKEN })
-    expect(GAME_ID).toBe(GAME_CODE.toUpperCase())
+  /**
+   * Asserts the code the ROUTE queried, not a fixture identity.
+   *
+   * The previous version of this test compared `GAME_ID` with `GAME_CODE.toUpperCase()` —
+   * two constants — so it passed whether or not the route uppercased anything. The route
+   * is handed a LOWERCASE code here, so `.toUpperCase()` on line 20 has to actually run
+   * for `readIds` to hold `'ABCD'`.
+   */
+  it('reads the game by the UPPERCASED code, not the code as supplied', async () => {
+    await POST(jsonRequest(`/api/games/abcd/verify-host`, { hostToken: HOST_TOKEN }), codeParams('abcd'))
+    expect(readIds).toEqual([GAME_ID])
+    expect(readIds).not.toContain('abcd')
+  })
+
+  it('reads the game by the UPPERCASED code from a MIXED-CASE code too', async () => {
+    await POST(jsonRequest(`/api/games/aBcD/verify-host`, { hostToken: HOST_TOKEN }), codeParams('aBcD'))
+    expect(readIds).toEqual(['ABCD'])
+  })
+
+  it('backfills against the UPPERCASED code as well', async () => {
+    game = gameRow({ host_user_id: null })
+    profileId = 'profile-42'
+    await POST(jsonRequest(`/api/games/abcd/verify-host`, { hostToken: HOST_TOKEN }), codeParams('abcd'))
+    expect(updateIds).toEqual([GAME_ID])
   })
 })
