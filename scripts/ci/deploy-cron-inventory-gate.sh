@@ -123,8 +123,42 @@ fi
 # Actions-provided value rather than anything a pull request sets. Changing
 # directory (instead of prefixing paths) keeps the body byte-identical to the
 # inline version it was extracted from.
-REPO_DIR="${REPO_DIR:-$PWD}"
-cd "$REPO_DIR"
+#
+# REPO_DIR is REQUIRED. It used to fall back to `$PWD`, which is the one shape
+# of wrong this file must not have: run from $RUNNER_TEMP with no REPO_DIR, the
+# stray-SQL loop below looks for supabase/roles.sql and supabase/seed.sql in a
+# scratch directory, finds neither, and PASSES -- a green assertion that
+# inspected nothing, over a branch that may carry both. The supabase/config.toml
+# parse a few lines later does then fail closed, but it reports a config it
+# could not read, which sends whoever reads the log after a malformed TOML
+# rather than a working directory in the wrong place.
+#
+# Both call sites in .github/workflows/ci.yml pass REPO_DIR:
+# ${{ github.workspace }}, which is never empty on a hosted runner, so neither
+# branch below is reachable today. They are here for the third call site that
+# gets added without the `env:` block -- a cheap check to keep a fail-open from
+# ever being one omission away.
+#
+# The work-tree probe closes the same hole by the other route: a REPO_DIR that
+# exists but is not a checkout reaches the identical silent pass. It gets its
+# own `::error::` rather than a bare `git rev-parse` under `set -e`, because
+# git's own "fatal: not a git repository" names git, not this gate, does not
+# say which directory was tried, and produces no Actions error annotation. `cd`
+# is handled the same way and for the same reason -- `set -e` does stop the
+# script, but only after bash's one-line shell message, which does not surface
+# as an annotation either.
+if [ -z "${REPO_DIR:-}" ]; then
+  echo "::error::REPO_DIR is not set. This gate is extracted to \$RUNNER_TEMP and run from there, so repo-relative paths cannot be resolved against \$PWD and this script will not guess: the invoking step in .github/workflows/ci.yml has to pass REPO_DIR (github.workspace). Refusing to run, because from \$RUNNER_TEMP the checks below would inspect a tree that is not there and report a pass they never earned."
+  exit 1
+fi
+if ! cd "$REPO_DIR"; then
+  echo "::error::REPO_DIR is set to '$REPO_DIR', which this gate could not enter. Every path below is resolved relative to the checkout, so there is nothing safe to fall back to."
+  exit 1
+fi
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "::error::REPO_DIR is set to '$REPO_DIR', which is not inside a git work tree. This gate reads the checkout (supabase/roles.sql, supabase/seed.sql, supabase/config.toml, the guard migration) and git-diffs supabase/migrations against the base revision; pointed anywhere else it would find no stray SQL and pass without inspecting the branch at all."
+  exit 1
+fi
 
 set -euo pipefail
 DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"

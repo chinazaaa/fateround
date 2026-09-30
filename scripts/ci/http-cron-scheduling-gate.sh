@@ -118,8 +118,43 @@ fi
 # Actions-provided value rather than anything a pull request sets. Changing
 # directory (instead of prefixing paths) keeps the body byte-identical to the
 # inline version it was extracted from.
-REPO_DIR="${REPO_DIR:-$PWD}"
-cd "$REPO_DIR"
+#
+# REPO_DIR is REQUIRED. It used to fall back to `$PWD`, which from $RUNNER_TEMP
+# is a scratch directory with no checkout in it. This gate happens to fail
+# closed there -- `psql -f "$GUARD_MIGRATION"` cannot open a file that is not
+# present -- but it fails NAMING THE WRONG THING: the log says re-applying the
+# scheduling guard failed and tells the reader to make a migration idempotent,
+# when the actual fault is a working directory in the wrong place. Its sibling
+# scripts/ci/deploy-cron-inventory-gate.sh does not even get that much: its
+# stray-SQL loop looks for supabase/roles.sql and supabase/seed.sql, finds
+# neither in $RUNNER_TEMP, and PASSES without inspecting the branch. The same
+# omission is checked the same way in both files.
+#
+# Both call sites in .github/workflows/ci.yml pass REPO_DIR:
+# ${{ github.workspace }}, which is never empty on a hosted runner, so neither
+# branch below is reachable today. They are here for the third call site that
+# gets added without the `env:` block -- a cheap check to keep a fail-open from
+# ever being one omission away.
+#
+# The work-tree probe covers the other route to the same place: a REPO_DIR that
+# exists but is not a checkout. It gets its own `::error::` rather than a bare
+# `git rev-parse` under `set -e`, because git's own "fatal: not a git
+# repository" names git, not this gate, does not say which directory was tried,
+# and produces no Actions error annotation. `cd` is handled the same way and
+# for the same reason -- `set -e` does stop the script, but only after bash's
+# one-line shell message, which does not surface as an annotation either.
+if [ -z "${REPO_DIR:-}" ]; then
+  echo "::error::REPO_DIR is not set. This gate is extracted to \$RUNNER_TEMP and run from there, so repo-relative paths cannot be resolved against \$PWD and this script will not guess: the invoking step in .github/workflows/ci.yml has to pass REPO_DIR (github.workspace). Refusing to run, because from \$RUNNER_TEMP the checks below would inspect a tree that is not there."
+  exit 1
+fi
+if ! cd "$REPO_DIR"; then
+  echo "::error::REPO_DIR is set to '$REPO_DIR', which this gate could not enter. Every path below is resolved relative to the checkout, so there is nothing safe to fall back to."
+  exit 1
+fi
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "::error::REPO_DIR is set to '$REPO_DIR', which is not inside a git work tree. This gate applies the scheduling guard migration out of the checkout and re-applies the migrations this branch adds after it; pointed anywhere else it would fail with a message about those migrations rather than about the directory."
+  exit 1
+fi
 
 set -euo pipefail
 DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
