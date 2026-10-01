@@ -3,8 +3,13 @@
 # LOCATION IS LOAD-BEARING. This file must live at `apps/mobile/.eas/workflows/`, beside
 # `apps/mobile/eas.json` — "The .eas directory should be at the same level as your eas.json
 # file" (EAS workflow syntax docs). At the repo root it would resolve against the ROOT
-# `eas.json`/`app.json`, which are vestigial leftovers from before the apps/ split: they
-# declare `com.fateround.fateround` instead of `com.fateround.app`, carry a bare
+# `eas.json`/`app.json`, which are a STRAY SCAFFOLD, not a pre-split leftover: they were
+# added 2026-07-13 (8aae684f), three days AFTER `apps/mobile/app.json` (2026-07-10,
+# babc8f46), in a commit otherwise entirely apps/mobile work. The root `app.json` carries
+# only `extra`/`ios`/`android` — no `name`, no `slug` — which is the shape `eas init` plus
+# `eas build:configure` leave behind when run from the wrong directory.
+#
+# They declare `com.fateround.fateround` instead of `com.fateround.app`, carry a bare
 # `production` profile with no channel or environment, and sit next to a package.json with
 # no `expo` dependency at all — yet they repeat the SAME `extra.eas.projectId`, so EAS
 # accepts the root as "the project" and raises no mismatch. Run and validate from
