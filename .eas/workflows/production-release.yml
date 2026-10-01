@@ -1,0 +1,100 @@
+# Production store release for apps/mobile.
+#
+# Until this existed, every release was `eas build` / `eas submit` run by hand from
+# whoever's machine had the credentials — unrecorded, and unrepeatable by anyone else.
+#
+# WHY MANUAL-ONLY, NOT ON A TAG OR A PUSH
+# A store submission is irreversible in the ways that matter: a build number is consumed,
+# a binary enters review, and a release can reach users. The one thing this workflow must
+# never do is submit because someone pushed. `workflow_dispatch` is the whole trigger, and
+# `require-approval` sits between building and submitting so the binaries exist and can be
+# inspected before anything is handed to Apple or Google.
+#
+# WHY THIS RELEASE MATTERS MORE THAN USUAL
+# `apps/mobile/app.json` declares no `updates` block and no `runtimeVersion`, while
+# `expo-updates` is a dependency. So OTA is installed but unconfigured: there is NO way to
+# change an installed client except a store release and user adoption. That is why the
+# `Mobile Rollout Gate` blocks promoting column revokes to production — an installed build
+# that still selects a revoked column gets 42501 on the whole request and the game breaks
+# until the user updates from the store.
+#
+# VERSIONING comes from EAS, not this file: eas.json sets `appVersionSource: remote` and
+# `autoIncrement` on the production profile, so build numbers are allocated server-side.
+# Do not add version bumps here.
+#
+# COST: every run consumes EAS build minutes, and submission needs live Apple Developer and
+# Google Play accounts. See https://expo.dev/pricing.
+
+name: Production store release
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Which stores to release to
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+        default: all
+      message:
+        description: Build message shown in the EAS dashboard (e.g. the release reason)
+        type: string
+        default: Production store release
+
+jobs:
+  # Built as two jobs rather than one `platform: all` job so that a failure on one store
+  # does not discard the other's binary — iOS and Android fail for unrelated reasons
+  # (provisioning vs. signing), and a lost Android build should not wait on an Apple fix.
+  build_ios:
+    name: Build iOS
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'ios' }}
+    type: build
+    params:
+      platform: ios
+      profile: production
+      message: ${{ inputs.message }}
+
+  build_android:
+    name: Build Android
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'android' }}
+    type: build
+    params:
+      platform: android
+      profile: production
+      message: ${{ inputs.message }}
+
+  # The deliberate stop. Everything above is reversible — a build is just an artifact.
+  # Everything below reaches Apple, Google, and eventually users.
+  #
+  # `after`, NOT `needs`, and this is the whole reason: a job skipped by its `if` "won't have
+  # completed successfully", so anything listing it in `needs` never runs. With `needs: [both
+  # builds]` a single-platform release would skip the unused build, skip this approval, and
+  # therefore skip submitting — the release would silently do nothing but build. `after` runs
+  # once the upstreams settle whatever their outcome, and the `if` below restores the part we
+  # actually wanted from `needs`: never ask for approval to submit a build that failed.
+  approve_submission:
+    name: Approve store submission
+    after: [build_ios, build_android]
+    if: ${{ after.build_ios.status != 'failure' && after.build_android.status != 'failure' }}
+    type: require-approval
+
+  # These keep `needs` deliberately: each submit must not run unless ITS build succeeded and
+  # approval was granted. That also makes the platform `if` unnecessary here — a skipped build
+  # skips its submit on its own.
+  submit_ios:
+    name: Submit to App Store Connect
+    needs: [build_ios, approve_submission]
+    type: submit
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      profile: production
+
+  submit_android:
+    name: Submit to Google Play
+    needs: [build_android, approve_submission]
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+      profile: production
