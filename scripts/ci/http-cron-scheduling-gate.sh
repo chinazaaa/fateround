@@ -113,8 +113,12 @@ if [ ! -f "$PSQL" ] || [ ! -x "$PSQL" ]; then
 fi
 
 # This script runs from $RUNNER_TEMP, so every repo-relative path below -- the
-# guard migration, the migrations git-diff, supabase/config.toml -- has to be
-# resolved against the checkout. REPO_DIR comes from `github.workspace`, an
+# guard migration, and the post-guard migrations it re-applies after it -- has
+# to be resolved against the checkout. (This gate reads NOTHING else from the
+# tree: it never opens supabase/config.toml, and it runs no `git diff` -- its
+# re-apply list arrives as CRON_REAPPLY_MIGRATIONS, a step output, so the only
+# `git` this script runs at all is the work-tree probe below.)
+# REPO_DIR comes from `github.workspace`, an
 # Actions-provided value rather than anything a pull request sets. Changing
 # directory (instead of prefixing paths) keeps the body byte-identical to the
 # inline version it was extracted from.
@@ -143,6 +147,15 @@ fi
 # and produces no Actions error annotation. `cd` is handled the same way and
 # for the same reason -- `set -e` does stop the script, but only after bash's
 # one-line shell message, which does not surface as an annotation either.
+#
+# The probe tests the printed VALUE, not the exit status. `git rev-parse
+# --is-inside-work-tree` exits 0 and prints `false` whenever it can answer the
+# question at all -- inside a bare clone, or inside a `.git` directory -- and
+# only exits 128 when there is no repository to find. An exit-status test
+# therefore waves through exactly the two REPO_DIR values most likely to be
+# typed by mistake at a new call site, which would put this gate back to
+# failing later and blaming the wrong thing. Comparing against `true` folds
+# "git could not answer" (empty) and "git answered no" into one branch.
 if [ -z "${REPO_DIR:-}" ]; then
   echo "::error::REPO_DIR is not set. This gate is extracted to \$RUNNER_TEMP and run from there, so repo-relative paths cannot be resolved against \$PWD and this script will not guess: the invoking step in .github/workflows/ci.yml has to pass REPO_DIR (github.workspace). Refusing to run, because from \$RUNNER_TEMP the checks below would inspect a tree that is not there."
   exit 1
@@ -151,7 +164,7 @@ if ! cd "$REPO_DIR"; then
   echo "::error::REPO_DIR is set to '$REPO_DIR', which this gate could not enter. Every path below is resolved relative to the checkout, so there is nothing safe to fall back to."
   exit 1
 fi
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+if [ "$(git rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then
   echo "::error::REPO_DIR is set to '$REPO_DIR', which is not inside a git work tree. This gate applies the scheduling guard migration out of the checkout and re-applies the migrations this branch adds after it; pointed anywhere else it would fail with a message about those migrations rather than about the directory."
   exit 1
 fi
