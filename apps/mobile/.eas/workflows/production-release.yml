@@ -135,13 +135,16 @@ jobs:
   #    uploads to internal testing — and nothing errors. Now explicitly `production`.
   #
   # 2. `android.releaseStatus` DEFAULTS TO `completed`, which is a FULL RELEASE TO 100% OF
-  #    USERS — not a staged rollout and not a draft. It is now set explicitly so that reading
-  #    this file tells you what a submission does. To stage instead, `releaseStatus` must be
-  #    `inProgress` AND `rollout` must be set (e.g. 0.1); `rollout` is `Joi.forbidden()` on
-  #    any other status, so setting it alone is a validation error rather than a partial
-  #    rollout. For a FIRST submission, `draft` is the safer value: it uploads without
-  #    releasing, and you finish in Play Console. What is NOT an acceptable answer is
-  #    dropping back to `track: internal` — that is the silent-wrong-destination bug above.
+  #    USERS — not a staged rollout and not a draft. `completed` is now set explicitly, and
+  #    it is a confirmed decision rather than an inherited default: the Play Console listing
+  #    is already live (this is not FateRound's first submission), so an approved submission
+  #    goes to the production track and reaches everyone once Google's review passes.
+  #    To stage instead, `releaseStatus` must be `inProgress` AND `rollout` must be set
+  #    (e.g. 0.1); `rollout` is `Joi.forbidden()` on any other status, so setting it alone is
+  #    a validation error rather than a partial rollout. `draft` uploads without releasing,
+  #    which is the right choice for a first-ever submission. What is NOT an acceptable
+  #    answer is dropping back to `track: internal` — that is the silent-wrong-destination
+  #    bug above wearing a different hat.
   #
   # 3. `ios.ascAppId` HAS NO DEFAULT AND IS REQUIRED. This is the one thing here that is not
   #    a credential and cannot be inferred: eas-cli reads it only from the submit profile, and
