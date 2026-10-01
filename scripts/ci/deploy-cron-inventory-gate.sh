@@ -139,14 +139,22 @@ fi
 # gets added without the `env:` block -- a cheap check to keep a fail-open from
 # ever being one omission away.
 #
-# The work-tree probe closes the same hole by the other route: a REPO_DIR that
-# exists but is not a checkout reaches the identical silent pass. It gets its
-# own `::error::` rather than a bare `git rev-parse` under `set -e`, because
-# git's own "fatal: not a git repository" names git, not this gate, does not
-# say which directory was tried, and produces no Actions error annotation. `cd`
-# is handled the same way and for the same reason -- `set -e` does stop the
-# script, but only after bash's one-line shell message, which does not surface
-# as an annotation either.
+# The work-tree probe covers the other route to the same place: a REPO_DIR that
+# exists but is not a checkout. It gets its own `::error::` rather than a bare
+# `git rev-parse` under `set -e`, because git's own "fatal: not a git
+# repository" names git, not this gate, does not say which directory was tried,
+# and produces no Actions error annotation. `cd` is handled the same way and
+# for the same reason -- `set -e` does stop the script, but only after bash's
+# one-line shell message, which does not surface as an annotation either.
+#
+# The probe tests the printed VALUE, not the exit status. `git rev-parse
+# --is-inside-work-tree` exits 0 and prints `false` whenever it can answer the
+# question at all -- inside a bare clone, or inside a `.git` directory -- and
+# only exits 128 when there is no repository to find. An exit-status test
+# therefore waves through exactly the two REPO_DIR values most likely to be
+# typed by mistake at a new call site, which would put this gate back to
+# failing later and blaming the wrong thing. Comparing against `true` folds
+# "git could not answer" (empty) and "git answered no" into one branch.
 if [ -z "${REPO_DIR:-}" ]; then
   echo "::error::REPO_DIR is not set. This gate is extracted to \$RUNNER_TEMP and run from there, so repo-relative paths cannot be resolved against \$PWD and this script will not guess: the invoking step in .github/workflows/ci.yml has to pass REPO_DIR (github.workspace). Refusing to run, because from \$RUNNER_TEMP the checks below would inspect a tree that is not there and report a pass they never earned."
   exit 1
@@ -155,8 +163,8 @@ if ! cd "$REPO_DIR"; then
   echo "::error::REPO_DIR is set to '$REPO_DIR', which this gate could not enter. Every path below is resolved relative to the checkout, so there is nothing safe to fall back to."
   exit 1
 fi
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "::error::REPO_DIR is set to '$REPO_DIR', which is not inside a git work tree. This gate reads the checkout (supabase/roles.sql, supabase/seed.sql, supabase/config.toml, the guard migration) and git-diffs supabase/migrations against the base revision; pointed anywhere else it would find no stray SQL and pass without inspecting the branch at all."
+if [ "$(git rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then
+  echo "::error::REPO_DIR is set to '$REPO_DIR', which is not inside a git work tree. This gate reads the checkout (supabase/roles.sql, supabase/seed.sql, supabase/config.toml) and git-diffs supabase/migrations against the base revision; pointed anywhere else it would find no stray SQL and pass without inspecting the branch at all."
   exit 1
 fi
 
