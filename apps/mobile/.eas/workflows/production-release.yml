@@ -104,13 +104,13 @@ jobs:
   # is the precise test. Note the real safety property is `needs` on the submit jobs below —
   # this `if` is belt-and-braces against being asked to approve nothing.
   approve_ios:
-    name: Approve App Store submission (${{ inputs.platform }})
+    name: Approve App Store submission
     after: [build_ios]
     if: ${{ after.build_ios.status == 'success' }}
     type: require-approval
 
   approve_android:
-    name: Approve Google Play submission (${{ inputs.platform }})
+    name: Approve Google Play submission
     after: [build_android]
     if: ${{ after.build_android.status == 'success' }}
     type: require-approval
@@ -119,26 +119,44 @@ jobs:
   # ITS approval was granted (an approval job succeeds iff approved, fails iff rejected).
   # That also makes a platform `if` unnecessary here — a skipped build skips its own submit.
   #
-  # THREE THINGS HERE FAIL ONLY AT RUN TIME. Check all of them before the first dispatch;
-  # none of them can be caught by validating this file.
+  # WHAT AN EMPTY SUBMIT PROFILE SILENTLY DECIDES FOR YOU. `eas.json`'s `submit.production`
+  # started as `{}`. That is schema-valid and it is a trap, because the submit schema is full
+  # of defaults, and "unset" means "whatever eas-cli picks" — not "ask a human".
   #
-  # 1. Credentials must already be registered on EAS — an App Store Connect API key via
-  #    `eas credentials --platform ios`, and a Google Service Account key. `eas.json`'s
-  #    submit profile deliberately names none of them, which is valid: credentials, unlike
-  #    the release track, really are server-side state.
-  # 2. The Android track is now explicit in `eas.json` (`submit.production.android.track:
-  #    production`). It had to be: the track is an `eas.json` field, NOT server-side state,
-  #    and it DEFAULTS TO `internal`. Left empty, a job named "Submit to Google Play", in a
-  #    workflow named "Production store release", behind a gate the approver believed
-  #    authorized production, would have quietly uploaded to internal testing. Caveat for a
-  #    first-ever submission: Google keeps the app in draft until the Play Console store
-  #    listing is complete, and a release cannot be promoted to production before then — so
-  #    if the listing isn't finished, this submit fails and `internal` is the correct
-  #    temporary value.
-  # 3. `environment: production` on the build profile means the four `EXPO_PUBLIC_*` vars in
-  #    `.env.example` come from EAS's production environment. If that environment is
-  #    unpopulated the build still SUCCEEDS and ships a non-functional app — the worst shape
-  #    of failure here, because nothing goes red.
+  # Credentials ARE the exception that misled an earlier version of this comment: an unset
+  # ASC API key falls back to EAS's credential service, and the Google Service Account key
+  # is server-side too. So "it's all server-side state" felt true. It is not true of the
+  # three fields below, each of which lives in `eas.json` and each of which decides something
+  # a release approver would assume they were deciding.
+  #
+  # 1. `android.track` DEFAULTS TO `internal` (eas-cli: `track: Joi.string().default(
+  #    'internal')`). Left unset, a job named "Submit to Google Play", in a workflow named
+  #    "Production store release", behind a gate an approver believed authorized production,
+  #    uploads to internal testing — and nothing errors. Now explicitly `production`.
+  #
+  # 2. `android.releaseStatus` DEFAULTS TO `completed`, which is a FULL RELEASE TO 100% OF
+  #    USERS — not a staged rollout and not a draft. It is now set explicitly so that reading
+  #    this file tells you what a submission does. To stage instead, `releaseStatus` must be
+  #    `inProgress` AND `rollout` must be set (e.g. 0.1); `rollout` is `Joi.forbidden()` on
+  #    any other status, so setting it alone is a validation error rather than a partial
+  #    rollout. For a FIRST submission, `draft` is the safer value: it uploads without
+  #    releasing, and you finish in Play Console. What is NOT an acceptable answer is
+  #    dropping back to `track: internal` — that is the silent-wrong-destination bug above.
+  #
+  # 3. `ios.ascAppId` HAS NO DEFAULT AND IS REQUIRED. This is the one thing here that is not
+  #    a credential and cannot be inferred: eas-cli reads it only from the submit profile, and
+  #    in non-interactive mode (which every workflow run is) a missing value produces
+  #    "Set ascAppId in the submit profile (eas.json) or re-run this command in interactive
+  #    mode." followed by `throw new Error('Submission failed')`. The interactive fallback
+  #    that would create the ASC app is unreachable in CI. So without it, EVERY iOS release
+  #    fails — after the build has consumed minutes and a build number, and after a human has
+  #    already clicked approve. Find it at App Store Connect → Apps → the app → General →
+  #    App Information → Apple ID (a numeric id).
+  #
+  # And one that genuinely cannot be checked from here: `environment: production` on the
+  # build profile means the four `EXPO_PUBLIC_*` vars in `.env.example` come from EAS's
+  # production environment. If that environment is unpopulated the build still SUCCEEDS and
+  # ships a non-functional app. Nothing goes red — the worst failure shape in this file.
   submit_ios:
     name: Submit to App Store Connect
     needs: [build_ios, approve_ios]
