@@ -63,15 +63,13 @@ import {
   checkAndAdvanceMonopolyLoanRound,
   executeBankForeclosure,
 } from '@/lib/monopoly-loan'
+import { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYERS } from '@/lib/player-limits'
+export { MONOPOLY_DEFAULT_MAX_PLAYERS, MONOPOLY_MAX_PLAYERS, MONOPOLY_MIN_PLAYERS }
 
 export * from '@/lib/monopoly-board'
 export { formatMonopolyMoney } from '@/lib/monopoly-board'
 export type { MonopolyColorGroup, MonopolySpace, MonopolySpaceType, BuildingLevel } from '@/lib/monopoly-board'
 export { computeRent } from '@/lib/monopoly-rent'
-
-export const MONOPOLY_MIN_PLAYERS = 2
-export const MONOPOLY_MAX_PLAYERS = 9
-export const MONOPOLY_DEFAULT_MAX_PLAYERS = 6
 
 /** Per-turn timer options (seconds). 0 = off. */
 export const MONOPOLY_TURN_TIMER_OPTIONS = [0, 30, 45, 60, 90] as const

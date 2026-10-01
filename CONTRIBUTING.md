@@ -47,6 +47,157 @@ Run them in order: **code review → QA → security**. Reconcile findings (a
 security pass may down- or up-grade a code-review finding). Address or
 consciously accept each finding before promoting to `main`.
 
+### Review is a loop, not a pass
+
+This is how the **Code review** gate above is actually run; `/verify` and
+`/security-review` still run after it comes back clean.
+
+**review → fix the findings → re-review the fixed code → repeat until a review
+comes back with no issues.** A PR is not ready while its head commit is
+unreviewed — the fixes are new code and get reviewed like any other. **No PR
+is opened on unreviewed code**: that is the point of the loop, not a nicety,
+and a head commit no reviewer has seen is not ready however green CI is. If a
+review is still finding new issues after ~3 rounds, the PR is too big: split
+it, or escalate for a human call.
+
+| Reviewer              | How                                             | When                              |
+| --------------------- | ----------------------------------------------- | --------------------------------- |
+| **CodeRabbit CLI**    | `coderabbit review --plain` (from the worktree) | default — after commit and push   |
+| **CodeRabbit GH bot** | comment `@coderabbitai review` on the PR        | only when the CLI is unavailable  |
+
+- **Install:** `curl -fsSL https://cli.coderabbit.ai/install.sh | sh` (see
+  [the CLI docs](https://docs.coderabbit.ai/cli)). The installer puts
+  `coderabbit` (alias `cr`) on `~/.local/bin`, so add that to your `PATH` if it
+  isn't there. `coderabbit --version` confirms it; `coderabbit update` upgrades.
+- **Quota:** the Free plan allows roughly **3 CLI reviews an hour** per
+  developer, as a rolling allowance rather than a fixed reset — see
+  [plans](https://docs.coderabbit.ai/management/plans). Nothing reports what's
+  left: v0.3.7 has only `auth`, `review` and `update`, and `coderabbit usage`
+  falls through to `review` and errors with "too many arguments". So count your
+  own reviews, and treat the rate-limit message a review returns as the only
+  signal you get. It is a separate allowance from the bot's, so a local review
+  does not spend the PR-review slot, but it is not unlimited either.
+- Flags worth knowing: `--plain` (non-interactive text output — use this from a
+  script or an agent), `-t/--type all|committed|uncommitted`, and `--base
+  <branch>` to review against something other than the default base. There is no
+  `--pr` flag and no output-file flag — it reviews the worktree you run it in.
+  Flags move between versions (this was checked against v0.3.7; v0.4.5 is
+  current), so `coderabbit review --help` is the authority on the rest.
+- **Auth:** `coderabbit auth status` shows the logged-in account and org;
+  `coderabbit auth login` does the OAuth flow, `auth logout` / `auth org` round
+  it out. If a review errors as unauthenticated, log in (or pass `--api-key`)
+  rather than falling straight through to the bot.
+- The bot is the **second reviewer**, reached for when the CLI is unavailable —
+  but not a dependable one: on the free tier this account gets roughly **one
+  review an hour**. While `auto_review` is disabled in `.coderabbit.yaml` (see
+  the note there for why), reviews are on-demand — pushing does not burn one,
+  but each `@coderabbitai review` does. The config is the source of truth for
+  that; if it is ever re-enabled, every push spends a review again.
+- **A rate limit means wait, not downgrade.** The allowance is rolling, not
+  spent for good: wait the window out and re-run rather than skipping the gate.
+  Neither reviewer is a way to review more than the plan allows, and the two
+  allowances being nominally separate does not make the bot a dependable
+  fallback: it has its own limit of roughly one review an hour and is often
+  exhausted on its own. On #1168, three `@coderabbitai review` comments over
+  about seventy minutes each came back "Review rate limited" before a fourth
+  finally ran; a request on #1174 was rate limited too. Both reviewers can be
+  shut at the same time. When they are, wait the window out or get an
+  independent human reviewer who did not write the code — a rate limit is never
+  a reason to skip the gate, and never a licence to fall back on your own
+  read-through.
+- **A green `CodeRabbit` check does not mean the PR was reviewed.** The check
+  reports success when nothing looked at the code at all: on #1174 it read
+  `CodeRabbit  pass  "Review rate limited"`, and earlier on the same PR, before
+  a review was requested, `CodeRabbit  pass  "Review skipped: automatic reviews
+  are disabled"`. Read the check's **description text, not its colour**, and
+  confirm a review actually happened by finding the review itself on the PR —
+  its summary comment or its review threads — rather than by the status going
+  green.
+- **The author's own read-through is not a review.** Writing a change and then
+  writing your own assessment of it is marking your own homework. If CodeRabbit
+  is unavailable, get a second reviewer who did not write the code to go through
+  it adversarially, and say in the PR description which reviewer was used.
+  Skipping this is what let #1166 and #1168 be opened on code no independent
+  reviewer had seen.
+
+#### Gotchas the loop taught us
+
+Each of these cost a review round on a real PR here:
+
+- **Commit and push before you review.** Reviewing a dirty tree is a supported
+  mode — `-t/--type` takes `all` (the default), `committed` or `uncommitted` —
+  but on the version we ran it on (v0.3.7) it is what cost us rounds. Against a
+  dirty tree the CLI mis-assembled the diff and reported findings that do not
+  exist — on #1157 it claimed a duplicated code tail and an unmatched `}` that
+  made a file "not parse", in a file that passed `tsc`, prettier and 92 tests;
+  re-running on the committed tree made all four vanish. The branch also has to
+  be on the remote: on #1161 the review failed with `Review failed: Unknown
+  error` twice, then succeeded immediately after a (non-force) push. Committing
+  and pushing first avoids both, so that is the practice here.
+- **It reviews outside the PR diff.** On #1159 it returned a finding against a
+  `tournaments/` test file the branch never touched. Check the diff against the
+  PR's own base — `git diff --name-only origin/dev...HEAD` for a feature or fix
+  PR, `origin/main...HEAD` for a `dev` → `main` promotion — and reject
+  out-of-diff findings; and do **not** keep looping on one: a re-run returns it
+  identically, forever. Stopping at one round is correct when the only finding
+  left is out of diff.
+- **A transient `REVIEW ERROR: Unknown error` usually passes on an immediate
+  retry.** Retry once before concluding anything from it.
+- **A finding is a proposal, not an instruction** — verify it before acting.
+  Twice, following the suggestion would have shipped a bug: on #1163 it proposed
+  `hostToken: z.string().optional()` for a body guard, which rejects
+  `{"hostToken": null}` with "expected string, received null" while the route
+  treats a null token as absent, turning a working request into a 400; on #1153
+  the same class of mistake (`.partial()` tolerates `undefined`, not `null`) had
+  already regressed `{"gameId": null}`. Reject structurally-impossible findings
+  (syntax errors, "does not parse", missing code) with the `tsc`/prettier/test
+  output as the evidence.
+- **The loop is finished only on a clean pass**, or on an explicit written
+  review by someone who did not write the code standing in for one. "Waiting on
+  CI and the CodeRabbit retry" is not a finished loop, and neither is the
+  author's own read-through. When the CLI is rate-limited, get that independent
+  review, keep working, and re-run when the window opens.
+- **A characterization test pins _current_ behaviour, so when a PR deliberately
+  changes that behaviour the pin moves with it.** On #1163,
+  `branding/logo/route.host-auth.test.ts` asserted `500s on an unparseable
+  body` — the exact bug the PR fixed — and that one assertion was updated to
+  expect 400. This is the one legitimate reason to edit a characterization test,
+  and it belongs in the PR description when it happens.
+
+### Verdicts, not reflex fixes
+
+Every finding gets a decision, and the decision goes on the thread:
+
+- **Right and in scope** → fix it in this PR, then re-review — the fix is new
+  code, so it goes back through the loop above.
+- **Wrong** → reply with the reasoning for why it doesn't apply. Don't edit code
+  to silence a reviewer.
+- **Right but out of scope** → split it into a stacked PR and record that PR on
+  the thread.
+- **Don't resolve CodeRabbit's threads by hand** (same convention as the note in
+  `.coderabbit.yaml`). CodeRabbit resolves the threads it authored once a later
+  pass confirms the fix, and that is what makes thread state worth reading: **a
+  thread still unresolved after a re-review is evidence the fix did not land.**
+  Resolving it yourself throws that signal away and makes a thread that was
+  never really fixed look identical to one that was. Nothing here forces the
+  tidy-up either — no ruleset or branch protection on this repo blocks a merge
+  on unresolved conversations. So reply on every thread as above, leave the
+  resolving to the re-review, and treat a thread still open after one as a cue
+  to check whether the fix actually landed.
+
+### Refactors: characterization tests first
+
+When you're changing how existing behaviour is implemented:
+
+1. Pin the current `{status, body}` in tests **against the unchanged code**.
+2. Prove them green — a characterization test that never ran against the old
+   code pins nothing.
+3. Change the implementation and re-run **the same tests, unmodified**.
+
+Gotcha: a case must combine the independent gates it means to separate (e.g.
+wrong type **and** wrong status in one request). Test them one at a time and a
+swapped precedence still passes every test.
+
 ## CI checks (required)
 
 `.github/workflows/ci.yml` runs on push + PR to **`main` and `dev`**. It has

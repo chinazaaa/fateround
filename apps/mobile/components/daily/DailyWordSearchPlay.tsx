@@ -12,12 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useNavigation } from 'expo-router'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
-import {
-  clearDailyProgress,
-  getOrCreateStartedAt,
-  loadDailyAnswers,
-  saveDailyAnswers,
-} from '@/lib/daily-progress'
+import { clearDailyProgress, getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { AppButton } from '@/components/ui/AppButton'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
@@ -102,10 +97,7 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
     startAtMs: startAtMs ?? undefined,
   })
 
-  const wordsSet = useMemo(
-    () => new Set((metadata?.words ?? []).map((w) => w.toUpperCase())),
-    [metadata?.words]
-  )
+  const wordsSet = useMemo(() => new Set((metadata?.words ?? []).map((w) => w.toUpperCase())), [metadata?.words])
   const foundSet = useMemo(() => new Set(foundWords.map((w) => w.toUpperCase())), [foundWords])
 
   const handleSubmit = useCallback(() => {
@@ -185,14 +177,10 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
   )
 
   const confirmSubmit = () => {
-    Alert.alert(
-      'Submit now?',
-      "You can't undo this — the leaderboard uses whatever's here right now.",
-      [
-        { text: 'Keep going', style: 'cancel' },
-        { text: 'Submit', style: 'destructive', onPress: handleSubmit },
-      ]
-    )
+    Alert.alert('Submit now?', "You can't undo this — the leaderboard uses whatever's here right now.", [
+      { text: 'Keep going', style: 'cancel' },
+      { text: 'Submit', style: 'destructive', onPress: handleSubmit },
+    ])
   }
 
   const timerColor = isTimeUp ? theme.error : theme.text
@@ -201,7 +189,10 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
     <View style={styles.wrap}>
       <View style={[styles.timerBar, { borderColor: theme.border, backgroundColor: theme.surface }]}>
         <Text style={styles.timerLabel}>
-          Found: <Text style={styles.timerNumber}>{foundWords.length}/{totalWords}</Text>
+          Found:{' '}
+          <Text style={styles.timerNumber}>
+            {foundWords.length}/{totalWords}
+          </Text>
         </Text>
         <Text style={[styles.timerClock, { color: timerColor }]}>{formatted}</Text>
       </View>
@@ -255,10 +246,7 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
                   key={c}
                   onPress={() => onCellPress(r, c)}
                   disabled={submitted}
-                  style={[
-                    styles.cell,
-                    { backgroundColor: bg, borderColor: theme.border },
-                  ]}
+                  style={[styles.cell, { backgroundColor: bg, borderColor: theme.border }]}
                 >
                   <Text style={[styles.cellText, { color }]}>{cell.toUpperCase()}</Text>
                 </Pressable>
@@ -269,12 +257,7 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
       </View>
 
       {!submitted && !isTimeUp && foundWords.length > 0 && foundWords.length < totalWords ? (
-        <AppButton
-          label={`Submit (${foundWords.length}/${totalWords})`}
-          fullWidth
-          size="md"
-          onPress={confirmSubmit}
-        />
+        <AppButton label={`Submit (${foundWords.length}/${totalWords})`} fullWidth size="md" onPress={confirmSubmit} />
       ) : null}
     </View>
   )

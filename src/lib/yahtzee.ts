@@ -4,10 +4,8 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type { YahtzeeCategory, YahtzeeCategoryPoints, YahtzeePlayerScore, YahtzeeSession } from '@/types'
-
-export const YAHTZEE_MIN_PLAYERS = 1
-export const YAHTZEE_MAX_PLAYERS = 6
-export const YAHTZEE_DEFAULT_MAX_PLAYERS = 6
+import { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS } from '@/lib/player-limits'
+export { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS }
 
 export const YAHTZEE_DICE_COUNT = 5
 export const YAHTZEE_ROLLS_PER_TURN = 3

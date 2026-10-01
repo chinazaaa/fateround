@@ -32,12 +32,10 @@ import {
 } from '@/data/daily-banks/wordle-categories'
 import type { WordleCategoryId, WordleLetterState } from '@/lib/daily-wordle'
 import { normalizeWordleWord, wordleBasePoints, wordleMaxAttempts, gradeWordleGuess } from '@/lib/daily-wordle'
+import { WORDLE_ROOM_MIN_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { WORDLE_ROOM_MIN_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_DEFAULT_MAX_PLAYERS }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-
-export const WORDLE_ROOM_MIN_PLAYERS = 1
-export const WORDLE_ROOM_MAX_PLAYERS = 20
-export const WORDLE_ROOM_DEFAULT_MAX_PLAYERS = 20
 
 /** How many words the game covers (spec §7 setup). */
 export const WORDLE_ROOM_WORD_COUNT_OPTIONS = [5, 10, 15, 20] as const

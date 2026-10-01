@@ -2,10 +2,8 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
 import type { CheckersColor, CheckersSession } from '@/types'
-
-export const CHECKERS_MIN_PLAYERS = 2
-export const CHECKERS_MAX_PLAYERS = 2
-export const CHECKERS_DEFAULT_MAX_PLAYERS = 2
+import { CHECKERS_DEFAULT_MAX_PLAYERS, CHECKERS_MAX_PLAYERS, CHECKERS_MIN_PLAYERS } from '@/lib/player-limits'
+export { CHECKERS_DEFAULT_MAX_PLAYERS, CHECKERS_MAX_PLAYERS, CHECKERS_MIN_PLAYERS }
 
 // American 8×8 draughts. The board is a 64-char string indexed by row*8 + col
 // (row 0 = top, col 0 = left). Only dark squares ((row + col) odd) are ever

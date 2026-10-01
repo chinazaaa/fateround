@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
+import { parseJsonBody } from '@/lib/parse-body'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getProfileFromRequest } from '@/lib/identity-server'
@@ -362,6 +363,12 @@ function parseCustomQuestionsBody(
 
 const BROWSE_PAGE_SIZE = 20
 
+// Shape-only guard for POST. `createGameSchema` is a plain z.object, so handing it to
+// parseJsonBody would STRIP `elimination_config` — which the handler reads off the raw body
+// further down (via eliminationConfigSchema) and would silently lose. So guard the shape only
+// and leave createGameSchema exactly where it is.
+const createGameBodySchema = z.record(z.string(), z.unknown())
+
 // Public browse list: games the host marked public that are still going (waiting/active),
 // newest first, cursor-paginated. Mirrors GET /api/rooms. Uses the anon client (RLS-open
 // SELECT) and an explicit safe-column list — host_token is revoked from anon.
@@ -435,7 +442,9 @@ export async function POST(req: NextRequest) {
   // Missing/anonymous is fine; the write below just leaves host_user_id NULL.
   const hostProfileId = await getProfileFromRequest(req)
 
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, createGameBodySchema)
+  if (bodyError) return bodyError
+
   const parsed = createGameSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' }, { status: 400 })

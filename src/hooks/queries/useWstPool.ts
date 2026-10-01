@@ -2,12 +2,17 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { gameKeys } from '@/lib/query-keys'
 import type { WstQuotePoolEntry } from '@/types'
+import { WST_QUOTE_POOL_SELECT } from '@/lib/supabase-selects'
 
 export function useWstPool(code: string, enabled = true) {
   return useQuery({
     queryKey: gameKeys.wstPool(code),
     queryFn: async () => {
-      const { data } = await supabase.from('wst_quote_pool').select('*').eq('game_id', code).order('created_at')
+      const { data } = await supabase
+        .from('wst_quote_pool')
+        .select(WST_QUOTE_POOL_SELECT)
+        .eq('game_id', code)
+        .order('created_at')
       return (data ?? []) as WstQuotePoolEntry[]
     },
     staleTime: Infinity,

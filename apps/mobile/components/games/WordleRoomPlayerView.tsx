@@ -33,6 +33,7 @@ import { gameLabel } from '@/lib/mobile-registry'
 import { getSupabase } from '@/lib/supabase'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles, useTheme } from '@/constants/theme-context'
+import { WORDLE_ROOM_PROGRESS_SELECT } from '@/lib/supabase-selects'
 
 type Screen =
   | 'loading'
@@ -205,7 +206,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (!roundId) return
     const res = await getSupabase()
       .from('wordle_room_progress')
-      .select('*')
+      .select(WORDLE_ROOM_PROGRESS_SELECT)
       .eq('game_id', bootstrap.code)
       .eq('round_id', roundId)
     // Ignore a failed read (keep the last good rows) rather than blanking the

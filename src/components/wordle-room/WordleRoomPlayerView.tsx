@@ -40,12 +40,13 @@ import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
-import { PLAYER_SELECT } from '@/lib/supabase-selects'
+import { PLAYER_SELECT, WORDLE_ROOM_PROGRESS_SELECT } from '@/lib/supabase-selects'
 import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import type { Game } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 interface WordleRoomStatus {
   currentWord?: string
@@ -280,7 +281,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
     if (!roundId) return
     const { data, error } = await supabase
       .from('wordle_room_progress')
-      .select('*')
+      .select(WORDLE_ROOM_PROGRESS_SELECT)
       .eq('game_id', gameCode)
       .eq('round_id', roundId)
     // Ignore a failed read (keep the last good rows) rather than blanking the
@@ -370,7 +371,7 @@ export function WordleRoomPlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           void load()
         }
       )

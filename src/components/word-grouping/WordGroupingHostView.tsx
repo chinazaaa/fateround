@@ -41,6 +41,7 @@ import { FinalResultsShareBlock } from '@/components/FinalResultsShareBlock'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const GROUP_COLORS: Record<number, string> = {
   1: '#f9df6d',
@@ -199,7 +200,7 @@ export function WordGroupingHostView({ gameCode, hostToken }: { gameCode: string
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           if (next.status !== gameStatusRef.current) load()
         }
       )

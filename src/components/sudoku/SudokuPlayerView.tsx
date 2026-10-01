@@ -55,6 +55,7 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const GRID_KEY = (roundId: string, playerId: string) => `sudoku_grid_${roundId}_${playerId}`
 
@@ -276,7 +277,7 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           // Re-derive the screen from session + status (handles lobby reopen for
           // no-session viewers, mid-game start, and finish alike).
           load()

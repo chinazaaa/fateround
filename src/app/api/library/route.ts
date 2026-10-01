@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getProfileFromRequest } from '@/lib/identity-server'
+import { parseJsonBody } from '@/lib/parse-body'
+import { validatePackQuestions } from '@/lib/question-pack-questions'
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads. Values stay
+// `z.any()` so the untouched downstream field handling keeps the exact typing `req.json()` gave it.
+const submitPackBodySchema = z.record(z.string(), z.any())
 
 /**
  * PostgREST `.or()` takes a comma-separated filter EXPRESSION, so raw user input spliced into
@@ -139,17 +147,49 @@ export async function POST(req: NextRequest) {
   const limited = await enforceRateLimit(req, RATE_LIMITS.librarySubmit)
   if (limited) return limited
 
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, submitPackBodySchema)
+  if (bodyError) return bodyError
+
   const { title, game_type, author_name, description, questions, tags, collection_ids } = body
 
   if (!title || !game_type || !author_name || !Array.isArray(questions)) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  // These fields come off the shape-only schema above, so each can be any JSON value, and a
+  // truthy non-string does not merely escape the caps below — it *bypasses* them: `(5).length`
+  // is `undefined` and `undefined > 100` is false, while `['a','b'].length` is 2. The value was
+  // then inserted verbatim into a `text` column, where PostgREST's json_populate_recordset
+  // coerces it ('5', 'true', '{}', '["a","b"]') and stores it. Each guard sits with the cap it
+  // protects, so for well-typed input the order the gates answer in is unchanged; a falsy
+  // non-string still stops one gate earlier, at the truthiness check above.
+  if (typeof title !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   if (title.length > 100) return NextResponse.json({ error: 'Title too long' }, { status: 400 })
+  if (typeof author_name !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   if (author_name.length > 60) return NextResponse.json({ error: 'Author name too long' }, { status: 400 })
+  // `description` is optional, so null/absent stay "absent" and are written through as null —
+  // a schema-level `z.string().optional()` would 400 a null the route accepts today (#1163).
+  if (description !== null && description !== undefined && typeof description !== 'string')
+    return NextResponse.json({ error: 'Invalid description' }, { status: 400 })
   if (description && description.length > 500)
     return NextResponse.json({ error: 'Description too long' }, { status: 400 })
+  // `game_type` has no length cap; its only gate today is `question_packs_game_type_check` in
+  // the database, which rejects the coerced text and surfaces as a 500. Checked last of the
+  // per-field gates so it stays after them, and only the 500 → 400 changes — an unknown
+  // *string* game_type is still left to the constraint. (The `questions` rule below is the one
+  // gate placed after this, and only because it is new: putting it earlier would change which
+  // message a body failing two gates gets.)
+  if (typeof game_type !== 'string') return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+
+  // Last of the 400 gates, so no existing message's ordering moves: a body that is also over a
+  // length cap still answers with that cap's message, exactly as before. `Array.isArray` in the
+  // `Missing required fields` gate above already sent a non-array / absent / null `questions`
+  // away, so this only ever sees an array — and everything an array has to satisfy is now the
+  // one rule both writers of this column share (src/lib/question-pack-questions.ts). Before this
+  // PR the public path had no cap and no element check at all, while the admin PATCH capped at
+  // 500: an anonymous caller could store an arbitrarily large array of anything.
+  const checkedQuestions = validatePackQuestions(questions)
+  if (!checkedQuestions.ok) return NextResponse.json({ error: checkedQuestions.error }, { status: 400 })
 
   const validTags = ['easy', 'intermediate', 'advanced', 'family-friendly', '18+', 'party', 'spicy']
   const cleanTags = Array.isArray(tags)
@@ -165,8 +205,8 @@ export async function POST(req: NextRequest) {
       game_type,
       author_name,
       description: description ?? null,
-      questions,
-      question_count: questions.length,
+      questions: checkedQuestions.questions,
+      question_count: checkedQuestions.questions.length,
       status: 'pending',
       tags: cleanTags,
     })

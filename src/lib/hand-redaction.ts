@@ -38,14 +38,20 @@ export type RedactedHand<T> = Omit<T, 'cards'> & { cards: unknown[] | null; card
  * `viewerPlayerId` must be resolved from a SECRET (resume token / host token) by the caller —
  * never from a client-supplied playerId, which is public and forgeable (see lib/game-admin.ts).
  * Pass null for a spectator: every hand comes back as counts only.
+ *
+ * Accepts either a single id or a set of ids to unredact. A lone string is the common case
+ * (Whot/Crazy Eights/Bingo, which have no teams); UNO's Team-Up mode passes both the viewer's
+ * own id and their teammate's, so a player can see their partner's hand in full.
  */
 export function redactHands<T extends { player_id: string; cards: unknown }>(
   rows: T[],
-  viewerPlayerId: string | null
+  viewerPlayerId: string | readonly string[] | null
 ): RedactedHand<T>[] {
+  const viewerIds = viewerPlayerId == null ? [] : typeof viewerPlayerId === 'string' ? [viewerPlayerId] : viewerPlayerId
+  const viewerSet = new Set(viewerIds)
   return rows.map((row) => {
     const cards = Array.isArray(row.cards) ? row.cards : []
-    const isOwn = viewerPlayerId != null && row.player_id === viewerPlayerId
+    const isOwn = viewerSet.has(row.player_id)
     return {
       ...row,
       // null (not []) for other players, so a consumer that forgets to check card_count fails

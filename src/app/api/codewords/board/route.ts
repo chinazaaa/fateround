@@ -34,12 +34,18 @@ import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as {
+    // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+    // `.catch` never fires and every `body.x` read below would throw on null.
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as {
       gameCode?: string
       hostToken?: string
       resumeToken?: string
     }
-    const gameCode = body.gameCode?.toUpperCase()
+    // `gameCode` comes off an unchecked `as {...}` cast, so it can be any JSON value. A
+    // non-string cleared `?.` (which short-circuits on nullish, not falsy) and threw on
+    // .toUpperCase(); the catch below turned that into a 500. Answer the same "missing
+    // field" 400 that null, an absent field and '' already get.
+    const gameCode = typeof body.gameCode === 'string' ? body.gameCode.toUpperCase() : undefined
     if (!gameCode) return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
 
     const limited = await enforceRateLimit(req, RATE_LIMITS.codewordsBoard)
@@ -65,7 +71,13 @@ export async function POST(req: NextRequest) {
     // 3. A spymaster, resolved from their secret resume token — never from a client-supplied
     //    playerId, which is public and forgeable (see src/lib/game-admin.ts).
     if (!maySeeKey) {
-      const token = normalizeResumeToken(body.resumeToken ?? '')
+      // `?? ''` guards nullish only, and normalizeResumeToken starts with `raw.trim()`, so a
+      // non-string threw and the catch below turned it into a 500. Treat it as absent — the
+      // same path `''` and any token under four characters already take, leaving maySeeKey
+      // false and the key masked. The sibling routes wrap this in String(...) instead
+      // (describe-it/my-word, quick-draw/my-word); typeof also spares the pointless lookup
+      // that String({}) would otherwise issue for '[object Object]'.
+      const token = normalizeResumeToken(typeof body.resumeToken === 'string' ? body.resumeToken : '')
       if (token.length >= 4) {
         const { data: player } = await supabase
           .from('players')

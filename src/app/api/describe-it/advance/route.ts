@@ -4,6 +4,7 @@ import { processDescribeItAdvance } from '@/lib/describe-it'
 import { describeItAdvanceSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { secretMatches } from '@/lib/secret-compare'
 
 export async function POST(req: NextRequest) {
   const { data, error: bodyError } = await parseJsonBody(req, describeItAdvanceSchema)
@@ -18,7 +19,9 @@ export async function POST(req: NextRequest) {
   }
 
   // The host may skip the break; anyone else only advances once the break is up.
-  const force = !!data.hostToken && data.hostToken === game.host_token
+  // `!!data.hostToken &&` still short-circuits: a token-less poll (the common case) does
+  // no digest work at all, and `force` stays a strict boolean either way.
+  const force = !!data.hostToken && (await secretMatches(data.hostToken, game.host_token))
 
   const { error, internal } = await processDescribeItAdvance(supabase, code, { force })
   if (error) return NextResponse.json({ error }, { status: internal ? 500 : 400 })

@@ -43,6 +43,7 @@ import { allowLatePlayers, playerIsViewer, preJoinScreen } from '@/lib/viewers'
 import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import type { Game } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
@@ -262,7 +263,7 @@ export function WordHuntPlayerView({ gameCode }: { gameCode: string }) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           void load()
         }
       )

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { runMafiaAdvance } from '@/lib/mafia-advance'
+import { secretMatches } from '@/lib/secret-compare'
 import type { MafiaPhase } from '@/types'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -10,7 +11,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   let body: { hostToken?: unknown; nextPhase?: unknown; isAuto?: unknown }
   try {
-    body = await req.json()
+    // `?? {}` because `req.json()` PARSES a literal `null` body successfully, so the
+    // `catch` never fires and the first read of `body` below — which sits OUTSIDE this
+    // try — would throw a TypeError and reject the handler instead of answering a status.
+    body = (await req.json()) ?? {}
   } catch {
     return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
   }
@@ -27,7 +31,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   }
 
   let authorized = false
-  if (typeof hostToken === 'string' && game.host_token === hostToken) {
+  // The `typeof` guard stays ahead of the comparison: `secretMatches` encodes through
+  // `TextEncoder`, which applies ToString, so a non-string must not reach it.
+  if (typeof hostToken === 'string' && (await secretMatches(hostToken, game.host_token))) {
     authorized = true
   } else if (isAuto === true && mafiaSession.phase_deadline) {
     const deadlineTime = new Date(mafiaSession.phase_deadline).getTime()

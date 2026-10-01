@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseGameType, isWhoSaidThis } from '@/lib/game-types'
 import { assertHostGame, assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields these handlers still read (POST hands
+// the whole raw body to parseSubmittedQuestion).
+const quoteBodySchema = z.record(z.string(), z.any())
 
 /** Validate a player/host-submitted Who Said This question: a quote plus 2–4 answer options
  *  with one marked correct. Returns the normalised value or an error message. */
@@ -31,7 +38,9 @@ function parseSubmittedQuestion(body: {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, quoteBodySchema)
+  if (bodyError) return bodyError
+
   const { resumeToken, hostToken, gameId, quoteId } = body
 
   if (!gameId) {
@@ -49,6 +58,11 @@ export async function POST(req: NextRequest) {
   if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 })
   const { quote, options, correctIndex } = parsed
 
+  // `gameId` comes off a shape-only schema, so it can be any JSON value: a truthy non-string
+  // cleared the guard above and then threw on .toUpperCase(). Treat it as a missing field.
+  if (typeof gameId !== 'string') {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
   const gameIdUpper = gameId.toUpperCase()
   const quoteIdTrimmed = typeof quoteId === 'string' ? quoteId.trim() : ''
   const now = new Date().toISOString()
@@ -117,7 +131,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { resumeToken, hostToken, gameId, quoteId } = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, quoteBodySchema)
+  if (bodyError) return bodyError
+
+  const { resumeToken, hostToken, gameId, quoteId } = body
 
   if (!gameId || !quoteId) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -130,6 +147,11 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
   }
 
+  // `gameId` comes off a shape-only schema, so it can be any JSON value: a truthy non-string
+  // cleared the guard above and then threw on .toUpperCase(). Treat it as a missing field.
+  if (typeof gameId !== 'string') {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+  }
   const gameIdUpper = gameId.toUpperCase()
   const quoteIdTrimmed = typeof quoteId === 'string' ? quoteId.trim() : ''
   if (!quoteIdTrimmed) {

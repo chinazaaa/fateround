@@ -244,6 +244,22 @@ describe.skipIf(!hasCreds)('RLS boundaries (live)', () => {
   })
 
   it.each(SECRET_COLUMNS)('anon cannot read %s.%s', async (table, column) => {
+    // Positive control, and it has to come first. Every assertion below is a *denial* assertion,
+    // and Postgres answers "this column is revoked" and "you have no privilege on this table at
+    // all" with the same 42501. On an environment where anon never held a grant on this table --
+    // a local `supabase db reset`, where 20260803160000_default_privileges_lockdown.sql's ALTER
+    // DEFAULT PRIVILEGES only ever applied to FUTURE tables -- the redaction check below passes
+    // without the redaction existing. That is a green light over an open boundary, which is worse
+    // than the job not running. So: prove anon can reach the table on a non-secret column, and
+    // fail loudly (not silently green) when it cannot.
+    const { error: reachable } = await anon.from(table).select('id').limit(1)
+    expect(
+      reachable,
+      `anon cannot reach ${table}.id at all (${reachable?.code}), so the ${table}.${column} ` +
+        `redaction check below would pass vacuously. This environment is missing the anon grant ` +
+        `this table has in production -- fix the environment, do not weaken the assertion.`
+    ).toBeNull()
+
     const { error } = await anon.from(table).select(`${column}`).limit(1)
     expect(error?.code, `${table}.${column} is readable by the anon key`).toBe('42501')
   })
@@ -253,14 +269,25 @@ describe.skipIf(!hasCreds)('RLS boundaries (live)', () => {
     async () => {
       const suspicious = /(^|_)(token|secret|password|api_key)$/i
       const leaks: string[] = []
+      // A table this sweep could not read contributes no evidence either way, so count what was
+      // actually inspected. Without this, an environment where anon reads nothing at all sweeps
+      // zero tables, finds zero leaks and reports green -- the failure this whole file exists to
+      // prevent, one level up.
+      let inspected = 0
       for (const table of tables) {
         const { data, error } = await anon.from(table).select('*').limit(1)
         if (error || !data?.[0]) continue
+        inspected += 1
         for (const column of Object.keys(data[0])) {
           if (suspicious.test(column)) leaks.push(`${table}.${column}`)
         }
       }
       expect(leaks, 'secret-shaped columns readable with the publishable key').toEqual([])
+      expect(
+        inspected,
+        `the sweep read 0 of ${tables.length} tables, so it proved nothing. Either the anon key ` +
+          `is denied everywhere (missing grants) or every table is empty (seed the environment).`
+      ).toBeGreaterThan(0)
     },
     SWEEP_TIMEOUT_MS
   )

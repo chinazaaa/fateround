@@ -56,6 +56,7 @@ import {
   postQuickDrawGuessTeam,
 } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
+import { useQuickDrawWord } from '@/hooks/useQuickDrawWord'
 import { getSupabase } from '@/lib/supabase'
 import {
   QUICK_DRAW_GUESS_GUESS_SELECT,
@@ -297,6 +298,15 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
     onExpire: () => postQuickDrawGuessAdvance(bootstrap.code).then(() => bootstrap.load()),
   })
 
+  // The secret prompt is no longer in the session read — only the drawer can pull it, and only
+  // through the server route. See @/hooks/useQuickDrawWord.
+  const myWord = useQuickDrawWord(gameCode, session, bootstrap.myPlayerId, bootstrap.myResumeToken ?? null)
+
+  // Per-word counter from the session (a generated `cardinality(used_words)` column). The word
+  // itself can no longer be a canvas reset key — nobody but the drawer has it — and this ticks on
+  // the same events, including the mid-turn rotations that leave `turn_index` alone.
+  const wordSeq = session?.word_seq ?? 0
+
   const strokeData = normalizeStrokeData(session?.current_stroke_data ?? emptyStrokeData())
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -519,10 +529,11 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
 
         {session.phase === 'turn' ? (
-          isDrawer && session.current_word ? (
+          isDrawer ? (
             <LiveDrawingCanvas
-              prompt={session.current_word}
-              resetKey={`${session.turn_index}-${session.current_word}`}
+              // Neutral placeholder rather than an empty prompt while the route round-trips.
+              prompt={myWord ?? '…'}
+              resetKey={`${session.turn_index}-${wordSeq}`}
               onStrokeChange={syncStrokes}
               onDrawActiveChange={(active) => setScrollEnabled(!active)}
               // Skip-word only exists in team mode (a team races through many
@@ -536,7 +547,7 @@ export function QuickDrawPlayerView({ gameCode }: { gameCode: string }) {
               skipDisabled={acting}
             />
           ) : (
-            <LiveDrawingCanvas strokeData={strokeData} readOnly resetKey={`${session.turn_index}-watch`} />
+            <LiveDrawingCanvas strokeData={strokeData} readOnly resetKey={`${session.turn_index}-${wordSeq}-watch`} />
           )
         ) : null}
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { parseJsonBody } from '@/lib/parse-body'
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const MAX_SIZE = 2 * 1024 * 1024 // 2MB
@@ -142,6 +143,10 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Shape-only guard, kept separate from `deleteSchema` so the existing field-level 400 body
+// ('Invalid request body') is preserved exactly; this only converts the thrown parse into a 400.
+const deleteBodyShapeSchema = z.record(z.string(), z.unknown())
+
 const deleteSchema = z.object({
   gameId: z.string().min(1),
   participantId: z.string().min(1),
@@ -151,7 +156,9 @@ const deleteSchema = z.object({
 
 export async function DELETE(req: NextRequest) {
   try {
-    const body = await req.json()
+    const { data: body, error: bodyError } = await parseJsonBody(req, deleteBodyShapeSchema)
+    if (bodyError) return bodyError
+
     const parsed = deleteSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })

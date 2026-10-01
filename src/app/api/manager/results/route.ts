@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const session = await assertManagerRequest(req)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json().catch(() => ({}))
+  const body = (await req.json().catch(() => ({}))) ?? {}
   const gameId = typeof body.gameId === 'string' ? body.gameId : ''
   const date = typeof body.date === 'string' ? body.date : ''
   const playerName = typeof body.playerName === 'string' ? body.playerName.trim() : ''

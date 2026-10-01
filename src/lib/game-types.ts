@@ -3225,10 +3225,19 @@ export function isWordGroupingGame(gameType: GameType | string | undefined): boo
   return parseGameType(gameType) === 'word_grouping'
 }
 
+/**
+ * Anonymous room or host-only secret message inbox — shared message storage.
+ *
+ * Exported as a list too, so callers that need the same set inside a database
+ * filter (e.g. the idle reaper's `not in (...)`) stay in sync with the
+ * predicate instead of re-hardcoding the strings.
+ */
+export const MESSAGE_INBOX_GAME_TYPES = ['anonymous_messages', 'secret_message'] as const satisfies readonly GameType[]
+
 /** Anonymous room or host-only secret message inbox — shared message storage. */
 export function isMessageInboxGame(gameType: GameType | string | undefined): boolean {
   const type = parseGameType(gameType)
-  return type === 'anonymous_messages' || type === 'secret_message'
+  return (MESSAGE_INBOX_GAME_TYPES as readonly GameType[]).includes(type)
 }
 
 /** Auto-assigned display name on join — no name input. */

@@ -5,6 +5,26 @@ import { resolveSchoolMatch } from '@/lib/tournament-school'
 import { resolveKnockoutGroupRoom } from '@/lib/tournament-scoring'
 import { recordRoundFacts } from '@/lib/trophies/round-facts'
 
+/**
+ * Result of a finish path that funnels through `markGameFinished`.
+ *
+ * `won` is the outcome of the active→finished compare-and-set: false means another
+ * request had already flipped the row, so this one changed nothing. It is NOT an
+ * error (`error` stays null), which is exactly why it has to be reported separately —
+ * a caller that only looks at `error` treats a lost race as its own successful finish
+ * and goes on to do the winner's bookkeeping a second time.
+ *
+ * `cleanupError` is deliberately NOT `error` either. Some finish paths run a post-finish
+ * data wipe (anonymous-room messages, codewords chat) after the row is already
+ * `finished`; that wipe failing does not un-finish the game. Reporting it in
+ * `error` made callers treat a completed finish as a failure — the idle reaper
+ * counted the game as failed and skipped its `result_reason` stamp, and later
+ * sweeps could never revisit it because they select only `status='active'` rows.
+ * Completion status lives in `error`/`won`; cleanup status lives here, and is
+ * meant to be surfaced (logged / reported), not to gate the finish.
+ */
+export type FinishGameResult = { error: string | null; won: boolean; cleanupError?: string | null }
+
 export async function markGameFinished(
   supabase: SupabaseClient,
   gameId: string,
@@ -71,5 +91,9 @@ export async function markGameFinished(
     }
   }
 
-  return result
+  // Surfaced so callers can tell a real finish from a lost CAS: `error` is null in
+  // both cases, so without this a racer that changed nothing looks like a success and
+  // gets counted/stamped as if it had finished the game. Always true when `onlyIfActive`
+  // is not set, which keeps every unguarded caller's behaviour unchanged.
+  return { ...result, won }
 }

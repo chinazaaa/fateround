@@ -26,7 +26,9 @@ export async function GET(req: NextRequest) {
 
   let visiblePlayerId: string | null = null
   if (playerId || resumeToken) {
-    const allowed = await verifyMahjongPlayerAccess(supabase, gameId, playerId, resumeToken)
+    // readOnly: this route only reads. A polling tab must not be able to pass for a live
+    // table — see the note in src/lib/mahjong-auth.ts.
+    const allowed = await verifyMahjongPlayerAccess(supabase, gameId, playerId, resumeToken, { readOnly: true })
     if (!allowed) return NextResponse.json({ error: 'Invalid player session' }, { status: 403 })
     visiblePlayerId = playerId
   }

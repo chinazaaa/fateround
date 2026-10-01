@@ -15,7 +15,7 @@ import { authorizedMusicIdentity, type MusicAuth } from '@/lib/music-auth'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { auth?: MusicAuth }
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as { auth?: MusicAuth }
 
     const identity = await authorizedMusicIdentity(body.auth)
     if (!identity) {

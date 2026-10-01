@@ -89,10 +89,17 @@ export function CrazyEightsFinalResultsShareBlock({
                       {row.name}
                       {isMe ? <span className="label-teal font-semibold"> (you)</span> : null}
                     </p>
+                    {/* A hidden hand (null) is not an empty one: say so rather than printing
+                        "0 cards left" / "Out of cards", which would read as a finished player.
+                        Standings render redacted while a live game's hands are still secret
+                        (e.g. /history on an unfinished game, or the beat before the post-finish
+                        refetch lands). */}
                     <p className="text-[11px] text-muted">
-                      {row.cardCount === 0
-                        ? 'Out of cards'
-                        : `${row.cardCount} card${row.cardCount === 1 ? '' : 's'} left`}
+                      {row.cardCount === null
+                        ? 'Hand hidden until the game ends'
+                        : row.cardCount === 0
+                          ? 'Out of cards'
+                          : `${row.cardCount} card${row.cardCount === 1 ? '' : 's'} left`}
                     </p>
                   </div>
                   <p
@@ -100,7 +107,7 @@ export function CrazyEightsFinalResultsShareBlock({
                       isWinner ? 'gradient-title' : 'text-muted'
                     }`}
                   >
-                    {row.cardCount === 0 ? '—' : row.handSum}
+                    {row.handSum === null || row.cardCount === 0 ? '—' : row.handSum}
                   </p>
                 </div>
               )

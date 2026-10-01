@@ -55,6 +55,7 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const WORD_SEARCH_FOUND_SELECT =
   'id,game_id,round_id,player_id,word,start_row,start_col,end_row,end_col,via_hint,found_at'
@@ -242,7 +243,7 @@ export function WordSearchPlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           // Full reload only on a status transition; other games-row writes just refresh the
           // object above. Reloading on every UPDATE was a primary driver of the finish flicker.
           if (next.status !== gameStatusRef.current) load()

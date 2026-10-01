@@ -88,7 +88,7 @@ import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { postVote } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
-import { PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
+import { CONFESSION_SELECT, PARTICIPANT_SELECT, ROUND_SELECT, VOTE_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { mltVoteLeaderboard } from '@/lib/finish-leaderboards'
 import { tallyWstScores, wstLeaderboard } from '@/lib/wst-standings'
@@ -135,7 +135,7 @@ export function PollPlayerView({ gameCode }: { gameCode: string }) {
         getSupabase().from('rounds').select(ROUND_SELECT).eq('game_id', code).order('round_number'),
         getSupabase().from('participants').select(PARTICIPANT_SELECT).eq('game_id', code).order('display_order'),
         getSupabase().from('votes').select(VOTE_SELECT).eq('game_id', code),
-        getSupabase().from('confessions').select('*').eq('game_id', code).order('created_at'),
+        getSupabase().from('confessions').select(CONFESSION_SELECT).eq('game_id', code).order('created_at'),
       ])
       if (roundsRes.error || participantsRes.error || votesRes.error) {
         return { state: { rounds: [], participants: [], votes: [], confessions: [] }, ok: false }

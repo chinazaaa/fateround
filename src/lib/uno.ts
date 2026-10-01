@@ -4,10 +4,8 @@ import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, UnoCard, UnoCardColor, UnoColor, UnoPlayerHand, UnoSession } from '@/types'
-
-export const UNO_MIN_PLAYERS = 2
-export const UNO_MAX_PLAYERS = 10
-export const UNO_DEFAULT_MAX_PLAYERS = 6
+import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/player-limits'
+export { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS }
 
 /** Cards dealt to each player at the start of a hand. */
 export const UNO_DEAL_COUNT = 7
@@ -570,9 +568,19 @@ export function anyPlayerCanPlay(hands: UnoPlayerHand[], session: UnoSession): b
   return false
 }
 
+/**
+ * Shared by the server (full row, service role) and the client (redacted row: `draw_pile` and
+ * `discard_pile` are revoked from anon/authenticated, only the generated counts come back).
+ *
+ * Prefer the counts; fall back to the array lengths for service-role rows and fixtures written
+ * before the counts existed. Where NEITHER is readable, return `false` — "I cannot see the pile"
+ * must never be reported as "the pile is empty", which would flip live games into pass-turn and
+ * reshuffle states on a redacted field read as meaningful state.
+ */
 export function isDrawPileDepleted(session: UnoSession): boolean {
-  const drawLen = ((session.draw_pile as UnoCard[]) ?? []).length
-  const discardLen = ((session.discard_pile as UnoCard[]) ?? []).length
+  const drawLen = session.draw_count ?? (Array.isArray(session.draw_pile) ? session.draw_pile.length : null)
+  const discardLen = session.discard_count ?? (Array.isArray(session.discard_pile) ? session.discard_pile.length : null)
+  if (drawLen == null || discardLen == null) return false
   return drawLen === 0 && discardLen === 0
 }
 
@@ -585,7 +593,7 @@ export type UnoStanding = {
   rank: number
 }
 
-type UnoRankableHand = { player_id: string; cards: UnoCard[] }
+type UnoRankableHand = { player_id: string; cards: UnoCard[] | null }
 
 /**
  * Final placement order (1st → last). Players who emptied their hand rank FIRST, in the

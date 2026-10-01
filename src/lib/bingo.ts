@@ -1,13 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { BingoCalledNumber } from '@/types'
+import { BINGO_CALLED_NUMBER_SELECT } from '@/lib/supabase-selects'
 import { clearSessionTables } from './session-clear'
+import { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS } from '@/lib/player-limits'
+export { BINGO_DEFAULT_MAX_PLAYERS, BINGO_MAX_PLAYERS, BINGO_MIN_PLAYERS }
 
 export const BINGO_COLUMNS = ['B', 'I', 'N', 'G', 'O'] as const
 export type BingoColumn = (typeof BINGO_COLUMNS)[number]
 export type BingoWinPattern = 'line' | 'full_house'
 
-export const BINGO_MIN_PLAYERS = 2
-export const BINGO_MAX_PLAYERS = 30
-export const BINGO_DEFAULT_MAX_PLAYERS = 20
 export const BINGO_FREE_INDEX = 12
 
 export type BingoCallMode = 'manual' | 'auto'
@@ -156,6 +157,13 @@ export type BingoSyncResult = {
   ok: boolean
   code: BingoSyncCode
   number?: number
+  /**
+   * The row just inserted, on `code === 'called'`. Returned so the client that drove the
+   * call can apply it to state directly instead of re-fetching the whole game (the old
+   * `onSynced: load`) or waiting on realtime. Column list matches
+   * BINGO_CALLED_NUMBER_SELECT.
+   */
+  row?: BingoCalledNumber
 }
 
 export async function syncBingoAutoCall(supabase: SupabaseClient, gameId: string): Promise<BingoSyncResult> {
@@ -188,11 +196,11 @@ export async function syncBingoAutoCall(supabase: SupabaseClient, gameId: string
   const { data: inserted, error } = await supabase
     .from('bingo_called_numbers')
     .insert({ game_id: code, number })
-    .select('number')
+    .select(BINGO_CALLED_NUMBER_SELECT)
     .single()
 
   if (error || !inserted) return { ok: false, code: 'call_failed' }
-  return { ok: true, code: 'called', number: inserted.number }
+  return { ok: true, code: 'called', number: inserted.number, row: inserted as BingoCalledNumber }
 }
 
 export async function createBingoCardForPlayer(

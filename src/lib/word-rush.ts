@@ -7,11 +7,10 @@ import type {
   WordRushSession,
 } from '@/types'
 import { WORD_HUNT_MIN_WORD_LENGTH } from '@/lib/word-hunt'
+import { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { WORD_RUSH_MIN_PLAYERS, WORD_RUSH_MAX_PLAYERS, WORD_RUSH_DEFAULT_MAX_PLAYERS }
 
-export const WORD_RUSH_MIN_PLAYERS = 4
 export const WORD_RUSH_MIN_PLAYERS_INDIVIDUAL = 1
-export const WORD_RUSH_MAX_PLAYERS = 20
-export const WORD_RUSH_DEFAULT_MAX_PLAYERS = 12
 
 export const WORD_RUSH_TEAM_OPTIONS = [2, 3, 4] as const
 export const WORD_RUSH_TURN_OPTIONS = [30, 60, 90, 120, 180] as const

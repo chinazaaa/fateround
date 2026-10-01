@@ -39,6 +39,7 @@ import { useHostSeat } from '@/hooks/useHostSeat'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useToast } from '@/components/ui/Toast'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const WORD_HUNT_SUBMISSION_SELECT = 'id,game_id,round_id,player_id,word,path,points_awarded,submitted_at'
 
@@ -196,7 +197,7 @@ export function WordHuntHostView({ gameCode, hostToken }: { gameCode: string; ho
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           load()
         }
       )

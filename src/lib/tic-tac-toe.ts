@@ -2,10 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
 import type { TicTacToeBoardResult, TicTacToeMark, TicTacToeSession } from '@/types'
-
-export const TIC_TAC_TOE_MIN_PLAYERS = 2
-export const TIC_TAC_TOE_MAX_PLAYERS = 2
-export const TIC_TAC_TOE_DEFAULT_MAX_PLAYERS = 2
+import { TIC_TAC_TOE_DEFAULT_MAX_PLAYERS, TIC_TAC_TOE_MAX_PLAYERS, TIC_TAC_TOE_MIN_PLAYERS } from '@/lib/player-limits'
+export { TIC_TAC_TOE_DEFAULT_MAX_PLAYERS, TIC_TAC_TOE_MAX_PLAYERS, TIC_TAC_TOE_MIN_PLAYERS }
 
 /** Per-turn timer options, in seconds (0 = no timer). Ultimate TTT turns are quick. */
 export const TIC_TAC_TOE_TIME_OPTIONS = [0, 15, 30, 60] as const

@@ -19,10 +19,11 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { winnerLeaderboard } from '@/lib/finish-leaderboards'
-import { postBingoClaim, postBingoMark } from '@/lib/game-api'
+import { postBingoCard, postBingoClaim, postBingoMark } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
+import { getPlayerSession } from '@/lib/secure-session'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -48,18 +49,29 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [marking, setMarking] = useState(false)
   const [claiming, setClaiming] = useState(false)
   const [claimError, setClaimError] = useState<string | null>(null)
+  // "The server refused to give this device a card" — never conflated with "not dealt yet".
+  const [cardBlocked, setCardBlocked] = useState(false)
 
+  // The card comes through /api/bingo/card so `cells`/`marked_indices` never reach this device
+  // via the anon key — the route resolves this player from their secret resume token and returns
+  // only their own card. `playerId` is unused now (the token identifies the caller); it stays in
+  // the signature to match afterResolve's callsite.
+  //
+  // The boolean means "the fetch worked", NOT "there is a card": "no card dealt yet" is the
+  // normal state while the host is starting, and reporting it as failure makes callers back off.
+  // A refused read is kept apart from an undealt card so the empty state can say which it is.
   const loadCard = useCallback(
-    async (playerId: string): Promise<boolean> => {
-      const res = await getSupabase()
-        .from('bingo_cards')
-        .select(BINGO_CARD_SELECT)
-        .eq('game_id', gameCode.toUpperCase())
-        .eq('player_id', playerId)
-        .maybeSingle()
-      if (res.error) return false
-      setCard((res.data as BingoCard | null) ?? null)
-      return true
+    async (_playerId: string): Promise<boolean> => {
+      const code = gameCode.toUpperCase()
+      const session = await getPlayerSession(code)
+      const result = await postBingoCard(code, { resumeToken: session?.resumeToken })
+      if (result.ok) {
+        setCardBlocked(false)
+        if (result.card) setCard(result.card)
+        return true
+      }
+      if (result.unauthorized) setCardBlocked(true)
+      return false
     },
     [gameCode]
   )
@@ -333,6 +345,8 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
             <Text style={styles.viewerHint}>You&apos;re watching — no card is dealt to spectators.</Text>
             <CalledNumbersBoard calledNumbers={calledSet} lastCalled={lastCalled?.number ?? null} />
           </View>
+        ) : cardBlocked ? (
+          <Text style={styles.error}>Your player session expired — rejoin with your player code to see your card.</Text>
         ) : (
           <Text style={styles.waitingCard}>Waiting for your bingo card…</Text>
         )}

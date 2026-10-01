@@ -60,6 +60,7 @@ import { allowLatePlayers, preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { clearPlayerSession } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import type { Game } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 // ── Screen type ───────────────────────────────────────────────────────────────
 
@@ -394,7 +395,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const updated = payload.new as Game
-          setGame(updated)
+          setGame((prev) => mergeRealtimeGame(prev, updated))
           // Always call load() so computeScreen re-runs with the new game status.
           // This covers both 'active' (game started) and 'finished' transitions.
           void load()

@@ -2,8 +2,15 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
-import { markGameFinished } from '@/lib/game-finish'
-import { isAnonymousMessagesGame, isCodewordsGame, isSecretMessageGame, parseGameType } from '@/lib/game-types'
+import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
+import {
+  isAnonymousMessagesGame,
+  isCodewordsGame,
+  isSecretMessageGame,
+  isTwoTruthsGame,
+  parseGameType,
+} from '@/lib/game-types'
+import { revealFinishedTtlRounds } from '@/lib/two-truths-advance'
 
 export type AdminGameToEnd = {
   id: string
@@ -17,9 +24,35 @@ export function staleGameCutoffIso(olderThanHours: number): string {
   return cutoff.toISOString()
 }
 
-export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEnd): Promise<{ error: string | null }> {
+/**
+ * The admin kill-switch: force a waiting or active game to finished.
+ *
+ * Rounds are bulk-updated to 'finished' WITHOUT going through each game's normal end-of-round
+ * path, so anything that path would have written has to be done here too. For Two Truths that is
+ * the reveal: `revealFinishedTtlRounds` folds each round's hidden lie and its guesses back into
+ * `ttl_metadata`, and this refuses to finish the game if any of that could not be written —
+ * because the guard above rejects a game that is already finished, so a failed reveal would be
+ * unrecoverable rather than retryable.
+ */
+export type AdminEndGameOptions = {
+  /**
+   * Make the active→finished flip a compare-and-set so only one caller runs the
+   * award/tournament side effects. Pass it from any path where two requests can
+   * pick the same game concurrently — the idle reaper's cron route has no
+   * in-flight guard, so an ops curl overlapping a timer fire would otherwise
+   * award room points and resolve the tournament match twice for one game.
+   * Defaults to false, preserving every existing caller's behaviour.
+   */
+  onlyIfActive?: boolean
+}
+
+export async function adminEndGame(
+  supabase: SupabaseClient,
+  game: AdminGameToEnd,
+  { onlyIfActive = false }: AdminEndGameOptions = {}
+): Promise<FinishGameResult> {
   if (game.status !== 'active' && game.status !== 'waiting') {
-    return { error: 'Only waiting or active games can be ended' }
+    return { error: 'Only waiting or active games can be ended', won: false }
   }
 
   const gameId = game.id
@@ -31,21 +64,40 @@ export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEn
     .eq('game_id', gameId)
     .eq('status', 'active')
 
-  if (roundError) return { error: internalErrorMessage('admin-end-game', roundError) }
+  if (roundError) return { error: internalErrorMessage('admin-end-game', roundError), won: false }
 
   const gameType = parseGameType(game.game_type)
+  // The bulk round update above finishes rounds without going through the Two Truths reveal,
+  // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
+  // renders its last round with no lie highlighted.
+  if (isTwoTruthsGame(gameType)) {
+    // Bail before the game is marked finished if any reveal could not be written. The rounds are
+    // already 'finished' at this point, but revealFinishedTtlRounds picks those up again, so a
+    // retry recovers — whereas finishing the game makes this function reject every retry and the
+    // round keeps no lie_index forever.
+    const revealed = await revealFinishedTtlRounds(supabase, gameId)
+    if (!revealed) {
+      return { error: 'Could not reveal every Two Truths round — game left endable; retry.', won: false }
+    }
+  }
   if (isAnonymousMessagesGame(gameType)) {
-    return finishAnonymousRoomSession(supabase, gameId)
+    return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive })
   }
   if (isSecretMessageGame(gameType)) {
-    return finishSecretMessageBoard(supabase, gameId)
+    return finishSecretMessageBoard(supabase, gameId, { onlyIfActive })
   }
   if (isCodewordsGame(gameType)) {
-    return finishCodewordsGame(supabase, gameId)
+    return finishCodewordsGame(supabase, gameId, { onlyIfActive })
   }
 
-  const { error } = await markGameFinished(supabase, gameId, now)
-  if (error) return { error: internalErrorMessage('admin-end-game', error) }
+  const { error, won } = await markGameFinished(supabase, gameId, now, { onlyIfActive })
+  if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }
+
+  // Lost the compare-and-set: another request already finished this game, so it is
+  // not ours to label. Stamping anyway would write `admin_ended` over a game someone
+  // else finished for a different reason (the `is(null)` guard only helps if the
+  // winner already got its own stamp in). Not an error — just nothing left to do.
+  if (!won) return { error: null, won: false }
 
   // Tag the abort reason so the trophy/coin award pass knows to skip counter
   // and streak credit for this finish (src/lib/trophies/award.ts — ABORT_REASONS).
@@ -57,7 +109,7 @@ export async function adminEndGame(supabase: SupabaseClient, game: AdminGameToEn
     .eq('id', gameId)
     .is('result_reason', null)
   if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
-  return { error: null }
+  return { error: null, won: true }
 }
 
 export async function countStaleOpenGames(
@@ -123,6 +175,12 @@ export async function closeStaleOpenGames(
         errors.push(`${game.id}: ${result.error}`)
       }
     } else {
+      // A failed post-finish cleanup does not un-close the game, so it counts as
+      // closed — but it is not retried anywhere (no later pass revisits a finished
+      // game), so log it loudly enough for an operator to clean up by hand.
+      if (result.cleanupError) {
+        console.error(`close-stale: cleanup after finish failed for ${game.id} — not retried`, result.cleanupError)
+      }
       closed += 1
     }
   }

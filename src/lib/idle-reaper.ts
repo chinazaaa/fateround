@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { adminEndGame, type AdminGameToEnd } from '@/lib/admin-end-game'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { isProdDeployment } from '@/lib/app-env'
+import { MESSAGE_INBOX_GAME_TYPES, isMessageInboxGame } from '@/lib/game-types'
 
 /**
  * Idle-active-game reaper.
@@ -47,7 +48,21 @@ const MIN_IDLE_MINUTES = 1
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000 // every 15 minutes
 const REAPER_BATCH_LIMIT = 20
 
-function resolveIdleMinutes(): number {
+/**
+ * Kill-switch. Deliberately permissive about how it is spelled: `IDLE_REAPER_DISABLED`
+ * is set by a human under pressure through SSM, and an exact `=== '1'` check silently
+ * ignores `true` / `yes` / `on` — leaving a destructive sweep running while ops believe
+ * they stopped it. Anything non-empty disables the reaper except an explicit
+ * `0` / `false` (case-insensitive), which are the only spellings that plausibly mean
+ * "leave it on".
+ */
+export function isIdleReaperDisabled(): boolean {
+  const raw = (process.env.IDLE_REAPER_DISABLED ?? '').trim().toLowerCase()
+  if (raw === '' || raw === '0' || raw === 'false') return false
+  return true
+}
+
+export function resolveIdleMinutes(): number {
   const raw = Number(process.env.IDLE_REAPER_MINUTES)
   if (!Number.isFinite(raw) || raw < MIN_IDLE_MINUTES) return DEFAULT_IDLE_MINUTES
   return Math.floor(raw)
@@ -66,7 +81,14 @@ function resolveIdleMinutes(): number {
 export async function closeIdleActiveGames(
   supabase: SupabaseClient,
   olderThanMinutes: number
-): Promise<{ closed: number; failed: number; errors: string[] }> {
+): Promise<{
+  closed: number
+  failed: number
+  raced: number
+  errors: string[]
+  cleanupFailed: number
+  cleanupErrors: string[]
+}> {
   const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString()
 
   const { data, error } = await supabase
@@ -74,24 +96,77 @@ export async function closeIdleActiveGames(
     .select('id, status, game_type')
     .eq('status', 'active')
     .lt('last_activity_at', cutoff)
+    // Message inboxes are never idle in the sense this reaper means. A secret
+    // message board is created `status='active'` by design (src/app/api/games/route.ts)
+    // and is *meant* to sit there — the host posts an NGL-style link and collects
+    // messages for days. Reaping one runs finishSecretMessageBoard →
+    // clearAnonymousRoomSessionData, which DELETEs every anonymous_messages and
+    // anonymous_room_bans row for that board: the host's whole inbox, gone, because
+    // nobody wrote to it for 30 minutes. Excluded server-side so they never eat a
+    // batch slot either.
+    .not('game_type', 'in', `(${MESSAGE_INBOX_GAME_TYPES.join(',')})`)
     .order('last_activity_at', { ascending: true })
     .limit(REAPER_BATCH_LIMIT)
 
-  if (error) return { closed: 0, failed: 0, errors: [error.message] }
+  if (error) return { closed: 0, failed: 0, raced: 0, errors: [error.message], cleanupFailed: 0, cleanupErrors: [] }
 
-  const games: AdminGameToEnd[] = data ?? []
-  if (games.length === 0) return { closed: 0, failed: 0, errors: [] }
+  // Belt and braces: the filter above is the one that matters, but the cost of it
+  // being wrong (a typo'd filter string, a new inbox-shaped game type) is a
+  // permanently deleted inbox, so re-check every row against the canonical predicate.
+  const games: AdminGameToEnd[] = (data ?? []).filter((game: AdminGameToEnd) => !isMessageInboxGame(game.game_type))
+  if (games.length === 0) return { closed: 0, failed: 0, raced: 0, errors: [], cleanupFailed: 0, cleanupErrors: [] }
 
   let closed = 0
   let failed = 0
+  // Games another request finished between our SELECT and our UPDATE. Counted
+  // separately from both `closed` and `failed`: nothing went wrong (the game IS
+  // finished), we simply were not the sweep that finished it — so it is neither our
+  // close to claim nor an incident to page on.
+  let raced = 0
   const errors: string[] = []
+  // Games we DID finish whose post-finish data wipe failed (anonymous-room messages,
+  // codewords chat). Tracked apart from `failed` because the close itself succeeded:
+  // the row is finished and stamped, only the wipe is outstanding.
+  let cleanupFailed = 0
+  const cleanupErrors: string[] = []
 
   for (const game of games) {
-    const result = await adminEndGame(supabase, game)
+    // CAS the active→finished flip. This route has no in-flight guard, so an ops
+    // curl overlapping a timer fire (or a manual `systemctl start` during a slow
+    // sweep) can select the same batch twice; without the guard both runs award
+    // room points and both resolve the tournament match for one game.
+    const result = await adminEndGame(supabase, game, { onlyIfActive: true })
     if (result.error) {
       failed += 1
       if (errors.length < 5) errors.push(`${game.id}: ${result.error}`)
       continue
+    }
+    // Lost the CAS: `error` is null but the row was already `finished`, so the
+    // concurrent run owns this game. Counting it as closed would double-report the
+    // sweep, and stamping `idle_timeout` would overwrite the real result_reason of a
+    // game that another path (a normal finish, an admin end) just completed.
+    if (!result.won) {
+      raced += 1
+      continue
+    }
+    // We won the transition, so this game is finished — full stop. A failed
+    // post-finish cleanup (the anonymous-room / codewords data wipe) must not
+    // demote it to a failure: it still counts as closed and still gets stamped
+    // below, exactly as a clean close does.
+    //
+    // KNOWN GAP (deliberately not solved here): a cleanup that fails is not
+    // retried. This sweep selects `status='active'` rows only, so once the game
+    // is finished no later sweep can revisit it, and there is no durable retry
+    // queue. The failure is therefore surfaced — logged here and reported in
+    // `cleanupErrors` — so an operator can re-run the wipe by hand. Building a
+    // retry queue is a separate change.
+    if (result.cleanupError) {
+      cleanupFailed += 1
+      console.error(
+        `[idle-reaper] cleanup after finish failed for game ${game.id} (${game.game_type}) — not retried`,
+        result.cleanupError
+      )
+      if (cleanupErrors.length < 5) cleanupErrors.push(`${game.id}: cleanup failed: ${result.cleanupError}`)
     }
     // Tag the reason after the finish transition landed. Best-effort — if
     // this fails, the game is still correctly finished (matches how the
@@ -107,7 +182,7 @@ export async function closeIdleActiveGames(
     closed += 1
   }
 
-  return { closed, failed, errors }
+  return { closed, failed, raced, errors, cleanupFailed, cleanupErrors }
 }
 
 let inFlight = false
@@ -120,11 +195,11 @@ async function tick(): Promise<void> {
     const supabase = getSupabaseAdmin()
     const minutes = resolveIdleMinutes()
     const result = await closeIdleActiveGames(supabase, minutes)
-    if (result.closed > 0 || result.failed > 0) {
+    if (result.closed > 0 || result.failed > 0 || result.raced > 0) {
       console.log(
-        `[idle-reaper] closed=${result.closed} failed=${result.failed} threshold=${minutes}m${
+        `[idle-reaper] closed=${result.closed} failed=${result.failed} raced=${result.raced} cleanupFailed=${result.cleanupFailed} threshold=${minutes}m${
           result.errors.length ? ` errors=${result.errors.join('; ')}` : ''
-        }`
+        }${result.cleanupErrors.length ? ` cleanupErrors=${result.cleanupErrors.join('; ')}` : ''}`
       )
     }
   } catch (err) {
@@ -149,7 +224,7 @@ async function tick(): Promise<void> {
  */
 export function startIdleReaper(): void {
   if (started) return
-  if (process.env.IDLE_REAPER_DISABLED === '1') return
+  if (isIdleReaperDisabled()) return
   const enabled = isProdDeployment() || process.env.IDLE_REAPER_ENABLED === '1'
   if (!enabled) return
   started = true

@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import { assertPlayer } from '@/lib/game-admin'
 import { syncTrollRunGameState } from '@/lib/troll-run-advance'
+import { secretMatches } from '@/lib/secret-compare'
 
 const advanceSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
@@ -42,7 +43,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
   }
 
-  const isHost = Boolean(hostToken) && hostToken === game.host_token
+  // `Boolean(hostToken) &&` still short-circuits, so a player's plain nudge does no digest
+  // work. The `await` sits where the comparison already did — every gate above it was
+  // already awaited — so neither the forceNextRound 403 nor the assertPlayer fallback moves.
+  const isHost = Boolean(hostToken) && (await secretMatches(hostToken, game.host_token))
 
   if (forceNextRound) {
     if (!isHost) return NextResponse.json({ error: 'Only the host can start the next round' }, { status: 403 })

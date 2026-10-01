@@ -2,10 +2,8 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
 import type { AyoSession, AyoSide, AyoStats, AyoVariant } from '@/types'
-
-export const AYO_MIN_PLAYERS = 2
-export const AYO_MAX_PLAYERS = 2
-export const AYO_DEFAULT_MAX_PLAYERS = 2
+import { AYO_DEFAULT_MAX_PLAYERS, AYO_MAX_PLAYERS, AYO_MIN_PLAYERS } from '@/lib/player-limits'
+export { AYO_DEFAULT_MAX_PLAYERS, AYO_MAX_PLAYERS, AYO_MIN_PLAYERS }
 
 export const AYO_PIT_COUNT = 12
 export const AYO_PITS_PER_SIDE = 6

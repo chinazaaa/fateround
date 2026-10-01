@@ -22,20 +22,21 @@ import { EditNameInline } from '@/components/ui/EditNameInline'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { gameTypeConfig } from '@/lib/game-types'
 import { useTwoTruthsAdvance } from '@/hooks/useTwoTruthsAdvance'
-import { lobbyReadyForTwoTruths, TTL_TIMER_OPTIONS } from '@/lib/two-truths'
+import { lobbyReadyForTwoTruths, ownTtlStatementIsFresh, TTL_TIMER_OPTIONS, visibleTtlGuesses } from '@/lib/two-truths'
+import { fetchMyTtlGuesses, fetchMyTtlStatement } from '@/lib/two-truths-client'
 import { supabase } from '@/lib/supabase'
 import {
   GAME_SELECT,
   PLAYER_SELECT,
   ROUND_SELECT,
-  TTL_GUESS_SELECT,
+  TTL_GUESS_PROGRESS_SELECT,
   TTL_STATEMENT_SELECT,
 } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
-import type { Game, Player, Round, TtlGuess, TtlStatement } from '@/types'
+import type { Game, Player, Round, TtlGuess, TtlGuessProgress, TtlStatement } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
@@ -50,7 +51,8 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
   const [players, setPlayers] = useState<Player[]>([])
   const [statements, setStatements] = useState<TtlStatement[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
-  const [guesses, setGuesses] = useState<TtlGuess[]>([])
+  const [guessProgress, setGuessProgress] = useState<TtlGuessProgress[]>([])
+  const [ownGuesses, setOwnGuesses] = useState<TtlGuess[]>([])
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [savingTimer, setSavingTimer] = useState(false)
@@ -67,7 +69,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
       supabase.from('ttl_statements').select(TTL_STATEMENT_SELECT).eq('game_id', gameCode),
       supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
-      supabase.from('ttl_guesses').select(TTL_GUESS_SELECT).eq('game_id', gameCode),
+      supabase.from('ttl_guesses').select(TTL_GUESS_PROGRESS_SELECT).eq('game_id', gameCode),
     ])
     if (!supabasePollOk(gameRes, plrsRes, stmtsRes, rdsRes, gssRes)) return false
     if (gameRes.data) {
@@ -77,7 +79,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     setPlayers(plrsRes.data ?? [])
     setStatements(stmtsRes.data ?? [])
     setRounds(rdsRes.data ?? [])
-    setGuesses(gssRes.data ?? [])
+    setGuessProgress(gssRes.data ?? [])
     return true
   }, [gameCode])
 
@@ -148,6 +150,13 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     else if (game?.status === 'active') setTab('play')
   }, [game?.status])
 
+  /**
+   * Start the game once enough players have submitted.
+   *
+   * The start route builds one round per submitter and stores each round's lie in
+   * `ttl_round_lies` — both in a single transaction, so a game can never begin with a round that
+   * has no answer key and therefore cannot be scored.
+   */
   const startGame = async () => {
     setStarting(true)
     try {
@@ -197,7 +206,8 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
       setRounds([])
-      setGuesses([])
+      setGuessProgress([])
+      setOwnGuesses([])
       setStatements([])
       await load()
       success('Lobby reopened!')
@@ -209,7 +219,27 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     }
   }
 
-  const myStatement = hostPlayerId ? statements.find((s) => s.player_id === hostPlayerId) : null
+  // The bulk read is the roster ("who has submitted") and no longer carries `lie_index` —
+  // it's revoked from the anon role. The host's own row, lie included, comes from the
+  // token-gated route; prefer it and fall back to the roster row until it lands.
+  const rosterStatement = hostPlayerId ? (statements.find((s) => s.player_id === hostPlayerId) ?? null) : null
+  const [ownStatement, setOwnStatement] = useState<TtlStatement | null>(null)
+  const rosterStatementId = rosterStatement?.id ?? null
+  const rosterStatementStamp = rosterStatement?.updated_at ?? null
+  useEffect(() => {
+    if (!hostResumeToken || !rosterStatementId) return
+    let cancelled = false
+    void fetchMyTtlStatement(gameCode, hostResumeToken).then((row) => {
+      if (!cancelled) setOwnStatement(row)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, hostResumeToken, rosterStatementId, rosterStatementStamp])
+  // Ignore a stale own-row: a different player, a lobby reset that cleared the submission, or
+  // a re-submit (which UPSERTs the SAME row id and only bumps updated_at) whose refetch has
+  // not landed yet. See ownTtlStatementIsFresh.
+  const myStatement = (ownTtlStatementIsFresh(ownStatement, rosterStatement) ? ownStatement : null) ?? rosterStatement
   const existingStatements = myStatement
     ? ([myStatement.statement_a, myStatement.statement_b, myStatement.statement_c] as [string, string, string])
     : null
@@ -219,6 +249,35 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
     if (!prevMyStatement.current && myStatement) setEditingStatements(false)
     prevMyStatement.current = myStatement
   }, [myStatement])
+
+  // The bulk `ttl_guesses` read is PROGRESS only — guessed_index/is_correct/points are revoked
+  // from anon, because a round ends only once every guesser has answered and those columns
+  // handed the lie to whoever had not. A host-player's own rows come from the token-gated
+  // route; everyone else's arrive folded into the round metadata at reveal, which is what the
+  // host leaderboard scores off.
+  const myGuessKey = useMemo(
+    () =>
+      guessProgress
+        .filter((g) => g.player_id === hostPlayerId)
+        .map((g) => g.id)
+        .sort()
+        .join(','),
+    [guessProgress, hostPlayerId]
+  )
+  useEffect(() => {
+    if (!hostResumeToken || !myGuessKey) {
+      setOwnGuesses([])
+      return
+    }
+    let cancelled = false
+    void fetchMyTtlGuesses(gameCode, hostResumeToken).then((rows) => {
+      if (!cancelled && rows) setOwnGuesses(rows)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, hostResumeToken, myGuessKey])
+  const guesses = useMemo(() => visibleTtlGuesses(rounds, ownGuesses), [rounds, ownGuesses])
 
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
@@ -333,6 +392,7 @@ export function TwoTruthsHostView({ gameCode, hostToken }: { gameCode: string; h
       players={players}
       rounds={rounds}
       guesses={guesses}
+      guessProgress={guessProgress}
       myPlayerId={hostPlayerId}
       myResumeToken={hostResumeToken}
       playerName={hostPlayerName}

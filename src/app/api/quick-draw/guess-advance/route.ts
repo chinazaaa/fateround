@@ -5,6 +5,7 @@ import { processQuickDrawGuessAdvance } from '@/lib/quick-draw-guess'
 import { quickDrawGuessAdvanceSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { secretMatches } from '@/lib/secret-compare'
 
 export async function POST(req: NextRequest) {
   const { data, error: bodyError } = await parseJsonBody(req, quickDrawGuessAdvanceSchema)
@@ -25,7 +26,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not in guess mode' }, { status: 400 })
   }
 
-  const force = !!data.hostToken && data.hostToken === game.host_token
+  // `!!data.hostToken &&` still short-circuits: a token-less poll (the common case) does
+  // no digest work at all, and `force` stays a strict boolean either way.
+  const force = !!data.hostToken && (await secretMatches(data.hostToken, game.host_token))
   const { error, internal } = await processQuickDrawGuessAdvance(supabase, code, { force })
   if (error) return NextResponse.json({ error }, { status: internal ? 500 : 400 })
   return NextResponse.json({ success: true })

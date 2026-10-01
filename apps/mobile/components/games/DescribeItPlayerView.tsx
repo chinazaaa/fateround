@@ -33,6 +33,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useHeaderBadge } from '@/components/session/HeaderBadgeContext'
 import { ReplayReadyRing } from '@/components/lifecycle/ReplayReadyRing'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
+import { useDescribeItWord } from '@/hooks/useDescribeItWord'
 import { DescribeItAchievementPosts } from '@/components/games/DescribeItAchievementPosts'
 import { DescribeItShareCard } from '@/components/games/DescribeItShareCard'
 import { ActivityFeed } from '@/components/party/ActivityFeed'
@@ -54,12 +55,8 @@ import {
 } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { getSupabase } from '@/lib/supabase'
-import {
-  DESCRIBE_IT_GUESS_SELECT,
-  DESCRIBE_IT_PLAYER_SELECT,
-  DESCRIBE_IT_SESSION_SELECT,
-  DESCRIBE_IT_WORD_SELECT,
-} from '@/lib/supabase-selects'
+import { DESCRIBE_IT_GUESS_SELECT, DESCRIBE_IT_PLAYER_SELECT, DESCRIBE_IT_WORD_SELECT } from '@/lib/supabase-selects'
+import { readDescribeItSession } from '@/lib/describe-it-session-read'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard, toLeaderboardRows } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
@@ -102,7 +99,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     async (_game: Game, _players: Player[]): Promise<{ state: DescribeItSession | null; ok: boolean }> => {
       const code = gameCode.toUpperCase()
       const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
-        getSupabase().from('describe_it_sessions').select(DESCRIBE_IT_SESSION_SELECT).eq('game_id', code).maybeSingle(),
+        readDescribeItSession(code),
         getSupabase()
           .from('describe_it_players')
           .select(DESCRIBE_IT_PLAYER_SELECT)
@@ -196,6 +193,10 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
 
   // Foreground turn/start nudge — mirrors web `useTurnNotifications({ status })`.
   useTurnNotifications({ status: bootstrap.game?.status, isMyTurn: isDescriber })
+
+  // The secret word is no longer in the session read — only the describer can pull it, and only
+  // through the server route. See @/hooks/useDescribeItWord.
+  const myWord = useDescribeItWord(gameCode, session, bootstrap.myPlayerId, bootstrap.myResumeToken ?? null)
 
   const act = async (fn: () => Promise<unknown>) => {
     if (!bootstrap.myResumeToken || acting) return
@@ -540,7 +541,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
             {isDescriber ? (
               <View style={styles.panel}>
                 <Text style={styles.wordLabel}>Your word</Text>
-                <Text style={styles.word}>{session.current_word ?? '—'}</Text>
+                {/* Neutral placeholder rather than an empty box while the route round-trips. */}
+                <Text style={styles.word}>{myWord ?? '…'}</Text>
                 {(session.current_clues?.length ?? 0) > 0 ? (
                   <View style={styles.clueList}>
                     {session.current_clues!.map((clue, index) => (

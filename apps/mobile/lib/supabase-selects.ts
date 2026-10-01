@@ -75,18 +75,27 @@ export const BINGO_CALLED_NUMBER_SELECT = 'id,game_id,number,called_at'
 export const BINGO_CLAIM_SELECT = 'id,game_id,player_id,pattern,status,created_at'
 export const TRIVIA_ANSWER_SELECT = 'id,game_id,round_id,player_id,choice_index,is_correct,response_ms,points'
 
+// `draw_pile`/`discard_pile` are deliberately absent: anon/authenticated hold no SELECT on them
+// (20260815120000), since the ordered deck deanonymizes every other hand. The generated
+// `draw_count`/`discard_count` cover the only thing clients ever used them for — the size.
 export const CRAZY8_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_count,discard_count,top_card,required_suit,pick_two_stack,joker_penalty,status_message,winner_player_id,finish_order,turn_deadline_at,created_at,updated_at'
 
-export const CRAZY8_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
+// Crazy Eights hands come from /api/crazy-eights/hands (redacted server-side), never from a
+// direct table select — the old `…,cards,…` select is gone so it can't be reintroduced.
 
+// `draw_pile`/`discard_pile` are deliberately absent: anon/authenticated hold no SELECT on them
+// (20261120120000), since the ordered deck deanonymizes every other hand. The generated
+// `draw_count`/`discard_count` cover the only thing clients ever used them for — the size.
 export const WHOT_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,phase,draw_count,discard_count,top_card,required_shape,required_number,pick_two_stack,pick_five_stack,status_message,winner_player_id,finish_order,reshuffle_count,turn_deadline_at,created_at,updated_at'
 
 export const WHOT_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order'
 
+// Both sets of removals — the anon-revoked piles and the unread bookkeeping columns.
+// See the note on the web copy in src/lib/supabase-selects.ts.
 export const UNO_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,direction,phase,draw_pile,discard_pile,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,pending_wild,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,color_roulette_player_id,last_play_player_id,draw_stack_chain,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,direction,phase,draw_count,discard_count,top_card,required_color,draw_penalty,draw_penalty_kind,drawn_card_id,last_play_cards,challenge_prev_color,wd4_player_id,uno_pending_player,uno_called,status_message,winner_player_id,finish_order,left_player_ids,team_decider_id,eliminated_player_ids,turn_deadline_at,created_at,updated_at'
 
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
@@ -94,25 +103,51 @@ export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,
 // grow, an update that touches only e.g. current_turn_index delivers those piles as null.
 // Applying that would wipe the board and every card would look unplayable. Callers check
 // isCompleteUnoSessionRow before merging; a false result falls back to the reload path.
-export const UNO_SESSION_NOT_NULL_KEYS = [
-  'turn_order',
-  'draw_pile',
-  'discard_pile',
-  'left_player_ids',
-  'eliminated_player_ids',
-] as const
+// draw_pile/discard_pile are deliberately absent: anon no longer holds SELECT on them, so a
+// realtime payload never carries them and requiring them here would make isCompleteUnoSessionRow
+// return false for EVERY row — rejecting every delta and forcing a full reload each time.
+// Mirrors src/lib/supabase-selects.ts.
+export const UNO_SESSION_NOT_NULL_KEYS = ['turn_order', 'left_player_ids', 'eliminated_player_ids'] as const
 
 export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
   return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
 }
 
-export const TTL_STATEMENT_SELECT =
-  'id,game_id,player_id,statement_a,statement_b,statement_c,lie_index,created_at,updated_at'
+// `lie_index` is deliberately absent: it is revoked from the anon role (a bulk read of this
+// table handed over every player's lie). This roster read only needs to know WHO submitted;
+// the caller's own row, with its lie, comes from POST /api/two-truths/my-statement.
+export const TTL_STATEMENT_SELECT = 'id,game_id,player_id,statement_a,statement_b,statement_c,created_at,updated_at'
 
-export const TTL_GUESS_SELECT = 'id,game_id,round_id,player_id,guessed_index,is_correct,points,guessed_at'
+// PROGRESS ONLY — `guessed_index`, `is_correct` and `points` are deliberately absent: they are
+// revoked from the anon role, because a round only ends once everyone has guessed, so those
+// columns handed the lie to every player who had not answered yet. What survives is who has
+// guessed (the lock-in UI + realtime). Post-reveal results come from `ttl_metadata.guesses`;
+// the caller's own in-flight guess comes from POST /api/two-truths/my-guesses.
+export const TTL_GUESS_PROGRESS_SELECT = 'id,game_id,round_id,player_id,guessed_at'
 
-export const DESCRIBE_IT_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_word,current_clue,current_clues,used_words,turn_deadline_at,break_deadline_at,status,status_message'
+/**
+ * NOTE: no `current_word` and no `used_words`. Both are revoked from anon/authenticated by
+ * migration 20260807130000 — the word used to ship to every guesser's device and was merely
+ * hidden in the UI, and `used_words[last]` IS that word. The describer fetches it from POST
+ * /api/describe-it/my-word instead.
+ *
+ * Every column here except `word_seq` predates the migrations on this branch, so this list is
+ * the part that is safe against ANY database version. That matters far more on mobile than on
+ * web: a shipped binary cannot be rolled forward with the deploy (see
+ * apps/mobile/lib/describe-it-session-read.ts).
+ */
+export const DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ =
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,phase,turn_index,current_round,active_team,describer_player_id,roster,current_clue,current_clues,turn_deadline_at,break_deadline_at,status,status_message'
+
+/**
+ * `word_seq` (added by migration 20260807115000) is the public per-word counter that replaced
+ * the clients' only legitimate use of the revoked `used_words` array — its length.
+ *
+ * DEPLOY SKEW: naming a column that does not exist yet makes PostgREST fail the WHOLE select
+ * with 42703. Read the session through `readDescribeItSession()`, which falls back to
+ * DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ on 42703.
+ */
+export const DESCRIBE_IT_SESSION_SELECT = `${DESCRIBE_IT_SESSION_SELECT_NO_WORD_SEQ},word_seq`
 
 export const DESCRIBE_IT_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 
@@ -152,6 +187,10 @@ export const LANDMINE_ANSWER_SELECT =
 
 export const LANDMINE_MARK_SELECT = 'id,game_id,round_id,marker_player_id,target_player_id,valid,marked_at'
 
+// The Codewords board is fetched via the server route (postCodewordsBoard), not a direct
+// select — `codewords_boards.key` is no longer anon-selectable (audit finding H2), so there is
+// no board SELECT constant here on purpose. The route returns the full board object.
+
 export const CODEWORDS_PLAYER_ROLE_SELECT = 'id,game_id,player_id,team,role,created_at'
 
 export const HOT_SEAT_SUBMISSIONS_SELECT = 'id,game_id,round_id,player_id,text,submission_type,created_at'
@@ -162,13 +201,20 @@ export const CODEWORDS_GUESS_SELECT =
 export const CODEWORDS_MESSAGE_SELECT = 'id,game_id,player_id,team,text,created_at'
 
 export const MONOPOLY_BOARD_SELECT =
-  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,chance_deck,community_deck,chance_discard,community_discard,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
+  'id,game_id,board_size,turn_order,current_turn_index,phase,last_dice,consecutive_doubles,property_owners,property_buildings,mortgaged_properties,houses_in_bank,hotels_in_bank,auction_state,pending_trade,pending_debt,pending_space,status_message,last_card_event,last_rent_event,last_cash_event,last_trade_event,loans,turn_deadline_at,winner_player_id,created_at,updated_at'
 
 export const MONOPOLY_PLAYER_STATE_SELECT =
   'id,game_id,player_id,position,cash,in_jail,jail_turns,get_out_of_jail_free,bankrupt,passed_go_once,player_order,created_at'
 
+/**
+ * NOTE: no `current_word` and no `used_words`. The secret prompt is revoked from
+ * anon/authenticated by migration 20260807140000 — it used to ship to every guesser's client
+ * (twice: as `current_word`, and as the last entry of `used_words`) and was merely hidden in the
+ * UI. The drawer fetches it from POST /api/quick-draw/my-word instead, and `word_seq` is the
+ * public per-word counter clients use to know it rotated.
+ */
 export const QUICK_DRAW_GUESS_SESSION_SELECT =
-  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_word,current_stroke_data,used_words,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
+  'id,game_id,mode,num_teams,total_rounds,turn_seconds,roster,phase,turn_index,current_round,active_team,drawer_player_id,current_stroke_data,word_seq,turn_deadline_at,break_deadline_at,status,status_message,created_at,updated_at'
 
 export const QUICK_DRAW_GUESS_PLAYER_SELECT = 'id,game_id,player_id,team,score,created_at'
 
@@ -199,3 +245,13 @@ export const TROLL_RUN_PLAYER_STATE_SELECT =
   'id,game_id,player_id,current_round,current_level_index,deaths,levels_cleared,total_time_ms,round_score,total_score,finish_position,round_finished,created_at,updated_at'
 
 export const TROLL_RUN_EVENT_SELECT = 'id,game_id,player_id,round,level_id,level_name,event_type,time_ms,created_at'
+
+// Mirrors src/lib/supabase-selects.ts — keep the column lists identical.
+
+export const CONFESSION_SELECT = 'id,game_id,round_id,text,created_at'
+
+export const WST_QUOTE_POOL_SELECT =
+  'id,game_id,player_id,quote_text,options,correct_index,author_participant_id,created_at,updated_at'
+
+export const WORDLE_ROOM_PROGRESS_SELECT =
+  'id,game_id,round_id,player_id,word_index,current_word_guesses,words_solved,total_guesses,total_time_ms,finished,finished_at,created_at,updated_at'

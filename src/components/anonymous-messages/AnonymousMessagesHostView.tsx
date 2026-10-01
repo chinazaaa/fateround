@@ -43,6 +43,7 @@ import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { HostLateJoinSettingsCard } from '@/components/HostLateJoinSettingsCard'
 import { HostEndGameButton } from '@/components/ui/HostEndGameButton'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const LOBBY_PAGE_SIZE = 10
 
@@ -111,7 +112,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        (payload) => setGame(payload.new as Game)
+        (payload) => setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
       )
       .on(
         'postgres_changes',

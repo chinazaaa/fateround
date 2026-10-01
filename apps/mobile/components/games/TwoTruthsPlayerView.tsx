@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
-import { type Game, type Player, type Round, type TtlGuess, type TtlStatement } from '@fateround/shared'
+import {
+  type Game,
+  type Player,
+  type Round,
+  type TtlGuess,
+  type TtlGuessProgress,
+  type TtlStatement,
+} from '@fateround/shared'
 import { batch4GameLabel } from '@fateround/shared/batch-4-games'
 import {
   TTL_MAX_STATEMENT_LENGTH,
@@ -9,8 +16,10 @@ import {
   playerDisplayName,
   revealCountdownSeconds,
   tallyTtlScores,
+  visibleTtlGuesses,
 } from '@fateround/shared/two-truths'
 import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
+import { ownTtlStatementIsFresh } from '@fateround/shared/two-truths'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
@@ -30,10 +39,10 @@ import { useDeadlineExpiry } from '@/hooks/useDeadlineExpiry'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useAdvancePolling } from '@/hooks/useAdvancePolling'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
-import { postTtlGuess, postTtlStatements } from '@/lib/game-api'
+import { postTtlGuess, postTtlMyGuesses, postTtlMyStatement, postTtlStatements } from '@/lib/game-api'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { ROUND_SELECT, TTL_GUESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
+import { ROUND_SELECT, TTL_GUESS_PROGRESS_SELECT, TTL_STATEMENT_SELECT } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { scoreListLeaderboard } from '@/lib/finish-leaderboards'
 import type { Theme } from '@/constants/theme'
@@ -53,7 +62,8 @@ type Screen =
 export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
   const [statements, setStatements] = useState<TtlStatement[]>([])
   const [rounds, setRounds] = useState<Round[]>([])
-  const [guesses, setGuesses] = useState<TtlGuess[]>([])
+  const [guessProgress, setGuessProgress] = useState<TtlGuessProgress[]>([])
+  const [ownGuesses, setOwnGuesses] = useState<TtlGuess[]>([])
   const [stmtA, setStmtA] = useState('')
   const [stmtB, setStmtB] = useState('')
   const [stmtC, setStmtC] = useState('')
@@ -70,12 +80,12 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
       const [stmtsRes, rdsRes, gssRes] = await Promise.all([
         getSupabase().from('ttl_statements').select(TTL_STATEMENT_SELECT).eq('game_id', code),
         getSupabase().from('rounds').select(ROUND_SELECT).eq('game_id', code).order('round_number'),
-        getSupabase().from('ttl_guesses').select(TTL_GUESS_SELECT).eq('game_id', code),
+        getSupabase().from('ttl_guesses').select(TTL_GUESS_PROGRESS_SELECT).eq('game_id', code),
       ])
       if (stmtsRes.error || rdsRes.error || gssRes.error) return { state: null, ok: false }
       setStatements((stmtsRes.data as TtlStatement[]) ?? [])
       setRounds((rdsRes.data as Round[]) ?? [])
-      setGuesses((gssRes.data as TtlGuess[]) ?? [])
+      setGuessProgress((gssRes.data as TtlGuessProgress[]) ?? [])
       return { state: null, ok: true }
     },
     [gameCode]
@@ -133,7 +143,70 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     onAdvanced: () => bootstrap.load(),
   })
 
-  const myStatement = bootstrap.myPlayerId ? statements.find((s) => s.player_id === bootstrap.myPlayerId) : undefined
+  // The bulk read above is the roster ("who has submitted") and no longer carries `lie_index`
+  // — it's revoked from the anon role. The caller's own row, lie included, comes from the
+  // token-gated route; prefer it and fall back to the roster row until it lands.
+  const rosterStatement = bootstrap.myPlayerId
+    ? statements.find((s) => s.player_id === bootstrap.myPlayerId)
+    : undefined
+  const [ownStatement, setOwnStatement] = useState<TtlStatement | null>(null)
+  const rosterStatementId = rosterStatement?.id ?? null
+  const rosterStatementStamp = rosterStatement?.updated_at ?? null
+  const myResumeToken = bootstrap.myResumeToken
+  useEffect(() => {
+    if (!myResumeToken || !rosterStatementId) return
+    let cancelled = false
+    postTtlMyStatement(gameCode, { resumeToken: myResumeToken })
+      .then((res) => {
+        if (!cancelled) setOwnStatement(res.statement ?? null)
+      })
+      .catch(() => {
+        // Leave the roster row in place; the next load retries.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, myResumeToken, rosterStatementId, rosterStatementStamp])
+  // Ignore a stale own-row (different player, or a lobby reset that cleared the submission).
+  // Compares updated_at as well as id, via the shared helper: a RE-SUBMIT upserts the SAME row id
+  // and only bumps updated_at, so an id-only check keeps the previous lie_index until the refetch
+  // lands — prefilling the old lie when editing and marking the wrong statement as LIE on the
+  // waiting screen.
+  const myStatement = (ownTtlStatementIsFresh(ownStatement, rosterStatement) ? ownStatement : null) ?? rosterStatement
+
+  // The bulk `ttl_guesses` read is PROGRESS only — guessed_index/is_correct/points are revoked
+  // from anon, because a round ends only once every guesser has answered and those columns
+  // handed the lie to whoever had not. The caller's own rows come from the token-gated route;
+  // everyone else's arrive folded into the round metadata at reveal. Refetch keyed on the
+  // caller's own progress-row ids, so a new guess (or a lobby reset) pulls fresh rows.
+  const myPlayerId = bootstrap.myPlayerId
+  const myGuessKey = useMemo(
+    () =>
+      guessProgress
+        .filter((g) => g.player_id === myPlayerId)
+        .map((g) => g.id)
+        .sort()
+        .join(','),
+    [guessProgress, myPlayerId]
+  )
+  useEffect(() => {
+    if (!myResumeToken || !myGuessKey) {
+      setOwnGuesses([])
+      return
+    }
+    let cancelled = false
+    postTtlMyGuesses(gameCode, { resumeToken: myResumeToken })
+      .then((res) => {
+        if (!cancelled && res.guesses) setOwnGuesses(res.guesses)
+      })
+      .catch(() => {
+        // Leave what we have; the next load retries. Lock-in runs off the progress rows.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [gameCode, myResumeToken, myGuessKey])
+  const guesses = useMemo(() => visibleTtlGuesses(rounds, ownGuesses), [rounds, ownGuesses])
 
   const me = bootstrap.myPlayerId ? bootstrap.players.find((p) => p.id === bootstrap.myPlayerId) : undefined
   // Watch-only: a spectator/eliminated/late player watches the live round read-only.
@@ -149,8 +222,13 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
 
   const metadata = currentRound ? parseTtlMetadata(currentRound.ttl_metadata) : null
   const isFeatured = currentRound?.submitter_player_id === bootstrap.myPlayerId
+  // Lock in on the PROGRESS row, which is readable the instant the guess lands — never on
+  // `myGuess`, which arrives a round-trip later from the token-gated route (and not at all if
+  // that call fails). "I can't read my own pick yet" must not reopen the choices.
+  const hasGuessed =
+    !!currentRound && guessProgress.some((g) => g.player_id === myPlayerId && g.round_id === currentRound.id)
   const myGuess = currentRound
-    ? guesses.find((g) => g.player_id === bootstrap.myPlayerId && g.round_id === currentRound.id)
+    ? guesses.find((g) => g.player_id === myPlayerId && g.round_id === currentRound.id)
     : undefined
   const revealSeconds = currentRound?.status === 'finished' ? revealCountdownSeconds(currentRound.ended_at) : null
 
@@ -187,20 +265,27 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     setTimeExpired(false)
   }, [currentRound?.id])
 
-  useDeadlineExpiry(currentRound?.started_at, timerSeconds, timerActive && !myGuess, () => setTimeExpired(true))
+  useDeadlineExpiry(currentRound?.started_at, timerSeconds, timerActive && !hasGuessed, () => setTimeExpired(true))
 
   // Pinned countdown — visible under the header while the guessing body scrolls.
   const ttlTimer = (
     <CountdownTimerBadge
       anchorTime={currentRound?.started_at}
       delaySeconds={timerSeconds}
-      active={timerActive && !myGuess && !timeExpired}
+      active={timerActive && !hasGuessed && !timeExpired}
     />
   )
-  const ttlTimerPinned = useStickyTimer(ttlTimer, [currentRound, timerSeconds, timerActive, myGuess, timeExpired])
+  const ttlTimerPinned = useStickyTimer(ttlTimer, [currentRound, timerSeconds, timerActive, hasGuessed, timeExpired])
 
   const canSubmitStatements = !!stmtA.trim() && !!stmtB.trim() && !!stmtC.trim() && lieIndex != null
 
+  /**
+   * Send this player's three statements and which one is the lie.
+   *
+   * The lie goes to the server and never into anon-readable data. A re-submit upserts the SAME
+   * statement row rather than inserting a new one, bumping `updated_at` — which is why the
+   * own-row freshness check has to compare timestamps and not ids.
+   */
   const submitStatements = async () => {
     if (!bootstrap.myResumeToken || submitting || lieIndex == null || !canSubmitStatements) return
     setSubmitting(true)
@@ -220,17 +305,24 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     }
   }
 
+  /**
+   * Reopen the submission form pre-filled with this player's current statements and lie.
+   *
+   * Reads `myStatement`, which prefers the token-gated own-row over the roster row — the roster
+   * has no `lie_index` (revoked from anon), and a re-submit reuses the same row id, so a
+   * freshness check on id alone would prefill the PREVIOUS lie here.
+   */
   const startEditing = () => {
     if (!myStatement) return
     setStmtA(myStatement.statement_a)
     setStmtB(myStatement.statement_b)
     setStmtC(myStatement.statement_c)
-    setLieIndex(myStatement.lie_index)
+    setLieIndex(myStatement.lie_index ?? null)
     setEditingStatements(true)
   }
 
   const submitGuess = async (index: number) => {
-    if (!bootstrap.myResumeToken || !currentRound || submitting || myGuess || isViewer) return
+    if (!bootstrap.myResumeToken || !currentRound || submitting || hasGuessed || isViewer) return
     setSubmitting(true)
     try {
       await postTtlGuess(bootstrap.code, bootstrap.myResumeToken, currentRound.id, index)
@@ -512,7 +604,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
     )
   }
 
-  const lockedOut = !myGuess && timeExpired
+  const lockedOut = !hasGuessed && timeExpired
 
   return (
     <GameShell bootstrap={bootstrap} title={batch4GameLabel('two_truths')} subtitle={roundSubtitle}>
@@ -529,7 +621,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
                 <Pressable
                   key={index}
                   style={[styles.choice, selected && styles.choiceSelected]}
-                  disabled={submitting || !!myGuess || lockedOut || isViewer}
+                  disabled={submitting || hasGuessed || lockedOut || isViewer}
                   onPress={() => void submitGuess(index)}
                 >
                   <Text style={styles.choiceBadge}>{formatTtlChoiceLabel(index)}</Text>
@@ -541,7 +633,7 @@ export function TwoTruthsPlayerView({ gameCode }: { gameCode: string }) {
         ) : null}
         {isViewer ? (
           <Text style={styles.locked}>Watching only — you can&apos;t guess this round.</Text>
-        ) : myGuess ? (
+        ) : hasGuessed ? (
           <Text style={styles.locked}>Guess locked in — results when everyone finishes or time runs out.</Text>
         ) : lockedOut ? (
           <Text style={styles.locked}>Time&apos;s up — waiting for results…</Text>

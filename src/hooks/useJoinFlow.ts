@@ -18,7 +18,7 @@ import { isImportClaimMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import { isGameGenderBased } from '@/lib/gender-based'
 import { gameOffersLateJoinChoice, allowLatePlayers } from '@/lib/viewers'
 import { unlockAudio } from '@/lib/sounds'
-import { PLAYER_SELECT } from '@/lib/supabase-selects'
+import { PARTICIPANT_SELECT, PLAYER_SELECT, ROUND_SELECT } from '@/lib/supabase-selects'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
 import { useToast } from '@/components/ui/Toast'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
@@ -326,7 +326,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
         if (!isSelfEdit) trackEvent(GA_EVENTS.joinGame)
         const [{ data: plrs }, { data: parts }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+          supabase.from('participants').select(PARTICIPANT_SELECT).eq('game_id', gameCode).order('display_order'),
         ])
         setPlayers(plrs || [])
         setParticipants(parts || [])
@@ -342,7 +342,7 @@ export function useJoinFlow(deps: JoinFlowDeps) {
         if (game?.status === 'active') {
           const { data: activeRound } = await supabase
             .from('rounds')
-            .select('*')
+            .select(ROUND_SELECT)
             .eq('game_id', gameCode)
             .eq('status', 'active')
             .maybeSingle()

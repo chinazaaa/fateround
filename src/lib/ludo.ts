@@ -3,10 +3,8 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import type { LudoColor, LudoDiceRoll, LudoPiece, LudoPlayerState, LudoSession, LudoVariant, Player } from '@/types'
-
-export const LUDO_MIN_PLAYERS = 2
-export const LUDO_MAX_PLAYERS = 4
-export const LUDO_DEFAULT_MAX_PLAYERS = 4
+import { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS } from '@/lib/player-limits'
+export { LUDO_DEFAULT_MAX_PLAYERS, LUDO_MAX_PLAYERS, LUDO_MIN_PLAYERS }
 
 export const TRACK_LENGTH = 52
 

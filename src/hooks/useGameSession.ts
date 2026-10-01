@@ -29,10 +29,11 @@ import {
   CONFESSION_SELECT,
   GAME_SELECT,
   PARTICIPANT_SELECT,
-  PLAYER_SELECT,
   PLAYER_QUESTION_SELECT,
+  PLAYER_SELECT,
   ROUND_SELECT,
   VOTE_SELECT,
+  WST_QUOTE_POOL_SELECT,
 } from '@/lib/supabase-selects'
 import { useGameChannel } from '@/hooks/useGameChannel'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -169,9 +170,9 @@ export function useGameSession(deps: GameSessionDeps) {
 
   async function loadAllResults() {
     const [{ data: rounds }, { data: votes }, { data: confs }, { data: subs }] = await Promise.all([
-      supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
-      supabase.from('votes').select('*').eq('game_id', gameCode),
-      supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+      supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
+      supabase.from('votes').select(VOTE_SELECT).eq('game_id', gameCode),
+      supabase.from('confessions').select(CONFESSION_SELECT).eq('game_id', gameCode).order('created_at'),
       supabase.from('hot_seat_submissions').select('id, round_id, text, submission_type').eq('game_id', gameCode),
     ])
     setAllRounds(rounds || [])
@@ -226,7 +227,7 @@ export function useGameSession(deps: GameSessionDeps) {
         setGame(gameData)
 
         const [{ data: parts }, { data: plrs }] = await Promise.all([
-          supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+          supabase.from('participants').select(PARTICIPANT_SELECT).eq('game_id', gameCode).order('display_order'),
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
         ])
         setParticipants(parts || [])
@@ -249,7 +250,7 @@ export function useGameSession(deps: GameSessionDeps) {
         if (gameData.status === 'active') {
           const { data: activeRound } = await supabase
             .from('rounds')
-            .select('*')
+            .select(ROUND_SELECT)
             .eq('game_id', gameCode)
             .eq('status', 'active')
             .maybeSingle()
@@ -261,7 +262,7 @@ export function useGameSession(deps: GameSessionDeps) {
             if (session) {
               const { data: existingVote } = await supabase
                 .from('votes')
-                .select('*')
+                .select(VOTE_SELECT)
                 .eq('player_id', session.playerId)
                 .eq('round_id', activeRound.id)
                 .maybeSingle()
@@ -297,7 +298,7 @@ export function useGameSession(deps: GameSessionDeps) {
           } else {
             const { data: finishedRound } = await supabase
               .from('rounds')
-              .select('*')
+              .select(ROUND_SELECT)
               .eq('game_id', gameCode)
               .eq('status', 'finished')
               .order('round_number', { ascending: false })
@@ -306,8 +307,12 @@ export function useGameSession(deps: GameSessionDeps) {
 
             if (finishedRound && session) {
               const [{ data: rv }, { data: rc }] = await Promise.all([
-                supabase.from('votes').select('*').eq('round_id', finishedRound.id),
-                supabase.from('confessions').select('*').eq('round_id', finishedRound.id).order('created_at'),
+                supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
+                supabase
+                  .from('confessions')
+                  .select(CONFESSION_SELECT)
+                  .eq('round_id', finishedRound.id)
+                  .order('created_at'),
               ])
               setLastFinishedRound(finishedRound)
               setLastRoundVotes(rv || [])
@@ -339,7 +344,7 @@ export function useGameSession(deps: GameSessionDeps) {
         if (gameData.status === 'waiting' && isWhoSaidThis(parseGameType(gameData.game_type))) {
           const { data: pool } = await supabase
             .from('wst_quote_pool')
-            .select('*')
+            .select(WST_QUOTE_POOL_SELECT)
             .eq('game_id', gameCode)
             .order('created_at')
           setWstPool(dedupeWstPool(pool ?? []))
@@ -439,8 +444,8 @@ export function useGameSession(deps: GameSessionDeps) {
         }
         if (newGame.status === 'active' && myPlayerIdRef.current) {
           const [{ data: activeRound }, { data: parts }] = await Promise.all([
-            supabase.from('rounds').select('*').eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
-            supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+            supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
+            supabase.from('participants').select(PARTICIPANT_SELECT).eq('game_id', gameCode).order('display_order'),
           ])
           if (parts) setParticipants(parts)
           if (activeRound) {
@@ -463,7 +468,7 @@ export function useGameSession(deps: GameSessionDeps) {
         if (round.status === 'active' && myPlayerIdRef.current) {
           const { data: parts } = await supabase
             .from('participants')
-            .select('*')
+            .select(PARTICIPANT_SELECT)
             .eq('game_id', gameCode)
             .order('display_order')
           if (parts) setParticipants(parts)
@@ -490,8 +495,8 @@ export function useGameSession(deps: GameSessionDeps) {
         }
         if (round.status === 'finished') {
           const [{ data: rv }, { data: rc }] = await Promise.all([
-            supabase.from('votes').select('*').eq('round_id', round.id),
-            supabase.from('confessions').select('*').eq('round_id', round.id).order('created_at'),
+            supabase.from('votes').select(VOTE_SELECT).eq('round_id', round.id),
+            supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', round.id).order('created_at'),
           ])
           setLastFinishedRound(round)
           setLastRoundVotes(rv || [])

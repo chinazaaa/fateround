@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
-import { assertTrollRunRacingPlayer, trollRunElapsedMs } from '@/lib/troll-run'
+import { trollRunElapsedMs } from '@/lib/troll-run'
+import { assertTrollRunRacingPlayer } from '@/lib/troll-run-guard'
 
 const reportClearSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
