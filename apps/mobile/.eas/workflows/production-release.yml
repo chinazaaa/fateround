@@ -37,6 +37,12 @@
 
 name: Production store release
 
+# Two concurrent `all` dispatches would otherwise produce four pending approval gates across
+# two runs titled identically, and an approver cannot tell which release they are authorizing.
+# `run_name` may use the `github`, `inputs`, `workflow`, `app` and `account` contexts — but
+# NOT job-level ones, so keep `needs`/`steps`/`env` out of it or the run fails.
+run_name: Release ${{ inputs.platform }} — ${{ inputs.message }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -93,13 +99,13 @@ jobs:
   # is the precise test. Note the real safety property is `needs` on the submit jobs below —
   # this `if` is belt-and-braces against being asked to approve nothing.
   approve_ios:
-    name: Approve App Store submission
+    name: Approve App Store submission (${{ inputs.platform }})
     after: [build_ios]
     if: ${{ after.build_ios.status == 'success' }}
     type: require-approval
 
   approve_android:
-    name: Approve Google Play submission
+    name: Approve Google Play submission (${{ inputs.platform }})
     after: [build_android]
     if: ${{ after.build_android.status == 'success' }}
     type: require-approval
@@ -108,11 +114,26 @@ jobs:
   # ITS approval was granted (an approval job succeeds iff approved, fails iff rejected).
   # That also makes a platform `if` unnecessary here — a skipped build skips its own submit.
   #
-  # `submit` needs credentials registered on EAS beforehand — an App Store Connect API key
-  # via `eas credentials --platform ios`, and a Google Service Account key — because
-  # `eas.json`'s `submit.production` is empty, which is valid but defers everything to
-  # server-side state. Verify both exist before the first dispatch; this is the one failure
-  # here that can only surface at run time.
+  # THREE THINGS HERE FAIL ONLY AT RUN TIME. Check all of them before the first dispatch;
+  # none of them can be caught by validating this file.
+  #
+  # 1. Credentials must already be registered on EAS — an App Store Connect API key via
+  #    `eas credentials --platform ios`, and a Google Service Account key. `eas.json`'s
+  #    submit profile deliberately names none of them, which is valid: credentials, unlike
+  #    the release track, really are server-side state.
+  # 2. The Android track is now explicit in `eas.json` (`submit.production.android.track:
+  #    production`). It had to be: the track is an `eas.json` field, NOT server-side state,
+  #    and it DEFAULTS TO `internal`. Left empty, a job named "Submit to Google Play", in a
+  #    workflow named "Production store release", behind a gate the approver believed
+  #    authorized production, would have quietly uploaded to internal testing. Caveat for a
+  #    first-ever submission: Google keeps the app in draft until the Play Console store
+  #    listing is complete, and a release cannot be promoted to production before then — so
+  #    if the listing isn't finished, this submit fails and `internal` is the correct
+  #    temporary value.
+  # 3. `environment: production` on the build profile means the four `EXPO_PUBLIC_*` vars in
+  #    `.env.example` come from EAS's production environment. If that environment is
+  #    unpopulated the build still SUCCEEDS and ships a non-functional app — the worst shape
+  #    of failure here, because nothing goes red.
   submit_ios:
     name: Submit to App Store Connect
     needs: [build_ios, approve_ios]
