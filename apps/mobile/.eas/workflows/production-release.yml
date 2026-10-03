@@ -146,15 +146,17 @@ jobs:
   #    answer is dropping back to `track: internal` — that is the silent-wrong-destination
   #    bug above wearing a different hat.
   #
-  # 3. `ios.ascAppId` HAS NO DEFAULT AND IS REQUIRED. This is the one thing here that is not
-  #    a credential and cannot be inferred: eas-cli reads it only from the submit profile, and
-  #    in non-interactive mode (which every workflow run is) a missing value produces
-  #    "Set ascAppId in the submit profile (eas.json) or re-run this command in interactive
-  #    mode." followed by `throw new Error('Submission failed')`. The interactive fallback
-  #    that would create the ASC app is unreachable in CI. So without it, EVERY iOS release
-  #    fails — after the build has consumed minutes and a build number, and after a human has
-  #    already clicked approve. Find it at App Store Connect → Apps → the app → General →
-  #    App Information → Apple ID (a numeric id).
+  # 3. `ios.ascAppId` HAS NO DEFAULT AND IS REQUIRED — now set in `eas.json`. This is the one
+  #    field here that is not a credential and cannot be inferred: eas-cli reads it only from
+  #    the submit profile, and in non-interactive mode (which every workflow run is) a missing
+  #    value produces "Set ascAppId in the submit profile (eas.json) or re-run this command in
+  #    interactive mode." followed by `throw new Error('Submission failed')`. The interactive
+  #    fallback that would create the ASC app is unreachable in CI. So while it was absent,
+  #    EVERY iOS release would have failed — after the build consumed minutes and a build
+  #    number, and after a human had already clicked approve. It is a public identifier Apple
+  #    assigns to the app record, not a secret, which is why it lives in git rather than in
+  #    EAS's environment. Find it at App Store Connect → Apps → the app → General → App
+  #    Information → Apple ID, or read it out of the app's URL (`/apps/<id>/...`).
   #
   # And one that genuinely cannot be checked from here: `environment: production` on the
   # build profile means the four `EXPO_PUBLIC_*` vars in `.env.example` come from EAS's
