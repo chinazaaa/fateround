@@ -3,11 +3,11 @@
 Planned work to stop flying blind in production. Today FateRound runs on a **single AWS EC2**
 box (Caddy origin-TLS → Next.js container on `:8080`, behind Cloudflare) with Supabase as the
 backend and a self-hosted LiveKit. A `/api/health` endpoint now ships (Track 1a below) and
-OpenTelemetry tracing is **live on dev** (Track 2 — traces are exporting and Application
-Observability is generating RED metrics from them). Still outstanding: **no external uptime
-monitoring is wired to the health endpoint, and prod is not yet exporting traces** (its OTLP
-auth header is unset). If the box wedges, a route gets slow, or a Supabase/LiveKit dependency
-degrades in prod, we still find out from users. Two complementary tracks fix that:
+OpenTelemetry tracing is **live on dev and prod** (Track 2 — traces are exporting and
+Application Observability is generating RED metrics from them). Still outstanding: **no external
+uptime monitoring is wired to the health endpoint**, and Sentry stack traces are unreadable
+because source maps are not uploaded (Track 3b). If the box wedges, we still find out from
+users. Two complementary tracks fix that:
 
 - **UptimeRobot** — external, black-box _"is it up?"_ + alerting. Cheap, fast to land.
 - **OpenTelemetry** — internal, white-box _"why is it slow / erroring?"_ traces + metrics.
@@ -64,7 +64,7 @@ with alerts to a channel we actually watch. Single-EC2 = no redundancy, so an ea
 issuance, Klipy GIFs, Anthropic AI-questions) as distributed traces, plus a few business metrics —
 instead of guessing from a single box with no APM.
 
-### 2a. App instrumentation (code — this repo) ✅ DONE + wired · dev LIVE, prod pending
+### 2a. App instrumentation (code — this repo) ✅ DONE + wired · dev LIVE, prod LIVE
 
 - ✅ `src/instrumentation.ts` uses **`@vercel/otel`** (framework-agnostic — runs on our
   self-hosted Node container; auto-instruments `fetch` + Next.js server spans with the least
@@ -74,13 +74,29 @@ instead of guessing from a single box with no APM.
   `OTEL_EXPORTER_OTLP_HEADERS` (SecureString), `OTEL_RESOURCE_ATTRIBUTES` — count-gated on the
   endpoint being set (mirrors the VAPID/Spotify optional-secret pattern) and read optionally at
   deploy time. `service.name` defaults to `fateround` in code, so no `OTEL_SERVICE_NAME` needed.
-  **Status:** the backend stack now exists (a Grafana Cloud stack — see 2b). **dev is lit up**:
-  `otel_exporter_otlp_endpoint` + `otel_exporter_otlp_headers` are set in `terraform.dev.tfvars`,
-  applied, and traces are exporting. **prod is not yet wired** — `terraform.prod.tfvars` has the
-  endpoint but an empty `otel_exporter_otlp_headers`, so prod exports nothing. To finish prod:
-  mint a prod access-policy token on the stack, set the headers in `terraform.prod.tfvars`, and
-  `terraform apply` (replaces the instance) — no code change. Per-env separation is by
-  `deployment.environment` in `otel_resource_attributes`, so both point at one stack.
+  **Status:** the backend stack exists (a Grafana Cloud stack — see 2b), and **both environments
+  are lit up**. dev was first; **prod was finished on 2026-07-21** and this section said otherwise
+  for months, which is why the evidence is recorded here rather than just the verdict:
+
+  - All three parameters exist under `/fateround-prod/`: `OTEL_EXPORTER_OTLP_ENDPOINT`
+    (`https://otlp-gateway-prod-gb-south-1.grafana.net/otlp`), `OTEL_EXPORTER_OTLP_HEADERS`
+    (SecureString, holds `Authorization=…`) and `OTEL_RESOURCE_ATTRIBUTES`.
+  - The credential is accepted by the gateway. `POST {}` to `<endpoint>/v1/traces` with the
+    prod header returns **200**; the identical request with no header returns **401**. So this
+    is a working credential against a reachable endpoint, not merely a populated parameter.
+  - The running container actually has the values. `user-data.sh` reads SSM at boot via
+    `get_param_opt`, so a parameter written *after* launch would be invisible to the container
+    — the ordering is what matters, and it is right: the prod params were last modified at
+    **23:20:54 UTC on 2026-07-21** and instance `i-0859d6465fbaf4523` launched at
+    **23:21:28 UTC**, 34 seconds later. That is the signature of minting the token and running
+    `terraform apply`, which replaces the instance.
+
+  Per-env separation is by `deployment.environment` in `otel_resource_attributes`, so both point
+  at one stack.
+
+  **Not verified from the repo side:** that spans are arriving in Grafana. The OTLP gateway
+  credential is write-only, so nothing can be read back with it — confirming arrival needs the
+  Grafana UI or a read token. Everything up to the gateway is confirmed above.
 - **Chose direct OTLP export** (app → backend) over an on-box collector for the MVP: one fewer
   process on the single box, and the endpoint is env-driven so we can later point it at an on-box
   collector without a code change if buffering/backend-swap becomes worth it (that would export to
@@ -179,9 +195,10 @@ already wired for it and no-ops without credentials, so turning it on is config 
 1. ✅ `/api/health` endpoint (PR #393) — live in prod. ⏳ UptimeRobot monitors + one alert channel
    still to be configured in the dashboard (external, no code).
 2. ✅ `@vercel/otel` app instrumentation (PR #400) + ✅ SSM→container env wiring for direct OTLP
-   export + ✅ Grafana Cloud stack created and **dev exporting** (Application Observability
-   activated on dev). ⏳ Wire **prod** (mint a prod token, set `otel_exporter_otlp_headers` in
-   `terraform.prod.tfvars`, apply) and validate traces for the hot API routes.
+   export + ✅ Grafana Cloud stack created + ✅ **both dev and prod exporting** (prod finished
+   2026-07-21 — see 2a for the evidence). ⏳ Validate traces for the hot API routes in Grafana:
+   the first question to answer there is the `node` share of `/rest/v1/games`, which is the
+   measurement the egress work is judged by.
 3. ✅ Sentry error reporting (Track 3) — code landed and verified end to end against a local
    ingest sink (server error → event with the right `environment` and `release`). ⏳ Source-map
    upload (3b) and an issue-alert rule.
