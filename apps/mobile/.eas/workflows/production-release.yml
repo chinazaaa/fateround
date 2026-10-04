@@ -23,7 +23,7 @@
 # a binary enters review, and a release can reach users. The one thing this workflow must
 # never do is submit because someone pushed. `workflow_dispatch` is the whole trigger, and
 # `require-approval` sits between building and submitting so the binaries exist and can be
-# inspected before anything is handed to Apple or Google.
+# inspected before anything is handed to Apple.
 #
 # WHY THIS RELEASE MATTERS MORE THAN USUAL
 # `apps/mobile/app.json` declares no `updates` block and no `runtimeVersion`, while
@@ -40,7 +40,7 @@
 # COST: every run consumes EAS build minutes, and iOS submission needs a live Apple Developer
 # account. See https://expo.dev/pricing.
 
-name: Production store release
+name: Production release
 
 # Two concurrent `all` dispatches would otherwise produce four pending approval gates across
 # two runs titled identically, and an approver cannot tell which release they are authorizing.
@@ -52,7 +52,7 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: Which stores to release to
+        description: What to release. Android is BUILD-ONLY (APK) — it has no store submission
         type: choice
         options:
           - all
@@ -62,7 +62,7 @@ on:
       message:
         description: Build message shown in the EAS dashboard (e.g. the release reason)
         type: string
-        default: Production store release
+        default: Production release
 
 jobs:
   # Built as two jobs rather than one `platform: all` job so that a failure on one store
@@ -93,13 +93,12 @@ jobs:
       message: ${{ inputs.message }}
 
   # The deliberate stop. Everything above is reversible — a build is just an artifact.
-  # Everything below reaches Apple, Google, and eventually users.
+  # Everything below reaches Apple, and eventually users.
   #
-  # ONE APPROVAL PER PLATFORM, deliberately, even though it means two clicks on an `all`
-  # release. A single gate `after` both builds has to decide what to do when one platform
-  # fails, and every answer is wrong: require both to succeed and a failed iOS build strands
-  # a perfectly good Android binary, unshipped — which is exactly the coupling the two-job
-  # split above exists to prevent. Per-platform gates keep each store independent end to end.
+  # ONE GATE, FOR iOS ONLY, because iOS is the only platform with a submit step. This used to
+  # be one approval per platform, to stop a failed iOS build stranding a good Android binary
+  # behind a shared gate — a real defect, but one that cannot occur now that Android never
+  # submits. Android's artifact is the APK itself and needs no authorisation to exist.
   #
   # `after`, NOT `needs`, and this is the whole reason: a job skipped by its `if` "won't have
   # completed successfully", so anything listing it in `needs` never runs. A gate on
@@ -115,14 +114,14 @@ jobs:
     if: ${{ after.build_ios.status == 'success' }}
     type: require-approval
 
-  # These keep `needs` deliberately: each submit must not run unless ITS build succeeded and
-  # ITS approval was granted (an approval job succeeds iff approved, fails iff rejected).
+  # This keeps `needs` deliberately: the submit must not run unless its build succeeded and
+  # its approval was granted (an approval job succeeds iff approved, fails iff rejected).
   # That also makes a platform `if` unnecessary here — a skipped build skips its own submit.
   #
   # WHAT AN EMPTY SUBMIT PROFILE SILENTLY DECIDES FOR YOU. `eas.json`'s `submit.production`
   # started as `{}`. That is schema-valid and it is a trap, because the submit schema is full
   # of defaults, and "unset" means "whatever eas-cli picks" — not "ask a human". It is now
-  # iOS-only, and both of the things it still decides are spelled out below.
+  # iOS-only, and the one thing it still decides is spelled out below.
   #
   # The Android half of this profile is GONE, deliberately. It previously set
   # `track: production` and `releaseStatus: completed`, which were correct fixes for a real
@@ -149,17 +148,16 @@ jobs:
   # mode on a partial key.
   #
   # `ios.ascAppId` is optional in the Joi schema but REQUIRED IN PRACTICE for any
-  #    non-interactive submit — now set in `eas.json`. This is the one
-  #    field here that is not a credential and cannot be inferred: eas-cli reads it only from
-  #    the submit profile, and in non-interactive mode (which every workflow run is) a missing
-  #    value produces "Set ascAppId in the submit profile (eas.json) or re-run this command in
-  #    interactive mode." followed by `throw new Error('Submission failed')`. The interactive
-  #    fallback that would create the ASC app is unreachable in CI. So while it was absent,
-  #    EVERY iOS release would have failed — after the build consumed minutes and a build
-  #    number, and after a human had already clicked approve. It is a public identifier Apple
-  #    assigns to the app record, not a secret, which is why it lives in git rather than in
-  #    EAS's environment. Find it at App Store Connect → Apps → the app → General → App
-  #    Information → Apple ID, or read it out of the app's URL (`/apps/<id>/...`).
+  # non-interactive submit. It is the one field here that is not a credential and cannot be
+  # inferred: eas-cli reads it only from the submit profile, and in non-interactive mode
+  # (which every workflow run is) a missing value produces "Set ascAppId in the submit profile
+  # (eas.json) or re-run this command in interactive mode." followed by
+  # `throw new Error('Submission failed')`. The interactive fallback that would create the ASC
+  # app is unreachable in CI. So while it was absent, EVERY iOS release would have failed —
+  # after the build consumed minutes and a build number, and after a human had already clicked
+  # approve. It is a public identifier Apple assigns to the app record, not a secret, which is
+  # why it lives in git rather than in EAS's environment. Find it at App Store Connect → Apps
+  # → the app → General → App Information → Apple ID, or in the app's URL (`/apps/<id>/...`).
   #
   # And one that genuinely cannot be checked from here: `environment: production` on the
   # build profile means the four `EXPO_PUBLIC_*` vars in `.env.example` come from EAS's
