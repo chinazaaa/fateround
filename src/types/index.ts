@@ -779,8 +779,18 @@ export interface WhotSession {
   turn_order: string[]
   current_turn_index: number
   phase: WhotPhase
-  draw_pile: WhotCard[]
-  discard_pile: WhotCard[]
+  /**
+   * REDACTED from clients (20261120120000): the ordered deck plus your own hand reveals every
+   * opponent's hand (2 players) or every future draw (N). Only service-role reads
+   * (src/lib/whot.ts) see it — hence optional. Clients use `draw_count`.
+   */
+  draw_pile?: WhotCard[]
+  /** REDACTED from clients alongside `draw_pile` — see above. Clients use `discard_count`. */
+  discard_pile?: WhotCard[]
+  /** Public size of `draw_pile`. Generated stored column; counts leak no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   top_card: WhotCard | null
   required_shape: WhotShape | null
   required_number: number | null
@@ -838,8 +848,19 @@ export interface CrazyEightsSession {
   /** 1 = forward through turn_order, -1 = reversed (Queen flips it). */
   direction: number
   phase: CrazyEightsPhase
-  draw_pile: CrazyEightsCard[]
-  discard_pile: CrazyEightsCard[]
+  /**
+   * REDACTED from clients: anon/authenticated hold no SELECT on this column, because the ordered
+   * deck plus your own hand reveals every opponent's hand (2 players) or every future draw (N).
+   * Only service-role reads (src/lib/crazy-eights.ts) see it — hence optional. Clients use
+   * `draw_count`.
+   */
+  draw_pile?: CrazyEightsCard[]
+  /** REDACTED from clients alongside `draw_pile` — see above. Clients use `discard_count`. */
+  discard_pile?: CrazyEightsCard[]
+  /** Public size of `draw_pile`. Generated stored column; counts leak no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   top_card: CrazyEightsCard | null
   required_suit: CrazyEightsCalledSuit | null
   /** Stackable, defendable-with-a-2 penalty (Pick Two). */
@@ -859,7 +880,15 @@ export interface CrazyEightsPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: CrazyEightsCard[]
+  /**
+   * The player's cards. `null` means REDACTED (someone else's hand) — deliberately not `[]`,
+   * because an empty array is meaningful state ("this player is out") and conflating the two
+   * is what would make a redacted row read as a finished player. Use `card_count` for anyone
+   * other than the local player. Server-side code always holds the real array.
+   */
+  cards: CrazyEightsCard[] | null
+  /** How many cards the player holds. Public information, and survives redaction. */
+  card_count?: number
   player_order: number
   created_at: string
 }
@@ -971,8 +1000,18 @@ export interface UnoSession {
   /** 1 = forward through turn_order, -1 = reversed (Reverse flips it). */
   direction: number
   phase: UnoPhase
-  draw_pile: UnoCard[]
-  discard_pile: UnoCard[]
+  /**
+   * REDACTED from clients: anon/authenticated hold no SELECT on this column, because the ordered
+   * deck plus your own hand reveals every opponent's hand (2 players) or every future draw (N).
+   * Only service-role reads (src/lib/uno.ts) see it — hence optional. Clients use `draw_count`.
+   */
+  draw_pile?: UnoCard[]
+  /** REDACTED from clients alongside `draw_pile` — see above. Clients use `discard_count`. */
+  discard_pile?: UnoCard[]
+  /** Public size of `draw_pile`. Generated stored column; counts leak no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   top_card: UnoCard | null
   /** Colour demanded by a played Wild / Wild Draw Four. */
   required_color: UnoColor | null
@@ -1029,7 +1068,16 @@ export interface UnoPlayerHand {
   id: string
   game_id: string
   player_id: string
-  cards: UnoCard[]
+  /**
+   * The player's cards. `null` means REDACTED (someone else's hand) — deliberately not `[]`,
+   * because an empty array is meaningful state ("this player is out") and conflating the two
+   * is what would make a redacted row read as a finished player. Use `card_count` for anyone
+   * other than the local player (Team-Up: your teammate's cards also come back in full).
+   * Server-side code always holds the real array.
+   */
+  cards: UnoCard[] | null
+  /** How many cards the player holds. Public information, and survives redaction. */
+  card_count?: number
   player_order: number
   created_at: string
 }
@@ -1591,11 +1639,25 @@ export interface DescribeItSession {
   describer_player_id: string | null
   /** Ordered player ids that take turns describing (individual mode only). */
   roster: string[]
-  current_word: string | null
+  /**
+   * The secret word. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807130000, and DESCRIBE_IT_SESSION_SELECT no longer
+   * asks for it. Only service-role reads see it (see `DescribeItServerSession` in
+   * src/lib/describe-it.ts); the describer gets it back via POST /api/describe-it/my-word.
+   */
+  current_word?: string | null
   current_clue: string | null
   /** All clues given for the current word (reset each word). */
   current_clues: string[]
-  used_words: string[]
+  /**
+   * A SHADOW COPY of the secret: every write that sets `current_word` appends it here, so the
+   * last element IS the current word. Revoked from anon alongside `current_word` and therefore
+   * absent client-side; the service role still sees the full history. Use `word_seq` for the
+   * per-word counter the clients actually need.
+   */
+  used_words?: string[]
+  /** Public per-word counter (`cardinality(used_words)`) — ticks once per word rotation. */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'
@@ -1799,7 +1861,42 @@ export interface TriviaAnswer {
 
 export interface TtlMetadata {
   statements: [string, string, string]
-  lie_index: number
+  /**
+   * null while the round is unrevealed. The lie lives in the service-role-only
+   * `ttl_round_lies` table and is folded back into the round metadata only when the server
+   * marks the round finished — the reveal moment the UI already renders.
+   */
+  lie_index: number | null
+}
+
+/**
+ * One player's result for a round, as folded into `rounds.ttl_metadata.guesses` when the
+ * server marks the round finished.
+ *
+ * `ttl_guesses.guessed_index / is_correct / points` are revoked from the anon role — reading
+ * that table mid-round handed the lie to everyone who had not guessed yet. Post-reveal
+ * results therefore travel in the round metadata instead of on the guess rows.
+ */
+export interface TtlGuessResult {
+  id: string
+  player_id: string
+  guessed_index: number
+  is_correct: boolean
+  points: number
+}
+
+/**
+ * The anon-readable slice of `ttl_guesses`: WHO has guessed, never WHAT they guessed.
+ *
+ * This is the live progress state the lock-in UI and realtime subscriptions run on. It is
+ * deliberately NOT a `TtlGuess` — nothing here can be scored or revealed.
+ */
+export interface TtlGuessProgress {
+  id: string
+  game_id: string
+  round_id: string
+  player_id: string
+  guessed_at?: string
 }
 
 export interface TtlStatement {
@@ -1809,7 +1906,12 @@ export interface TtlStatement {
   statement_a: string
   statement_b: string
   statement_c: string
-  lie_index: number
+  /**
+   * null unless this is the CALLER'S OWN statement. `lie_index` is revoked from the anon
+   * role, so the bulk `ttl_statements` read (the roster) never carries it; the caller's own
+   * row comes from POST /api/two-truths/my-statement, gated on their resume token.
+   */
+  lie_index?: number | null
   created_at: string
   updated_at: string
 }
@@ -1822,7 +1924,8 @@ export interface TtlGuess {
   guessed_index: number
   is_correct: boolean
   points: number
-  guessed_at: string
+  /** Absent on rows reconstructed from `ttl_metadata.guesses` (only the progress row has it). */
+  guessed_at?: string
 }
 
 export interface QuiplashMetadata {
@@ -1961,9 +2064,24 @@ export interface QuickDrawGuessSession {
   current_round: number
   active_team: number
   drawer_player_id: string | null
-  current_word: string | null
+  /**
+   * The secret prompt. NOT present on a client-side session — `current_word` is revoked from
+   * anon/authenticated by migration 20260807140000, and QUICK_DRAW_GUESS_SESSION_SELECT no longer
+   * asks for it. Only service-role reads see it (see `QuickDrawGuessServerSession` in
+   * src/lib/quick-draw-guess.ts); the drawer gets it back via POST /api/quick-draw/my-word.
+   */
+  current_word?: string | null
   current_stroke_data: QuickDrawDrawingStrokeData
-  used_words: string[]
+  /**
+   * Also secret: its last entry IS the current word, so it is revoked alongside `current_word`
+   * and absent from client reads. Use `word_seq` when all you need is "the word changed".
+   */
+  used_words?: string[]
+  /**
+   * Public per-word counter — `cardinality(used_words)`, a generated column. Ticks once per word,
+   * including the mid-turn rotations (correct guess, skip) that leave `turn_index` untouched.
+   */
+  word_seq?: number
   turn_deadline_at: string | null
   break_deadline_at: string | null
   status: 'active' | 'finished'

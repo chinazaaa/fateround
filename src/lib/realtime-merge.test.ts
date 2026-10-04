@@ -43,4 +43,22 @@ describe('mergeRealtimeGame', () => {
     const merged = mergeRealtimeGame(game({ custom_questions: null }), game({ custom_questions: null }))
     expect(merged.custom_questions == null).toBe(true)
   })
+  // A publication column list (see 20261110120000 for monopoly_boards) makes Realtime deliver
+  // ONLY the listed columns — the rest are absent from the payload object, not null. Absent must
+  // never overwrite a known value, or narrowing a publication silently blanks client state.
+  it('keeps columns the payload omits entirely, rather than blanking them', () => {
+    const prev = game({ title: 'Game night', uno_stacking: true } as Partial<Game>)
+    const merged = mergeRealtimeGame(prev, { id: 'G1', status: 'finished' } as Partial<Game>)
+    expect(merged.title).toBe('Game night')
+    expect((merged as unknown as Record<string, unknown>).uno_stacking).toBe(true)
+    expect(merged.status).toBe('finished')
+  })
+
+  // Only the TOAST-prone jsonb columns treat null as "unchanged". An ordinary column's null is a
+  // real clear — play-again resets finished_at — and must win.
+  it('honours a genuine null on an ordinary column', () => {
+    const prev = game({ finished_at: '2026-01-01T00:00:00Z' } as Partial<Game>)
+    const merged = mergeRealtimeGame(prev, { finished_at: null } as unknown as Partial<Game>)
+    expect(merged.finished_at).toBeNull()
+  })
 })

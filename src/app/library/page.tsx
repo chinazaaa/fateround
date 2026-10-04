@@ -3,79 +3,23 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { PageShell } from '@/components/ui/PageShell'
+import {
+  QUESTION_PACK_GAME_TYPE_META,
+  QUESTION_PACK_GAME_TYPE_ORDER,
+  questionPackGameTypeMeta,
+  type QuestionPackGameType,
+} from '@/lib/question-pack-game-type-meta'
 
 interface PackSummary {
   id: string
   title: string
-  game_type:
-    | 'trivia'
-    | 'who_said_this'
-    | 'would_you_rather'
-    | 'most_likely_to'
-    | 'this_or_that'
-    | 'never_have_i_ever'
-    | 'describe_it'
-    | 'quick_draw'
-    | 'codewords'
-    | 'pick_a_number'
+  game_type: QuestionPackGameType
   author_name: string
   description: string | null
   question_count: number
   approved_at: string
   tags: string[]
   collections: { slug: string; name: string }[]
-}
-
-const GAME_TYPE_META: Record<string, { label: string; color: string }> = {
-  trivia: { label: 'Trivia', color: 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25' },
-  who_said_this: {
-    label: 'Who Said This',
-    color: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25',
-  },
-  would_you_rather: {
-    label: 'Would You Rather',
-    color: 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25',
-  },
-  most_likely_to: {
-    label: 'Most Likely To',
-    color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
-  },
-  this_or_that: {
-    label: 'This or That',
-    color: 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25',
-  },
-  never_have_i_ever: {
-    label: 'Never Have I Ever',
-    color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
-  },
-  describe_it: {
-    label: 'Text Charades',
-    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
-  },
-  quick_draw: {
-    label: 'Quick Draw',
-    color: 'text-violet-600 dark:text-violet-400 bg-violet-500/10 border-violet-500/25',
-  },
-  codewords: {
-    label: 'Codewords',
-    color: 'text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/25',
-  },
-  pick_a_number: {
-    label: 'Pick a Number',
-    color: 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/25',
-  },
-  crossword: {
-    label: 'Crossword',
-    color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/25',
-  },
-  word_search: {
-    label: 'Word Search',
-    color: 'text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/25',
-  },
-  word_scramble: {
-    label: 'Word Scramble',
-    color: 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25',
-  },
 }
 
 /** Neutral small-pill style for tags/types with no explicit color (keeps every pill the same size). */
@@ -91,21 +35,13 @@ const TAG_META: Record<string, { label: string; color: string }> = {
   spicy: { label: 'Spicy', color: 'text-red-500 dark:text-red-300 bg-red-500/10 border-red-500/25' },
 }
 
+/**
+ * Filter options for the type dropdown, derived from the shared picker order so a newly accepted
+ * pack type shows up here without a second list to remember.
+ */
 const GAME_TYPE_FILTERS = [
   { value: '', label: 'All types' },
-  { value: 'trivia', label: 'Trivia' },
-  { value: 'who_said_this', label: 'Who Said This' },
-  { value: 'would_you_rather', label: 'Would You Rather' },
-  { value: 'most_likely_to', label: 'Most Likely To' },
-  { value: 'this_or_that', label: 'This or That' },
-  { value: 'never_have_i_ever', label: 'Never Have I Ever' },
-  { value: 'describe_it', label: 'Text Charades' },
-  { value: 'quick_draw', label: 'Quick Draw' },
-  { value: 'codewords', label: 'Codewords' },
-  { value: 'pick_a_number', label: 'Pick a Number' },
-  { value: 'crossword', label: 'Crossword' },
-  { value: 'word_search', label: 'Word Search' },
-  { value: 'word_scramble', label: 'Word Scramble' },
+  ...QUESTION_PACK_GAME_TYPE_ORDER.map((value) => ({ value, label: QUESTION_PACK_GAME_TYPE_META[value].label })),
 ]
 
 const TAG_FILTERS = [
@@ -317,7 +253,7 @@ export default function LibraryPage() {
         <>
           <div className="grid gap-3 animate-stagger sm:grid-cols-2">
             {packs.map((pack) => {
-              const meta = GAME_TYPE_META[pack.game_type]
+              const meta = questionPackGameTypeMeta(pack.game_type)
               return (
                 <div key={pack.id} className="glass-card p-5 space-y-3 flex flex-col">
                   <div className="flex items-start justify-between gap-3">

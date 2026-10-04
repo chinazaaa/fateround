@@ -3,10 +3,8 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
 import type { ChessColor, ChessSession } from '@/types'
-
-export const CHESS_MIN_PLAYERS = 2
-export const CHESS_MAX_PLAYERS = 2
-export const CHESS_DEFAULT_MAX_PLAYERS = 2
+import { CHESS_DEFAULT_MAX_PLAYERS, CHESS_MAX_PLAYERS, CHESS_MIN_PLAYERS } from '@/lib/player-limits'
+export { CHESS_DEFAULT_MAX_PLAYERS, CHESS_MAX_PLAYERS, CHESS_MIN_PLAYERS }
 
 export const CHESS_STARTING_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 

@@ -24,6 +24,7 @@ import {
 import { hostActionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertHostWith } from '@/lib/game-admin'
 import { withGameNotification } from '@/lib/push-route'
 
 async function handlePost(req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -36,12 +37,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
   const admin = getSupabaseAdmin()
 
-  const { data: game } = await admin.from('games').select('*').eq('id', gameId).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'active' && game.status !== 'waiting') {
-    return NextResponse.json({ error: 'Game already ended' }, { status: 400 })
-  }
+  const auth = await assertHostWith(admin, gameId, hostToken, {
+    allowedStatuses: ['active', 'waiting'],
+    statusError: 'Game already ended',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const gameType = parseGameType(game.game_type)
   const inLobby = game.status === 'waiting'
@@ -57,20 +58,26 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     return NextResponse.json({ error: internalErrorMessage('games/code/finish-game', roundError) }, { status: 500 })
 
   if (isAnonymousMessagesGame(gameType)) {
-    const { error } = await finishAnonymousRoomSession(admin, gameId)
+    const { error, cleanupError } = await finishAnonymousRoomSession(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    // The game IS finished; only the post-finish data wipe failed. Reporting that as a
+    // 500 tells the host their finish failed and invites a retry that can only 400
+    // ("Game already ended"), so log it instead — it needs an operator, not the host.
+    if (cleanupError) console.error(`games/code/finish-game: session cleanup failed for ${gameId}`, cleanupError)
     return NextResponse.json({ success: true })
   }
 
   if (isSecretMessageGame(gameType)) {
-    const { error } = await finishSecretMessageBoard(admin, gameId)
+    const { error, cleanupError } = await finishSecretMessageBoard(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    if (cleanupError) console.error(`games/code/finish-game: inbox cleanup failed for ${gameId}`, cleanupError)
     return NextResponse.json({ success: true })
   }
 
   if (isCodewordsGame(gameType)) {
-    const { error } = await finishCodewordsGame(admin, gameId)
+    const { error, cleanupError } = await finishCodewordsGame(admin, gameId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    if (cleanupError) console.error(`games/code/finish-game: chat cleanup failed for ${gameId}`, cleanupError)
     return NextResponse.json({ success: true })
   }
 

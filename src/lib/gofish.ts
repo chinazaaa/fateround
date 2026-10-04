@@ -1,8 +1,6 @@
 import type { GoFishCard, GoFishEvent, GoFishPlayerHand, GoFishRank, GoFishSession, GoFishSuit } from '@/types'
-
-export const GOFISH_MIN_PLAYERS = 2
-export const GOFISH_MAX_PLAYERS = 6
-export const GOFISH_DEFAULT_MAX_PLAYERS = 4
+import { GOFISH_MIN_PLAYERS, GOFISH_MAX_PLAYERS, GOFISH_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { GOFISH_MIN_PLAYERS, GOFISH_MAX_PLAYERS, GOFISH_DEFAULT_MAX_PLAYERS }
 
 /** Standard deal per Go Fish rules: 7 cards for 2 players, 5 for 3+. */
 export function gofishDealCount(playerCount: number): number {

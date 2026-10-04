@@ -45,6 +45,7 @@ import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useRoomMemberAutoJoin, useRoomMemberJoin } from '@/hooks/useRoomMemberJoin'
 import { markPlayerReady } from '@/lib/player-ready'
 import { allowLateJoin, playerIsViewer, preJoinScreen } from '@/lib/viewers'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type Screen =
   | 'loading'
@@ -138,7 +139,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           syncScreen(next, myPlayerId)
         }
       )

@@ -1,7 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
+import type { FinishGameResult } from '@/lib/game-finish'
 import { clearSessionTables } from './session-clear'
 import type { Game, Player } from '@/types'
+import {
+  ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
+  ANONYMOUS_ROOM_MAX_PLAYERS,
+  ANONYMOUS_ROOM_MIN_PLAYERS,
+} from '@/lib/player-limits'
+export { ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS, ANONYMOUS_ROOM_MAX_PLAYERS, ANONYMOUS_ROOM_MIN_PLAYERS }
 
 /** Keep at most this many messages per anonymous room before batch trimming kicks in. */
 export const ANONYMOUS_ROOM_MAX_MESSAGES = 1000
@@ -16,9 +23,6 @@ export const ANONYMOUS_ROOM_TRIM_INTERVAL_MS = 5 * 60 * 1000
 export const ANONYMOUS_ROOM_SESSION_SECONDS = 15 * 60
 
 /** Lobby size limits for anonymous rooms. */
-export const ANONYMOUS_ROOM_MIN_PLAYERS = 2
-export const ANONYMOUS_ROOM_MAX_PLAYERS = 20
-export const ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS = 20
 
 export function clampAnonymousRoomMaxPlayers(value: number): number {
   return Math.min(ANONYMOUS_ROOM_MAX_PLAYERS, Math.max(ANONYMOUS_ROOM_MIN_PLAYERS, value))
@@ -170,25 +174,37 @@ export async function clearAnonymousRoomSessionData(
 
 export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
-  gameId: string
-): Promise<{ error: string | null }> {
+  gameId: string,
+  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError } = await markGameFinished(supabase, gameId)
-  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError) }
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
-  return clearAnonymousRoomSessionData(supabase, gameId)
+  // Clearing stays unconditional (it is an idempotent delete, and skipping it on a lost
+  // race would leave data behind if the winner's own clear failed) — only the `won`
+  // signal is threaded out, so callers can tell who actually flipped the row.
+  //
+  // A failed clear is reported as `cleanupError`, never as `error`: the game IS
+  // finished at this point, and folding the wipe failure into `error` made callers
+  // (the idle reaper) treat a completed close as a failure and skip its stamp.
+  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
+  return { error: null, won, cleanupError: clearError }
 }
 
 /** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
 export async function finishSecretMessageBoard(
   supabase: SupabaseClient,
-  gameId: string
-): Promise<{ error: string | null }> {
+  gameId: string,
+  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError } = await markGameFinished(supabase, gameId)
-  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError) }
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
-  return clearAnonymousRoomSessionData(supabase, gameId)
+  // Cleanup failure is reported separately from the finish — see finishAnonymousRoomSession.
+  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
+  return { error: null, won, cleanupError: clearError }
 }
 
 /** Clear inbox and reopen a secret message board. */
@@ -220,6 +236,21 @@ export async function finishExpiredAnonymousSession(
   if (game.status !== 'active') return false
   if (!anonymousSessionExpired(game.session_started_at)) return false
 
-  const { error } = await finishAnonymousRoomSession(supabase, game.id)
-  return !error
+  const { error, cleanupError } = await finishAnonymousRoomSession(supabase, game.id)
+  if (error) return false
+
+  // The room IS finished at this point — only the post-finish message/ban wipe failed,
+  // and that cannot un-finish it. Folding it into the return value would report a
+  // completed expiry as "not expired", so surface it instead: like every other finish
+  // path, a failed cleanup is not retried (nothing revisits a finished game and there
+  // is no durable retry queue), so it needs to be loud enough for an operator to
+  // re-run the wipe by hand.
+  if (cleanupError) {
+    console.error(
+      `anonymous-messages: cleanup after expired-session finish failed for ${game.id} — not retried`,
+      cleanupError
+    )
+  }
+
+  return true
 }

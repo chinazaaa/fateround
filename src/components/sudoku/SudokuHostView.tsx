@@ -52,6 +52,7 @@ import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { HostGameFinishedActions } from '@/components/host/HostGameFinishedActions'
 import { ShareResults } from '@/components/ShareResults'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type HostTab = 'manage' | 'play'
 
@@ -186,7 +187,7 @@ export function SudokuHostView({ gameCode, hostToken }: { gameCode: string; host
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
-          setGame(payload.new as Game)
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
           load()
         }
       )

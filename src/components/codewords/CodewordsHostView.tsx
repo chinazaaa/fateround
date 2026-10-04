@@ -32,7 +32,12 @@ import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
 import { useCodewordsRealtime } from '@/hooks/useCodewordsRealtime'
 import { useCodewordsNotifications } from '@/hooks/useCodewordsNotifications'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import {
+  CODEWORDS_GUESS_SELECT,
+  CODEWORDS_PLAYER_ROLE_SELECT,
+  GAME_SELECT,
+  PLAYER_SELECT,
+} from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
@@ -104,8 +109,12 @@ export function CodewordsHostView({ gameCode, hostToken }: { gameCode: string; h
     const [{ data: gameData }, { data: plrs }, { data: roleRows }, { data: guessRows }, boardData] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-      supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
-      supabase.from('codewords_guesses').select('*').eq('game_id', gameCode).order('created_at', { ascending: true }),
+      supabase.from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', gameCode),
+      supabase
+        .from('codewords_guesses')
+        .select(CODEWORDS_GUESS_SELECT)
+        .eq('game_id', gameCode)
+        .order('created_at', { ascending: true }),
       fetchCodewordsBoard(gameCode, { hostToken }),
     ])
 

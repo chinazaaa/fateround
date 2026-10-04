@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { isMonopolyGame, parseGameType } from '@/lib/game-types'
 import {
   processMonopolyTradeCancel,
@@ -12,11 +13,18 @@ import {
   monopolyTradeRepairSchema,
   monopolyTradeRespondSchema,
 } from '@/lib/validation'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 
+// Shape-only guard. This handler dispatches on raw discriminator fields (`repair`, `cancel`,
+// `accept`) and then hands the SAME raw body to one of four per-branch schemas, so the guard
+// must not declare keys of its own — a narrower schema would strip them before the dispatch.
+const tradeBodySchema = z.record(z.string(), z.unknown())
+
 export async function POST(req: NextRequest) {
-  const raw = await req.json()
+  const { data: raw, error: bodyError } = await parseJsonBody(req, tradeBodySchema)
+  if (bodyError) return bodyError
   const code = String(raw.gameId ?? '').toUpperCase()
   const supabase = getSupabaseAdmin()
 

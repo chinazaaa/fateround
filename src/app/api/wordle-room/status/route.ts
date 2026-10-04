@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  const auth = await assertPlayer(supabase, gameId, resumeToken)
+  // Read-only: a status poll must not bump `games.last_activity_at` (see assertPlayer).
+  const auth = await assertPlayer(supabase, gameId, resumeToken, { readOnly: true })
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   // Viewers never see the current word — the word is the whole game in a Wordle race.

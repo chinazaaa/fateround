@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const { error } = await processUnoChallenge(supabase, code, auth.player.id, challenge === true)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
-  scheduleTurnNotification(code)
+  scheduleTurnNotification(code, game)
 
   return NextResponse.json({ success: true })
 }

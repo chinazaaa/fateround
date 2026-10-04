@@ -15,27 +15,22 @@ import type { TriviaQuestion } from '@/types'
 import type { WyrQuestion } from '@/lib/would-you-rather-questions'
 import type { WstDeckEntry } from '@/lib/who-said-this'
 import type { WordGroupingGroup } from '@/lib/word-grouping'
+import {
+  QUESTION_PACK_GAME_TYPE_META,
+  QUESTION_PACK_GAME_TYPE_ORDER,
+  type QuestionPackGameType,
+} from '@/lib/question-pack-game-type-meta'
 
 // Library-side shape for a Word Grouping puzzle. Each pack is an array of these — the multiplayer
 // start route + `generateWordGroupingFromContent` pick one puzzle per game by seed. Must match
 // `parseCustomQuestionsBody` on the create route, which accepts `{ groups: [...] }` entries.
 type WordGroupingPuzzleEntry = { groups: WordGroupingGroup[] }
 
-type GameType =
-  | 'trivia'
-  | 'would_you_rather'
-  | 'most_likely_to'
-  | 'this_or_that'
-  | 'never_have_i_ever'
-  | 'describe_it'
-  | 'quick_draw'
-  | 'codewords'
-  | 'pick_a_number'
-  | 'crossword'
-  | 'word_search'
-  | 'word_scramble'
-  | 'word_grouping'
-  | 'who_said_this'
+/**
+ * The pack types this form can submit. Aliased to the constraint-derived union rather than
+ * restated: a restated copy is exactly how the public library page fell four types behind.
+ */
+type GameType = QuestionPackGameType
 
 interface ValidationResult {
   ok: boolean
@@ -351,93 +346,79 @@ function validateWordScramble(rows: Record<string, string>[]): ValidationResult 
   return { ok: errors.length === 0, errors, questions, rowCount: rows.length }
 }
 
-const GAME_TYPES: { value: GameType; label: string; description: string; columns: string }[] = [
-  {
-    value: 'trivia',
-    label: 'Trivia',
+/**
+ * CSV shape per pack type — the blurb and column list the picker shows.
+ *
+ * `satisfies Record<GameType, …>` makes this exhaustive against the DB constraint: a type the
+ * API accepts but that has no entry here fails the build instead of quietly vanishing from the
+ * picker. Labels come from the shared meta so they cannot disagree with the pack badges.
+ */
+const GAME_TYPE_FORMATS = {
+  trivia: {
     description: 'Multiple-choice questions with one correct answer',
     columns: 'question, option_a, option_b, option_c, option_d, correct',
   },
-  {
-    value: 'who_said_this',
-    label: 'Who Said This',
+  who_said_this: {
     description: 'Quotes with multiple-choice options for who said each one',
     columns: 'quote, option_a, option_b, option_c, option_d, correct',
   },
-  {
-    value: 'would_you_rather',
-    label: 'Would You Rather',
+  would_you_rather: {
     description: 'Two-option dilemma questions',
     columns: 'option_a, option_b',
   },
-  {
-    value: 'most_likely_to',
-    label: 'Most Likely To',
+  most_likely_to: {
     description: 'Prompts voted on by the group',
     columns: 'prompt',
   },
-  {
-    value: 'this_or_that',
-    label: 'This or That',
+  this_or_that: {
     description: 'Two-option choices players pick between',
     columns: 'option_a, option_b',
   },
-  {
-    value: 'never_have_i_ever',
-    label: 'Never Have I Ever',
+  never_have_i_ever: {
     description: 'Prompts players vote on having done',
     columns: 'prompt',
   },
-  {
-    value: 'describe_it',
-    label: 'Text Charades',
+  describe_it: {
     description: 'Words or phrases for players to describe',
     columns: 'word',
   },
-  {
-    value: 'quick_draw',
-    label: 'Quick Draw',
+  quick_draw: {
     description: 'Words or drawing prompts for Lie and Guess modes',
     columns: 'word',
   },
-  {
-    value: 'codewords',
-    label: 'Codewords',
+  codewords: {
     description: 'Single words for the spy word grid',
     columns: 'word',
   },
-  {
-    value: 'pick_a_number',
-    label: 'Pick a Number',
+  pick_a_number: {
     description: 'Prompts players answer with a number',
     columns: 'question',
   },
-  {
-    value: 'crossword',
-    label: 'Crossword',
+  crossword: {
     description: 'Answers with their clues for the crossword grid',
     columns: 'answer, clue',
   },
-  {
-    value: 'word_search',
-    label: 'Word Search',
+  word_search: {
     description: 'Words to hide in the word-search grid',
     columns: 'word',
   },
-  {
-    value: 'word_scramble',
-    label: 'Word Scramble',
+  word_scramble: {
     description: 'Words to unscramble, with optional hints',
     columns: 'word, hint',
   },
-  {
-    value: 'word_grouping',
-    label: 'Word Grouping',
+  word_grouping: {
     // One row per group; 4 rows share the same `puzzle` number and cover difficulties 1–4.
     description: 'Puzzles of 4 groups × 4 words. One row per group.',
     columns: 'puzzle, category, difficulty, word1, word2, word3, word4',
   },
-]
+} as const satisfies Record<GameType, { description: string; columns: string }>
+
+const GAME_TYPES: { value: GameType; label: string; description: string; columns: string }[] =
+  QUESTION_PACK_GAME_TYPE_ORDER.map((value) => ({
+    value,
+    label: QUESTION_PACK_GAME_TYPE_META[value].label,
+    ...GAME_TYPE_FORMATS[value],
+  }))
 
 /**
  * Sample CSV strings per game type — served client-side as a Blob download so submitters

@@ -52,6 +52,7 @@ import { NameJoinForm } from '@/components/game-lobby/NameJoinForm'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { gameTypeConfig } from '@/lib/game-types'
 import type { Game, Player } from '@/types'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const GRID_KEY = (roundId: string, playerId: string) => `crossword_grid_${roundId}_${playerId}`
 
@@ -259,7 +260,7 @@ export function CrosswordPlayerView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           // Only a full reload on a status transition (the case a re-derive is for); other
           // games-row writes just refresh the game object above. Reloading on every UPDATE
           // was a primary driver of the finish-screen flicker.

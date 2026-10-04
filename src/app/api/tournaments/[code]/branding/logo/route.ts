@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertTournamentHostAny } from '@/lib/tournament-admin'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { parseJsonBody } from '@/lib/parse-body'
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads.
+const logoDeleteBodySchema = z.record(z.string(), z.unknown())
 
 // Small, focused upload route for a tournament's brand logo. Only the host
 // (proving it via the tournament's host_token) can hit this, and the file is
@@ -71,24 +78,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     // parsed and buffered — `formData()` + `arrayBuffer()` pull the whole
     // payload into memory, so doing them first let an unauthenticated caller
     // who knew only the (publicly shared) tournament code burn server memory
-    // and CPU on every request and get a 403 only afterwards.
+    // and CPU on every request and get a 403 only afterwards. The helper's
+    // `missingTokenError` rung keeps that property for the no-token case too:
+    // it answers before the tournament is even read, and both are above the
+    // `formData()` call below.
     const hostToken = req.headers.get('x-host-token')
-    if (!hostToken) {
-      return NextResponse.json({ error: 'Missing hostToken' }, { status: 400 })
-    }
-
-    const { data: tournament } = await admin
-      .from('tournaments')
-      .select('host_token, branding')
-      .eq('id', tournamentId)
-      .maybeSingle()
-
-    if (!tournament) {
-      return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-    }
-    if (tournament.host_token !== hostToken) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-    }
+    const auth = await assertTournamentHostAny(admin, code, hostToken, {
+      missingTokenError: 'Missing hostToken',
+      columns: 'host_token, branding',
+    })
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const tournament = auth.tournament
 
     const formData = await req.formData()
     const file = formData.get('file') as File | null
@@ -162,19 +162,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ c
   const tournamentId = code.toUpperCase()
 
   try {
-    const body = await req.json()
-    const hostToken = typeof body?.hostToken === 'string' ? body.hostToken : null
-    if (!hostToken) return NextResponse.json({ error: 'Missing hostToken' }, { status: 400 })
+    const { data: body, error: bodyError } = await parseJsonBody(req, logoDeleteBodySchema)
+    if (bodyError) return bodyError
+
+    const hostToken = typeof body.hostToken === 'string' ? body.hostToken : null
 
     const admin = getSupabaseAdmin()
-    const { data: tournament } = await admin
-      .from('tournaments')
-      .select('host_token, branding')
-      .eq('id', tournamentId)
-      .maybeSingle()
-
-    if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
-    if (tournament.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    const auth = await assertTournamentHostAny(admin, code, hostToken, {
+      missingTokenError: 'Missing hostToken',
+      columns: 'host_token, branding',
+    })
+    if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const tournament = auth.tournament
 
     // Try every extension since we don't know which the host originally uploaded
     // — including 'svg', which is no longer accepted but may exist from before.

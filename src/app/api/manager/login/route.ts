@@ -18,7 +18,7 @@ function delay(ms: number) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}))
+    const body = (await req.json().catch(() => ({}))) ?? {}
     const code = typeof body.code === 'string' ? body.code : ''
 
     if (!(await managerCodeIsSet())) {

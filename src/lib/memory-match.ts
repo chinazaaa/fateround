@@ -1,11 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { markGameFinished } from '@/lib/game-finish'
+import {
+  MATCHING_PAIRS_MIN_PLAYERS,
+  MATCHING_PAIRS_MAX_PLAYERS,
+  MATCHING_PAIRS_DEFAULT_MAX_PLAYERS,
+} from '@/lib/player-limits'
+export { MATCHING_PAIRS_MIN_PLAYERS, MATCHING_PAIRS_MAX_PLAYERS, MATCHING_PAIRS_DEFAULT_MAX_PLAYERS }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-export const MATCHING_PAIRS_MIN_PLAYERS = 1
-export const MATCHING_PAIRS_MAX_PLAYERS = 20
-export const MATCHING_PAIRS_DEFAULT_MAX_PLAYERS = 20
 
 /** Grid size options: number of *pairs* (not total cards). */
 export const MATCHING_PAIRS_GRID_SIZES = [8, 16] as const

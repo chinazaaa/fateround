@@ -44,6 +44,7 @@ import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supabase-selects'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type Screen =
   | 'loading'
@@ -182,7 +183,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           syncScreen(next, myPlayerId)
         }
       )

@@ -12,6 +12,7 @@ import type { Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const MAX_CHARS = 500
 
@@ -94,7 +95,7 @@ export function SecretMessageSenderView({ gameCode }: { gameCode: string }) {
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           if (next.status !== 'active') {
             setScreen('closed')
             clearPlayerSession(gameCode)

@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateGameCode, generateToken } from '@/lib/utils'
 import { countMembersByRoom, ROOM_PUBLIC_FIELDS } from '@/lib/room-api'
 import { normalizeRoomDescription, normalizeRoomTimezone } from '@/lib/room-timezones'
+import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
 
 const BROWSE_PAGE_SIZE = 20
+
+// Shape-only guard: the field semantics below are unchanged, so this schema deliberately
+// declares no keys — a narrower one would strip fields this handler still reads.
+const createRoomBodySchema = z.record(z.string(), z.unknown())
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -52,7 +58,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const { data: body, error: bodyError } = await parseJsonBody(req, createRoomBodySchema)
+  if (bodyError) return bodyError
+
   const name = String(body.name ?? '').trim()
   const maxMembersRaw = body.maxMembers !== undefined && body.maxMembers !== '' ? Number(body.maxMembers) : null
   const maxMembers =

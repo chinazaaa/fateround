@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error ?? 'Ask failed' }, { status: 400 })
   }
 
-  scheduleTurnNotification(code)
+  scheduleTurnNotification(code, game)
 
   // On a plain (non-lucky) miss with a draw, surface the drawn rank to the ASKER only
   // (this is safe: it's their own newly-owned card, and the physical game keeps a

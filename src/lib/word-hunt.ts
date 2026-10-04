@@ -3,12 +3,11 @@ import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { msUntilDeadline, secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game } from '@/types'
+import { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS } from '@/lib/player-limits'
+export { WORD_HUNT_DEFAULT_MAX_PLAYERS, WORD_HUNT_MAX_PLAYERS, WORD_HUNT_MIN_PLAYERS }
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-export const WORD_HUNT_MIN_PLAYERS = 2
-export const WORD_HUNT_MAX_PLAYERS = 20
-export const WORD_HUNT_DEFAULT_MAX_PLAYERS = 20
 export const WORD_HUNT_DEFAULT_TIMER = 180
 export const WORD_HUNT_TIMER_OPTIONS = [60, 120, 180, 300] as const
 export const WORD_HUNT_MIN_WORD_LENGTH = 3

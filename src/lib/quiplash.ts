@@ -10,10 +10,9 @@ import type {
   Round,
 } from '@/types'
 import { quiplashPromptKey, quiplashUsageFromPrompts, type QuiplashPrompt } from '@/lib/quiplash-prompts'
+import { QUIPLASH_MIN_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { QUIPLASH_MIN_PLAYERS, QUIPLASH_MAX_PLAYERS, QUIPLASH_DEFAULT_MAX_PLAYERS }
 
-export const QUIPLASH_MIN_PLAYERS = 3
-export const QUIPLASH_MAX_PLAYERS = 6
-export const QUIPLASH_DEFAULT_MAX_PLAYERS = 6
 export const QUIPLASH_DEFAULT_ROUNDS = 3
 export const QUIPLASH_MIN_ROUNDS = 3
 export const QUIPLASH_MAX_ROUNDS = 5

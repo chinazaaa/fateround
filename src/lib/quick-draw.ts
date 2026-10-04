@@ -22,10 +22,9 @@ import {
 } from '@/lib/quick-draw-prompts'
 import { parseGameType } from '@/lib/game-types'
 import { parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
+import { QUICK_DRAW_MIN_PLAYERS, QUICK_DRAW_MAX_PLAYERS, QUICK_DRAW_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { QUICK_DRAW_MIN_PLAYERS, QUICK_DRAW_MAX_PLAYERS, QUICK_DRAW_DEFAULT_MAX_PLAYERS }
 
-export const QUICK_DRAW_MIN_PLAYERS = 3
-export const QUICK_DRAW_MAX_PLAYERS = 10
-export const QUICK_DRAW_DEFAULT_MAX_PLAYERS = 10
 export const QUICK_DRAW_DEFAULT_ROUNDS = 3
 export const QUICK_DRAW_MIN_ROUNDS = 2
 export const QUICK_DRAW_MAX_ROUNDS = 5

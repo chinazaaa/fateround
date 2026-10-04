@@ -27,7 +27,7 @@ import { authorizedMusicIdentity, musicAuthFromParams } from '@/lib/music-auth'
  */
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as Record<string, string | undefined>
+    const body = ((await req.json().catch(() => ({}))) ?? {}) as Record<string, string | undefined>
     const params = new URLSearchParams()
     for (const [k, v] of Object.entries(body)) if (typeof v === 'string') params.set(k, v)
 

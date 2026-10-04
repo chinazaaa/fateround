@@ -87,7 +87,11 @@ export async function POST(req: NextRequest) {
   })
 
   if (updated.winner) {
-    await finishCodewordsGame(supabase, code)
+    // The win is already on the board; a finish or chat-wipe failure here must not fail the
+    // guess that produced it. Neither is retried, so log both rather than swallowing them.
+    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code)
+    if (finishError) console.error(`codewords/guess: finish failed for ${code}`, finishError)
+    if (cleanupError) console.error(`codewords/guess: chat cleanup failed for ${code} — not retried`, cleanupError)
   }
 
   return NextResponse.json({ success: true, board: updated, cellType })

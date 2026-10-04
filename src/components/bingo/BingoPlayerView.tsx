@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { EditNameInline } from '@/components/ui/EditNameInline'
 import { LeaveGameButton } from '@/components/ui/LeaveGameButton'
@@ -15,13 +15,14 @@ import { Glyph } from '@/components/icons/Glyph'
 import { formatBingoNumber, hasBingoWin, BINGO_MIN_PLAYERS } from '@/lib/bingo'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { BINGO_CALLED_NUMBER_SELECT, BINGO_CARD_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
-import { clearPlayerSession } from '@/lib/utils'
+import { BINGO_CALLED_NUMBER_SELECT, BINGO_CLAIM_SELECT } from '@/lib/supabase-selects'
+import { fetchBingoCard } from '@/lib/hands-client'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { BingoCalledNumber, BingoCard, BingoClaim, Game } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useBingoWinNotification, useBingoStartNotification } from '@/hooks/useBingoNotifications'
 import { useBingoAutoCall } from '@/hooks/useBingoAutoCall'
-import { isAdvanceDriver } from '@/lib/advance-driver'
+import { bingoDriverRole, newestCalledAtOf } from '@/lib/bingo-driver'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
@@ -60,20 +61,40 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
   const [winner, setWinner] = useState<BingoClaim | null>(null)
   const [claiming, setClaiming] = useState(false)
   const [marking, setMarking] = useState(false)
+  // "The server refused to give me a card" — kept apart from "no card dealt yet" so the empty
+  // state never lies about game state. One toast per mount; the poll would otherwise repeat it.
+  const [cardBlocked, setCardBlocked] = useState(false)
+  const sessionWarnedRef = useRef(false)
 
+  // The card comes through /api/bingo/card so `cells`/`marked_indices` never reach this device
+  // via the anon key — the route resolves this player from their secret resume token and returns
+  // only their own card. `playerId` is unused now (the token identifies the caller); it stays in
+  // the signature to match the bootstrap's afterResolve/poll callsites. Read the token from the
+  // session store, not the bootstrap value, since loadCard is defined before useGameViewBootstrap.
+  //
+  // The boolean is the POLL health signal (usePolling backs off exponentially on false), so it
+  // must mean "the fetch worked", NOT "there is a card". "No card dealt yet" is the normal state
+  // this poll exists to wait out — reporting it as failure pushed the retry to 16s→32s→60s and
+  // stranded late joiners on "Dealing your card…". Only a transport/server failure backs off.
+  // An expired/absent session can never succeed, so it stops the poll and says so once.
   const loadCard = useCallback(
-    async (playerId: string): Promise<boolean> => {
-      const res = await supabase
-        .from('bingo_cards')
-        .select(BINGO_CARD_SELECT)
-        .eq('game_id', gameCode)
-        .eq('player_id', playerId)
-        .maybeSingle()
-      if (!supabasePollOk(res)) return false
-      setCard(res.data ? (res.data as BingoCard) : null)
-      return true
+    async (_playerId: string): Promise<boolean> => {
+      const result = await fetchBingoCard(gameCode, { resumeToken: getPlayerSession(gameCode)?.resumeToken })
+      if (result.ok) {
+        setCardBlocked(false)
+        if (result.card) setCard(result.card)
+        return true
+      }
+      if (result.unauthorized) {
+        setCardBlocked(true)
+        if (!sessionWarnedRef.current) {
+          sessionWarnedRef.current = true
+          toastError('Your player session expired — rejoin to continue')
+        }
+      }
+      return false
     },
-    [gameCode]
+    [gameCode, toastError]
   )
 
   // Game-specific load: fetch this game's called numbers + the approved winning claim
@@ -273,12 +294,19 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
     calledNumbers.length
   )
 
-  // W5: only an elected quorum of clients drives auto-call (see isAdvanceDriver).
+  // Standby auto-call driver. The server ticker (src/lib/game-tick.ts) is the primary
+  // clock and the host client is the first standby; exactly one elected player is the
+  // last-resort tier, firing only if a call stays overdue past the player grace — i.e.
+  // both the ticker and the host are gone. See src/lib/bingo-driver.ts.
+  const autoCallRole = useMemo(() => bingoDriverRole({ players, myPlayerId }), [players, myPlayerId])
+  const newestCalledAt = useMemo(() => newestCalledAtOf(calledNumbers), [calledNumbers])
   useBingoAutoCall({
     gameCode,
     game,
-    enabled: screen === 'active' && isAdvanceDriver(players, myPlayerId),
-    onSynced: load,
+    role: autoCallRole,
+    lastCalledAt: newestCalledAt,
+    enabled: screen === 'active',
+    onCalled: (row) => setCalledNumbers((prev) => (prev.some((c) => c.id === row.id) ? prev : [...prev, row])),
   })
 
   useRoomMemberAutoJoin({
@@ -634,6 +662,13 @@ export function BingoPlayerView({ gameCode }: { gameCode: string }) {
         ) : isViewer ? (
           <div className="glass-card p-4">
             <CalledNumbersBoard calledNumbers={called} />
+          </div>
+        ) : cardBlocked ? (
+          // NOT "no card yet" — the server would not hand this device a card. Say that, so an
+          // expired session doesn't read as "the host hasn't dealt".
+          <div className="glass-card p-6 text-center space-y-2">
+            <p className="text-muted text-sm">Your player session expired</p>
+            <p className="text-faint text-xs">Rejoin with your player code to see your card again.</p>
           </div>
         ) : (
           <div className="glass-card p-6 text-center space-y-2">

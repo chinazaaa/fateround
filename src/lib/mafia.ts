@@ -1,9 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MafiaRole, MafiaPlayerState, MafiaSession, MafiaTeam, MafiaRoleEnabledFlags } from '@/types'
-
-export const MAFIA_MIN_PLAYERS = 5
-export const MAFIA_MAX_PLAYERS = 16
-export const MAFIA_DEFAULT_MAX_PLAYERS = 16
+import { MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS, MAFIA_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
+export { MAFIA_MIN_PLAYERS, MAFIA_MAX_PLAYERS, MAFIA_DEFAULT_MAX_PLAYERS }
 
 const MAFIA_TEAM_ROLES: MafiaRole[] = ['mafia', 'alpha_wolf', 'wolf_cub', 'framer', 'mafia_seer']
 

@@ -146,8 +146,8 @@ export function CrazyEightsTable({
   showStandings?: boolean
 }) {
   const top = session.top_card
-  const drawCount = (session.draw_pile as unknown[])?.length ?? 0
-  const discardCount = (session.discard_pile as unknown[])?.length ?? 0
+  const drawCount = session.draw_count ?? 0
+  const discardCount = session.discard_count ?? 0
   const { pickTwo, jokerPenalty } = getNormalizedPenalties(session)
 
   return (

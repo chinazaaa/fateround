@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [main, dev]
 
+# No job in this workflow writes to the repository — nothing comments, pushes or releases — so
+# the whole file runs read-only. Without this block GitHub applies the repository default, which
+# zizmor flags as excessive-permissions: a compromised action step would inherit whatever that
+# default happens to be. Jobs that need less still narrow it further themselves.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -20,7 +27,7 @@ jobs:
     # one's schema_migrations insert (duplicate pkey), skipping every migration
     # queued behind it.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Ensure migration versions are unique
         run: |
           dups="$(ls -1 supabase/migrations/*.sql 2>/dev/null \
@@ -43,9 +50,9 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -56,9 +63,9 @@ jobs:
     name: Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -69,9 +76,9 @@ jobs:
     name: Type Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -82,7 +89,7 @@ jobs:
     name: Type Check (mobile)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # The Expo app has its OWN package.json + package-lock.json and is not part of the
       # pnpm workspace install, so this job installs it with npm rather than reusing the
       # web job's node_modules. It reaches back into packages/shared via a file: dep.
@@ -92,7 +99,7 @@ jobs:
       # for two shipped games), `formatDayLabel` was imported but never defined, and the
       # Whot / Crazy Eights session types had lost the `updated_at` their realtime
       # delta fast-path orders on. All invisible without this gate.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'npm'
@@ -106,11 +113,11 @@ jobs:
       contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -125,9 +132,9 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-key-for-build-only
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -151,11 +158,15 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # Opt-in acknowledgement that a compatible mobile build has shipped. A repository VARIABLE,
+      # deliberately not a secret: it is an operational flag, not a credential, and it should be
+      # visible to anyone auditing why a revoke was allowed through.
+      MOBILE_ROLLOUT_ACK: ${{ vars.MOBILE_ROLLOUT_ACK }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1 branch head
         with:
           version: 2.108.0
       # Apply migrations to the environment's own Supabase project, using that
@@ -189,6 +200,87 @@ jobs:
           # skipping every migration behind it. Unique versions are enforced by
           # the migrations-check job, so a non-zero exit here is a genuine problem
           # a human must look at, not something to paper over.
+          # ── Revoke guard (runs for BOTH environments) ─────────────────────────
+          # This job applies migrations on a push to main (Production project) or to dev (Preview
+          # project) and needs only [build, migrations-check]. The Mobile Rollout Gate is a
+          # SEPARATE workflow on pull_request -> main, so it constrains this only if branch
+          # protection requires it — and `main` has no protection at all. Without this guard a
+          # column revoke reaches the target project while installed builds still select that
+          # column, PostgREST fails the WHOLE request with 42501, and OTA cannot rescue an
+          # installed binary. That is just as true of Preview: the dev mobile build is a
+          # different artifact at a different rollout state, and Preview serves installed
+          # internal/test builds that break in exactly the same way. So the guard runs on every
+          # ref this job runs for (the job-level `if:` already limits that to dev and main).
+          #
+          # MOBILE_ROLLOUT_ACK is read as `vars.MOBILE_ROLLOUT_ACK`, and GitHub resolves `vars`
+          # environment-first, so setting it on the GitHub ENVIRONMENT (Production for main,
+          # Preview for dev) makes the acknowledgement per-environment with no workflow change.
+          # That separation is the point: acknowledging a revoke for Production must not silently
+          # authorise the same revoke against Preview, or vice versa. Environment-first is a
+          # precedence, not an isolation: a REPOSITORY-level MOBILE_ROLLOUT_ACK would fall through
+          # to any environment that has not defined its own, and would then authorise both. There
+          # is deliberately no repository-level value (checked 2026-09-13, both environments and
+          # the repo have none) — set this variable ONLY on an environment, never repo-wide.
+          #
+          # The acknowledgement names the VERSIONS it authorises — it is not a boolean. A blanket
+          # "1" would persist as a variable long after the release it was set for, and the NEXT
+          # revoke would then reach that project with no rollout behind it. Requiring the exact
+          # version means a stale value authorises only the migration it was set for, and
+          # forgetting to clear it is inert rather than dangerous.
+          #
+          #   MOBILE_ROLLOUT_ACK="20261121120000"                     one migration
+          #   MOBILE_ROLLOUT_ACK="20261121120000 20261120120000"      several
+          #
+          # Two details that matter:
+          #  1. The table is parsed on "|", not whitespace. `supabase migration list` prints
+          #     "Local | Remote | Time (UTC)", so whitespace tokenisation makes $3 the SEPARATOR,
+          #     never an empty remote field — that version of this guard matched nothing and
+          #     failed OPEN.
+          #  2. It FAILS CLOSED: if no local versions parse, the format has changed and we cannot
+          #     tell what is pending, so it blocks.
+          #
+          # The revoke test reads CONTENT, not the filename: 20261003120000 is still called
+          # `sec_uno_hide_piles` but is now the ADDITIVE half of a split and is safe to apply.
+          case "${GITHUB_REF_NAME:-}" in
+            main) GUARD_ENV="Production" ;;
+            *)    GUARD_ENV="Preview" ;;
+          esac
+          GUARD_TARGET="$GUARD_ENV (ref ${GITHUB_REF_NAME:-unknown}, Supabase project $REF)"
+          listing=$(supabase migration list --linked 2>/dev/null || true)
+          local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
+          if [ "$local_total" = "0" ]; then
+            echo "::error::Could not parse 'supabase migration list' output, so pending revokes cannot be identified."
+            echo "Failing closed rather than pushing to $GUARD_TARGET blind. Check the CLI output format."
+            exit 1
+          fi
+          pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
+          unacked=""
+          for version in $pending; do
+            for file in supabase/migrations/"$version"_*.sql; do
+              [ -f "$file" ] || continue
+              sed 's/--.*//' "$file" | grep -qiE '\brevoke\b' || continue
+              # acknowledged only if this exact version is listed
+              case " ${MOBILE_ROLLOUT_ACK:-} " in
+                *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK for $GUARD_ENV." ;;
+                *) unacked="$unacked  $file (version $version)\n" ;;
+              esac
+            done
+          done
+          if [ -n "$unacked" ]; then
+            echo "::error::Refusing to apply unacknowledged REVOKE migrations to $GUARD_TARGET:"
+            printf "%b" "$unacked"
+            echo "These revoke columns installed builds still request; PostgREST fails the whole query"
+            echo "with 42501 and OTA cannot rescue an installed build."
+            echo "Ship a compatible mobile build for this target, let old installs drain, then set"
+            echo "MOBILE_ROLLOUT_ACK to the exact version(s) above, space-separated, on the GitHub"
+            echo "ENVIRONMENT being deployed — here that is the '$GUARD_ENV' environment"
+            echo "(Settings -> Environments -> $GUARD_ENV -> Environment variables), NOT the"
+            echo "repository-wide variable: a Production acknowledgement must not authorise"
+            echo "Preview, nor a Preview one Production."
+            exit 1
+          fi
+          echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes for $GUARD_TARGET."
+
           supabase db push --include-all
 
   rls-boundaries:
@@ -209,11 +301,11 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -250,13 +342,920 @@ jobs:
           fi
       - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
 
+  rls-boundaries-local:
+    name: RLS Boundaries (local)
+    # The same security gate as `RLS Boundaries` above, run against a throwaway Supabase stack
+    # started inside the runner instead of a hosted project. Three reasons this job exists:
+    #
+    #   1. The hosted job needs `needs: [migrate]`, an environment, and three secrets, so it only
+    #      runs on PUSH to dev/main — i.e. after merge. This one runs on PULL REQUESTS, which is
+    #      where a boundary regression is still cheap to fix, and it is the only form of this
+    #      check that can be made a REQUIRED status check (see issue #1131).
+    #   2. It costs nothing and depends on no quota. The hosted dev project has been 402'd since
+    #      2026-08-24, so `RLS Boundaries` has been failing rather than checking since then.
+    #   3. It tests the migrations in THIS PR, not whatever state a shared project drifted into.
+    #
+    # It does NOT replace the hosted job: only that one can catch a hosted project whose grants
+    # diverge from the migrations (a hand-run GRANT in the dashboard). Keep both.
+    runs-on: ubuntu-latest
+    # `supabase start` pulls and boots several containers; a hung pull or a wedged container would
+    # otherwise hold a runner for GitHub's 6-hour default. A healthy run is ~4 minutes.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # The Supabase CLI's local-development demo keys. Constant across every local stack and
+      # published in Supabase's own docs -- not secrets, and deliberately not stored as any.
+      LOCAL_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      LOCAL_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Don't leave a usable token in .git/config for anything this job runs.
+          persist-credentials: false
+          # The deploy-equivalent cron gate has to know which migrations this
+          # branch ADDS, which means reaching the base revision. A shallow clone
+          # cannot, and the gate hard-fails rather than guessing -- so the whole
+          # history is fetched here. The step below needs the base commit for the
+          # same reason: it reads both gate scripts out of it.
+          #
+          # Do NOT add `filter: blob:none` here either. It does not currently break
+          # the gates only because this repository is public and the runner can
+          # lazily fetch the missing blob anonymously. If fateround is ever made
+          # private that lazy fetch stops working, and a blobless clone becomes a
+          # one-word way to make a gate script's blob look absent from base --
+          # which now fails the job rather than running the pull request's copy,
+          # but fails it for a reason nobody will guess from the diff.
+          fetch-depth: 0
+
+      # ── Base-pinned enforcement: extract the gate scripts from BASE ─────────
+      # Both cron gates below execute a script out of the pull request's BASE revision rather
+      # than out of the pull request. A required check that executes code the pull request can
+      # edit is not a gate: a PR that changed what production schedules could also rewrite the
+      # assertions to exit 0 and the check would still report success. `contents: read` does not
+      # help -- the problem is immutability, not token scope.
+      #
+      # The split is deliberate. Everything else in this job is FIXTURE, and stays the pull
+      # request's: `supabase start` applies THIS PR's migrations from scratch, and that is the
+      # point -- they are the thing under test. The scripts still inspect this checkout. What
+      # comes from base is the enforcement decisions and every expected value; see each script's
+      # header.
+      #
+      # Placed HERE, before `pnpm install`, on purpose: `git` is a $PATH lookup, and the root
+      # `prepare` hook runs during that install, so extracting afterwards left the extraction
+      # itself subvertible by a `git` shim on $GITHUB_PATH. It cannot reach an extraction that
+      # has already happened.
+      #
+      # Scope, so this is not read as more than it is: it removes some bypasses, not the class.
+      # These steps, the environment they pass in and this job's checkout options are all still
+      # in this file, which the pull request can edit -- and the steps can be deleted. What
+      # actually closes the class is owner review of the paths in .github/CODEOWNERS
+      # (`.github/`, `scripts/`, and this job's install surface: package.json, pnpm-lock.yaml,
+      # pnpm-workspace.yaml, .npmrc, .husky/), with the caveat recorded there that CODEOWNERS
+      # blocks a merge only once a ruleset requires code-owner review.
+      - name: Extract the base-pinned cron gate scripts from the base revision
+        id: extract_gates
+        env:
+          # The base branch's tip on a `pull_request` event, and EMPTY on anything else. There
+          # is deliberately no `|| github.sha` fallback: `github.sha` on a pull request is the
+          # PR's own merge commit, so that fallback made `git show` resolve against the tree
+          # under review while the log still claimed the gate was pinned to base. The event is
+          # branched on explicitly below instead, so the two cases cannot be confused.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          # A BASH_ENV file set via $GITHUB_ENV by any earlier step would be sourced before this
+          # script body and could define a shell function named `git`. Pinned empty, as on every
+          # step in this gate.
+          BASH_ENV: ''
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gate"
+          scripts="deploy-cron-inventory-gate.sh http-cron-scheduling-gate.sh"
+
+          # This workflow also runs on PUSH to dev/main. There is no pull request there, the
+          # pushed commit IS the trusted revision, and there is nothing to pin against -- so say
+          # exactly that rather than printing a pinning claim that is not true.
+          #
+          # `push` is allow-listed rather than "anything that is not a pull_request", so a new
+          # trigger cannot inherit the unpinned path by accident.
+          if [ "$EVENT_NAME" = "push" ]; then
+            echo "Event is 'push': the checked-out commit is itself the trusted revision, so the gates run from the checkout. Nothing is pinned on this path and nothing needs to be."
+            for s in $scripts; do cp "scripts/ci/$s" "$RUNNER_TEMP/gate/$s"; done
+            # Falls through to the digest tail: the copies still have to be
+            # tamper-checked before they run, whatever they were copied from.
+            digest_only=yes
+          else
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "::error::Unhandled event '$EVENT_NAME'. This step knows how to pin the gates for 'pull_request' and how to run them unpinned for 'push', and refuses anything else rather than guessing. If you are adding a trigger: when the checked-out commit is itself trusted (as with workflow_dispatch on dev/main), add the event to the 'push' allow-list above; when it is not (as with merge_group, which carries no pull request context and must not run the queued changes' own copy of a gate), teach this step how to find the trusted base for that event first."
+            exit 1
+          fi
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "::error::This is a pull_request event but github.event.pull_request.base.sha is empty, so there is no base revision to pin the gates to. Refusing to run them from the pull request's own copy."
+            exit 1
+          fi
+
+          # Distinguish "the clone does not have the base commit" from "the base commit does not
+          # have the script". They are NOT the same thing, and collapsing them is a complete
+          # bypass: drop `fetch-depth: 0` above (it reads like a clone-cost tweak), replace a
+          # script with `exit 0`, and a depth-1 clone makes `git show` fail for missing OBJECTS
+          # -- a fallback would then install the PR's own copy and the check would go green with
+          # zero enforcement. Both causes are fatal (there is no fallback at all, see below),
+          # but they keep distinct messages because the fixes differ: fetch the base commit,
+          # versus restore the script on the base branch.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error::Base commit $BASE_SHA is not present in this clone, so the cron gates cannot be pinned to it. This job's checkout must fetch the base commit (fetch-depth: 0). Refusing to fall back to the pull request's own copies -- a shallow clone is not a bootstrap."
+            exit 1
+          fi
+
+          # And it has to be a plausible BASE. `github.sha` on a pull_request event is the PR's
+          # OWN merge commit, so pointing BASE_SHA at it would resolve the scripts out of the
+          # tree under review while every log line still said "pinned to base". Reject a
+          # BASE_SHA that is the checked-out commit, and require it to be an ancestor of it (the
+          # real base tip always is -- it is a parent of the merge commit). ANY ancestor passes,
+          # which is as strict as this gets without hardcoding the base branch.
+          head_sha=$(git rev-parse HEAD)
+          base_resolved=$(git rev-parse --verify "$BASE_SHA^{commit}")
+          if [ "$base_resolved" = "$head_sha" ]; then
+            echo "::error::BASE_SHA resolves to the checked-out commit itself ($head_sha). That is the revision under review, not a base to pin against -- github.sha on a pull_request event is the PR's own merge commit and must not be used here."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$base_resolved" "$head_sha"; then
+            echo "::error::BASE_SHA ($base_resolved) is not an ancestor of the checked-out commit ($head_sha), so it is not the base this pull request is being merged into. Refusing to treat it as the pinning revision."
+            exit 1
+          fi
+
+          # NO BOOTSTRAP FALLBACK, deliberately. There used to be one, for the case where the
+          # base commit is present and simply does not contain a script -- which is what the
+          # first run looked like when these scripts reached `dev` in the very PR that
+          # introduced them. Both are on `dev` now (#1178), so every base commit has them and
+          # the branch could never fire legitimately again, while it remained a live bypass: a
+          # pull request can edit its own copy of a gate to exit 0, and anything that makes the
+          # blob look absent from base (renaming a path above, or `filter: blob:none` on the
+          # checkout if this repository is ever made private) would get that copy executed.
+          # Fail closed instead. If this ever does fire, the fix is to restore the script on the
+          # base branch, never to run the pull request's copy. Same shape as
+          # .github/workflows/mobile-rollout-gate.yml, whose fallback was removed for exactly
+          # this reason.
+          for s in $scripts; do
+            if ! git cat-file -e "$BASE_SHA:scripts/ci/$s" 2>/dev/null; then
+              echo "::error::scripts/ci/$s is missing from base commit $BASE_SHA (the commit itself is present). The gate script must exist on the base branch; refusing to fall back to this pull request's own copy, which would let the pull request supply the enforcement code that judges it."
+              exit 1
+            fi
+            git show "$BASE_SHA:scripts/ci/$s" > "$RUNNER_TEMP/gate/$s"
+            echo "Using scripts/ci/$s from the base revision ($BASE_SHA) -- enforcement logic is pinned."
+          done
+          fi
+          : "${digest_only:=no}"
+
+          # ── Digest what was extracted, so the COPY can be checked too ───────
+          #
+          # Pinning the source is not the same as pinning what runs. These files
+          # live in $RUNNER_TEMP, which every later step can write to, and
+          # `pnpm install --frozen-lockfile` -- three steps below -- runs the root
+          # package.json's `prepare` hook. That hook can simply overwrite
+          # $RUNNER_TEMP/gate/*.sh, and the two gate steps would then execute the
+          # pull request's code from a path that looks pinned. Base-SHA
+          # validation, `contents: read` and `BASH_ENV: ''` do nothing about it:
+          # the bytes were pinned, the FILE was not.
+          #
+          # So record a SHA-256 of each extracted file as a STEP OUTPUT and have
+          # each gate step re-check its own script immediately before running it.
+          # A step output is held by the runner: a later step cannot retroactively
+          # rewrite another step's outputs, which is exactly the property a status
+          # file in $RUNNER_TEMP would not have had.
+          #
+          # Why digests rather than re-extracting just before each run: a late
+          # `git show` would put the trust back on `git` (a $PATH lookup, and by
+          # then the install has run) plus the .git directory in the workspace,
+          # which every step can also write to. Digesting keeps the extraction at
+          # step 1 -- before any PR-controlled lifecycle code has executed -- and
+          # needs only /usr/bin/sha256sum to be intact afterwards.
+          #
+          # The digest is over the file's CONTENTS as read into a shell variable,
+          # not over the pathname. Each gate step re-reads its script into a
+          # variable, digests THAT, and executes THAT -- so what is hashed and
+          # what runs are the same bytes by construction, with no second open of
+          # a path an attacker could have replaced in between. Both sides
+          # normalise identically (command substitution strips trailing newlines;
+          # `printf '%s\n'` puts exactly one back), so the two digests are
+          # comparable. Appended trailing newlines are the only bytes that can
+          # differ, and they are not in the snapshot that executes.
+          #
+          # RESIDUAL, stated plainly: /usr/bin/sha256sum, /usr/bin/cat and
+          # /usr/bin/bash are absolute but not immutable. Hosted runners give the
+          # job passwordless sudo, so the same `prepare` hook could overwrite any
+          # of them, just as already documented for /usr/bin/psql. This raises the
+          # bar from "write a file in a temp directory" to "overwrite a system
+          # binary". It does not make it impossible.
+          for s in $scripts; do
+            content=$(/usr/bin/cat -- "$RUNNER_TEMP/gate/$s")
+            if [ -z "$content" ]; then
+              echo "::error::$RUNNER_TEMP/gate/$s is empty after extraction. Refusing to record a digest for an empty gate script."
+              exit 1
+            fi
+            line=$(printf '%s\n' "$content" | /usr/bin/sha256sum)
+            digest=${line%% *}
+            if ! [[ "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "::error::Could not compute a SHA-256 for the contents of $RUNNER_TEMP/gate/$s (got '$line'). Refusing to continue without a digest to check the extracted copy against."
+              exit 1
+            fi
+            case "$s" in
+              deploy-cron-inventory-gate.sh) echo "deploy_sha256=$digest" >> "$GITHUB_OUTPUT" ;;
+              http-cron-scheduling-gate.sh)  echo "http_sha256=$digest" >> "$GITHUB_OUTPUT" ;;
+              *)
+                echo "::error::No step output is defined for $s, so its digest cannot be recorded and the gate steps could not check it. Add one here when adding a script to the list above."
+                exit 1
+                ;;
+            esac
+            echo "Recorded sha256 $digest for the contents of $s (pinned to base: $([ "$digest_only" = yes ] && echo no || echo yes))."
+          done
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1 branch head
+        with:
+          version: 2.108.0
+
+      # Applies every migration in supabase/migrations from scratch, in order.
+      - name: Start local Supabase
+        run: supabase start
+
+      # ── The deploy-equivalent cron.job gate (issues #1166/#1167/#1175) ───────
+      # Enforcement lives in scripts/ci/deploy-cron-inventory-gate.sh, extracted above from the
+      # BASE revision and run from there. That file's header carries the whole rationale: why
+      # cron.job immediately after `supabase start` is the state a DEPLOY produces, what has to
+      # be true for that to hold (no supabase/roles.sql or seed.sql, no redirected
+      # db.seed.sql_paths, every added migration sorting after the scheduling guard), and why
+      # this is a different question from the HTTP cron gate further down.
+      #
+      # What stays here, because it cannot move: this step runs with
+      # `continue-on-error: true` and only REPORTS, so the RLS suite -- the security gate that
+      # is this job's main purpose -- still runs when the inventory is wrong. The verdict is
+      # enforced afterwards from `steps.deploy_cron_state.outcome`, a value the runner records
+      # and no later step can forge. Both properties are the workflow's to hold, not a script's.
+      #
+      # It must also stay IMMEDIATELY after `supabase start`, before anything in this job
+      # touches cron.job. The extract step above is before `supabase start`, so nothing has been
+      # inserted between them.
+      - name: cron.job matches the deploy-equivalent inventory
+        id: deploy_cron_state
+        # Report, do not abort: see above. The verdict is enforced after the RLS
+        # suite, from this step's runner-recorded outcome.
+        continue-on-error: true
+        env:
+          # Where the tree under test is checked out. `github.workspace` is supplied by
+          # Actions, not by the pull request; the DSN and every expected value are literals
+          # inside the base-pinned script on purpose -- a PR-supplied DSN alone would be
+          # enough to redirect a gate at a decoy database.
+          REPO_DIR: ${{ github.workspace }}
+          # The tip this branch had BEFORE the push, which is the revision the
+          # migration comparison has to measure from on a push event. HEAD^1 is
+          # NOT that: it is the parent of the LAST commit pushed, so on a
+          # multi-commit fast-forward push everything the earlier commits added
+          # is invisible -- including a back-dated migration, which is exactly
+          # what the gate exists to catch. Empty on every event that is not a
+          # push, where the script keeps using HEAD's first parent (correct for a
+          # pull_request merge commit). Supplied by Actions from the event
+          # payload, not by the pull request.
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          # `run:` steps execute as `bash -e {0}`, and bash SOURCES $BASH_ENV
+          # before the script body. Every step can write to $GITHUB_ENV, whose
+          # runner-side blocklist is a single entry (NODE_OPTIONS), so any
+          # earlier step -- including the root `prepare` hook that
+          # `pnpm install --frozen-lockfile` runs several steps above -- can set
+          # BASH_ENV to a file that defines a shell function named `psql`, or
+          # re-exports any variable this step reads. A step-level `env:` entry
+          # takes precedence over a $GITHUB_ENV one, so pinning it empty means
+          # bash sources nothing. Every step in this gate carries it.
+          BASH_ENV: ''
+          # The digest recorded by `Extract the base-pinned cron gate scripts`,
+          # held by the runner as that step's output rather than in a file any
+          # step in between could rewrite.
+          GATE_SHA256: ${{ steps.extract_gates.outputs.deploy_sha256 }}
+        run: |
+          set -euo pipefail
+          # Re-check the extracted copy against the digest the extract step
+          # recorded, immediately before executing it. $RUNNER_TEMP is writable
+          # by every step, and PR-controlled code has run since the extraction
+          # (`pnpm install`'s `prepare` hook; and for the HTTP gate, the vitest
+          # RLS suite as well), so "it was pinned when it was written" is not the
+          # same as "it is base's bytes now".
+          #
+          # SNAPSHOT, then hash the snapshot, then run the snapshot. Hashing a
+          # PATHNAME and then handing that same pathname to bash is a race: the
+          # file is opened twice, and PR-controlled code can replace it in
+          # between -- a detached process with RUNNER_TRACKING_ID cleared outlives
+          # its own step and runs as the same user, so it can rewrite the file in
+          # a loop until a rewrite lands inside that window. /dev/fd/N does not
+          # fix it either: on Linux it resolves to the same inode, which survives
+          # a rename but not an in-place truncate-and-rewrite of a file the
+          # attacker owns. Reading the contents into a variable closes the window
+          # by construction -- one open, and the bytes that are hashed are the
+          # bytes that execute.
+          #
+          # The script is fed to bash through a process substitution rather than
+          # on stdin, so the gate's own stdin stays /dev/null and no child of it
+          # can swallow part of the script. Neither gate script reads stdin (both
+          # `read` loops are fed by herestrings) and neither refers to $0 or
+          # BASH_SOURCE, so nothing about running it this way changes what it
+          # does; that was checked before this was written.
+          #
+          # An unset, empty or malformed digest is treated exactly like a
+          # mismatch. "Nothing to check" must never read as "nothing wrong".
+          if ! [[ "${GATE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::The extract step recorded no usable SHA-256 for deploy-cron-inventory-gate.sh (got '${GATE_SHA256:-<unset>}'). An unset, empty or malformed digest is treated exactly like a mismatch: refusing to run an unverified copy."
+            exit 1
+          fi
+          snapshot=$(/usr/bin/cat -- "$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh")
+          if [ -z "$snapshot" ]; then
+            echo "::error::$RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh is empty. Refusing to run an empty gate script."
+            exit 1
+          fi
+          line=$(printf '%s\n' "$snapshot" | /usr/bin/sha256sum)
+          actual=${line%% *}
+          if [ "$actual" != "$GATE_SHA256" ]; then
+            echo "::error::The contents of $RUNNER_TEMP/gate/deploy-cron-inventory-gate.sh hash to $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+            exit 1
+          fi
+          echo "deploy-cron-inventory-gate.sh matches the digest recorded at extraction ($actual); running the verified snapshot."
+          exec /usr/bin/bash <(printf '%s\n' "$snapshot") < /dev/null
+
+      # The local stack's URL and keys. These are the Supabase CLI's fixed demo credentials --
+      # public, documented, identical on every developer's machine, and worthless outside this
+      # container -- so they are literals here rather than secrets, and this job needs no
+      # repository secrets at all.
+      #
+      # They are NOT read from `supabase status -o env`: as of CLI 2.108.0 that command emits
+      # URLs only (API_URL, DB_URL, REST_URL, ...) and no ANON_KEY or SERVICE_ROLE_KEY, so
+      # parsing it for keys yields empty strings. Verified against 2.108.0 on 2026-08-31.
+      - name: Export local credentials
+        run: |
+          set -euo pipefail
+          # The fallbacks here are load-bearing. Under `set -euo pipefail`, a `supabase status`
+          # that exits non-zero or a grep that matches nothing would abort the step at the
+          # assignment -- so the explanatory ::error:: below would never print and the job would
+          # fail with an opaque non-zero exit. A guard whose whole purpose is to say WHY it
+          # failed must not die before saying it. Capture the status output first, then parse.
+          status_env=$(supabase status -o env) || status_env=''
+          api_url=$(printf '%s\n' "$status_env" | { grep -E '^API_URL=' || true; } | cut -d= -f2- | tr -d '"')
+          if [ -z "$api_url" ]; then
+            echo "::error::supabase status reported no API_URL. Refusing to run a security gate against a half-started stack."
+            exit 1
+          fi
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$api_url"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$LOCAL_ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$LOCAL_SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+
+      # Pin the failure. If a future CLI release rotates the local demo keys, every request below
+      # 401s and the suite fails with a wall of confusing "denied" results that look exactly like
+      # a passing security posture read wrong. Assert the anon key AUTHENTICATES -- separately
+      # from what it is allowed to read -- so that day produces one clear message instead.
+      - name: Verify the local keys still authenticate
+        run: |
+          set -euo pipefail
+          # Same reasoning as the step above: a curl that cannot connect exits non-zero and would
+          # abort before the ::error:: prints. Fall back to 000 so the check reports the real
+          # problem. The fallback must OVERRIDE, not append: on a connection failure curl's
+          # `-w '%{http_code}'` already emits 000, so an `|| echo 000` inside the substitution
+          # would yield the string "000000" and a garbled diagnostic.
+          code=$(curl -s --max-time 30 -o /tmp/probe.json -w '%{http_code}' \
+            "${NEXT_PUBLIC_SUPABASE_URL}/rest/v1/games?select=id&limit=1" \
+            -H "apikey: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${NEXT_PUBLIC_SUPABASE_ANON_KEY}") || code=000
+          if [ "$code" != "200" ]; then
+            echo "::error::The anon key could not read games.id (HTTP $code). The Supabase CLI's local demo keys have probably changed -- update LOCAL_ANON_KEY / LOCAL_SERVICE_ROLE_KEY in this job. Response: $(head -c 300 /tmp/probe.json)"
+            exit 1
+          fi
+
+      # Hosted-parity grant for the SERVICE role, and only the service role.
+      #
+      # `20260803160000_default_privileges_lockdown.sql` uses ALTER DEFAULT PRIVILEGES, which
+      # applies to FUTURE objects only, so tables created by earlier migrations never received
+      # these grants on a database built from scratch. The hosted projects have them (they were
+      # granted when those tables were created, under the defaults of the day); a fresh
+      # `supabase start` does not. Without this, the suite's own write-probe control fails with
+      # `permission denied for table api_rate_limit_attempts` before it can probe anything.
+      #
+      # This CANNOT weaken any assertion in the suite. Every assertion is about `anon`, this
+      # touches only `service_role`, and the service role is the suite's known-POSITIVE control:
+      # it is supposed to be able to do everything, and the file is built on that. Never extend
+      # this to anon -- that would re-grant the very columns the redaction migrations revoked and
+      # turn the gate into a rubber stamp.
+      - name: Grant the service role hosted-parity access
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -c "grant all privileges on all tables in schema public to service_role;" \
+            -c "grant all privileges on all sequences in schema public to service_role;"
+
+      # The suite needs at least one readable row to inspect: its column sweep can only report on
+      # tables it actually read, and a stack where every table is empty proves nothing. One game
+      # row is enough. `host_token` is deliberately a real-shaped value — it is one of the columns
+      # the redaction assertions expect anon to be denied.
+      - name: Seed one probe row
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -c \
+            "insert into public.games (id, title, host_token) values ('rls-ci-probe', 'RLS CI probe', 'ci-probe-host-token') on conflict (id) do nothing;"
+
+      # Diagnostic, not a gate. `20260803160000_default_privileges_lockdown.sql` uses ALTER DEFAULT
+      # PRIVILEGES, which applies to FUTURE objects only, so tables created by earlier migrations
+      # can end up with an RLS SELECT policy but no anon grant here while the hosted projects have
+      # both. That difference does not make this job unsound -- the suite's positive controls fail
+      # loudly on it rather than passing vacuously -- but when it does fail, this table is the
+      # first thing to read.
+      - name: Report anon grant coverage
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -c \
+            "select count(*) filter (where has_table_privilege('anon', c.oid, 'SELECT')) as anon_readable, count(*) as total_tables from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'r';"
+
+      # Exercises the idle-reaper migration AND its tick function's guard BRANCHES,
+      # which nothing else can: `supabase start` applies
+      # 20261123120000_reap_idle_active_games_cron.sql exactly once, with both GUCs
+      # unset, and never calls the tick -- so the guard branches never execute there,
+      # and the whole class of bug behind issue #1167 is a guard branch that silently
+      # did the wrong thing for 17 days.
+      #
+      # The shape changed with the fix for that issue. The migration no longer reads
+      # the GUCs: it schedules reap_idle_active_games UNCONDITIONALLY (given pg_cron)
+      # and public.reap_idle_active_games_tick() does the configuration and transport
+      # checks at RUN time. So the cases assert two different things:
+      #   * after the migration, the job EXISTS regardless of GUCs; and
+      #   * the guards fire inside the tick, which is invoked directly.
+      #
+      # Cases, in this order (each first clears the job so a leftover registration
+      # from the previous case cannot make the next one pass vacuously):
+      #   0. Migration with no GUCs -> the job is scheduled anyway. This is the
+      #      structural property the old design lacked.
+      #   0b. Neither anon nor authenticated may EXECUTE the tick, i.e. it is not
+      #      exposed as a PostgREST RPC to anyone holding the public anon key.
+      #   1. Tick with GUCs unset  -> warns, names both settings, makes no request.
+      #   2/2b/2c. Tick with http:// to a remote host (including a host that merely
+      #      CONTAINS "localhost", and an invalid 127.x quad) -> warns, refuses to
+      #      send CRON_SECRET in cleartext, makes no request. (CWE-319 gate.)
+      #   3. Tick with http:// loopback -> allowed; the documented narrow exception.
+      #   4. Tick with https:// -> request made; and the job is asserted for schedule
+      #      + command independently of the migration's own assertion, so a future
+      #      edit that drops that check cannot make this gate pass.
+      #   5. REGRESSION for #1167: apply the migration with NO GUCs, then set them,
+      #      then tick -> the request happens with no re-migration of any kind.
+      #
+      # Fail-safe on environment, strict on defects: connectivity is hard-failed first
+      # (a `supabase start` flake must not turn this gate into a green no-op), and the
+      # extensions are soft-skipped ONLY when a follow-up probe proves they are genuinely
+      # absent from the image.
+      - name: Idle-reaper cron guard branches are exercised
+        run: |
+          set -euo pipefail
+          DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+          MIG=supabase/migrations/20261123120000_reap_idle_active_games_cron.sql
+          JOB=reap_idle_active_games
+          TICK="select public.reap_idle_active_games_tick();"
+
+          if ! psql "$DB" -v ON_ERROR_STOP=1 -q -c "select 1;" >/dev/null; then
+            echo "::error::Cannot reach the local Postgres at 127.0.0.1:54322. Refusing to run the idle-reaper cron guard gate against a half-started stack."
+            exit 1
+          fi
+
+          if ! psql "$DB" -v ON_ERROR_STOP=1 -q \
+              -c "create extension if not exists pg_cron;" \
+              -c "create extension if not exists pg_net;"; then
+            # The connection was healthy a moment ago, so narrow the cause before
+            # skipping: only "not available in this image" is an environment difference.
+            if ! unavailable=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+                "select coalesce(string_agg(e, ', '), '') from unnest(array['pg_cron','pg_net']) e where not exists (select 1 from pg_available_extensions a where a.name = e);"); then
+              echo "::error::create extension failed and the follow-up availability probe could not connect either. Refusing to skip the idle-reaper cron guard gate on an unhealthy stack."
+              exit 1
+            fi
+            if [ -z "$unavailable" ]; then
+              echo "::error::create extension failed even though pg_cron and pg_net are both listed in pg_available_extensions. That is a real failure, not an environment difference."
+              exit 1
+            fi
+            echo "::warning::Not available in this local stack: $unavailable -- idle-reaper cron guard gate skipped."
+            exit 0
+          fi
+
+          # `alter database ... set app.api_base` needs superuser for a custom
+          # placeholder parameter and the local `postgres` role is not one, so the GUCs
+          # are set at SESSION level in the SAME psql session that then runs the tick.
+          # psql runs repeated -c/-f options in order on one connection, so the SETs are
+          # still in effect for the call that follows -- and that is also why a case's
+          # SET cannot leak into another case's psql invocation.
+          clear_job() {
+            psql "$DB" -v ON_ERROR_STOP=1 -q -c "select cron.unschedule(jobid) from cron.job where jobname = '$JOB';" >/dev/null
+          }
+          job_count() {
+            psql "$DB" -v ON_ERROR_STOP=1 -tAc "select count(*) from cron.job where jobname = '$JOB';"
+          }
+          apply_migration() {
+            psql "$DB" -v ON_ERROR_STOP=1 -f "$MIG" 2>&1
+          }
+          expect_scheduled() {
+            local n; n=$(job_count)
+            if [ "$n" != "1" ]; then
+              echo "::error::$1: expected exactly one $JOB row in cron.job, found $n. Since #1167 the migration must schedule the job unconditionally -- configuration is checked inside the tick, not at migration time."
+              exit 1
+            fi
+          }
+          expect_warning() {
+            if ! printf '%s\n' "$2" | grep -qF "$1"; then
+              echo "::error::The guard did not emit the expected warning. Wanted to find: $1"
+              echo "::error::Actual psql output follows."
+              printf '%s\n' "$2"
+              exit 1
+            fi
+          }
+          # Every refusal path in the tick raises a "REAPER CRON GUARD" warning and
+          # returns before net.http_post, so the ABSENCE of that string is what proves
+          # the tick reached the request. The pg_net request-id sequence is then checked
+          # as the positive half: it advances on http_post and is immune to the pg_net
+          # background worker draining net.http_request_queue mid-check, which a row
+          # count would not be.
+          #
+          # The sequence is resolved through pg_get_serial_sequence() rather than being
+          # spelled out. net.http_request_queue declares `id bigserial`, so the backing
+          # sequence is the auto-generated net.http_request_queue_id_seq -- but that name
+          # is an implementation detail of pg_net's DDL, and hardcoding it means a rename
+          # upstream silently turns this whole assertion into dead code instead of failing.
+          # An unresolvable sequence is a HARD failure in expect_request_made below for
+          # the same reason: a ::warning:: in an otherwise-green job is nobody's stop
+          # sign. Case 1's negative check deliberately warns instead -- see the comment
+          # there for why, and note Case 3 hard-fails on the same probe. A sequence that
+          # has never been drawn from reads as 'unused', which still compares unequal to
+          # the first real value, so the advance check works from a cold database too.
+          #
+          # Soundness caveat, deliberately accepted: an advance proves that SOME request
+          # was enqueued in the window, not that it was THIS tick's. Case 0 leaves
+          # reap_idle_active_games registered for the rest of this step, so a real pg_cron
+          # tick could in principle move the sequence underneath us. It cannot today --
+          # CI never sets the GUCs at DATABASE level, so pg_cron's own connection always
+          # takes the "settings unset" early return and enqueues nothing -- but that is a
+          # coincidence propping up an assertion, so if these cases ever start flapping,
+          # this is the reason. Case 1's negative check carries the mirror-image risk: a
+          # concurrent enqueue would make it fail rather than pass, i.e. it fails safe.
+          # request_seq runs inside $( ), so it cannot hand its diagnosis back in a
+          # variable -- the assignment would die with the subshell. psql's stderr goes
+          # to a file instead, so the hard failure below can say WHY the probe broke:
+          # relation absent, permission denied and connection refused all collapse to
+          # "unavailable" otherwise.
+          #
+          # Each probe writes to its OWN file, named by the caller. A single shared file
+          # would be truncated by every later call including the successful ones, so the
+          # common failure shape -- `before` fails, the tick runs, `after` succeeds -- would
+          # leave the diagnosis empty and send the reader down the "pg_get_serial_sequence
+          # returned NULL" path for what was really a connection blip.
+          SEQ_ERR_BEFORE="$(mktemp)"
+          SEQ_ERR_AFTER="$(mktemp)"
+          Q_ERR="$(mktemp)"
+          request_seq() {
+            # $1 = file this probe's psql stderr is captured in
+            psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+              "select case
+                        when pg_get_serial_sequence('net.http_request_queue', 'id') is null then 'unavailable'
+                        else coalesce(
+                          pg_sequence_last_value(pg_get_serial_sequence('net.http_request_queue', 'id')::regclass)::text,
+                          'unused')
+                      end;" 2>"$1" || echo unavailable
+          }
+          seq_err() {
+            # $1 = the stderr file of the probe being quoted
+            local e; e=$(tr -s '\n' ' ' < "$1")
+            if [ -z "${e// /}" ]; then
+              echo "psql reported no error, so pg_get_serial_sequence('net.http_request_queue', 'id') returned NULL -- the pg_net queue table or its identity column is not what this probe expects."
+            else
+              echo "$e"
+            fi
+          }
+          expect_request_made() {
+            # $1 = case label, $2 = psql output, $3 = sequence value before the tick,
+            # $4 = the file holding THAT probe's stderr (pairing the value with its own
+            # diagnosis here rather than assuming $SEQ_ERR_BEFORE, so a future caller
+            # probing into a different file cannot get a confidently wrong quote).
+            if printf '%s\n' "$2" | grep -qF 'REAPER CRON GUARD'; then
+              echo "::error::$1: the tick emitted a guard warning and therefore made no request, but this configuration must be accepted."
+              printf '%s\n' "$2"
+              exit 1
+            fi
+            local after; after=$(request_seq "$SEQ_ERR_AFTER")
+            if [ "$3" = unavailable ] || [ "$after" = unavailable ]; then
+              # Quote the probe (or probes) that actually came back unavailable -- never
+              # whichever one happened to run last.
+              local why
+              if [ "$3" = unavailable ] && [ "$after" = unavailable ]; then
+                why="Both probes failed. The before probe said: $(seq_err "$4") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+              elif [ "$3" = unavailable ]; then
+                why="The before probe (the one that failed) said: $(seq_err "$4")"
+              else
+                why="The after probe (the one that failed) said: $(seq_err "$SEQ_ERR_AFTER")"
+              fi
+              echo "::error::$1: the pg_net request-id sequence behind net.http_request_queue.id could not be read ($3 -> $after), so the positive half of this assertion cannot run. Fix the probe rather than ignoring it -- without it these cases only prove that no guard warning was printed. $why"
+              exit 1
+            fi
+            if [ "$after" = "$3" ]; then
+              echo "::error::$1: the tick warned about nothing but the pg_net request sequence did not advance ($3 -> $after), so no request was enqueued."
+              exit 1
+            fi
+          }
+
+          echo '--- Case 0: the migration schedules the job even with both GUCs unset'
+          clear_job
+          out=$(apply_migration) || { echo "::error::The migration failed to apply with the GUCs unset; it must not depend on them at all."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_scheduled 'Case 0 (migration, GUCs unset)'
+
+          echo '--- Case 0b: the tick is not reachable as a PostgREST RPC'
+          # Asserted positively: the ONLY passing answer is the literal "false". A
+          # missing role, an empty result or a dead psql all fail here rather than
+          # printing a reassuring line, because every one of those states means the
+          # gate stopped testing the thing it exists to catch while the function may
+          # still be PUBLIC-executable. has_function_privilege() does resolve
+          # PUBLIC-derived privileges, so this genuinely tests the revoke.
+          #
+          # psql's stderr goes to its own file rather than being merged with 2>&1: the
+          # merge is only wanted on the failure path, and on a SUCCESSFUL run any notice
+          # libpq prints (a client/server version mismatch, say) would be prepended to
+          # the value and fail the "exactly false" assertion for no reason.
+          for role in anon authenticated; do
+            granted=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+              "select case when to_regrole('$role') is null then 'no-role'
+                           else has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute')::text end;" 2>"$Q_ERR") \
+              || granted="probe-failed: $(tr -s '\n' ' ' < "$Q_ERR")"
+            # Keep any stderr from a SUCCESSFUL probe visible in the step log instead of
+            # discarding it; on the failure path it is already inside $granted.
+            case "$granted" in
+              probe-failed:*) ;;
+              *)
+                if [ -s "$Q_ERR" ]; then
+                  echo "  note: psql wrote to stderr while probing $role: $(tr -s '\n' ' ' < "$Q_ERR")"
+                fi
+                ;;
+            esac
+            if [ "$granted" != "false" ]; then
+              echo "::error::Case 0b: expected has_function_privilege('$role', 'public.reap_idle_active_games_tick()', 'execute') to be exactly false, got '$granted'. Postgres grants EXECUTE to PUBLIC by default, so a zero-arg function in the public schema is a POST /rest/v1/rpc/ endpoint for anyone with the anon key -- the migration must revoke it, and this check must be able to prove that it did."
+              exit 1
+            fi
+            echo "  $role -> $granted"
+          done
+
+          echo '--- Case 1: tick with both GUCs unset -> loud skip, no request'
+          before=$(request_seq "$SEQ_ERR_BEFORE")
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 -c "$TICK" 2>&1) || { echo "::error::The tick failed with the GUCs unset; a missing setting must warn, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'REAPER CRON GUARD: the idle-active-game reaper (reap_idle_active_games) made NO request because required database settings are unset: app.api_base, app.cron_secret' "$out"
+          # Deliberate asymmetry with expect_request_made, which HARD-fails on an
+          # unreadable probe: this is a NEGATIVE check, so an unreadable probe costs it
+          # its evidence and it declines to conclude anything rather than guessing.
+          #
+          # BOTH values have to be guarded, not just $before. An unreadable after-probe
+          # returns the literal string "unavailable", which compares unequal to a
+          # perfectly good "$before" -- so testing only $before would fire this branch on
+          # a connection blip and report that the guard leaked a request when nothing was
+          # enqueued, which is the exact false diagnosis the rest of this commit exists to
+          # eliminate.
+          #
+          # The skip is not silent: the probe's own stderr is quoted, and Case 3 hard-fails
+          # on this same probe further down (after cases 2/2b/2c), so a genuinely broken
+          # probe still stops the job rather than quietly hollowing this assertion out.
+          after=$(request_seq "$SEQ_ERR_AFTER")
+          if [ "$before" = unavailable ] || [ "$after" = unavailable ]; then
+            if [ "$before" = unavailable ] && [ "$after" = unavailable ]; then
+              why="both probes failed -- the before probe said: $(seq_err "$SEQ_ERR_BEFORE") -- the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+            elif [ "$before" = unavailable ]; then
+              why="the before probe said: $(seq_err "$SEQ_ERR_BEFORE")"
+            else
+              why="the after probe said: $(seq_err "$SEQ_ERR_AFTER")"
+            fi
+            echo "::warning::Case 1 (GUCs unset): the pg_net request sequence could not be read ($before -> $after), so the no-request half of this case is unproven -- the guard warning matched above is all it asserts. Diagnosis: $why"
+          elif [ "$after" != "$before" ]; then
+            echo "::error::Case 1 (GUCs unset): the pg_net request sequence advanced ($before -> $after), so a request was enqueued despite the guard warning."
+            exit 1
+          fi
+
+          echo '--- Case 2: plaintext http:// to a remote host -> refused (CWE-319)'
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://reaper-ci.example.com';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -c "$TICK" 2>&1) || { echo "::error::The tick failed with a plaintext api_base; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
+
+          # A host check, not a substring check: this URL contains "localhost" but is not
+          # one, so it must still be refused. This is the case a naive `like '%localhost%'`
+          # carve-out would wave through.
+          echo '--- Case 2b: a remote http:// host that merely CONTAINS "localhost" -> still refused'
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://localhost.reaper-ci.example.com';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -c "$TICK" 2>&1) || { echo "::error::The tick failed for case 2b; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
+
+          # Not a dotted quad, so libcurl inside pg_net would DNS-resolve it as a NAME
+          # and could reach a non-loopback address. A loose [0-9]{1,3} octet pattern
+          # would wave this through and leak the CRON_SECRET bearer in cleartext.
+          echo '--- Case 2c: an invalid 127.x quad (http://127.999.999.999) -> still refused'
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://127.999.999.999';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -c "$TICK" 2>&1) || { echo "::error::The tick failed for case 2c; it must warn and skip, not error."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_warning 'refusing to send the CRON_SECRET bearer token in cleartext to a non-loopback host' "$out"
+
+          # The job must still be there after every refusal: a bad GUC makes the tick
+          # decline to send, it does not unregister anything.
+          expect_scheduled 'Cases 1-2c (refusals must not unschedule the job)'
+
+          echo '--- Case 3: http:// loopback -> allowed (the documented narrow exception)'
+          before=$(request_seq "$SEQ_ERR_BEFORE")
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'http://127.0.0.1:3000';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -c "$TICK" 2>&1) || { echo "::error::Case 3 (loopback http): the tick errored. Loopback http:// is the documented exception -- infra/templates/user-data.sh.tftpl relies on it."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_request_made 'Case 3 (loopback http)' "$out" "$before" "$SEQ_ERR_BEFORE"
+
+          echo '--- Case 4: https:// -> request made, and the job asserted independently of the migration'
+          before=$(request_seq "$SEQ_ERR_BEFORE")
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -c "$TICK" 2>&1) || { echo "::error::Case 4 (https): the tick errored."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_request_made 'Case 4 (https)' "$out" "$before" "$SEQ_ERR_BEFORE"
+          psql "$DB" -v ON_ERROR_STOP=1 -c "select jobname, schedule, command from cron.job order by jobname;"
+          bad=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc "
+            select coalesce(
+                     case
+                       when j.jobid is null then 'absent from cron.job'
+                       when j.schedule is distinct from '*/15 * * * *'
+                         then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
+                       when j.command is distinct from 'select public.reap_idle_active_games_tick();'
+                         then format('command is %L, expected the reap_idle_active_games_tick() call', j.command)
+                     end, '')
+              from (select 1) as one
+              left join cron.job j on j.jobname = '$JOB';")
+          if [ -n "$bad" ]; then
+            echo "::error::Case 4 (https): $JOB is wrong or missing in cron.job: $bad"
+            echo "This is the failure mode from issue #1167 -- a scheduling block that reports success and schedules nothing (or schedules the wrong thing)."
+            echo "TO FIX: if the change was intended, update the expectation row for this job in THIS step and its row in the \`expected\` VALUES list of \`cron.job matches the deploy-equivalent inventory\` above. A job whose command no longer matches is either a migration that repointed it or one that registered it with the URL and bearer baked in."
+            exit 1
+          fi
+
+          # THE regression test for #1167. The old design read the GUCs at migration
+          # time, so a database migrated before they were set stayed unscheduled
+          # forever: the migration was already recorded as applied and would not
+          # re-run. Here the migration is applied with nothing set, the settings
+          # arrive afterwards in a different session, and the tick must go through --
+          # without the file being applied again.
+          echo '--- Case 5: GUCs set AFTER the migration -> the tick works with no re-migration'
+          clear_job
+          out=$(apply_migration) || { echo "::error::Case 5: the migration failed to apply with the GUCs unset."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_scheduled 'Case 5 (migration applied with no GUCs)'
+          before=$(request_seq "$SEQ_ERR_BEFORE")
+          out=$(psql "$DB" -v ON_ERROR_STOP=1 \
+            -c "set app.api_base = 'https://reaper-ci.example.invalid';" \
+            -c "set app.cron_secret = 'ci-not-a-real-secret';" \
+            -c "$TICK" 2>&1) || { echo "::error::Case 5: the tick errored after the GUCs were set."; printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          expect_request_made 'Case 5 (GUCs set after the migration)' "$out" "$before" "$SEQ_ERR_BEFORE"
+
+          echo "All idle-reaper guard branches behaved as specified."
+
+      - run: pnpm vitest run src/lib/rls-boundaries.integration.test.ts
+
+      # The enforcement half of `cron.job matches the deploy-equivalent
+      # inventory`. That step runs with `continue-on-error` so that a cron
+      # finding cannot abort this job before the RLS boundary suite -- the gate
+      # this job exists for -- but its verdict still has to be binding, and it
+      # has to be read from something the steps in between cannot rewrite.
+      #
+      # `steps.<id>.outcome` is exactly that: the runner records it when the step
+      # ends, and no later step can change it. That is the whole reason the
+      # inventory is asserted up there against the live database instead of being
+      # written to a file for this step to judge -- a CSV plus a SHA-256 sidecar
+      # in RUNNER_TEMP was forged in about fifteen lines by the vitest suite that
+      # runs in between, which the pull request owns.
+      #
+      # `if: always()` so the cron verdict is reported even when the RLS suite
+      # failed; a failure there still fails the job on its own.
+      - name: The deploy-equivalent cron gate must have passed
+        if: always()
+        env:
+          CRON_GATE_OUTCOME: ${{ steps.deploy_cron_state.outcome }}
+          # Load-bearing, not hygiene. Without it the RLS suite immediately
+          # above -- which the pull request owns -- writes BASH_ENV=/tmp/x.sh to
+          # $GITHUB_ENV, and that file re-exports CRON_GATE_OUTCOME=success
+          # inside this step's own shell, turning a failed inventory green. The
+          # runner's record of the outcome is unforgeable; the shell that reads
+          # it was not. See the note on the anchor step.
+          BASH_ENV: ''
+        run: |
+          set -euo pipefail
+          case "$CRON_GATE_OUTCOME" in
+            success)
+              echo "The deploy-equivalent cron inventory passed."
+              ;;
+            skipped|'')
+              echo "::error::\`cron.job matches the deploy-equivalent inventory\` did not run (outcome: '${CRON_GATE_OUTCOME:-<unset>}'). It must stay immediately after \`supabase start\`, before anything mutates cron.job -- without it nothing in CI checks what a deploy would schedule."
+              exit 1
+              ;;
+            *)
+              echo "::error::\`cron.job matches the deploy-equivalent inventory\` failed (outcome: $CRON_GATE_OUTCOME). Scroll up to that step for the specific difference: it is the state a DEPLOY would produce, so it is what production would run."
+              exit 1
+              ;;
+          esac
+
+      # ── HTTP cron scheduling gate (issue #1167) ──────────────────────────────
+      # Enforcement lives in scripts/ci/http-cron-scheduling-gate.sh, extracted above from the
+      # BASE revision and run from there. That file's header carries the rationale: why the GUCs
+      # have to be set and the guard re-run for this assertion to mean anything, why the
+      # migrations this branch adds after the guard are re-applied with them set, and -- at
+      # length -- why this is NOT the deploy-equivalent assertion and must never be treated as
+      # one (issue #1175).
+      #
+      # Runs LAST, after the RLS suite, because it mutates the database (it registers cron jobs)
+      # and must not perturb the security gate that is this job's main purpose.
+      - name: HTTP cron jobs are scheduled once the GUCs are set
+        env:
+          # Where the tree under test is checked out. `github.workspace` is supplied by
+          # Actions, not by the pull request; the DSN and every expected value are literals
+          # inside the base-pinned script on purpose -- a PR-supplied DSN alone would be
+          # enough to redirect a gate at a decoy database.
+          REPO_DIR: ${{ github.workspace }}
+          # Runner-held state from the deploy-equivalent step, not a file any
+          # step in between could rewrite.
+          CRON_REAPPLY_MIGRATIONS: ${{ steps.deploy_cron_state.outputs.reapply }}
+          CRON_REAPPLY_COMPUTED: ${{ steps.deploy_cron_state.outputs.computed }}
+          # Otherwise a BASH_ENV file set via $GITHUB_ENV by any earlier step
+          # can define a shell function named `psql` that shadows the binary for
+          # every assertion below. See the note on the anchor step.
+          BASH_ENV: ''
+          # Checked AGAIN here, independently of the inventory step: the vitest
+          # RLS suite runs in between and the pull request owns it.
+          GATE_SHA256: ${{ steps.extract_gates.outputs.http_sha256 }}
+        run: |
+          set -euo pipefail
+          # Re-check the extracted copy against the digest the extract step
+          # recorded, immediately before executing it. $RUNNER_TEMP is writable
+          # by every step, and PR-controlled code has run since the extraction
+          # (`pnpm install`'s `prepare` hook; and for the HTTP gate, the vitest
+          # RLS suite as well), so "it was pinned when it was written" is not the
+          # same as "it is base's bytes now".
+          #
+          # SNAPSHOT, then hash the snapshot, then run the snapshot. Hashing a
+          # PATHNAME and then handing that same pathname to bash is a race: the
+          # file is opened twice, and PR-controlled code can replace it in
+          # between -- a detached process with RUNNER_TRACKING_ID cleared outlives
+          # its own step and runs as the same user, so it can rewrite the file in
+          # a loop until a rewrite lands inside that window. /dev/fd/N does not
+          # fix it either: on Linux it resolves to the same inode, which survives
+          # a rename but not an in-place truncate-and-rewrite of a file the
+          # attacker owns. Reading the contents into a variable closes the window
+          # by construction -- one open, and the bytes that are hashed are the
+          # bytes that execute.
+          #
+          # The script is fed to bash through a process substitution rather than
+          # on stdin, so the gate's own stdin stays /dev/null and no child of it
+          # can swallow part of the script. Neither gate script reads stdin (both
+          # `read` loops are fed by herestrings) and neither refers to $0 or
+          # BASH_SOURCE, so nothing about running it this way changes what it
+          # does; that was checked before this was written.
+          #
+          # An unset, empty or malformed digest is treated exactly like a
+          # mismatch. "Nothing to check" must never read as "nothing wrong".
+          if ! [[ "${GATE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::The extract step recorded no usable SHA-256 for http-cron-scheduling-gate.sh (got '${GATE_SHA256:-<unset>}'). An unset, empty or malformed digest is treated exactly like a mismatch: refusing to run an unverified copy."
+            exit 1
+          fi
+          snapshot=$(/usr/bin/cat -- "$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh")
+          if [ -z "$snapshot" ]; then
+            echo "::error::$RUNNER_TEMP/gate/http-cron-scheduling-gate.sh is empty. Refusing to run an empty gate script."
+            exit 1
+          fi
+          line=$(printf '%s\n' "$snapshot" | /usr/bin/sha256sum)
+          actual=${line%% *}
+          if [ "$actual" != "$GATE_SHA256" ]; then
+            echo "::error::The contents of $RUNNER_TEMP/gate/http-cron-scheduling-gate.sh hash to $actual, but the extract step recorded $GATE_SHA256. The extracted copy was MODIFIED AFTER EXTRACTION -- \$RUNNER_TEMP is writable by every step, including the root \`prepare\` hook that runs inside \`pnpm install\`. Refusing to run it: what would execute is not the base revision's enforcement code."
+            exit 1
+          fi
+          echo "http-cron-scheduling-gate.sh matches the digest recorded at extraction ($actual); running the verified snapshot."
+          exec /usr/bin/bash <(printf '%s\n' "$snapshot") < /dev/null
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'pnpm'

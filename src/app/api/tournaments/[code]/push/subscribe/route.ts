@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { resolveTournamentPlayerId } from '@/lib/tournament-token-lookup'
+import { secretMatches } from '@/lib/secret-compare'
 
 const bodySchema = z.object({
   // Either the tournament player's resume token, OR the tournament host_token
@@ -51,7 +52,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
   if (!tournament) return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
 
   let roleKey: string | null = null
-  if (hostToken && hostToken === tournament.host_token) {
+  // Only the COMPARISON changes. `roleKey` still interpolates the same zod-trimmed
+  // `hostToken`, so the persisted `host:<token>` value is byte-identical.
+  if (hostToken && (await secretMatches(hostToken, tournament.host_token))) {
     roleKey = `host:${hostToken}`
   } else if (resumeToken) {
     // Exact (case-folded) match, never a pattern — see resolveTournamentPlayerId.

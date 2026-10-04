@@ -15,15 +15,17 @@ import { playerIsViewer, preJoinScreen } from '@fateround/shared/viewers'
 import {
   cellBackground,
   cellTextColor,
+  codewordsKeyIsMasked,
   codewordsPlayerPicks,
   codewordsRandomizeTeams,
   countRevealedTeamCells,
-  countTeamCells,
   effectiveTurnPhase,
   guessAttributionMap,
   isTurnExpired,
+  mergeCodewordsBoardUpdate,
   roleLabel,
   secondsUntilDeadline,
+  teamCellTotal,
   teamLabel,
   waitingTurnMessage,
 } from '@fateround/shared/codewords'
@@ -48,7 +50,7 @@ import { GameFinishPanel } from '@/components/lifecycle/GameFinishPanel'
 import { useGameTableSync, useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
 import {
-  fetchCodewordsBoard,
+  postCodewordsBoard,
   postCodewordsChat,
   postCodewordsClue,
   postCodewordsEndTurn,
@@ -58,7 +60,8 @@ import {
 } from '@/lib/game-api'
 import { getSupabase } from '@/lib/supabase'
 import { CODEWORDS_GUESS_SELECT, CODEWORDS_MESSAGE_SELECT, CODEWORDS_PLAYER_ROLE_SELECT } from '@/lib/supabase-selects'
-import { getPlayerSession } from '@/lib/secure-session'
+import { uniqueTopic } from '@/lib/realtime'
+import type { PlayerSession } from '@/lib/secure-session'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { useToast } from '@/components/ui/Toast'
 import type { Theme } from '@/constants/theme'
@@ -70,6 +73,16 @@ const CODEWORDS_RULES = [
   'Operatives tap words on the 5×5 grid to guess. Correct guesses let you keep going; wrong guesses end your turn.',
   'First team to find all their words wins. Hit the assassin and your team loses!',
 ]
+
+/**
+ * How long a cached board may go without a reconciling fetch through /api/codewords/board.
+ * Realtime keeps the board current between fetches; this only catches missed events, so it is
+ * deliberately slow — the route is rate-limited per (hashed) IP, and a whole room behind one
+ * Wi-Fi/CGNAT address shares that bucket.
+ */
+const BOARD_RECONCILE_MS = 15_000
+const BOARD_RETRY_BASE_MS = 2_000
+const BOARD_RETRY_MAX_MS = 15_000
 
 const ROLE_DESCRIPTIONS: Record<CodewordsRole, string> = {
   spymaster: 'See the secret key and give a one-word clue plus a number each turn.',
@@ -112,18 +125,171 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
   const [pickRole, setPickRole] = useState<CodewordsRole | null>(null)
   const [timerTick, setTimerTick] = useState(0)
 
+  // --- Board state ----------------------------------------------------------------------
+  // The board is the one slice that does NOT come from the table (`codewords_boards.key` is no
+  // longer anon-selectable — audit finding H2), so it is held here rather than inside
+  // CodewordsState: realtime merges it in place and only a few events justify paying for the
+  // rate-limited /api/codewords/board round trip. `boardRef` is the shared source of truth
+  // between the load closure and the realtime handler; `board` is what renders.
+  const [board, setBoard] = useState<CodewordsBoard | null>(null)
+  const boardRef = useRef<CodewordsBoard | null>(null)
+  /**
+   * Bumped by every REALTIME board update. `fetchBoard` snapshots it before awaiting and compares
+   * after, so a route response that started before a live update cannot overwrite the newer state.
+   * The `revealed_indices` length check alone was not enough: an update that changes only the
+   * clue, the turn or the winner leaves the reveal count untouched, so a slow response would
+   * still land on top and show an obsolete turn until the next event or the 15s reconcile.
+   */
+  const boardGenRef = useRef(0)
+  /** When the last successful route fetch landed (0 = never). */
+  const boardFetchedAtRef = useRef(0)
+  /** Set when we know the cached board is (or may be) behind — forces the next fetch. */
+  const boardStaleRef = useRef(true)
+  const boardRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const boardRetryDelayRef = useRef(BOARD_RETRY_BASE_MS)
+  /** My role at the last load — a change (promotion) invalidates the cached key. */
+  const lastRoleRef = useRef<CodewordsRole | null>(null)
+  /** `status:session_started_at` at the last load — a change also invalidates the cached key. */
+  const lastSessionKeyRef = useRef<string | null>(null)
+  /** Latest reconciled resume token, for fetches that happen outside a load. */
+  const resumeTokenRef = useRef<string | null>(null)
+  /** Assigned below, once `bootstrap` exists. */
+  const reloadRef = useRef<() => void>(() => {})
+
+  const applyBoard = useCallback((next: CodewordsBoard | null) => {
+    boardRef.current = next
+    setBoard(next)
+  }, [])
+
+  /**
+   * Fetch the board through the route. Returns false only on a genuine failure (429/5xx/
+   * offline) — "the game has no board row yet" is a successful answer of `null`.
+   */
+  const fetchBoard = useCallback(
+    async (resumeToken: string | null): Promise<boolean> => {
+      const genAtRequest = boardGenRef.current
+      const res = await postCodewordsBoard(gameCode, resumeToken)
+      if (!res.ok) return false
+      // The REQUEST succeeded, so the backoff resets regardless of whether we apply the payload.
+      boardRetryDelayRef.current = BOARD_RETRY_BASE_MS
+
+      const next = res.board
+      const prev = boardRef.current
+
+      // A realtime update landed WHILE this request was in flight, so the payload describes an
+      // older world than the one on screen. It must never define board state — including when it
+      // is a board and `prev` is now null, which is exactly what a DELETE mid-flight looks like:
+      // applying it there would resurrect a deleted board.
+      //
+      // The key is still worth taking, but only when the payload describes the SAME board we
+      // still hold. Staleness is deliberately NOT cleared: we have not reconciled against current
+      // state, so the 15s reconcile should still come back for it.
+      if (boardGenRef.current !== genAtRequest) {
+        if (next && prev && prev.id === next.id) {
+          applyBoard({ ...prev, key: next.key, key_totals: next.key_totals ?? prev.key_totals })
+        }
+        return true
+      }
+
+      // No realtime event raced us, but the route may still have read a replica that trails an
+      // update we already applied (fewer reveals than we hold). Same treatment: keep the live
+      // board, graft on the key.
+      const trailsReplica = (prev?.revealed_indices?.length ?? 0) > (next?.revealed_indices?.length ?? 0)
+      if (next && prev && prev.id === next.id && trailsReplica) {
+        applyBoard({ ...prev, key: next.key, key_totals: next.key_totals ?? prev.key_totals })
+      } else {
+        applyBoard(next)
+      }
+      boardFetchedAtRef.current = Date.now()
+      boardStaleRef.current = false
+      return true
+    },
+    [gameCode, applyBoard]
+  )
+
+  /**
+   * Retry a failed board fetch on a backoff instead of leaving the player on a stale board
+   * until the next realtime event. One timer at a time; the delay resets on success.
+   */
+  const scheduleBoardRetry = useCallback(() => {
+    if (boardRetryRef.current) return
+    const delay = boardRetryDelayRef.current
+    boardRetryDelayRef.current = Math.min(delay * 2, BOARD_RETRY_MAX_MS)
+    boardRetryRef.current = setTimeout(() => {
+      boardRetryRef.current = null
+      void fetchBoard(resumeTokenRef.current).then((ok) => {
+        if (!ok) {
+          scheduleBoardRetry()
+          return
+        }
+        // A board that arrived late can be the one that ends the game — re-run the bootstrap so
+        // the finished screen isn't held back until the next event.
+        if (boardRef.current?.winner) reloadRef.current()
+      })
+    }, delay)
+  }, [fetchBoard])
+
+  useEffect(
+    () => () => {
+      if (boardRetryRef.current) clearTimeout(boardRetryRef.current)
+    },
+    []
+  )
+
+  /**
+   * Decide whether this load needs to pay for a board fetch, and never let a failed one become
+   * state. Reasons to fetch: we have no board, something invalidated the cached one (new round,
+   * a reveal, a role change), a spymaster is holding a masked key, or the periodic reconcile is
+   * due. Everything else reuses the cached board that realtime keeps merged — the load path runs
+   * on every chat message and guess, and a POST per event per device trips the shared
+   * rate-limit bucket for a whole room (review on PR #787).
+   */
+  const resolveBoard = useCallback(
+    async (game: Game, resumeToken: string | null, myRole: CodewordsPlayerRole | null) => {
+      if (game.status === 'waiting') {
+        // Lobby (including a replay that reset the round) — drop the finished board.
+        applyBoard(null)
+        boardStaleRef.current = true
+        boardFetchedAtRef.current = 0
+        return null
+      }
+      // A lifecycle change re-decides who may see the key — most importantly `finished`, where
+      // the route hands the full key to everyone for the end-of-game reveal. Without this an
+      // operative's post-game board stays masked (grey cells, no colours) until the reconcile.
+      const sessionKey = `${game.status}:${game.session_started_at ?? ''}`
+      if (sessionKey !== lastSessionKeyRef.current) {
+        boardStaleRef.current = true
+        lastSessionKeyRef.current = sessionKey
+      }
+      const cached = boardRef.current
+      const spymasterWithoutKey = myRole?.role === 'spymaster' && cached != null && codewordsKeyIsMasked(cached)
+      const reconcileDue = Date.now() - boardFetchedAtRef.current > BOARD_RECONCILE_MS
+      if (cached && !boardStaleRef.current && !spymasterWithoutKey && !reconcileDue) return cached
+
+      const ok = await fetchBoard(resumeToken)
+      if (ok) return boardRef.current
+      // A 429/5xx/dropped packet is NOT "there is no board": keep the one on screen (grid, clue
+      // and timer stay live) and retry, instead of collapsing a live game into a spinner.
+      boardStaleRef.current = true
+      scheduleBoardRetry()
+      return cached
+    },
+    [applyBoard, fetchBoard, scheduleBoardRetry]
+  )
+
   const loadGameState = useCallback(
-    async (_game: Game, _players: Player[]): Promise<{ state: CodewordsState; ok: boolean }> => {
+    async (
+      game: Game,
+      _players: Player[],
+      session: PlayerSession | null
+    ): Promise<{ state: CodewordsState; ok: boolean }> => {
       const code = gameCode.toUpperCase()
-      // The board goes through /api/codewords/board rather than a direct SELECT.
-      // `codewords_boards.key` is not anon-selectable since migration
-      // 20260803170000 (audit finding H2), so a client `select('key,…')` errors
-      // and the board never arrives — the seated player would sit forever on
-      // GameLoading because computeScreen returns 'playing' but `board` stays
-      // null. The route masks the key for non-spymasters.
-      const session = await getPlayerSession(code)
-      const [boardData, rolesRes, guessesRes, messagesRes] = await Promise.all([
-        fetchCodewordsBoard(code, { resumeToken: session?.resumeToken ?? undefined }),
+      // `session` is the bootstrap's freshly reconciled session, so the board fetch below
+      // authenticates with the token this device actually owns. Reading SecureStore here
+      // instead would use the pre-reconciliation token and hand a rejoined spymaster an
+      // operative's masked grid until some later event reloaded (review on PR #787).
+      resumeTokenRef.current = session?.resumeToken ?? null
+      const [rolesRes, guessesRes, messagesRes] = await Promise.all([
         getSupabase().from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', code),
         getSupabase().from('codewords_guesses').select(CODEWORDS_GUESS_SELECT).eq('game_id', code).order('created_at'),
         getSupabase()
@@ -132,23 +298,30 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
           .eq('game_id', code)
           .order('created_at'),
       ])
-      // Roles drive screen routing, so a failure there is a hard miss.
-      // Guesses and messages only enrich the view — if one of those errors
-      // (a transient RLS hiccup), degrade it to empty rather than nulling the
-      // board, which would bounce a seated player back to the lobby.
+      // Roles drive screen routing, so a failure there is a hard miss. The board never hard-
+      // misses: a seated player stays put and keeps the board they have (see resolveBoard).
+      // Guesses and messages only enrich the view — if one errors (a transient RLS hiccup),
+      // degrade it to empty.
       if (rolesRes.error) {
-        return { state: { board: null, roles: [], guesses: [], messages: [] }, ok: false }
+        return { state: { board: boardRef.current, roles: [], guesses: [], messages: [] }, ok: false }
+      }
+      const roles = (rolesRes.data as CodewordsPlayerRole[]) ?? []
+      const myRole = session ? (roles.find((r) => r.player_id === session.playerId) ?? null) : null
+      // A promotion (operative → spymaster) has to bring the real key with it.
+      if (myRole?.role !== lastRoleRef.current) {
+        boardStaleRef.current = true
+        lastRoleRef.current = myRole?.role ?? null
       }
       const state: CodewordsState = {
-        board: boardData,
-        roles: (rolesRes.data as CodewordsPlayerRole[]) ?? [],
+        board: await resolveBoard(game, session?.resumeToken ?? null, myRole),
+        roles,
         guesses: guessesRes.error ? [] : ((guessesRes.data as CodewordsGuess[]) ?? []),
         messages: messagesRes.error ? [] : ((messagesRes.data as CodewordsMessage[]) ?? []),
       }
       setCwState(state)
       return { state, ok: true }
     },
-    [gameCode]
+    [gameCode, resolveBoard]
   )
 
   const computeScreen = useCallback((game: Game, playerId: string | null, state: CodewordsState): Screen => {
@@ -191,26 +364,75 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     computeScreen,
   })
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+  reloadRef.current = () => void bootstrap.load()
 
   // Watch-or-play prompt for a late opener (fetched only on that screen).
   const lateJoin = useLateJoinContext(gameCode, bootstrap.game, bootstrap.screen === 'late_join_choice')
 
+  // `codewords_boards` is deliberately NOT in this list: every entry here triggers a full
+  // bootstrap.load(), and chat/guess traffic from a whole room would then fan out one
+  // /api/codewords/board POST per device per message into a shared, rate-limited bucket
+  // (review on PR #787). Board changes are handled by the dedicated subscription below, which
+  // merges the payload the way web does and only hits the route when it must.
   useGameTableSync(
     gameCode,
-    [
-      { table: 'games', column: 'id' },
-      'codewords_boards',
-      'codewords_player_roles',
-      'codewords_guesses',
-      'codewords_messages',
-    ],
+    [{ table: 'games', column: 'id' }, 'codewords_player_roles', 'codewords_guesses', 'codewords_messages'],
     () => bootstrap.load(),
     !!bootstrap.game,
     bootstrap.game?.status
   )
 
+  // Board realtime. The payload no longer carries the redacted `key` column, so it is merged
+  // onto the key we already hold (mergeCodewordsBoardUpdate) rather than applied verbatim — and
+  // the route is re-hit only when the merge cannot be right: a new board row (new round, new
+  // key) or a newly revealed cell (masked keys carry `null` there until the server colours it).
+  const hasGame = !!bootstrap.game
+  useEffect(() => {
+    if (!hasGame) return
+    const code = gameCode.toUpperCase()
+    const supabase = getSupabase()
+    const channel = supabase
+      .channel(uniqueTopic(`codewords-board-${code}`))
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'codewords_boards', filter: `game_id=eq.${code}` },
+        (payload) => {
+          if (payload.eventType === 'DELETE') {
+            boardGenRef.current += 1
+            applyBoard(null)
+            boardStaleRef.current = true
+            return
+          }
+          const incoming = payload.new as CodewordsBoard
+          const prev = boardRef.current
+          // Bump BEFORE applying so an in-flight fetch that resolves next tick still sees the
+          // change and declines to overwrite it.
+          boardGenRef.current += 1
+          applyBoard(mergeCodewordsBoardUpdate(prev, incoming))
+          const rowReplaced = !prev || prev.id !== incoming.id
+          const revealedChanged = (prev?.revealed_indices?.length ?? -1) !== (incoming.revealed_indices?.length ?? 0)
+          // A winner means the game is over and the route now releases the full key to everyone.
+          const justWon = !!incoming.winner && !prev?.winner
+          if (rowReplaced || revealedChanged || justWon) {
+            void fetchBoard(resumeTokenRef.current).then((ok) => {
+              if (!ok) {
+                boardStaleRef.current = true
+                scheduleBoardRetry()
+              }
+            })
+          }
+          // The board can end the game before the games row lands; re-run the bootstrap so the
+          // finished screen isn't held back (a new round has to re-route too).
+          if (rowReplaced || incoming.winner) reloadRef.current()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [gameCode, hasGame, applyBoard, fetchBoard, scheduleBoardRetry])
+
   const activeState = bootstrap.gameState ?? cwState
-  const board = activeState.board
   const roles = activeState.roles
   const guesses = activeState.guesses
   const messages = activeState.messages
@@ -395,8 +617,11 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
     const spectatorTurn = waitingTurnMessage(board, roles, playerNameById)
     const specRevealed = new Set(board.revealed_indices)
     const specAttribution = guessAttributionMap(guesses, playerNameById)
-    const specRedTotal = countTeamCells(board.key, 'red')
-    const specBlueTotal = countTeamCells(board.key, 'blue')
+    // Totals from `key_totals`, never by counting the key: an operative's key is masked, so
+    // counting it reports "cells already revealed" as the team total — a scoreboard claiming
+    // both teams have found all their words (a redacted read rendered as game state).
+    const specRedTotal = teamCellTotal(board, 'red')
+    const specBlueTotal = teamCellTotal(board, 'blue')
     const specRedRev = countRevealedTeamCells(board.key, board.revealed_indices, 'red')
     const specBlueRev = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
     return (
@@ -536,8 +761,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
         ? 'Tap words to guess'
         : 'Your operatives are guessing'
 
-  const redTotal = countTeamCells(board.key, 'red')
-  const blueTotal = countTeamCells(board.key, 'blue')
+  // See the note in the spectator board: masked keys make counting the key wrong.
+  const redTotal = teamCellTotal(board, 'red')
+  const blueTotal = teamCellTotal(board, 'blue')
   const redRev = countRevealedTeamCells(board.key, board.revealed_indices, 'red')
   const blueRev = countRevealedTeamCells(board.key, board.revealed_indices, 'blue')
 
@@ -598,7 +824,9 @@ export function CodewordsPlayerView({ gameCode }: { gameCode: string }) {
                 {cellAttribution[index] ? (
                   <Text style={[styles.cellAttr, onDark && styles.cellAttrOnDark]}>{cellAttribution[index]}</Text>
                 ) : null}
-                {showKey && !isRevealed ? (
+                {/* `cellType` is null on a masked key — a spymaster whose board hasn't been
+                    re-fetched with their key yet. Show nothing rather than a wrong letter. */}
+                {showKey && !isRevealed && cellType ? (
                   <Text style={[styles.cellKey, onDark && styles.cellAttrOnDark]}>{cellType[0].toUpperCase()}</Text>
                 ) : null}
               </Pressable>

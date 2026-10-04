@@ -6,6 +6,7 @@ import { hostActionSchema } from '@/lib/validation'
 import { syncTriviaGameState } from '@/lib/trivia-advance'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { assertHostWith } from '@/lib/game-admin'
 
 const supabase = getSupabaseAnon()
 
@@ -16,10 +17,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const { hostToken } = body
 
-  const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', code.toUpperCase()).maybeSingle()
-  if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
-  if (game.status !== 'active') return NextResponse.json({ error: 'Game not active' }, { status: 400 })
+  const auth = await assertHostWith(getSupabaseAdmin(), code, hostToken, {
+    allowedStatuses: ['active'],
+    statusError: 'Game not active',
+  })
+  if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  const game = auth.game
 
   const gameId = code.toUpperCase()
   const gameType = parseGameType(game.game_type)

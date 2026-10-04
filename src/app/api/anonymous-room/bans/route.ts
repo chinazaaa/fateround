@@ -6,14 +6,18 @@ import { parseJsonBody } from '@/lib/parse-body'
 import { parseGameType, isAnonymousMessagesGame } from '@/lib/game-types'
 import { isPlayerBanned } from '@/lib/anonymous-messages'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
+import { assertHostAny } from '@/lib/game-admin'
 
 const supabase = getSupabaseAnon()
 
+// The 404/403 half of this ladder is the shared one (`assertHostAny`); the two 400s stay
+// here because their ORDER is this route's own — the game-type check runs BEFORE the status
+// check, so a finished non-anonymous game answers "Not an anonymous room". Routing the status
+// gate through `assertHostWith` would flip that pair and change the reply.
 async function assertHostAnonymousRoom(gameCode: string, hostToken: string) {
-  const id = gameCode.toUpperCase()
-  const { data: game } = await getSupabaseAdmin().from('games').select('*').eq('id', id).maybeSingle()
-  if (!game) return { error: 'Game not found', status: 404 as const, game: null, id }
-  if (game.host_token !== hostToken) return { error: 'Unauthorized', status: 403 as const, game: null, id }
+  const auth = await assertHostAny(getSupabaseAdmin(), gameCode, hostToken)
+  if (auth.error) return auth
+  const { game, id } = auth
   if (!isAnonymousMessagesGame(parseGameType(game.game_type))) {
     return { error: 'Not an anonymous room', status: 400 as const, game: null, id }
   }

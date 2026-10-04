@@ -50,6 +50,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { FinishedWinnerHero } from '@/components/FinishedWinner'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
+import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 const SOLVE_SELECT = 'id,game_id,round_id,player_id,scramble_index,word,via_hint,solved_at'
 const HINT_SELECT = 'player_id,scramble_index,letters'
@@ -189,7 +190,7 @@ export function WordScrambleHostView({ gameCode, hostToken }: { gameCode: string
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame(next)
+          setGame((prev) => mergeRealtimeGame(prev, next))
           // Reload only on a status flip; finish writes the games row several times and
           // reloading on each replayed the finish cascade (the host's "glitches several times").
           if (next.status !== gameStatusRef.current) load()

@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const { error } = await processUnoPlayMulti(supabase, code, auth.player.id, cardIds, callUno === true)
   if (error) return NextResponse.json({ error }, { status: 400 })
 
-  scheduleTurnNotification(code)
+  scheduleTurnNotification(code, game)
 
   return NextResponse.json({ success: true })
 }

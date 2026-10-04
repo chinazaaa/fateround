@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { fetchCodewordsBoard } from '@/lib/codewords-board-client'
-import { fetchWhotHands } from '@/lib/hands-client'
+import { fetchCrazyEightsHands, fetchUnoHands, fetchWhotHands } from '@/lib/hands-client'
 import { roundGenderLabel } from '@/lib/participants'
 import { isGenderFreeVoting } from '@/lib/gender-based'
 import {
@@ -44,22 +44,25 @@ import {
 import {
   BINGO_CALLED_NUMBER_SELECT,
   BINGO_CLAIM_SELECT,
+  CODEWORDS_GUESS_SELECT,
+  CODEWORDS_PLAYER_ROLE_SELECT,
+  CONFESSION_SELECT,
+  CRAZY8_SESSION_SELECT,
   GAME_SELECT,
-  PLAYER_SELECT,
   LUDO_PLAYER_STATE_SELECT,
   LUDO_SESSION_SELECT,
-  SNAKE_LADDER_PLAYER_STATE_SELECT,
-  SNAKE_LADDER_SESSION_SELECT,
   MONOPOLY_BOARD_SELECT,
   MONOPOLY_PLAYER_STATE_SELECT,
-  TTL_GUESS_SELECT,
+  PARTICIPANT_SELECT,
+  PLAYER_SELECT,
+  ROUND_SELECT,
+  SNAKE_LADDER_PLAYER_STATE_SELECT,
+  SNAKE_LADDER_SESSION_SELECT,
+  TRIVIA_ANSWER_SELECT,
   TTL_STATEMENT_SELECT,
-  WHOT_PLAYER_HANDS_SELECT,
-  WHOT_SESSION_SELECT,
-  CRAZY8_PLAYER_HANDS_SELECT,
-  CRAZY8_SESSION_SELECT,
-  UNO_PLAYER_HANDS_SELECT,
   UNO_SESSION_SELECT,
+  VOTE_SELECT,
+  WHOT_SESSION_SELECT,
   YAHTZEE_PLAYER_SCORES_SELECT,
   YAHTZEE_SESSION_SELECT,
 } from '@/lib/supabase-selects'
@@ -79,6 +82,7 @@ import { GenericSessionSummary } from '@/components/history/GenericSessionSummar
 import { LudoSessionSummary } from '@/components/ludo/LudoSessionSummary'
 import { SnakeLadderSessionSummary } from '@/components/snake-and-ladder/SnakeLadderSessionSummary'
 import { mergeCodewordsGuesses } from '@/lib/codewords'
+import { revealedTtlGuesses } from '@/lib/two-truths'
 import { hotSeatPlayerDisplayName } from '@/lib/hot-seat'
 import { isMltImportGame, mltVoteTargets } from '@/lib/mlt'
 import {
@@ -302,8 +306,8 @@ export default function GameHistoryPage() {
       if (isTriviaGame(gameType)) {
         const [{ data: plrs }, { data: rds }, { data: ans }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
-          supabase.from('trivia_answers').select('*').eq('game_id', gameCode),
+          supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
+          supabase.from('trivia_answers').select(TRIVIA_ANSWER_SELECT).eq('game_id', gameCode),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])
@@ -324,11 +328,11 @@ export default function GameHistoryPage() {
         // key once a game is finished — so the post-game key reveal still works.
         const [{ data: plrs }, { data: roleRows }, boardData, { data: guessRows }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('codewords_player_roles').select('*').eq('game_id', gameCode),
+          supabase.from('codewords_player_roles').select(CODEWORDS_PLAYER_ROLE_SELECT).eq('game_id', gameCode),
           fetchCodewordsBoard(gameCode),
           supabase
             .from('codewords_guesses')
-            .select('*')
+            .select(CODEWORDS_GUESS_SELECT)
             .eq('game_id', gameCode)
             .order('created_at', { ascending: true }),
         ])
@@ -419,14 +423,13 @@ export default function GameHistoryPage() {
       }
 
       if (isCrazyEightsGame(gameType)) {
-        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+        // Hands via /api/crazy-eights/hands: `cards` is no longer read directly by the browser.
+        // This page only renders finished games, and the route reveals full hands once a game is
+        // finished, so the post-game summary is unchanged.
+        const [{ data: plrs }, { data: sessionData }, handRows] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('crazy_eights_sessions').select(CRAZY8_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-          supabase
-            .from('crazy_eights_player_hands')
-            .select(CRAZY8_PLAYER_HANDS_SELECT)
-            .eq('game_id', gameCode)
-            .order('player_order'),
+          fetchCrazyEightsHands(gameCode, {}),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])
@@ -443,14 +446,15 @@ export default function GameHistoryPage() {
       }
 
       if (isUnoGame(gameType)) {
-        const [{ data: plrs }, { data: sessionData }, { data: handRows }] = await Promise.all([
+        // Hands via /api/uno/hands: `cards` is no longer read directly by the browser. The route
+        // reveals full hands only once the game is FINISHED, so the post-game summary is
+        // unchanged. This page also renders unfinished games (see the "Open game" link above),
+        // and for those every hand comes back redacted — UnoSessionSummary therefore refuses to
+        // render standings unless the game is finished, rather than showing everyone at 0 cards.
+        const [{ data: plrs }, { data: sessionData }, handRows] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
           supabase.from('uno_sessions').select(UNO_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-          supabase
-            .from('uno_player_hands')
-            .select(UNO_PLAYER_HANDS_SELECT)
-            .eq('game_id', gameCode)
-            .order('player_order'),
+          fetchUnoHands(gameCode, {}),
         ])
         setGame(gameData)
         setPlayers(plrs ?? [])
@@ -545,10 +549,13 @@ export default function GameHistoryPage() {
       }
 
       if (isTwoTruthsGame(gameType)) {
-        const [{ data: plrs }, { data: rds }, { data: guessRows }, { data: statementRows }] = await Promise.all([
+        // No `ttl_guesses` read here: guessed_index/is_correct/points are revoked from the anon
+        // role (they leaked the lie to players who had not guessed yet). Every guess from a
+        // revealed round is folded into `rounds.ttl_metadata.guesses` by the server, which is
+        // where a finished session's results now come from.
+        const [{ data: plrs }, { data: rds }, { data: statementRows }] = await Promise.all([
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
-          supabase.from('ttl_guesses').select(TTL_GUESS_SELECT).eq('game_id', gameCode),
+          supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
           supabase.from('ttl_statements').select(TTL_STATEMENT_SELECT).eq('game_id', gameCode),
         ])
         setGame(gameData)
@@ -559,7 +566,7 @@ export default function GameHistoryPage() {
         setConfessions([])
         setHotSeatSubmissions([])
         resetSpecializedState()
-        setTtlGuesses((guessRows as TtlGuess[]) ?? [])
+        setTtlGuesses(revealedTtlGuesses((rds ?? []) as Round[]))
         setTtlStatements((statementRows as TtlStatement[]) ?? [])
         setLoadState('ready')
         return
@@ -588,11 +595,11 @@ export default function GameHistoryPage() {
 
       const [{ data: parts }, { data: plrs }, { data: rds }, { data: vts }, { data: confs }, { data: subs }] =
         await Promise.all([
-          supabase.from('participants').select('*').eq('game_id', gameCode).order('display_order'),
+          supabase.from('participants').select(PARTICIPANT_SELECT).eq('game_id', gameCode).order('display_order'),
           supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-          supabase.from('rounds').select('*').eq('game_id', gameCode).order('round_number'),
-          supabase.from('votes').select('*').eq('game_id', gameCode),
-          supabase.from('confessions').select('*').eq('game_id', gameCode).order('created_at'),
+          supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).order('round_number'),
+          supabase.from('votes').select(VOTE_SELECT).eq('game_id', gameCode),
+          supabase.from('confessions').select(CONFESSION_SELECT).eq('game_id', gameCode).order('created_at'),
           supabase.from('hot_seat_submissions').select('id, round_id, text, submission_type').eq('game_id', gameCode),
         ])
 

@@ -107,6 +107,7 @@ export function QuickDrawGuessPlayPanel({
   words,
   guesses,
   myPlayerId,
+  myWord,
   myResumeToken,
   secondsLeft,
   breakLeft,
@@ -122,6 +123,14 @@ export function QuickDrawGuessPlayPanel({
   words: QuickDrawGuessWord[]
   guesses: QuickDrawGuessGuess[]
   myPlayerId: string | null
+  /**
+   * The secret prompt, fetched through /api/quick-draw/my-word by the parent view when the local
+   * player is the drawer. It is NOT on `session` any more: `current_word` (and `used_words`,
+   * whose last entry is the same word) is revoked from anon by migration 20260807140000, precisely
+   * because shipping it to every guesser and only *hiding* it in the UI was not a control at all.
+   * null = not loaded yet (or not ours to see).
+   */
+  myWord?: string | null
   myResumeToken: string | null
   secondsLeft: number
   breakLeft: number
@@ -151,6 +160,11 @@ export function QuickDrawGuessPlayPanel({
     strokes: [],
   }) as QuickDrawDrawingStrokeData
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Per-word counter from the session (a generated `cardinality(used_words)` column). The word
+  // itself can no longer be a canvas reset key — nobody but the drawer has it — and this ticks on
+  // the same events, including the mid-turn rotations that leave `turn_index` alone.
+  const wordSeq = session.word_seq ?? 0
 
   const syncStrokes = (data: QuickDrawDrawingStrokeData) => {
     if (!myResumeToken || !isDrawer) return
@@ -240,10 +254,11 @@ export function QuickDrawGuessPlayPanel({
           {isDrawer ? (
             <div className="space-y-2">
               <LiveDrawingCanvas
-                prompt={session.current_word ?? ''}
+                // Neutral placeholder rather than an empty prompt while the route round-trips.
+                prompt={myWord ?? '…'}
                 readOnly={false}
                 onStrokeChange={syncStrokes}
-                resetKey={`${session.turn_index}-${session.current_word}`}
+                resetKey={`${session.turn_index}-${wordSeq}`}
               />
               {!isIndividual && onSkip && (
                 <button
@@ -274,7 +289,7 @@ export function QuickDrawGuessPlayPanel({
               <LiveDrawingCanvas
                 strokeData={strokeData}
                 readOnly
-                resetKey={`${session.turn_index}-${session.current_word}-${strokeData.strokes?.length ?? 0}`}
+                resetKey={`${session.turn_index}-${wordSeq}-${strokeData.strokes?.length ?? 0}`}
               />
             </div>
           )}
