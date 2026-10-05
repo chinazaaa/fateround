@@ -36,7 +36,30 @@ function hostOf(url: string | undefined): string | null {
   }
 }
 
-export function resolveAppEnv(env: NodeJS.ProcessEnv = process.env): AppEnv {
+/**
+ * The ambient environment, built so the CLIENT bundle can actually see the app URL.
+ *
+ * Next.js replaces `NEXT_PUBLIC_*` in browser code at BUILD time, and only where the source
+ * reads the literal member expression `process.env.NEXT_PUBLIC_APP_URL`. Reading it off a
+ * variable — which is what the `env` parameter below is — is invisible to that substitution,
+ * so in the browser it was `undefined` and every client call fell through to 'dev'. Production
+ * browser errors were therefore tagged `environment: dev` in Sentry, making prod and dev
+ * indistinguishable there (observed on fateround.com events, Sentry issues JAVASCRIPT-NEXTJS-F
+ * and -K).
+ *
+ * `process.env.NEXT_PUBLIC_APP_URL` below must stay spelled out EXACTLY like that — destructure
+ * it, alias it, or index it dynamically and the browser silently regresses to 'dev'. There is a
+ * test asserting the literal is still present, because nothing else would catch it.
+ *
+ * On the server this is a no-op: `process.env` already holds the value at runtime. `APP_ENV` is
+ * deliberately NOT given the same treatment — it is not a `NEXT_PUBLIC_` var, so it is a
+ * server-only override by design and is correctly absent in the browser.
+ */
+function ambientEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL }
+}
+
+export function resolveAppEnv(env: NodeJS.ProcessEnv = ambientEnv()): AppEnv {
   const explicit = env.APP_ENV?.trim().toLowerCase()
   if (explicit === 'prod' || explicit === 'production') return 'prod'
   if (explicit === 'dev' || explicit === 'development' || explicit === 'preview') return 'dev'
@@ -47,6 +70,6 @@ export function resolveAppEnv(env: NodeJS.ProcessEnv = process.env): AppEnv {
 }
 
 /** True only on the real production deployment. Use this to gate background work. */
-export function isProdDeployment(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isProdDeployment(env: NodeJS.ProcessEnv = ambientEnv()): boolean {
   return resolveAppEnv(env) === 'prod'
 }
