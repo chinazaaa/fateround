@@ -1,4 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  YAHTZEE_BONUS_POINTS,
+  YAHTZEE_LOWER_CATEGORIES,
+  YAHTZEE_UPPER_BONUS_POINTS,
+  YAHTZEE_UPPER_BONUS_THRESHOLD,
+  totalScore,
+  upperBonus,
+  upperScore,
+} from './yahtzee-scoring'
+export {
+  YAHTZEE_BONUS_POINTS,
+  YAHTZEE_LOWER_CATEGORIES,
+  YAHTZEE_UPPER_BONUS_POINTS,
+  YAHTZEE_UPPER_BONUS_THRESHOLD,
+  totalScore,
+  upperBonus,
+  upperScore,
+}
 import { unlockNow } from '@/lib/trophies/instant-unlock'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
@@ -10,10 +28,7 @@ export { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS }
 export const YAHTZEE_DICE_COUNT = 5
 export const YAHTZEE_ROLLS_PER_TURN = 3
 
-export const YAHTZEE_UPPER_BONUS_THRESHOLD = 63
-export const YAHTZEE_UPPER_BONUS_POINTS = 35
 /** Flat points for each extra Yahtzee after the first (standard Hasbro Yahtzee Bonus). */
-export const YAHTZEE_BONUS_POINTS = 100
 
 export const YAHTZEE_CATEGORY_LABELS: Record<YahtzeeCategory, string> = {
   ones: 'Ones',
@@ -33,15 +48,6 @@ export const YAHTZEE_CATEGORY_LABELS: Record<YahtzeeCategory, string> = {
 
 export const YAHTZEE_UPPER_CATEGORIES: YahtzeeCategory[] = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 
-export const YAHTZEE_LOWER_CATEGORIES: YahtzeeCategory[] = [
-  'three_kind',
-  'four_kind',
-  'full_house',
-  'small_straight',
-  'large_straight',
-  'yahtzee',
-  'chance',
-]
 
 export const YAHTZEE_ALL_CATEGORIES: YahtzeeCategory[] = [
   'ones',
@@ -168,35 +174,8 @@ export function categoryScore(
   }
 }
 
-export function upperScore(points: YahtzeeCategoryPoints): number {
-  return (
-    (points.ones ?? 0) +
-    (points.twos ?? 0) +
-    (points.threes ?? 0) +
-    (points.fours ?? 0) +
-    (points.fives ?? 0) +
-    (points.sixes ?? 0)
-  )
-}
 
-export function upperBonus(points: YahtzeeCategoryPoints): number {
-  const u = upperScore(points)
-  return u >= YAHTZEE_UPPER_BONUS_THRESHOLD ? YAHTZEE_UPPER_BONUS_POINTS : 0
-}
 
-export function totalScore(points: YahtzeeCategoryPoints, bonusYahtzees = 0): number {
-  const lower =
-    (points.three_kind ?? 0) +
-    (points.four_kind ?? 0) +
-    (points.full_house ?? 0) +
-    (points.small_straight ?? 0) +
-    (points.large_straight ?? 0) +
-    (points.yahtzee ?? 0) +
-    (points.chance ?? 0)
-
-  // Each Yahtzee Bonus is a flat 100, scored separately from the categories.
-  return upperScore(points) + upperBonus(points) + lower + Math.max(0, bonusYahtzees) * YAHTZEE_BONUS_POINTS
-}
 
 export function hasAnyUnusedCategory(points: YahtzeeCategoryPoints): boolean {
   return YAHTZEE_ALL_CATEGORIES.some((c) => points[c] == null)

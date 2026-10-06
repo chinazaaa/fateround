@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { FactsContext } from './index'
-import { parseWordleRoomSolutionWords, wordleRoomMaxAttemptsForWord } from '@/lib/wordle-room'
+import { parseWordleRoomSolutionWords, wordleRoomMaxAttemptsForWord } from '@/lib/wordle-room-solution'
 
 /**
  * Multiplayer Wordle per-game facts, derived at finish from `wordle_room_progress`

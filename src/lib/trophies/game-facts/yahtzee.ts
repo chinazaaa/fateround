@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { YahtzeeCategoryPoints } from '@/types'
-import { YAHTZEE_LOWER_CATEGORIES, YAHTZEE_UPPER_BONUS_POINTS, totalScore, upperBonus, upperScore } from '@/lib/yahtzee'
+import { YAHTZEE_LOWER_CATEGORIES, YAHTZEE_UPPER_BONUS_POINTS, totalScore, upperBonus, upperScore } from '@/lib/yahtzee-scoring'
 import type { FactsContext } from './index'
 
 /**
