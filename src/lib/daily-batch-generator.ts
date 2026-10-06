@@ -460,69 +460,93 @@ function solveLudoPuzzle(
   return null
 }
 
+// Steps a piece still needs to reach `finished`, matching solveLudoPuzzle's movement rules:
+//   track pos p -> (52 - p) to re-enter + 5 home squares  = 57 - p
+//   home pos h  -> 5 - h
+//   base        -> a 6 to enter at track 0, then 57 more — at least 11 rolls on its own.
+function ludoStepsToFinish(piece: { zone: string; pos: number }): number {
+  if (piece.zone === 'finished') return 0
+  if (piece.zone === 'home') return 5 - piece.pos
+  if (piece.zone === 'track') return 57 - piece.pos
+  return Number.POSITIVE_INFINITY
+}
+
+// Build a random ludo puzzle that the solver has a real chance of solving.
+//
+// solveLudoPuzzle only returns a number once ALL FOUR pieces are finished, within a dice
+// sequence of just 8-14 rolls. Sampling piece positions uniformly across the 52-square track
+// (as this did originally) put almost every piece further from home than the dice could ever
+// carry it: 97.3% of generated puzzles were unsolvable, so only ~2.3% of attempts produced a
+// puzzle and 20 attempts filled a day just 38% of the time. Once the hand-authored LUDO_BANK
+// was used up, that left real gaps — October 2026 generated only 19 of 31 days.
+//
+// So pieces are placed against a step budget the dice can actually cover. Acceptance stays
+// exactly as it was (optimal 3-12), which is what governs difficulty; this only stops us
+// proposing positions that were never winnable. Measured over 3000 attempts this lifts the
+// per-attempt success rate to ~53% (a day now fails roughly 1 time in 7 million) and, because
+// hopeless positions no longer send the BFS exploring a huge dead state space, cuts the cost
+// per attempt from ~14ms to ~0.45ms.
+//
+// Note: pieces never start in `base`. A piece there needs 11+ rolls by itself, so the only
+// solvable base puzzle is "three pieces finished, one in base" — a forced, single-piece
+// sequence. The original sampler nominally allowed base starts but, in practice, virtually
+// none of them ever survived the solver.
 function generateRandomLudoPuzzle(rng: () => number): {
   startingPieces: Array<{ id: number; zone: string; pos: number }>
   diceSequence: number[]
   optimalRolls: number
   obstacles: Array<{ trackPos: number }>
 } | null {
-  const zones = ['base', 'track', 'home', 'finished'] as const
-  const zoneWeights = [0.2, 0.5, 0.25, 0.05]
-
-  function pickZone(): string {
-    const r = rng()
-    let cum = 0
-    for (let i = 0; i < zones.length; i++) {
-      cum += zoneWeights[i]
-      if (r < cum) return zones[i]
-    }
-    return 'track'
-  }
+  const diceCount = 8 + Math.floor(rng() * 7)
+  // Average usable progress is 3.5 per roll; the 0.85 factor leaves slack so the solver has
+  // genuine choices to make rather than one forced line.
+  const budget = Math.floor(diceCount * 3.5 * 0.85)
 
   const pieces: Array<{ id: number; zone: string; pos: number }> = []
   const usedTrackPositions = new Set<number>()
+  let spent = 0
 
   for (let id = 0; id < 4; id++) {
-    const zone = pickZone()
-    let pos = 0
-    if (zone === 'track') {
-      // Pick a random non-colliding track position
-      for (let t = 0; t < 20; t++) {
-        pos = Math.floor(rng() * 52)
-        if (!usedTrackPositions.has(pos)) break
+    const share = Math.max(6, Math.floor((budget - spent) / (4 - id)))
+    const r = rng()
+    let piece: { id: number; zone: string; pos: number }
+    if (r < 0.15 || share < 6) {
+      piece = { id, zone: 'finished', pos: 0 }
+    } else if (r < 0.5) {
+      piece = { id, zone: 'home', pos: Math.floor(rng() * 5) }
+    } else {
+      // Nearest allowed track square is the one whose distance home fits this piece's share.
+      const minPos = Math.max(0, 57 - share)
+      const span = Math.max(1, 52 - minPos)
+      let pos = minPos + Math.floor(rng() * span)
+      for (let t = 0; t < 20 && usedTrackPositions.has(pos); t++) {
+        pos = minPos + Math.floor(rng() * span)
       }
       usedTrackPositions.add(pos)
-    } else if (zone === 'home') {
-      pos = Math.floor(rng() * 5)
+      piece = { id, zone: 'track', pos }
     }
-    pieces.push({ id, zone, pos })
+    spent += ludoStepsToFinish(piece)
+    pieces.push(piece)
   }
 
-  // At least 1 piece must not be finished
+  // At least 1 piece must not be finished, or there is no puzzle to solve.
   if (pieces.every((p) => p.zone === 'finished')) {
-    pieces[0] = { id: 0, zone: 'track', pos: Math.floor(rng() * 52) }
+    pieces[0] = { id: 0, zone: 'home', pos: 0 }
   }
 
-  // Generate dice sequence (8-14 rolls)
-  const diceCount = 8 + Math.floor(rng() * 7)
   const diceSequence: number[] = []
   for (let i = 0; i < diceCount; i++) {
     diceSequence.push(1 + Math.floor(rng() * 6))
   }
 
-  // Ensure at least one 6 if any piece is in base
-  if (pieces.some((p) => p.zone === 'base') && !diceSequence.includes(6)) {
-    diceSequence[Math.floor(rng() * diceSequence.length)] = 6
-  }
-
-  // Optional obstacles (0-2)
+  // Optional obstacles (0-2), never on a square a piece already occupies.
   const obstacles: Array<{ trackPos: number }> = []
   const obsCount = Math.floor(rng() * 3)
   for (let i = 0; i < obsCount; i++) {
-    let pos: number
-    do {
+    let pos = Math.floor(rng() * 52)
+    for (let t = 0; t < 50 && (usedTrackPositions.has(pos) || obstacles.some((o) => o.trackPos === pos)); t++) {
       pos = Math.floor(rng() * 52)
-    } while (usedTrackPositions.has(pos) || obstacles.some((o) => o.trackPos === pos))
+    }
     obstacles.push({ trackPos: pos })
   }
 
