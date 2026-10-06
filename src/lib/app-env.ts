@@ -56,7 +56,19 @@ function hostOf(url: string | undefined): string | null {
  * server-only override by design and is correctly absent in the browser.
  */
 function ambientEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL }
+  // Only these two keys are ever consulted below, and both are named explicitly rather than
+  // spread from `process.env`. That is deliberate: a bare `process.env` reference in code that
+  // reaches the browser relies on the bundler shimming the `process` global, which is a bet this
+  // function does not need to take. Naming the keys means webpack substitutes each one and no
+  // `process` object has to exist client-side at all.
+  return {
+    // `NODE_ENV` is named only to satisfy `ProcessEnv`, which Next declares it as required on.
+    // It is not consulted below — see the comment at the top of this file for why NODE_ENV is
+    // the wrong signal for which DEPLOYMENT this is.
+    NODE_ENV: process.env.NODE_ENV,
+    APP_ENV: process.env.APP_ENV,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  }
 }
 
 export function resolveAppEnv(env: NodeJS.ProcessEnv = ambientEnv()): AppEnv {
