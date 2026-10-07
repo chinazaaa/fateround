@@ -506,7 +506,10 @@ export function RummyStandingsBox({
   hands: RummyPlayerHand[]
   myPlayerId: string | null
 }) {
-  const rows = session.turn_order.map((id) => {
+  // Guarded for the same reason as WhotPlaySurface: the type says `string[]`, production has
+  // shown otherwise. This is the only other unguarded `session.turn_order` in the components —
+  // every other call site already spells `?? []`.
+  const rows = (session.turn_order ?? []).map((id) => {
     const p = players.find((x) => x.id === id)
     const hand = hands.find((h) => h.player_id === id)
     const cards = (hand?.cards as RummyCard[] | null) ?? []
