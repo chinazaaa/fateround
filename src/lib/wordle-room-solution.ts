@@ -14,6 +14,11 @@ export function wordleRoomMaxAttemptsForWord(word: string): number {
   return wordleMaxAttempts(normalizeWordleWord(word).length)
 }
 
+/**
+ * Tolerate both storage shapes in wordle_room_solutions.words: the legacy `string[]`
+ * (old rounds) and the current `{word, hint}[]` (new rounds after the sequence enrichment).
+ * Returns { words, hints } aligned by index, hints defaulting to '' when unavailable.
+ */
 export function parseWordleRoomSolutionWords(raw: unknown): { words: string[]; hints: string[] } {
   const words: string[] = []
   const hints: string[] = []

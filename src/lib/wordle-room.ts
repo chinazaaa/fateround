@@ -33,7 +33,7 @@ import {
   WORDLE_TRAVEL,
 } from '@/data/daily-banks/wordle-categories'
 import type { WordleCategoryId, WordleLetterState } from '@/lib/daily-wordle'
-import { normalizeWordleWord, wordleBasePoints, wordleMaxAttempts, gradeWordleGuess } from '@/lib/daily-wordle'
+import { normalizeWordleWord, wordleBasePoints, gradeWordleGuess } from '@/lib/daily-wordle'
 import { WORDLE_ROOM_MIN_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_DEFAULT_MAX_PLAYERS } from '@/lib/player-limits'
 export { WORDLE_ROOM_MIN_PLAYERS, WORDLE_ROOM_MAX_PLAYERS, WORDLE_ROOM_DEFAULT_MAX_PLAYERS }
 
@@ -203,7 +203,6 @@ export function clampWordleRoomTimer(seconds: unknown): number {
   return (WORDLE_ROOM_TIMER_OPTIONS as readonly number[]).includes(n) ? n : WORDLE_ROOM_DEFAULT_TIMER
 }
 
-
 // ── Sequence generation — deterministic per (seed, category) ─────────────────
 
 function xorshift(seed: number) {
@@ -245,12 +244,6 @@ export function buildWordleRoomSequence(
     return { word: normalizeWordleWord(e.word), hint: e.hint }
   })
 }
-
-/**
- * Tolerate both storage shapes in wordle_room_solutions.words: the legacy `string[]`
- * (old rounds) and the current `{word, hint}[]` (new rounds after the sequence enrichment).
- * Returns { words, hints } aligned by index, hints defaulting to '' when unavailable.
- */
 
 export function parseWordleRoomMetadata(raw: unknown): WordleRoomMetadata | null {
   if (!raw || typeof raw !== 'object') return null

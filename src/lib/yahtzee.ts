@@ -28,8 +28,6 @@ export { YAHTZEE_DEFAULT_MAX_PLAYERS, YAHTZEE_MAX_PLAYERS, YAHTZEE_MIN_PLAYERS }
 export const YAHTZEE_DICE_COUNT = 5
 export const YAHTZEE_ROLLS_PER_TURN = 3
 
-/** Flat points for each extra Yahtzee after the first (standard Hasbro Yahtzee Bonus). */
-
 export const YAHTZEE_CATEGORY_LABELS: Record<YahtzeeCategory, string> = {
   ones: 'Ones',
   twos: 'Twos',
@@ -47,7 +45,6 @@ export const YAHTZEE_CATEGORY_LABELS: Record<YahtzeeCategory, string> = {
 }
 
 export const YAHTZEE_UPPER_CATEGORIES: YahtzeeCategory[] = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
-
 
 export const YAHTZEE_ALL_CATEGORIES: YahtzeeCategory[] = [
   'ones',
@@ -173,9 +170,6 @@ export function categoryScore(
       return total
   }
 }
-
-
-
 
 export function hasAnyUnusedCategory(points: YahtzeeCategoryPoints): boolean {
   return YAHTZEE_ALL_CATEGORIES.some((c) => points[c] == null)

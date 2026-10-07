@@ -11,6 +11,7 @@ import type { YahtzeeCategory, YahtzeeCategoryPoints } from '@/types'
 
 export const YAHTZEE_UPPER_BONUS_THRESHOLD = 63
 export const YAHTZEE_UPPER_BONUS_POINTS = 35
+/** Flat points for each extra Yahtzee after the first (standard Hasbro Yahtzee Bonus). */
 export const YAHTZEE_BONUS_POINTS = 100
 
 export const YAHTZEE_LOWER_CATEGORIES: YahtzeeCategory[] = [
