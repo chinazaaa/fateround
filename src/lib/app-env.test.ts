@@ -74,9 +74,12 @@ describe('client-bundle inlining', () => {
     }
   })
 
-  it('still spells out process.env.NEXT_PUBLIC_APP_URL literally, which is what Next.js inlines', () => {
+  it('still ASSIGNS from process.env.NEXT_PUBLIC_APP_URL literally, which is what Next.js inlines', () => {
     const source = readFileSync(new URL('./app-env.ts', import.meta.url), 'utf8')
-    expect(source).toContain('process.env.NEXT_PUBLIC_APP_URL')
+    // Matches the assignment, not just the string. `toContain` would be satisfied by the
+    // comment above `ambientEnv()`, which mentions the literal — so the regression this
+    // guards (destructuring it, or reading it off a variable) could sail straight through.
+    expect(source).toMatch(/NEXT_PUBLIC_APP_URL:\s*process\.env\.NEXT_PUBLIC_APP_URL/)
   })
 
   it('does not let the ambient value leak into an explicitly passed env', () => {
