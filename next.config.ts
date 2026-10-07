@@ -86,8 +86,9 @@ const nextConfig: NextConfig = {
  *
  * It is ON in CI. `build-push-image.yml` passes SENTRY_ORG/SENTRY_PROJECT/SENTRY_URL as build
  * args and mounts SENTRY_AUTH_TOKEN as a BuildKit secret (never a build arg — those are
- * recoverable from image history), and `@sentry/cli` is approved in pnpm-workspace.yaml so its
- * postinstall can fetch the uploader binary.
+ * recoverable from image history). The uploader binary needs no install-script approval: it
+ * arrives as a platform optionalDependency, which is why `@sentry/cli` stays `false` in
+ * pnpm-workspace.yaml.
  */
 const sentryUploadEnabled = Boolean(process.env.SENTRY_AUTH_TOKEN)
 
@@ -109,10 +110,18 @@ export default withSentryConfig(nextConfig, {
   // dependencies and Next.js-internal code".
   widenClientFileUpload: true,
   // `.git` is in .dockerignore, so inside the image the uploader has no repository to infer a
-  // release from. Left to guess it would upload under a different name than the SDK reports at
-  // runtime (`NEXT_PUBLIC_SENTRY_RELEASE`, the same GIT_SHA), the names would never match, and
-  // the maps would be silently useless. Pin both ends to the same value.
-  release: { name: process.env.NEXT_PUBLIC_SENTRY_RELEASE },
+  // release from. Pinning it to the same value the SDK reports at runtime keeps releases and
+  // commits coherent in Sentry. Note this is NOT what makes symbolication work — the plugin
+  // matches maps to events by a per-chunk debug ID it injects, and the release is a label — so
+  // getting it wrong would cost release tagging, not readable stack traces.
+  // `|| undefined` so an empty GIT_SHA (local builds) falls back to the plugin's own detection
+  // rather than pinning the release to the empty string.
+  release: {
+    name: process.env.NEXT_PUBLIC_SENTRY_RELEASE || undefined,
+    // Without a token there is nothing to create a release with; skipping it keeps local
+    // `pnpm build` from warning three times (client, server, edge) about the missing auth.
+    create: sentryUploadEnabled,
+  },
   sourcemaps: {
     disable: !sentryUploadEnabled,
     // Upload them, then delete them from the output. Without this the .map files ship inside
