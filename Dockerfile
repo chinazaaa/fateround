@@ -5,10 +5,7 @@
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN npm install -g pnpm@10
-# pnpm-workspace.yaml carries the `allowBuilds` approvals. It MUST be copied before the
-# install: without it pnpm does not know @sentry/cli's postinstall is approved, skips the
-# native-binary download, and the source-map upload later fails with a missing binary.
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 

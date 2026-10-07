@@ -98,8 +98,21 @@ export default withSentryConfig(nextConfig, {
   // `fateround-ss` lives in Sentry's EU region. The uploader defaults to https://sentry.io/,
   // which would authenticate against the wrong instance and fail, so this must be set.
   sentryUrl: process.env.SENTRY_URL || 'https://de.sentry.io/',
-  // Don't narrate the upload (or its absence) on every build.
-  silent: true,
+  // Deliberately NOT silent. A source-map upload that fails does so without breaking the
+  // build, so silencing it means the only symptom is unreadable stack traces weeks later —
+  // which is the exact failure this whole change exists to end.
+  silent: false,
+  // Upload the top-level client chunks too, not just the app's own modules. This defaults to
+  // FALSE, and leaving it off would have made this change pointless: every frame in the stack
+  // traces that motivated it lives in exactly those chunks (`3974-….js`, `13b52376-….js`), and
+  // the docs are explicit that disabling it "will leave you without readable stacktraces for
+  // dependencies and Next.js-internal code".
+  widenClientFileUpload: true,
+  // `.git` is in .dockerignore, so inside the image the uploader has no repository to infer a
+  // release from. Left to guess it would upload under a different name than the SDK reports at
+  // runtime (`NEXT_PUBLIC_SENTRY_RELEASE`, the same GIT_SHA), the names would never match, and
+  // the maps would be silently useless. Pin both ends to the same value.
+  release: { name: process.env.NEXT_PUBLIC_SENTRY_RELEASE },
   sourcemaps: {
     disable: !sentryUploadEnabled,
     // Upload them, then delete them from the output. Without this the .map files ship inside
