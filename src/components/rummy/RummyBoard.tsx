@@ -71,7 +71,7 @@ export function RummyGamePanel({
   onDiscard?: (cardId: string) => void
   onGoOut?: (melds: string[][], discardCardId: string | null) => void
 }) {
-  const turnPlayerId = session.turn_order[session.current_turn_index] ?? null
+  const turnPlayerId = (session.turn_order ?? [])[session.current_turn_index] ?? null
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
   const topDiscard = session.top_discard
   const drawCount = (session.draw_pile as RummyCard[] | null | undefined)?.length ?? 0
@@ -87,7 +87,7 @@ export function RummyGamePanel({
     return -1
   }
 
-  const seats: TurnSeat[] = session.turn_order
+  const seats: TurnSeat[] = (session.turn_order ?? [])
     .map((id) => ({
       id,
       p: players.find((x) => x.id === id),

@@ -42,6 +42,7 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { isCompleteRummySessionRow } from '@/lib/supabase-selects'
 
 /**
  * Rummy player view — full lifecycle from join → lobby → active table → finished.
@@ -140,6 +141,9 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // A truncated realtime payload (TOAST-ed arrays omitted) would blank the board and, by
+    // reporting success here, suppress the reconciling reload. Reject it so the caller reloads.
+    if (!isCompleteRummySessionRow(row)) return false
     const next = row as unknown as RummySession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
@@ -241,7 +245,7 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
 
   const cfg = gameTypeConfig('rummy')
   const winner = players.find((p) => p.id === session?.winner_player_id)
-  const turnPlayerId = session?.turn_order[session.current_turn_index] ?? null
+  const turnPlayerId = (session?.turn_order ?? [])[session.current_turn_index] ?? null
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))

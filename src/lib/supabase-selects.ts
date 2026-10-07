@@ -154,6 +154,43 @@ export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
   return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
 }
 
+/**
+ * Same TOAST-truncation hazard as {@link UNO_SESSION_NOT_NULL_KEYS}, for Whot.
+ *
+ * Both columns are `uuid[] NOT NULL` in the schema (`0064_whot.sql`,
+ * `20260629120000_whot_finish_order.sql`), so a pushed row carrying either as null/undefined is
+ * necessarily a partial realtime payload, never a real state. Applying one blanks the turn rail
+ * AND `top_card`, `required_shape`, `phase` and `winner_player_id` with it — and because the
+ * apply handler reported success, the reconciling reload is suppressed and nothing re-fetches
+ * until the fallback poll.
+ *
+ * `draw_pile` is deliberately NOT listed, for the same reason as Uno's: it is revoked from anon,
+ * so it never arrives over realtime and gating on it would force a reload on every payload.
+ */
+export const WHOT_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
+
+/** True when a pushed `whot_sessions` row carries every NOT-NULL column it should (i.e. is not a
+ *  TOAST-truncated partial realtime payload — see {@link WHOT_SESSION_NOT_NULL_KEYS}). */
+export function isCompleteWhotSessionRow(row: Record<string, unknown>): boolean {
+  return WHOT_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
+/**
+ * Same hazard again, for Rummy. `turn_order` is `uuid[] NOT NULL` (`20261104120000_rummy.sql`).
+ *
+ * Only `turn_order` is listed even though `draw_pile`/`discard_pile` are also NOT NULL arrays:
+ * those two are large and TOASTed, but unlike Whot's they are NOT revoked and DO arrive, so a
+ * payload that legitimately does not touch them still carries them. Gating on `turn_order` alone
+ * is what distinguishes truncation from a normal update here.
+ */
+export const RUMMY_SESSION_NOT_NULL_KEYS = ['turn_order'] as const
+
+/** True when a pushed `rummy_sessions` row is not a TOAST-truncated partial realtime payload —
+ *  see {@link RUMMY_SESSION_NOT_NULL_KEYS}. */
+export function isCompleteRummySessionRow(row: Record<string, unknown>): boolean {
+  return RUMMY_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 export const LUDO_SESSION_SELECT =

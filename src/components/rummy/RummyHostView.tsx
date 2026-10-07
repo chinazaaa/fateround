@@ -333,7 +333,8 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const hostHand = hostPlayerId
     ? ((hands.find((h) => h.player_id === hostPlayerId)?.cards as import('@/types').RummyCard[] | null) ?? null)
     : null
-  const isHostTurn = hostPlays && session ? session.turn_order[session.current_turn_index] === hostPlayerId : false
+  const isHostTurn =
+    hostPlays && session ? (session.turn_order ?? [])[session.current_turn_index] === hostPlayerId : false
 
   // Active play mounts inside HostRoomShell — supplies the `.fr-room fr-room-poll` → `.pr-stage`
   // ancestor the shared card-table CSS scopes under. See RummyPlayerView for the same note.
