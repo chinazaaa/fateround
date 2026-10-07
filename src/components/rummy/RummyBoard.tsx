@@ -506,9 +506,9 @@ export function RummyStandingsBox({
   hands: RummyPlayerHand[]
   myPlayerId: string | null
 }) {
-  // Guarded for the same reason as WhotPlaySurface: the type says `string[]`, production has
-  // shown otherwise. This is the only other unguarded `session.turn_order` in the components —
-  // every other call site already spells `?? []`.
+  // Guarded for the same reason as WhotPlaySurface: truncated realtime payloads drop TOAST-ed
+  // columns, so the `NOT NULL` column arrives absent. The gate in `applySessionRow` is the real
+  // defence; this is the second line, for views that might not have one.
   const rows = (session.turn_order ?? []).map((id) => {
     const p = players.find((x) => x.id === id)
     const hand = hands.find((h) => h.player_id === id)

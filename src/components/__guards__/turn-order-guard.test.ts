@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -18,28 +18,44 @@ import { describe, expect, it } from 'vitest'
  * chain broken across lines by the formatter. It passed, and meant nothing. This version
  * normalises whitespace first and covers the forms that actually appear.
  *
- * `src/app/play-solo` is excluded deliberately: those clients build state locally and already
- * reject a bad shape at parse time (`if (!parsed?.session?.turn_order ...) return null`) before
- * any access, and no realtime payload reaches them.
+ * `src/app/play-solo` is excluded deliberately. All five solo clients (whot, crazy-eights, uno,
+ * ludo, yahtzee) build state locally from localStorage and reject a bad shape at `loadState`
+ * (`if (!parsed?.session?.turn_order ...) return null`) before any access; no realtime payload
+ * reaches them. Note three of the five check truthiness only, not `Array.isArray` — fine for
+ * this hazard, since the absent-key case is what throws.
  */
 
+// `src/lib` is NOT a root, and that is a judgement rather than an oversight. It holds ~90
+// dereferences, almost all in server code that reads a row through an explicit REST select
+// where the column is always present — guarding them would be a large change that buries the
+// signal this test exists to carry. The three that DO read rows at a distance
+// (`whot-bot-driver`, `monopoly-bot-driver`, `mahjong-scoring`) are guarded by hand instead.
 const ROOTS = ['src/components', 'src/hooks', 'src/app'].map((r) => join(process.cwd(), r))
-const EXCLUDED = join(process.cwd(), 'src/app/play-solo')
+const EXCLUDED = join(process.cwd(), 'src/app/play-solo') + sep
 
 /**
- * Strip comments without corrupting strings. A naive regex cannot do this: a `//` inside a string
- * literal silences the rest of a real line, and a `/*` inside one blanks out everything to the
- * next `*` + `/`. It also avoids the inverse trap — the first version of this guard failed on its
- * OWN documentation, because the fix's comment quotes the production error text verbatim.
+ * Blank out COMMENTS ONLY, leaving string and template contents in place.
+ *
+ * An earlier version also blanked strings, which looked tidier and was worse: a stray
+ * apostrophe in JSX text ("don't", "Mafia's") put the scanner into string mode for the rest of
+ * the file, so six files — about 2,600 lines — were permanently invisible to it. A guard that
+ * silently stops looking is worse than no guard. Leaving strings in means a string that happens
+ * to contain `session.turn_order.filter(...)` is a FALSE POSITIVE instead: loud, rare, and
+ * fixable. That is the right direction to fail in.
+ *
+ * Regex literals are tracked because `/…\/\//` would otherwise look like a line comment and
+ * swallow the rest of its line. A `/` starts a regex only where a value cannot already have
+ * ended — after an operator, `(`, `,`, `[`, `{`, `;`, `:`, or `return` — which is the standard
+ * heuristic and sufficient here.
  */
-function stripCommentsAndStrings(source: string): string {
+function stripComments(source: string): string {
   let out = ''
   let i = 0
-  type Mode = 'code' | 'line' | 'block' | 'single' | 'double' | 'template'
-  let mode: Mode = 'code'
+  let mode: 'code' | 'line' | 'block' | 'single' | 'double' | 'template' | 'regex' = 'code'
+  let lastSignificant = ''
   while (i < source.length) {
-    const two = source.slice(i, i + 2)
     const ch = source[i]
+    const two = source.slice(i, i + 2)
     if (mode === 'code') {
       if (two === '//') {
         mode = 'line'
@@ -51,24 +67,16 @@ function stripCommentsAndStrings(source: string): string {
         i += 2
         continue
       }
-      if (ch === "'") {
-        mode = 'single'
-        out += ' '
+      if (ch === '/' && /[(,=:[{;!&|?+\-*%~^<>]$|^$/.test(lastSignificant)) {
+        mode = 'regex'
+        out += ch
         i++
         continue
       }
-      if (ch === '"') {
-        mode = 'double'
-        out += ' '
-        i++
-        continue
-      }
-      if (ch === '`') {
-        mode = 'template'
-        out += ' '
-        i++
-        continue
-      }
+      if (ch === "'") mode = 'single'
+      else if (ch === '"') mode = 'double'
+      else if (ch === '`') mode = 'template'
+      if (!/\s/.test(ch)) lastSignificant = ch
       out += ch
       i++
       continue
@@ -91,14 +99,22 @@ function stripCommentsAndStrings(source: string): string {
       i++
       continue
     }
-    // inside a string: honour escapes, keep newlines so reported lines stay accurate
+    // inside a string, template or regex: keep the text, honour escapes
+    out += ch
     if (ch === '\\') {
+      out += source[i + 1] ?? ''
       i += 2
       continue
     }
-    if ((mode === 'single' && ch === "'") || (mode === 'double' && ch === '"') || (mode === 'template' && ch === '`')) {
+    if (
+      (mode === 'single' && ch === "'") ||
+      (mode === 'double' && ch === '"') ||
+      (mode === 'template' && ch === '`') ||
+      (mode === 'regex' && ch === '/')
+    ) {
       mode = 'code'
-    } else if (ch === '\n') out += '\n'
+      lastSignificant = ch
+    }
     i++
   }
   return out
@@ -121,7 +137,7 @@ const PATTERNS: { label: string; re: RegExp }[] = [
 ]
 
 function walk(dir: string): string[] {
-  if (dir.startsWith(EXCLUDED)) return []
+  if ((dir + sep).startsWith(EXCLUDED)) return []
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry)
     if (statSync(full).isDirectory()) return walk(full)
@@ -134,7 +150,7 @@ describe('turn_order access outside the completeness gate', () => {
     const offenders: string[] = []
     for (const root of ROOTS) {
       for (const file of walk(root)) {
-        const code = stripCommentsAndStrings(readFileSync(file, 'utf8'))
+        const code = stripComments(readFileSync(file, 'utf8'))
         // Collapse whitespace per statement so a chain broken across lines still matches, while
         // keeping a line number by counting newlines consumed up to the match.
         const flat = code.replace(/\s*\n\s*/g, ' ')

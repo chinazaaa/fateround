@@ -429,7 +429,8 @@ function countDora(tiles: string[], indicators: string[] | undefined): number {
 }
 
 export function dealerPlayerId(session?: MahjongSession): string | null {
-  if (!session?.turn_order.length) return null
+  // `session?.` guards the session, not the array: `.length` on an absent turn_order throws.
+  if (!session?.turn_order?.length) return null
   return session.turn_order[session.dealer_index % session.turn_order.length] ?? null
 }
 

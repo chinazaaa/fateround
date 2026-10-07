@@ -42,7 +42,7 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { isCompleteRummySessionRow } from '@/lib/supabase-selects'
+import { isCompleteRummySessionRow, RUMMY_SESSION_SELECT } from '@/lib/supabase-selects'
 
 /**
  * Rummy player view — full lifecycle from join → lobby → active table → finished.
@@ -51,8 +51,6 @@ import { isCompleteRummySessionRow } from '@/lib/supabase-selects'
  * the session + hand rows in sync, and every action goes through the /api/rummy/* routes.
  */
 
-const RUMMY_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
 const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type Screen =
@@ -245,7 +243,7 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
 
   const cfg = gameTypeConfig('rummy')
   const winner = players.find((p) => p.id === session?.winner_player_id)
-  const turnPlayerId = (session?.turn_order ?? [])[session.current_turn_index] ?? null
+  const turnPlayerId = session?.turn_order?.[session.current_turn_index] ?? null
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))

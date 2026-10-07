@@ -167,6 +167,14 @@ export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
  * `draw_pile` is deliberately NOT listed, for the same reason as Uno's: it is revoked from anon,
  * so it never arrives over realtime and gating on it would force a reload on every payload.
  */
+/**
+ * Lived as a module-local const in BOTH RummyPlayerView and RummyHostView, which meant the
+ * key list above could drift from the select with nothing to notice. Here, the sync test in
+ * supabase-selects.test.ts can hold them together.
+ */
+export const RUMMY_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
+
 export const WHOT_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
 
 /** True when a pushed `whot_sessions` row carries every NOT-NULL column it should (i.e. is not a
@@ -176,14 +184,17 @@ export function isCompleteWhotSessionRow(row: Record<string, unknown>): boolean 
 }
 
 /**
- * Same hazard again, for Rummy. `turn_order` is `uuid[] NOT NULL` (`20261104120000_rummy.sql`).
+ * Same hazard again, for Rummy. `turn_order` is `uuid[] NOT NULL`
+ * (`20261104120000_rummy.sql`), and so are both piles.
  *
- * Only `turn_order` is listed even though `draw_pile`/`discard_pile` are also NOT NULL arrays:
- * those two are large and TOASTed, but unlike Whot's they are NOT revoked and DO arrive, so a
- * payload that legitimately does not touch them still carries them. Gating on `turn_order` alone
- * is what distinguishes truncation from a normal update here.
+ * The piles ARE listed here, unlike Whot's. The distinction is grants, not size: Whot revoked
+ * its piles from anon (`20261120120000_sec_whot_hide_piles.sql`), so they never arrive over
+ * realtime and gating on them would be permanently false. Rummy grants table-level select
+ * (`20261104120000_rummy.sql:115`), so they do arrive — which makes a null on one unambiguous
+ * proof of truncation, exactly as for `property_owners` in MONOPOLY_BOARD_NOT_NULL_KEYS above.
+ * Gating on `turn_order` alone would absorb a payload that preserved it but dropped a pile.
  */
-export const RUMMY_SESSION_NOT_NULL_KEYS = ['turn_order'] as const
+export const RUMMY_SESSION_NOT_NULL_KEYS = ['turn_order', 'draw_pile', 'discard_pile'] as const
 
 /** True when a pushed `rummy_sessions` row is not a TOAST-truncated partial realtime payload —
  *  see {@link RUMMY_SESSION_NOT_NULL_KEYS}. */
