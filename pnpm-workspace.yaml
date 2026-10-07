@@ -4,9 +4,10 @@
 # this explicitly to `false` acknowledges the choice so pnpm stops raising
 # ERR_PNPM_IGNORED_BUILDS on install / before every `pnpm <script>`.
 #
-# `@sentry/cli` ships a postinstall that downloads a native binary. It is only needed to
-# UPLOAD source maps at build time, which is off until a SENTRY_AUTH_TOKEN exists (see
-# next.config.ts) — so it stays off here too. Flip it to `true` when turning uploads on.
+# `@sentry/cli` ships a postinstall that downloads a native binary, and uploading source maps
+# needs it. Approved deliberately rather than by habit: production stack traces were unreadable
+# (`main-4f2a.js:1:28174`) without them, which cost real debugging time. This is the ONE install
+# script this repo runs, and it stays narrow — `sharp` below is still refused.
 allowBuilds:
   sharp: false
-  '@sentry/cli': false
+  '@sentry/cli': true

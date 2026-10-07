@@ -83,9 +83,11 @@ const nextConfig: NextConfig = {
  *
  * Upload is OFF by default and stays off for anyone building without the token (local
  * builds, forks, a `docker build` on a laptop): missing credentials must not fail a build.
- * To turn it on, set SENTRY_ORG/SENTRY_PROJECT and add SENTRY_AUTH_TOKEN as a repository
- * secret wired into the build workflow — and flip `@sentry/cli` to `true` in
- * pnpm-workspace.yaml, since the uploader needs its postinstall binary.
+ *
+ * It is ON in CI. `build-push-image.yml` passes SENTRY_ORG/SENTRY_PROJECT/SENTRY_URL as build
+ * args and mounts SENTRY_AUTH_TOKEN as a BuildKit secret (never a build arg — those are
+ * recoverable from image history), and `@sentry/cli` is approved in pnpm-workspace.yaml so its
+ * postinstall can fetch the uploader binary.
  */
 const sentryUploadEnabled = Boolean(process.env.SENTRY_AUTH_TOKEN)
 
@@ -93,9 +95,18 @@ export default withSentryConfig(nextConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
+  // `fateround-ss` lives in Sentry's EU region. The uploader defaults to https://sentry.io/,
+  // which would authenticate against the wrong instance and fail, so this must be set.
+  sentryUrl: process.env.SENTRY_URL || 'https://de.sentry.io/',
   // Don't narrate the upload (or its absence) on every build.
   silent: true,
-  sourcemaps: { disable: !sentryUploadEnabled },
+  sourcemaps: {
+    disable: !sentryUploadEnabled,
+    // Upload them, then delete them from the output. Without this the .map files ship inside
+    // the image and are served to anyone who asks — handing out readable source for an app
+    // whose host-authorisation logic is worth not advertising.
+    deleteSourcemapsAfterUpload: true,
+  },
   webpack: {
     // Strip Sentry's own debug logging from the bundles.
     treeshake: { removeDebugLogging: true },

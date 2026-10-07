@@ -5,7 +5,10 @@
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
 RUN npm install -g pnpm@10
-COPY package.json pnpm-lock.yaml ./
+# pnpm-workspace.yaml carries the `allowBuilds` approvals. It MUST be copied before the
+# install: without it pnpm does not know @sentry/cli's postinstall is approved, skips the
+# native-binary download, and the source-map upload later fails with a missing binary.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
 
@@ -27,6 +30,18 @@ ARG NEXT_PUBLIC_SENTRY_DSN
 # The commit, surfaced to Sentry as the release so a stack trace pins to a revision.
 # Declared again in the run stage below for /api/health; ARGs don't cross stages.
 ARG GIT_SHA
+# Sentry source-map upload. Org/project/url are not secret (the org slug is in every issue
+# URL), so they are plain build args. The AUTH TOKEN is deliberately NOT one: build args are
+# recoverable from image history, so it is mounted as a BuildKit secret on the build step
+# below and never lands in a layer. `fateround-ss` is an EU-region org, so SENTRY_URL must
+# point at de.sentry.io — the uploader defaults to sentry.io and would otherwise authenticate
+# against the wrong instance.
+ARG SENTRY_ORG
+ARG SENTRY_PROJECT
+ARG SENTRY_URL
+ENV SENTRY_ORG=$SENTRY_ORG
+ENV SENTRY_PROJECT=$SENTRY_PROJECT
+ENV SENTRY_URL=$SENTRY_URL
 ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
@@ -36,7 +51,12 @@ ENV NEXT_PUBLIC_SPOTIFY_CLIENT_ID=$NEXT_PUBLIC_SPOTIFY_CLIENT_ID
 ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 ENV NEXT_PUBLIC_SENTRY_RELEASE=$GIT_SHA
 
-RUN pnpm build
+# The token is readable only for the lifetime of this RUN, and only inside it. Absent (local
+# builds, forks, a laptop `docker build`), the shell expansion yields an empty string, upload
+# stays off, and the build still succeeds — missing credentials must never fail a build.
+RUN --mount=type=secret,id=sentry_auth_token \
+    SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
+    pnpm build
 
 # Minimal runtime image (Next.js standalone output).
 FROM node:24-bookworm-slim AS run
