@@ -390,7 +390,8 @@ expected_warn_sql=${expected_warn//\'/\'\'}
 #
 # Only the two jobs whose COMMAND is the HTTP call are checked this
 # way. reap_idle_active_games is registered as the single call
-# `select public.reap_idle_active_games_tick();` (#1166): its route,
+# a bare tick call plus two set_config() seeds (#1166, and
+# 20261126120000_cron_settings_from_vault.sql for the seeds): its route,
 # bearer token and 90s timeout live inside the function body and are
 # re-read every run, precisely so that a URL/secret rotation cannot
 # leave a stale value baked into cron.job and so that the function's
@@ -447,8 +448,8 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
              when j.jobid is null then 'absent from cron.job'
              when j.schedule is distinct from '*/15 * * * *'
                then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-             when j.command is distinct from 'select public.reap_idle_active_games_tick();'
-               then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
+             when j.command is distinct from $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
+               then format('command is %L, expected %L', j.command, $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$)
              when j.active is distinct from true
                then 'is registered but cron.job.active is false, so it never fires'
              when j.database is distinct from 'postgres'

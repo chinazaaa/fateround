@@ -550,7 +550,10 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
       ('drop_stale_unconfirmed_rsvps', '*/2 * * * *', 'select drop_stale_unconfirmed_rsvps();', true, null),
       ('notification_dispatches_gc', '17 * * * *', 'delete from public.notification_dispatches where sent_at < now() - interval ''24 hours'';', true, null),
       ('open_scheduled_games_due', '* * * * *', 'select open_scheduled_games_due();', true, null),
-      ('reap_idle_active_games', '*/15 * * * *', 'select public.reap_idle_active_games_tick();', $reaper_must_exist, $reaper_absent_reason),
+      -- Seeds app.api_base / app.cron_secret from Vault before the tick, because custom GUCs
+      -- cannot be attached to a database without superuser on hosted Supabase. The tick
+      -- function itself is unchanged. See 20261126120000_cron_settings_from_vault.sql.
+      ('reap_idle_active_games', '*/15 * * * *', $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$, $reaper_must_exist, $reaper_absent_reason),
       ('scheduled_games_push_tick', '* * * * *', null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time'),
       ('warn_idle_waiting_lobbies', '*/2 * * * *', null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time')
   ),
@@ -620,8 +623,8 @@ if [ "$pg_net_available" = "t" ]; then
                when j.jobid is null then 'absent from cron.job'
                when j.schedule is distinct from '*/15 * * * *'
                  then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-               when j.command is distinct from 'select public.reap_idle_active_games_tick();'
-                 then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
+               when j.command is distinct from $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
+                 then format('command is %L, expected %L', j.command, $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$)
              end, '')
       from (select 1) as one
       left join cron.job j on j.jobname = 'reap_idle_active_games';")
