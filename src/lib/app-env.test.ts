@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { isProdDeployment, resolveAppEnv } from './app-env'
 
 const env = (o: Record<string, string | undefined>) => o as unknown as NodeJS.ProcessEnv
@@ -61,17 +61,18 @@ describe('resolveAppEnv', () => {
  * and that the source still contains the exact literal the substitution keys on.
  */
 describe('client-bundle inlining', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
   it('reads the ambient environment when called with no argument', () => {
-    const prev = process.env.NEXT_PUBLIC_APP_URL
-    try {
-      process.env.NEXT_PUBLIC_APP_URL = 'https://fateround.com'
-      expect(resolveAppEnv()).toBe('prod')
-      process.env.NEXT_PUBLIC_APP_URL = 'https://dev.fateround.com'
-      expect(resolveAppEnv()).toBe('dev')
-    } finally {
-      if (prev === undefined) delete process.env.NEXT_PUBLIC_APP_URL
-      else process.env.NEXT_PUBLIC_APP_URL = prev
-    }
+    // APP_ENV must be cleared, not just NEXT_PUBLIC_APP_URL set: `resolveAppEnv` checks the
+    // explicit override FIRST, so a process that already has APP_ENV (CI does) would answer from
+    // it and these URL assertions would prove nothing — or fail outright. `vi.stubEnv` restores
+    // both on teardown, which the hand-rolled save/restore below did not do for APP_ENV at all.
+    vi.stubEnv('APP_ENV', '')
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://fateround.com')
+    expect(resolveAppEnv()).toBe('prod')
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://dev.fateround.com')
+    expect(resolveAppEnv()).toBe('dev')
   })
 
   it('still ASSIGNS from process.env.NEXT_PUBLIC_APP_URL literally, which is what Next.js inlines', () => {
@@ -83,16 +84,11 @@ describe('client-bundle inlining', () => {
   })
 
   it('does not let the ambient value leak into an explicitly passed env', () => {
-    const prev = process.env.NEXT_PUBLIC_APP_URL
-    try {
-      process.env.NEXT_PUBLIC_APP_URL = 'https://fateround.com'
-      // A caller that passes its own env must get exactly that env's answer.
-      expect(resolveAppEnv(env({}))).toBe('dev')
-      expect(resolveAppEnv(env({ NEXT_PUBLIC_APP_URL: 'https://dev.fateround.com' }))).toBe('dev')
-    } finally {
-      if (prev === undefined) delete process.env.NEXT_PUBLIC_APP_URL
-      else process.env.NEXT_PUBLIC_APP_URL = prev
-    }
+    vi.stubEnv('APP_ENV', '')
+    vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://fateround.com')
+    // A caller that passes its own env must get exactly that env's answer.
+    expect(resolveAppEnv(env({}))).toBe('dev')
+    expect(resolveAppEnv(env({ NEXT_PUBLIC_APP_URL: 'https://dev.fateround.com' }))).toBe('dev')
   })
 })
 
