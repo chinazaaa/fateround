@@ -3,7 +3,7 @@
  *
  * Extracted from `@/lib/yahtzee` so the trophies layer can score a card without importing the
  * whole game module, which dragged in `@/lib/game-finish` -> `@/lib/trophies/round-facts` ->
- * the game-facts barrel -> back again. See `@/lib/ludo-pieces` for the crash that cycle caused.
+ * the game-facts barrel -> back again. See `@/lib/ludo-pieces` for why that cycle is worth removing.
  *
  * Keep this a LEAF: types only, no value imports from game-logic modules.
  */

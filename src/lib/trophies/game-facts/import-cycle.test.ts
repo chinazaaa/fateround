@@ -3,21 +3,25 @@ import { dirname, join, normalize, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Guards the crash that ran in production from 2026-08-28 to 2026-10-04.
+ * Keeps `game-facts/index.ts` out of any runtime import cycle.
  *
- * `game-facts/index.ts` builds its `BUILDERS` table at MODULE SCOPE, reading one binding per
- * game. That is only safe while the barrel sits outside any runtime import cycle. It did not:
- * each `game-facts/<game>.ts` imported a helper from `@/lib/<game>`, which imports
- * `@/lib/game-finish` -> `@/lib/trophies/round-facts` -> back to this barrel. Entering that loop
- * from the game-logic side evaluated `BUILDERS` while `ludoFacts` and friends were still in
- * their temporal dead zone, producing `ReferenceError: Cannot access 'i' before initialization`
- * on `/`, `/daily-challenges/:gameType`, `/history/:code` and `/daily-challenges/:gameType/answers`.
+ * The barrel builds its `BUILDERS` table at MODULE SCOPE, reading one binding per game. That is
+ * safe only while the barrel sits outside a cycle. It did not: each `game-facts/<game>.ts`
+ * imported a helper from `@/lib/<game>`, which imports `@/lib/game-finish` ->
+ * `@/lib/trophies/round-facts` -> back to this barrel.
  *
- * Nothing in the suite could catch that — the modules import fine in isolation, and the cycle
- * only bites in the bundler's evaluation order. So this walks the real runtime import graph.
+ * Whether that cycle ever actually threw is NOT established, and this test does not claim it.
+ * The bindings `BUILDERS` reads are `export async function` declarations, which are initialised
+ * at module instantiation and therefore have no temporal dead zone. Rewrite any one of them as
+ * `export const … = async () => …` while the cycle exists and it becomes a
+ * `Cannot access 'X' before initialization` at import time — that is the hazard being removed,
+ * and it is a real one whether or not it has fired.
+ *
+ * Nothing else in the suite can see this: the modules import fine in isolation, and a cycle
+ * only matters in the bundler's evaluation order. So this walks the real runtime import graph.
  *
  * `import type` is excluded deliberately: TypeScript erases those, so they cannot create a
- * runtime cycle. Counting them inflates the graph and reports cycles that cannot crash.
+ * runtime cycle. Counting them inflates the graph and reports cycles that cannot bite.
  */
 
 const SRC = join(process.cwd(), 'src')
@@ -70,7 +74,8 @@ describe('trophies game-facts barrel', () => {
     expect(
       cycle,
       `The game-facts barrel is in a runtime import cycle again. It builds BUILDERS at module ` +
-        `scope, so this crashes production with "Cannot access 'X' before initialization".\n\n  ` +
+        `scope, so a non-hoisted binding anywhere in this loop would be read before it is ` +
+        `initialised.\n\n  ` +
         `${rendered}\n\nBreak the cycle by moving whatever the trophies layer needs into a leaf ` +
         `module (see src/lib/ludo-pieces.ts), not by making BUILDERS lazy.`
     ).toBeNull()

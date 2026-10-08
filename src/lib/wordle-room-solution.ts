@@ -3,7 +3,7 @@
  *
  * Extracted from `@/lib/wordle-room` so the trophies layer does not import the whole game
  * module, which dragged in `@/lib/game-finish` -> `@/lib/trophies/round-facts` -> the
- * game-facts barrel -> back again. See `@/lib/ludo-pieces` for the crash that cycle caused.
+ * game-facts barrel -> back again. See `@/lib/ludo-pieces` for why that cycle is worth removing.
  *
  * `@/lib/daily-wordle` is itself a leaf (pure word scoring), so depending on it here does not
  * reopen the cycle. Keep it that way: no value imports from game-logic modules.
