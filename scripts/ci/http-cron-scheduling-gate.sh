@@ -448,8 +448,8 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
              when j.jobid is null then 'absent from cron.job'
              when j.schedule is distinct from '*/15 * * * *'
                then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-             when j.command is distinct from $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
-               then format('command is %L, expected %L', j.command, $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$)
+             when j.command is distinct from $cmd$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
+               then format('command is %L, expected %L', j.command, $cmd$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$)
              when j.active is distinct from true
                then 'is registered but cron.job.active is false, so it never fires'
              when j.database is distinct from 'postgres'

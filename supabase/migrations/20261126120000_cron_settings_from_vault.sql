@@ -34,7 +34,7 @@
 -- OPERATOR STEP, ONCE PER PROJECT -- this migration cannot do it, by design. The values are
 -- not in git:
 --
---   select vault.create_secret('https://fateround.com', 'cron_api_base',
+--   select vault.create_secret('https://fateround.com', 'api_base',
 --                              'Base URL the pg_cron HTTP ticks POST to');
 --   select vault.create_secret('<same value as the CRON_SECRET env var>', 'cron_secret',
 --                              'Bearer token for /api/cron/* routes');
@@ -116,10 +116,10 @@ begin
   perform cron.schedule(
     'reap_idle_active_games',
     '*/15 * * * *',
-    $cmd$select set_config('app.api_base', public.cron_setting('cron_api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
+    $cmd$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
   );
 
   raise notice
-    'cron_settings_from_vault: reap_idle_active_games rescheduled to seed app.api_base / app.cron_secret from Vault before each tick. It stays inert until vault secrets named cron_api_base and cron_secret exist.';
+    'cron_settings_from_vault: reap_idle_active_games rescheduled to seed app.api_base / app.cron_secret from Vault before each tick. It stays inert until vault secrets named api_base and cron_secret exist.';
 end;
 $$;
