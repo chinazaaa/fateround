@@ -36,7 +36,43 @@ function hostOf(url: string | undefined): string | null {
   }
 }
 
-export function resolveAppEnv(env: NodeJS.ProcessEnv = process.env): AppEnv {
+/**
+ * The ambient environment, built so the CLIENT bundle can actually see the app URL.
+ *
+ * Next.js replaces `NEXT_PUBLIC_*` in browser code at BUILD time, and only where the source
+ * reads the literal member expression `process.env.NEXT_PUBLIC_APP_URL`. Reading it off a
+ * variable — which is what the `env` parameter below is — is invisible to that substitution,
+ * so in the browser it was `undefined` and every client call fell through to 'dev'. Production
+ * browser errors were therefore tagged `environment: dev` in Sentry, making prod and dev
+ * indistinguishable there (observed on fateround.com events, Sentry issues JAVASCRIPT-NEXTJS-F
+ * and -K).
+ *
+ * `process.env.NEXT_PUBLIC_APP_URL` below must stay spelled out EXACTLY like that — destructure
+ * it, alias it, or index it dynamically and the browser silently regresses to 'dev'. There is a
+ * test asserting the literal is still present, because nothing else would catch it.
+ *
+ * On the server this is a no-op: `process.env` already holds the value at runtime. `APP_ENV` is
+ * deliberately NOT given the same treatment — it is not a `NEXT_PUBLIC_` var, so it is a
+ * server-only override by design and is correctly absent in the browser.
+ */
+function ambientEnv(): NodeJS.ProcessEnv {
+  // Each key is named explicitly rather than spread from `process.env`, and the reason is
+  // specific: Next installs a `process` shim for client bundles, so a bare `process.env` does
+  // not throw — it resolves to an object whose `env` is EMPTY. Reading a key off that object
+  // yields `undefined`, while the member expression `process.env.NEXT_PUBLIC_APP_URL` is
+  // replaced with a literal at build time. So spreading loses exactly the value we need, and
+  // naming the keys is what makes substitution apply.
+  return {
+    // `NODE_ENV` is named only to satisfy `ProcessEnv`, which Next declares it as required on.
+    // It is not consulted below — see the comment at the top of this file for why NODE_ENV is
+    // the wrong signal for which DEPLOYMENT this is.
+    NODE_ENV: process.env.NODE_ENV,
+    APP_ENV: process.env.APP_ENV,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  }
+}
+
+export function resolveAppEnv(env: NodeJS.ProcessEnv = ambientEnv()): AppEnv {
   const explicit = env.APP_ENV?.trim().toLowerCase()
   if (explicit === 'prod' || explicit === 'production') return 'prod'
   if (explicit === 'dev' || explicit === 'development' || explicit === 'preview') return 'dev'
@@ -47,6 +83,6 @@ export function resolveAppEnv(env: NodeJS.ProcessEnv = process.env): AppEnv {
 }
 
 /** True only on the real production deployment. Use this to gate background work. */
-export function isProdDeployment(env: NodeJS.ProcessEnv = process.env): boolean {
+export function isProdDeployment(env: NodeJS.ProcessEnv = ambientEnv()): boolean {
   return resolveAppEnv(env) === 'prod'
 }
