@@ -49,7 +49,7 @@ import {
 import { getPlayerSession } from '@/lib/secure-session'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
+import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT, isCompleteWhotSessionRow } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import { cardHandLeaderboard } from '@/lib/finish-leaderboards'
 
@@ -156,6 +156,8 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // hand — patch them locally and skip the full reload + hand re-fetch. The
   // start/finish transitions ride the `games` row (no apply → still reloads).
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // Reject a truncated realtime payload: it would blank the board AND suppress the reload.
+    if (!isCompleteWhotSessionRow(row)) return false
     const next = row as unknown as WhotSession
     const prev = sessionRef.current
     // Ignore stale/reordered events so a delayed WAL row can't stomp fresher state.
