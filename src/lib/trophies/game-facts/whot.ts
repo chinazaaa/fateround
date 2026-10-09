@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { WhotCard } from '@/types'
-import { whotHandSum } from '@/lib/whot'
+import { whotHandSum } from '@/lib/whot-hand'
 import type { FactsContext } from './index'
 
 /**
