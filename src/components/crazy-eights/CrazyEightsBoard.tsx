@@ -250,7 +250,7 @@ export function CrazyEightsStandings({
   // sidebar passes a single-column list so it reads like the trivia leaderboard.
   gridClassName?: string
 }) {
-  const turnId = session.turn_order[session.current_turn_index]
+  const turnId = (session.turn_order ?? [])[session.current_turn_index]
   const activePlayers = players.filter((p) => !isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
   const watchingPlayers = players.filter((p) => isCrazyEightsPlayerOut(handCounts[p.id] ?? 0, p.spectator))
 

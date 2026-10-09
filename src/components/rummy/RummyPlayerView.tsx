@@ -42,6 +42,8 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { RUMMY_SESSION_SELECT, isCompleteRummySessionRow } from '@/lib/supabase-selects'
+import { RUMMY_SESSION_TOAST_PRONE, mergeRealtimeRow } from '@/lib/realtime-merge'
 
 /**
  * Rummy player view — full lifecycle from join → lobby → active table → finished.
@@ -50,8 +52,6 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
  * the session + hand rows in sync, and every action goes through the /api/rummy/* routes.
  */
 
-const RUMMY_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
 const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type Screen =
@@ -140,11 +140,19 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // A truncated realtime payload (TOAST-ed arrays omitted) would blank the board and, by
+    // reporting success here, suppress the reconciling reload. Reject it so the caller reloads.
+    if (!isCompleteRummySessionRow(row)) return false
     const next = row as unknown as RummySession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
+    // A row reaching here passed the gate, so it may still be missing the piles (they are
+    // deliberately out of RUMMY_SESSION_NOT_NULL_KEYS). Merge rather than replace: applying it
+    // wholesale nulls `draw_pile`, and RummyBoard derives its displayed count from that array's
+    // length, so the draw pile would read 0 and disable the draw button until the reload lands.
+    const merged = mergeRealtimeRow<RummySession>(prev, row, RUMMY_SESSION_TOAST_PRONE)
+    setSession(merged)
+    sessionRef.current = merged
     // A move mutates the session AND at least one hand row; still need a full reload for hands.
     return false
   }, [])
@@ -241,7 +249,7 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
 
   const cfg = gameTypeConfig('rummy')
   const winner = players.find((p) => p.id === session?.winner_player_id)
-  const turnPlayerId = session?.turn_order[session.current_turn_index] ?? null
+  const turnPlayerId = session?.turn_order?.[session.current_turn_index] ?? null
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))

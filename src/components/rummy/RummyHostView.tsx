@@ -15,7 +15,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { RUMMY_MIN_PLAYERS, RUMMY_MAX_PLAYERS } from '@/lib/rummy'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import { GAME_SELECT, PLAYER_SELECT, RUMMY_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
@@ -34,8 +34,6 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { useRummyTurnTimer } from '@/hooks/useRummyTurnTimer'
 import { useRummyGameTimer } from '@/hooks/useRummyGameTimer'
 
-const RUMMY_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
 const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 /**
@@ -333,7 +331,8 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const hostHand = hostPlayerId
     ? ((hands.find((h) => h.player_id === hostPlayerId)?.cards as import('@/types').RummyCard[] | null) ?? null)
     : null
-  const isHostTurn = hostPlays && session ? session.turn_order[session.current_turn_index] === hostPlayerId : false
+  const isHostTurn =
+    hostPlays && session ? (session.turn_order ?? [])[session.current_turn_index] === hostPlayerId : false
 
   // Active play mounts inside HostRoomShell — supplies the `.fr-room fr-room-poll` → `.pr-stage`
   // ancestor the shared card-table CSS scopes under. See RummyPlayerView for the same note.

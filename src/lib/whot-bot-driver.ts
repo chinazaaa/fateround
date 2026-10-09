@@ -72,7 +72,9 @@ export async function driveWhotBotsOnce(gameCode: string): Promise<DriveResult> 
     .eq('game_id', code)
     .maybeSingle()
   if (!turnRow || turnRow.phase === 'finished') return { kind: 'idle' }
-  const turnPlayerId = turnRow.turn_order[turnRow.current_turn_index]
+  // Read at a distance from the row that produced it; `?? []` keeps a truncated or unexpected
+  // shape from throwing inside the bot driver, where nothing is rendering to show the failure.
+  const turnPlayerId = (turnRow.turn_order ?? [])[turnRow.current_turn_index]
   if (!turnPlayerId) return { kind: 'idle' }
   const { data: turnPlayer } = await admin
     .from('players')

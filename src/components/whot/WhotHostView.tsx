@@ -25,7 +25,13 @@ import {
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
 import { fetchWhotHands } from '@/lib/hands-client'
-import { GAME_SELECT, PLAYER_SELECT, WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
+import {
+  GAME_SELECT,
+  PLAYER_SELECT,
+  WHOT_PLAYER_HANDS_SELECT,
+  WHOT_SESSION_SELECT,
+  isCompleteWhotSessionRow,
+} from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -121,6 +127,9 @@ export function WhotHostView({ gameCode, hostToken }: { gameCode: string; hostTo
   // writes only update the board UI — patch them locally and skip the full reload; the
   // active→finished transition rides the games-row event, and the fallback poll reconciles.
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // A truncated realtime payload (TOAST-ed arrays omitted) would blank the board and, by
+    // reporting success here, suppress the reconciling reload. Reject it so the caller reloads.
+    if (!isCompleteWhotSessionRow(row)) return false
     const next = row as unknown as WhotSession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true

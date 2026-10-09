@@ -154,6 +154,79 @@ export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
   return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
 }
 
+/**
+ * Same TOAST-truncation hazard as {@link UNO_SESSION_NOT_NULL_KEYS}, for Whot.
+ *
+ * Both columns are `uuid[] NOT NULL` in the schema (`0064_whot.sql`,
+ * `20260629120000_whot_finish_order.sql`), so a pushed row carrying either as null/undefined is
+ * necessarily a partial realtime payload, never a real state. Applying one blanks the turn rail
+ * AND `top_card`, `required_shape`, `phase` and `winner_player_id` with it — and because the
+ * apply handler reported success, the reconciling reload is suppressed and nothing re-fetches
+ * until the fallback poll.
+ *
+ * `draw_pile` is deliberately NOT listed, for the same reason as Uno's: it is revoked from anon,
+ * so it never arrives over realtime and gating on it would force a reload on every payload.
+ */
+/**
+ * Lived as a module-local const in BOTH RummyPlayerView and RummyHostView, which meant the
+ * key list above could drift from the select with nothing to notice. Here, the sync test in
+ * supabase-selects.test.ts can hold them together.
+ */
+/**
+ * Crazy Eights is Whot's twin and had the same gap: `turn_order` and `finish_order` are both
+ * `uuid[] NOT NULL`, its piles are revoked from anon (`20260815120000`), and its
+ * `applySessionRow` replaced state wholesale while reporting success — which suppresses the
+ * reconciling reload. Gated here rather than left for later: adding the second line of defence
+ * to a game while leaving its first line off is not a defensible place to stop.
+ */
+export const CRAZY8_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
+
+/** True when a pushed `crazy_eights_sessions` row is not a TOAST-truncated partial payload. */
+export function isCompleteCrazy8SessionRow(row: Record<string, unknown>): boolean {
+  return CRAZY8_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
+export const RUMMY_SESSION_SELECT =
+  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
+
+export const WHOT_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
+
+/** True when a pushed `whot_sessions` row carries every NOT-NULL column it should (i.e. is not a
+ *  TOAST-truncated partial realtime payload — see {@link WHOT_SESSION_NOT_NULL_KEYS}). */
+export function isCompleteWhotSessionRow(row: Record<string, unknown>): boolean {
+  return WHOT_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
+/**
+ * Same hazard again, for Rummy. `turn_order` is `uuid[] NOT NULL`
+ * (`20261104120000_rummy.sql`).
+ *
+ * `draw_pile` / `discard_pile` are deliberately EXCLUDED, and the reason is worth recording
+ * because an earlier revision of this file included them on the opposite argument. They are
+ * granted to anon, unlike Whot's, so a grant-based reading says "they always arrive, therefore
+ * a null proves truncation". That confuses two different questions. Grants decide whether a
+ * column can EVER appear; TOAST decides whether it appears in THIS payload. The piles are the
+ * only TOAST-eligible columns in the table, so an ordinary discard-only move legitimately
+ * arrives without them, and gating on them would reject a large share of normal updates.
+ *
+ * Note what that does and does NOT cost, because an earlier version of this comment had it
+ * wrong. It is NOT an egress saving: `RummyPlayerView.applySessionRow` returns `false`
+ * unconditionally, so every Rummy move already schedules the reconciling reload (a move writes
+ * `rummy_player_hands` too). That argument belongs to Uno, which returns `prev != null` and
+ * genuinely does skip the reload. What excluding the piles buys here is the realtime FAST PATH:
+ * a turn advance applies immediately instead of waiting out the ~90 ms debounce plus round-trip.
+ * The pile values it would otherwise blank are carried forward by `mergeRealtimeRow` with
+ * `RUMMY_SESSION_TOAST_PRONE` — see `realtime-merge.ts`. Gate on arrival, merge on application;
+ * neither alone is sufficient.
+ */
+export const RUMMY_SESSION_NOT_NULL_KEYS = ['turn_order'] as const
+
+/** True when a pushed `rummy_sessions` row is not a TOAST-truncated partial realtime payload —
+ *  see {@link RUMMY_SESSION_NOT_NULL_KEYS}. */
+export function isCompleteRummySessionRow(row: Record<string, unknown>): boolean {
+  return RUMMY_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
 export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 export const LUDO_SESSION_SELECT =

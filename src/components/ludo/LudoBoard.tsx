@@ -538,7 +538,7 @@ function LudoPlayerCardsRow({
   session: LudoSession
   myPlayerId: string | null
 }) {
-  const turnId = session.turn_order[session.current_turn_index]
+  const turnId = (session.turn_order ?? [])[session.current_turn_index]
   const [leftColor, rightColor] = colors
   const leftState = states.find((s) => s.color === leftColor)
   const rightState = states.find((s) => s.color === rightColor)
@@ -604,7 +604,7 @@ export function LudoGamePanel({
   displayDice?: LudoDiceRoll | null
   variant?: LudoVariant
 }) {
-  const turnPlayer = players.find((p) => p.id === session.turn_order[session.current_turn_index])
+  const turnPlayer = players.find((p) => p.id === (session.turn_order ?? [])[session.current_turn_index])
   const myState = states.find((s) => s.player_id === myPlayerId)
   const parsedLastDice = parseLudoDice(session.last_dice)
   const remainingDice = resolveRemainingDice(session)
