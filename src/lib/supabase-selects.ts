@@ -187,7 +187,7 @@ export function isCompleteCrazy8SessionRow(row: Record<string, unknown>): boolea
 }
 
 export const RUMMY_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,phase,draw_count,discard_count,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
 
 export const WHOT_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   RummyCard as RummyCardBox,
@@ -18,7 +18,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { RUMMY_MIN_PLAYERS } from '@/lib/rummy'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { clearPlayerSession } from '@/lib/utils'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { Game, Player, RummyCard, RummyPlayerHand, RummySession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -44,6 +44,7 @@ import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { RUMMY_SESSION_SELECT, isCompleteRummySessionRow } from '@/lib/supabase-selects'
 import { RUMMY_SESSION_TOAST_PRONE, mergeRealtimeRow } from '@/lib/realtime-merge'
+import { fetchRummyHands } from '@/lib/hands-client'
 
 /**
  * Rummy player view — full lifecycle from join → lobby → active table → finished.
@@ -51,8 +52,6 @@ import { RUMMY_SESSION_TOAST_PRONE, mergeRealtimeRow } from '@/lib/realtime-merg
  * shape): shared bootstrap hook resolves the player + game rows, `useGameTableSync` keeps
  * the session + hand rows in sync, and every action goes through the /api/rummy/* routes.
  */
-
-const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type Screen =
   | 'loading'
@@ -64,37 +63,39 @@ type Screen =
   | 'finished'
   | 'not_found'
 
-async function loadHands(gameCode: string): Promise<{ hands: RummyPlayerHand[]; ok: boolean }> {
-  const res = await supabase
-    .from('rummy_player_hands')
-    .select(RUMMY_HAND_SELECT)
-    .eq('game_id', gameCode)
-    .order('player_order')
-  if (!supabasePollOk(res)) return { hands: [], ok: false }
-  return { hands: (res.data as RummyPlayerHand[]) ?? [], ok: true }
-}
-
 export function RummyPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<RummySession | null>(null)
   const sessionRef = useRef<RummySession | null>(null)
   sessionRef.current = session
+  // Mirror of the resolved resume token, set after `useGameViewBootstrap` runs below.
+  const myResumeTokenRef = useRef<string | null>(null)
   const [hands, setHands] = useState<RummyPlayerHand[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
   const loadGameState = useCallback(async (): Promise<{ state: RummySession | null; ok: boolean }> => {
-    const [sessionRes, handsRes] = await Promise.all([
+    // Hands come from /api/rummy/hands, not the table: other players' `cards` must never reach
+    // this client (see lib/hand-redaction.ts). Own cards come back in full; everyone else's
+    // arrive as `card_count`.
+    const [sessionRes, handsData] = await Promise.all([
       supabase.from('rummy_sessions').select(RUMMY_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      loadHands(gameCode),
+      // Prefer the localStorage session token, falling back to the bootstrap-resolved token via
+      // a ref. This callback runs BEFORE the player is resolved on the first load, so for a
+      // player who arrived via a share link the localStorage session isn't written yet — and a
+      // tokenless request makes the route redact our OWN hand. The effect below re-fetches the
+      // moment the token resolves.
+      fetchRummyHands(gameCode, {
+        resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+      }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as RummySession | null) : null
     if (sessionData) setSession(sessionData)
-    // A failed hands query must NOT clobber the last-known hand — otherwise a transient
-    // Supabase blip would blank the player's own hand until the next successful poll.
-    if (handsRes.ok) setHands(handsRes.hands)
-    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsRes.ok }
+    // null = the fetch failed. Leave the previous hands in place rather than clearing them — a
+    // transient blip must not masquerade as an empty hand.
+    if (handsData) setHands(handsData)
+    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsData !== null }
   }, [gameCode])
 
   const computeScreen = useCallback(
@@ -135,6 +136,22 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     joinExtras,
     onJoinError: toastError,
   })
+
+  myResumeTokenRef.current = myResumeToken ?? null
+
+  // The first hand fetch (in loadGameState) can run before the player — and thus the resume
+  // token — is resolved, which the redaction route answers with our own hand blanked. Re-fetch
+  // with the authoritative token the moment it lands, so a share-link player sees their cards.
+  useEffect(() => {
+    if (!myResumeToken || game?.status !== 'active') return
+    let cancelled = false
+    void fetchRummyHands(gameCode, { resumeToken: myResumeToken }).then((h) => {
+      if (!cancelled && h) setHands(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [myResumeToken, game?.status, gameCode])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)

@@ -74,7 +74,9 @@ export function RummyGamePanel({
   const turnPlayerId = (session.turn_order ?? [])[session.current_turn_index] ?? null
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
   const topDiscard = session.top_discard
-  const drawCount = (session.draw_pile as RummyCard[] | null | undefined)?.length ?? 0
+  // `draw_count` is a generated stored column (20261127120000); `draw_pile` is no longer
+  // selected, so its length is not available here.
+  const drawCount = session.draw_count ?? 0
   const canDrawNow = isMyTurn && !isViewer && session.turn_step === 'draw' && !acting
 
   const turnTimeLabel = hasTimer && secondsLeft != null && secondsLeft > 0 ? formatCountdown(secondsLeft) : undefined

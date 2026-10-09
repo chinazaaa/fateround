@@ -1,4 +1,11 @@
-import type { BingoCard, CrazyEightsPlayerHand, GoFishPlayerHand, UnoPlayerHand, WhotPlayerHand } from '@/types'
+import type {
+  BingoCard,
+  CrazyEightsPlayerHand,
+  GoFishPlayerHand,
+  RummyPlayerHand,
+  UnoPlayerHand,
+  WhotPlayerHand,
+} from '@/types'
 
 type HandsAuth = { resumeToken?: string | null; hostToken?: string | null }
 
@@ -58,6 +65,11 @@ export function fetchUnoHands(gameCode: string, auth: HandsAuth): Promise<UnoPla
 /** Go Fish hands — see {@link fetchHands} for the contract. */
 export function fetchGoFishHands(gameCode: string, auth: HandsAuth): Promise<GoFishPlayerHand[] | null> {
   return fetchHands<GoFishPlayerHand>('/api/gofish/hands', gameCode, auth)
+}
+
+/** Rummy hands — see {@link fetchHands} for the contract. */
+export function fetchRummyHands(gameCode: string, auth: HandsAuth): Promise<RummyPlayerHand[] | null> {
+  return fetchHands<RummyPlayerHand>('/api/rummy/hands', gameCode, auth)
 }
 
 /**
