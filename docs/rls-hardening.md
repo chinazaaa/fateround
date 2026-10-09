@@ -165,6 +165,33 @@ and is what the table UI and the out/finished checks actually consume.
 | UNO          | `uno_player_hands`          | ✅ `/api/uno/hands`  | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked |
 | Crazy Eights | `crazy_eights_player_hands` | ✅ `/api/crazy-eights/hands` | ✅ player, host, history        | ✅            | ❌ **required** | ⏳ blocked (pile counts ready; pile revoke pending a mobile release — see below) |
 | Bingo        | `bingo_cards`               | ✅ `/api/bingo/card` | ✅ player, host (own seat only) | ✅            | ❌ **required** | ⏳ blocked |
+| Rummy        | `rummy_player_hands`        | ❌ **none**          | ❌ **direct table read**        | n/a           | ❌ **required** | ⏳ counts only (20261127120000) |
+
+### Rummy was never in Phase 7
+
+Rummy post-dates this section (`20261104120000_rummy.sql`), so it never got the treatment the
+other card games did and is the only one still reading hands straight from the browser:
+`RummyPlayerView` and `RummyHostView` both select `cards` filtered on `game_id` alone, with no
+player filter, so every opponent's hand reaches every client. It needs the route built, not just
+a revoke.
+
+Two ways it differs from the four games above:
+
+- **Easier.** Its realtime subscription has no `apply` callback — payloads only trigger a reload
+  — so the whole "redacted state read as real state" class below cannot occur here, and
+  `RummyPlayerHand.cards` is already typed `RummyCard[] | null` with a `card_count` beside it. The
+  type was written for the route; the route was never built.
+- **Harder, then easier.** Its session select still shipped both ordered piles, so redacting hands
+  alone was bypassable by subtraction — the Crazy Eights argument. `20261127120000_rummy_pile_counts.sql`
+  adds the generated `draw_count` / `discard_count` that close that off. But there is no mobile
+  Rummy view (`apps/mobile` ships only the slug), so Rummy's eventual revoke is gated on a web
+  deploy alone — no store release, no install drain. It is the cheapest of the five to finish.
+
+Note also that the original reason for parking the hands revoke has expired. `20260815120000_sec_crazy8_hide_piles.sql`
+deferred it because redacting hands "buys very little while `crazy_eights_sessions.draw_pile` still
+ships the FULL ORDERED DECK to every client". Every deck is now closed (Crazy Eights
+`20260815120000`, UNO `20261121120000`, Whot `20261120120000`, Rummy's counts above), so that
+qualifier no longer holds and the hands are the remaining exposure.
 
 ### Deliberate: the hands routes are unauthenticated reads
 
