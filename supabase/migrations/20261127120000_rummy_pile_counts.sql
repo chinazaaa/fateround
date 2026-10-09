@@ -46,3 +46,9 @@ begin
   execute 'grant select (draw_count, discard_count) on public.rummy_sessions to anon';
   execute 'grant select (draw_count, discard_count) on public.rummy_sessions to authenticated';
 end $$;
+
+-- Deviates from the three pile-counts siblings, which omit this: the immediate follow-up adds
+-- these columns to RUMMY_SESSION_SELECT, and PostgREST answers a select for a column missing from
+-- its cached schema with a 400 rather than refreshing. The siblings could skip it because nothing
+-- selected their new columns in the same deploy window.
+notify pgrst, 'reload schema';
