@@ -9,6 +9,9 @@ import {
   RUMMY_SESSION_NOT_NULL_KEYS,
   RUMMY_SESSION_SELECT,
   isCompleteRummySessionRow,
+  CRAZY8_SESSION_NOT_NULL_KEYS,
+  CRAZY8_SESSION_SELECT,
+  isCompleteCrazy8SessionRow,
 } from './supabase-selects'
 
 /** A fully-populated board row as a fresh REST select returns it. */
@@ -86,7 +89,7 @@ describe('whot session completeness', () => {
 
 describe('rummy session completeness', () => {
   it('accepts a row carrying every NOT-NULL key', () => {
-    expect(isCompleteRummySessionRow({ turn_order: [], draw_pile: [], discard_pile: [] })).toBe(true)
+    expect(isCompleteRummySessionRow({ turn_order: [] })).toBe(true)
   })
 
   it.each(RUMMY_SESSION_NOT_NULL_KEYS)('rejects a row whose %s was dropped', (dropped) => {
@@ -99,6 +102,25 @@ describe('rummy session completeness', () => {
   it('keeps the NOT-NULL key list in sync with the session select', () => {
     for (const key of RUMMY_SESSION_NOT_NULL_KEYS) {
       expect(RUMMY_SESSION_SELECT.split(',')).toContain(key)
+    }
+  })
+})
+
+describe('crazy eights session completeness', () => {
+  it('accepts a row carrying every NOT-NULL key', () => {
+    expect(isCompleteCrazy8SessionRow({ turn_order: [], finish_order: [] })).toBe(true)
+  })
+
+  it.each(CRAZY8_SESSION_NOT_NULL_KEYS)('rejects a row whose %s was dropped', (dropped) => {
+    const row = Object.fromEntries(CRAZY8_SESSION_NOT_NULL_KEYS.map((k) => [k, []]))
+    delete row[dropped]
+    expect(isCompleteCrazy8SessionRow(row)).toBe(false)
+    expect(isCompleteCrazy8SessionRow({ ...row, [dropped]: null })).toBe(false)
+  })
+
+  it('keeps the NOT-NULL key list in sync with the session select', () => {
+    for (const key of CRAZY8_SESSION_NOT_NULL_KEYS) {
+      expect(CRAZY8_SESSION_SELECT.split(',')).toContain(key)
     }
   })
 })

@@ -172,6 +172,20 @@ export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
  * key list above could drift from the select with nothing to notice. Here, the sync test in
  * supabase-selects.test.ts can hold them together.
  */
+/**
+ * Crazy Eights is Whot's twin and had the same gap: `turn_order` and `finish_order` are both
+ * `uuid[] NOT NULL`, its piles are revoked from anon (`20260815120000`), and its
+ * `applySessionRow` replaced state wholesale while reporting success — which suppresses the
+ * reconciling reload. Gated here rather than left for later: adding the second line of defence
+ * to a game while leaving its first line off is not a defensible place to stop.
+ */
+export const CRAZY8_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
+
+/** True when a pushed `crazy_eights_sessions` row is not a TOAST-truncated partial payload. */
+export function isCompleteCrazy8SessionRow(row: Record<string, unknown>): boolean {
+  return CRAZY8_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
 export const RUMMY_SESSION_SELECT =
   'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
 
@@ -185,16 +199,21 @@ export function isCompleteWhotSessionRow(row: Record<string, unknown>): boolean 
 
 /**
  * Same hazard again, for Rummy. `turn_order` is `uuid[] NOT NULL`
- * (`20261104120000_rummy.sql`), and so are both piles.
+ * (`20261104120000_rummy.sql`).
  *
- * The piles ARE listed here, unlike Whot's. The distinction is grants, not size: Whot revoked
- * its piles from anon (`20261120120000_sec_whot_hide_piles.sql`), so they never arrive over
- * realtime and gating on them would be permanently false. Rummy grants table-level select
- * (`20261104120000_rummy.sql:115`), so they do arrive — which makes a null on one unambiguous
- * proof of truncation, exactly as for `property_owners` in MONOPOLY_BOARD_NOT_NULL_KEYS above.
- * Gating on `turn_order` alone would absorb a payload that preserved it but dropped a pile.
+ * `draw_pile` / `discard_pile` are deliberately EXCLUDED, and the reason is worth recording
+ * because an earlier revision of this file included them on the opposite argument. They are
+ * granted to anon, unlike Whot's, so a grant-based reading says "they always arrive, therefore
+ * a null proves truncation". That confuses two different questions. Grants decide whether a
+ * column can EVER appear; TOAST decides whether it appears in THIS payload. The piles are the
+ * only TOAST-eligible columns in the table, so an ordinary discard-only move legitimately
+ * arrives without them — gating on them would return false on a large share of normal updates
+ * and turn every Rummy move into a full multi-table reload. On an app whose headline problem is
+ * REST egress, that is a regression bought for a marginal case: a payload that preserved
+ * `turn_order` but dropped a pile. Uno, the precedent, excludes its piles for its own reason
+ * and gates on small `uuid[]` columns only.
  */
-export const RUMMY_SESSION_NOT_NULL_KEYS = ['turn_order', 'draw_pile', 'discard_pile'] as const
+export const RUMMY_SESSION_NOT_NULL_KEYS = ['turn_order'] as const
 
 /** True when a pushed `rummy_sessions` row is not a TOAST-truncated partial realtime payload —
  *  see {@link RUMMY_SESSION_NOT_NULL_KEYS}. */
