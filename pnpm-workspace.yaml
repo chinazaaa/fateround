@@ -4,9 +4,11 @@
 # this explicitly to `false` acknowledges the choice so pnpm stops raising
 # ERR_PNPM_IGNORED_BUILDS on install / before every `pnpm <script>`.
 #
-# `@sentry/cli` ships a postinstall that downloads a native binary. It is only needed to
-# UPLOAD source maps at build time, which is off until a SENTRY_AUTH_TOKEN exists (see
-# next.config.ts) — so it stays off here too. Flip it to `true` when turning uploads on.
+# `@sentry/cli` ships a postinstall, and source-map upload needs its binary — but NOT via that
+# script. The binary arrives as a platform optionalDependency (`@sentry/cli-linux-x64` and
+# friends), and the postinstall exists only as a fallback for installs run with --no-optional:
+# its own source says it skips the download when the optional package resolved. So uploads work
+# with this left `false`, and no install script needs approving. Keep it that way.
 allowBuilds:
   sharp: false
   '@sentry/cli': false
