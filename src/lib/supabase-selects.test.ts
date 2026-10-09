@@ -13,6 +13,7 @@ import {
   CRAZY8_SESSION_SELECT,
   isCompleteCrazy8SessionRow,
 } from './supabase-selects'
+import { RUMMY_SESSION_TOAST_PRONE } from './realtime-merge'
 
 /** A fully-populated board row as a fresh REST select returns it. */
 function completeRow(): Record<string, unknown> {
@@ -121,6 +122,21 @@ describe('crazy eights session completeness', () => {
   it('keeps the NOT-NULL key list in sync with the session select', () => {
     for (const key of CRAZY8_SESSION_NOT_NULL_KEYS) {
       expect(CRAZY8_SESSION_SELECT.split(',')).toContain(key)
+    }
+  })
+})
+
+describe('rummy toast-prone keys', () => {
+  it('names exactly the two piles', () => {
+    // Anchors the list so emptying it — the change that reintroduces the null draw_pile —
+    // cannot quietly turn every it.each() over it into zero registered tests.
+    expect(RUMMY_SESSION_TOAST_PRONE).toEqual(['draw_pile', 'discard_pile'])
+  })
+
+  it('keeps them out of the completeness gate but in the select', () => {
+    for (const key of RUMMY_SESSION_TOAST_PRONE) {
+      expect(RUMMY_SESSION_NOT_NULL_KEYS as readonly string[]).not.toContain(key)
+      expect(RUMMY_SESSION_SELECT.split(',')).toContain(key)
     }
   })
 })

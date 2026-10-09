@@ -42,7 +42,8 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
-import { isCompleteRummySessionRow, RUMMY_SESSION_SELECT } from '@/lib/supabase-selects'
+import { RUMMY_SESSION_SELECT, isCompleteRummySessionRow } from '@/lib/supabase-selects'
+import { RUMMY_SESSION_TOAST_PRONE, mergeRealtimeRow } from '@/lib/realtime-merge'
 
 /**
  * Rummy player view — full lifecycle from join → lobby → active table → finished.
@@ -145,8 +146,13 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     const next = row as unknown as RummySession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
+    // A row reaching here passed the gate, so it may still be missing the piles (they are
+    // deliberately out of RUMMY_SESSION_NOT_NULL_KEYS). Merge rather than replace: applying it
+    // wholesale nulls `draw_pile`, and RummyBoard derives its displayed count from that array's
+    // length, so the draw pile would read 0 and disable the draw button until the reload lands.
+    const merged = mergeRealtimeRow<RummySession>(prev, row, RUMMY_SESSION_TOAST_PRONE)
+    setSession(merged)
+    sessionRef.current = merged
     // A move mutates the session AND at least one hand row; still need a full reload for hands.
     return false
   }, [])
