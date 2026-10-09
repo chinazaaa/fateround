@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { clampDescribeItMode } from '@/lib/describe-it'
+import { clampDescribeItMode } from '@/lib/describe-it-mode'
 import type { DescribeItMode } from '@/types'
 import type { FactsContext } from './index'
 

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { finishedPieceCount } from '@/lib/ludo'
+import { finishedPieceCount } from '@/lib/ludo-pieces'
 import type { LudoPiece } from '@/types'
 import type { FactsContext } from './index'
 

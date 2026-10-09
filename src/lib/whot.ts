@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { whotHandSum } from './whot-hand'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
@@ -43,9 +44,7 @@ export function formatWhotGameDuration(seconds: number): string {
   return `${Math.round(seconds / 60)} minutes`
 }
 
-export function whotHandSum(cards: WhotCard[]): number {
-  return cards.reduce((sum, card) => sum + card.number, 0)
-}
+export { whotHandSum } from './whot-hand'
 
 export type WhotStanding = {
   playerId: string
