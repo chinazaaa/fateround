@@ -187,7 +187,7 @@ export function isCompleteCrazy8SessionRow(row: Record<string, unknown>): boolea
 }
 
 export const RUMMY_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
+  'id,game_id,turn_order,current_turn_index,phase,draw_count,discard_count,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
 
 export const WHOT_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
 
@@ -202,22 +202,28 @@ export function isCompleteWhotSessionRow(row: Record<string, unknown>): boolean 
  * (`20261104120000_rummy.sql`).
  *
  * `draw_pile` / `discard_pile` are deliberately EXCLUDED, and the reason is worth recording
- * because an earlier revision of this file included them on the opposite argument. They are
- * granted to anon, unlike Whot's, so a grant-based reading says "they always arrive, therefore
- * a null proves truncation". That confuses two different questions. Grants decide whether a
- * column can EVER appear; TOAST decides whether it appears in THIS payload. The piles are the
- * only TOAST-eligible columns in the table, so an ordinary discard-only move legitimately
- * arrives without them, and gating on them would reject a large share of normal updates.
+ * because an earlier revision of this file included them on the opposite argument. A
+ * grant-based reading says "they are granted to anon, so they always arrive, so a null proves
+ * truncation". That confuses two questions. Grants decide whether a column can EVER appear;
+ * TOAST decides whether it appears in THIS payload. The piles are the only TOAST-eligible
+ * columns in the table, so an ordinary discard-only move legitimately arrives without them, and
+ * gating on them would reject a large share of normal updates.
  *
- * Note what that does and does NOT cost, because an earlier version of this comment had it
- * wrong. It is NOT an egress saving: `RummyPlayerView.applySessionRow` returns `false`
- * unconditionally, so every Rummy move already schedules the reconciling reload (a move writes
- * `rummy_player_hands` too). That argument belongs to Uno, which returns `prev != null` and
- * genuinely does skip the reload. What excluding the piles buys here is the realtime FAST PATH:
- * a turn advance applies immediately instead of waiting out the ~90 ms debounce plus round-trip.
- * The pile values it would otherwise blank are carried forward by `mergeRealtimeRow` with
- * `RUMMY_SESSION_TOAST_PRONE` — see `realtime-merge.ts`. Gate on arrival, merge on application;
- * neither alone is sufficient.
+ * What exclusion costs is narrower than a second earlier version of this comment claimed. It is
+ * NOT an egress saving: `RummyPlayerView.applySessionRow` returns `false` unconditionally, so
+ * every Rummy move already schedules the reconciling reload (a move writes `rummy_player_hands`
+ * too). That argument belongs to Uno, which returns `prev != null` and genuinely skips it. What
+ * exclusion buys is the realtime FAST PATH: a turn advance applies immediately instead of
+ * waiting out the ~90 ms debounce plus round-trip.
+ *
+ * The piles are no longer in {@link RUMMY_SESSION_SELECT} — shipping the ordered deck to the
+ * browser makes hand redaction bypassable by subtraction, so clients read `draw_count` /
+ * `discard_count` instead. They still arrive over realtime, which has no column projection and
+ * publishes `rummy_sessions` whole-table, and `RummyBoard` uses a pile length as the fallback
+ * behind `draw_count` because whether a STORED GENERATED column reaches postgres_changes is not
+ * established here. So carrying them forward with `mergeRealtimeRow` and
+ * `RUMMY_SESSION_TOAST_PRONE` still protects something real. Gate on arrival, merge on
+ * application; neither alone is sufficient.
  */
 export const RUMMY_SESSION_NOT_NULL_KEYS = ['turn_order'] as const
 

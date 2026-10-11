@@ -109,3 +109,52 @@ describe('mergeRealtimeRow with the rummy piles', () => {
     expect(merged.winner_player_id).toBeNull()
   })
 })
+
+describe('deriving rummy pile counts from a payload', () => {
+  /**
+   * The rule RummyPlayerView.applySessionRow applies after merging: a payload that actually
+   * carried a pile is authoritative for that pile's count.
+   *
+   * Pinned here because the first version of this got it backwards. `mergeRealtimeRow` only
+   * skips keys the payload omits, so a fresh `draw_pile` with no `draw_count` leaves the STALE
+   * count in place — and a view reading `draw_count ?? draw_pile.length` then prefers the stale
+   * number, which is the exact case the fallback existed for.
+   */
+  function applyRule(prev: Record<string, unknown>, row: Record<string, unknown>) {
+    const merged = mergeRealtimeRow<Record<string, unknown>>(prev, row, RUMMY_SESSION_TOAST_PRONE)
+    if (Array.isArray(row.draw_pile)) merged.draw_count = row.draw_pile.length
+    if (Array.isArray(row.discard_pile)) merged.discard_count = row.discard_pile.length
+    return merged
+  }
+
+  const prev = { draw_pile: [1, 2, 3], draw_count: 3, discard_pile: [9], discard_count: 1, updated_at: '1' }
+
+  it('prefers a fresh pile over a stale count', () => {
+    // The payload drew a card: pile is now 2 long, but carries no draw_count.
+    const merged = applyRule(prev, { draw_pile: [1, 2], updated_at: '2' })
+    expect(merged.draw_count).toBe(2)
+  })
+
+  it('prefers a fresh count when the pile was TOAST-ed away', () => {
+    // The mirror case: fresh draw_count, pile arrives null and is carried forward from prev.
+    const merged = applyRule(prev, { draw_pile: null, draw_count: 2, updated_at: '2' })
+    expect(merged.draw_count).toBe(2)
+    expect(merged.draw_pile).toEqual([1, 2, 3])
+  })
+
+  it('keeps the previous count when the payload carries neither', () => {
+    const merged = applyRule(prev, { turn_step: 'discard', updated_at: '2' })
+    expect(merged.draw_count).toBe(3)
+  })
+
+  it('derives an empty pile as 0 rather than falling back to the stale count', () => {
+    const merged = applyRule(prev, { draw_pile: [], updated_at: '2' })
+    expect(merged.draw_count).toBe(0)
+  })
+
+  it('applies the same rule to the discard pile', () => {
+    const merged = applyRule(prev, { discard_pile: [9, 8, 7], updated_at: '2' })
+    expect(merged.discard_count).toBe(3)
+    expect(merged.draw_count).toBe(3)
+  })
+})

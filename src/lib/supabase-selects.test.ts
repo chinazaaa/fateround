@@ -133,10 +133,19 @@ describe('rummy toast-prone keys', () => {
     expect(RUMMY_SESSION_TOAST_PRONE).toEqual(['draw_pile', 'discard_pile'])
   })
 
-  it('keeps them out of the completeness gate but in the select', () => {
+  it('keeps them out of both the completeness gate and the select', () => {
     for (const key of RUMMY_SESSION_TOAST_PRONE) {
       expect(RUMMY_SESSION_NOT_NULL_KEYS as readonly string[]).not.toContain(key)
-      expect(RUMMY_SESSION_SELECT.split(',')).toContain(key)
+      // The piles are server-only now: shipping the ordered deck to the browser makes hand
+      // redaction bypassable by subtraction, so re-adding either to the client select would
+      // undo /api/rummy/hands. Clients read draw_count / discard_count instead.
+      expect(RUMMY_SESSION_SELECT.split(',')).not.toContain(key)
     }
+    // The merge still matters, but not because the UI renders a pile: it does not. The piles are
+    // the fallback behind `draw_count` in RummyBoard for realtime payloads, since whether a
+    // STORED GENERATED column reaches postgres_changes is unestablished here. So both the count
+    // and the pile have to survive a partial payload.
+    expect(RUMMY_SESSION_SELECT.split(',')).toContain('draw_count')
+    expect(RUMMY_SESSION_SELECT.split(',')).toContain('discard_count')
   })
 })
