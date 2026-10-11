@@ -51,6 +51,12 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   sessionRef.current = session
   // Mirror of the host's seat token, set after `useHostSeat` runs below.
   const hostResumeTokenRef = useRef<string | null>(null)
+  /**
+   * Monotonic id for hand fetches — see RummyPlayerView for the full reasoning. `load` runs
+   * before useHostSeat resolves the seat token, so its response is redacted; if it lands after
+   * the token-triggered effect's response, it blanks the seated host's own cards.
+   */
+  const handsSeqRef = useRef(0)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -68,6 +74,7 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     setGame(gameRes.data)
     setPlayers(plrsRes.data ?? [])
     setLoading(false)
+    const seq = ++handsSeqRef.current
     const [sessionRes, handsRes] = await Promise.all([
       supabase.from('rummy_sessions').select(RUMMY_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       // Hands via /api/rummy/hands, not the table. The host token identifies the room; the seat's
@@ -77,8 +84,9 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
       fetchRummyHands(gameCode, { hostToken, resumeToken: hostResumeTokenRef.current ?? undefined }),
     ])
     if (supabasePollOk(sessionRes)) setSession(sessionRes.data as RummySession | null)
-    // null = the fetch failed. Keep the previous hands rather than clearing them.
-    if (handsRes) setHands(handsRes)
+    // null = the fetch failed. Keep the previous hands rather than clearing them. The seq check
+    // drops a response a newer fetch has already superseded.
+    if (handsRes && seq === handsSeqRef.current) setHands(handsRes)
     return supabasePollOk(sessionRes) && handsRes !== null
   }, [gameCode, hostToken])
 
@@ -130,13 +138,10 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   // "out". Re-fetch with the authoritative token the moment it lands.
   useEffect(() => {
     if (!hostResumeToken || game?.status !== 'active') return
-    let cancelled = false
+    const seq = ++handsSeqRef.current
     void fetchRummyHands(gameCode, { hostToken, resumeToken: hostResumeToken }).then((h) => {
-      if (!cancelled && h) setHands(h)
+      if (h && seq === handsSeqRef.current) setHands(h)
     })
-    return () => {
-      cancelled = true
-    }
   }, [hostResumeToken, game?.status, gameCode, hostToken])
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)

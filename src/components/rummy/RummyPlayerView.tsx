@@ -71,6 +71,16 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
   sessionRef.current = session
   // Mirror of the resolved resume token, set after `useGameViewBootstrap` runs below.
   const myResumeTokenRef = useRef<string | null>(null)
+  /**
+   * Monotonic id for hand fetches, so a slower earlier request cannot overwrite a newer one.
+   *
+   * Two paths fetch hands and they race: `loadGameState` fires before the resume token resolves
+   * (so its response is REDACTED), and the effect below fires once the token lands. If the
+   * tokenless one finishes second, it replaces the player's visible cards with nulls until the
+   * next poll. A `cancelled` flag does not help — neither request was cancelled, they simply
+   * landed out of order.
+   */
+  const handsSeqRef = useRef(0)
   const [hands, setHands] = useState<RummyPlayerHand[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
@@ -79,6 +89,7 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     // Hands come from /api/rummy/hands, not the table: other players' `cards` must never reach
     // this client (see lib/hand-redaction.ts). Own cards come back in full; everyone else's
     // arrive as `card_count`.
+    const seq = ++handsSeqRef.current
     const [sessionRes, handsData] = await Promise.all([
       supabase.from('rummy_sessions').select(RUMMY_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
       // Prefer the localStorage session token, falling back to the bootstrap-resolved token via
@@ -93,8 +104,9 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as RummySession | null) : null
     if (sessionData) setSession(sessionData)
     // null = the fetch failed. Leave the previous hands in place rather than clearing them — a
-    // transient blip must not masquerade as an empty hand.
-    if (handsData) setHands(handsData)
+    // transient blip must not masquerade as an empty hand. The seq check drops a response that
+    // a newer fetch has already superseded.
+    if (handsData && seq === handsSeqRef.current) setHands(handsData)
     return { state: sessionData, ok: supabasePollOk(sessionRes) && handsData !== null }
   }, [gameCode])
 
@@ -144,13 +156,10 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
   // with the authoritative token the moment it lands, so a share-link player sees their cards.
   useEffect(() => {
     if (!myResumeToken || game?.status !== 'active') return
-    let cancelled = false
+    const seq = ++handsSeqRef.current
     void fetchRummyHands(gameCode, { resumeToken: myResumeToken }).then((h) => {
-      if (!cancelled && h) setHands(h)
+      if (h && seq === handsSeqRef.current) setHands(h)
     })
-    return () => {
-      cancelled = true
-    }
   }, [myResumeToken, game?.status, gameCode])
 
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
@@ -169,6 +178,18 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     // RUMMY_SESSION_SELECT and nothing renders them, but they are still the fallback behind
     // `draw_count` in RummyBoard while realtime keeps delivering them — see the note there.
     const merged = mergeRealtimeRow<RummySession>(prev, row, RUMMY_SESSION_TOAST_PRONE)
+    // A payload that actually carried a pile is authoritative for that pile's count, so derive
+    // it here rather than letting the view choose between two sources.
+    //
+    // Without this the fallback is backwards in the one case it exists for: a payload with a
+    // fresh `draw_pile` but no `draw_count` leaves the stale `draw_count` in place (the merge
+    // only skips keys the payload omits), and `draw_count ?? draw_pile.length` then prefers the
+    // stale number. Flipping the order breaks the mirror case — a fresh `draw_count` alongside a
+    // pile carried forward from `prev`. Deriving at the point where we know which fields the
+    // payload supplied avoids both. Reads `row`, NOT `merged`: `merged` may hold a pile that
+    // came from `prev`.
+    if (Array.isArray(row.draw_pile)) merged.draw_count = row.draw_pile.length
+    if (Array.isArray(row.discard_pile)) merged.discard_count = row.discard_pile.length
     setSession(merged)
     sessionRef.current = merged
     // A move mutates the session AND at least one hand row; still need a full reload for hands.
