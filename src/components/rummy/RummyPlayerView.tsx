@@ -163,10 +163,11 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     const next = row as unknown as RummySession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    // A row reaching here passed the gate, so it may still be missing the piles (they are
-    // deliberately out of RUMMY_SESSION_NOT_NULL_KEYS). Merge rather than replace: applying it
-    // wholesale nulls `draw_pile`, and RummyBoard derives its displayed count from that array's
-    // length, so the draw pile would read 0 and disable the draw button until the reload lands.
+    // Merge rather than replace, for two different kinds of missing. `mergeRealtimeRow` skips a
+    // key the payload omits entirely (an unpublished column must not blank known state) and
+    // keeps the previous value for a TOAST-ed pile that arrives null. The piles are no longer in
+    // RUMMY_SESSION_SELECT and nothing renders them, but they are still the fallback behind
+    // `draw_count` in RummyBoard while realtime keeps delivering them — see the note there.
     const merged = mergeRealtimeRow<RummySession>(prev, row, RUMMY_SESSION_TOAST_PRONE)
     setSession(merged)
     sessionRef.current = merged

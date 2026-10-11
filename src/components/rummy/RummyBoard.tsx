@@ -74,9 +74,17 @@ export function RummyGamePanel({
   const turnPlayerId = (session.turn_order ?? [])[session.current_turn_index] ?? null
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
   const topDiscard = session.top_discard
-  // `draw_count` is a generated stored column (20261127120000); `draw_pile` is no longer
-  // selected, so its length is not available here.
-  const drawCount = session.draw_count ?? 0
+  // `draw_count` is a generated stored column (20261127120000) and `draw_pile` is no longer in
+  // RUMMY_SESSION_SELECT, so the REST row carries the count and not the deck.
+  //
+  // The `draw_pile` fallback is for realtime only, and it is not dead code: whether Supabase's
+  // postgres_changes decoder emits STORED GENERATED columns is not something this repo has
+  // established (Postgres only gained `publish_generated_columns` in 18), while
+  // `rummy_sessions` is published whole-table so a payload still carries the real pile. If
+  // `draw_count` is absent or arrives null, the fallback keeps the fast-path count exact instead
+  // of flashing an empty deck; after a pile revoke the pile stops arriving and `draw_count`
+  // carries it alone. Same belt-and-braces as apps/mobile WhotPlayerView.
+  const drawCount = session.draw_count ?? session.draw_pile?.length ?? 0
   const canDrawNow = isMyTurn && !isViewer && session.turn_step === 'draw' && !acting
 
   const turnTimeLabel = hasTimer && secondsLeft != null && secondsLeft > 0 ? formatCountdown(secondsLeft) : undefined

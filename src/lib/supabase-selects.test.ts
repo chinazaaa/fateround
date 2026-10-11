@@ -141,9 +141,10 @@ describe('rummy toast-prone keys', () => {
       // undo /api/rummy/hands. Clients read draw_count / discard_count instead.
       expect(RUMMY_SESSION_SELECT.split(',')).not.toContain(key)
     }
-    // The merge still matters despite that: rummy_sessions is published whole-table, so realtime
-    // payloads keep carrying the piles until a revoke lands, and a pile-less payload must not
-    // blank a value an earlier payload supplied.
+    // The merge still matters, but not because the UI renders a pile: it does not. The piles are
+    // the fallback behind `draw_count` in RummyBoard for realtime payloads, since whether a
+    // STORED GENERATED column reaches postgres_changes is unestablished here. So both the count
+    // and the pile have to survive a partial payload.
     expect(RUMMY_SESSION_SELECT.split(',')).toContain('draw_count')
     expect(RUMMY_SESSION_SELECT.split(',')).toContain('discard_count')
   })
