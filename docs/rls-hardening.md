@@ -177,21 +177,36 @@ a revoke.
 
 Two ways it differs from the four games above:
 
-- **Easier.** Its realtime subscription has no `apply` callback — payloads only trigger a reload
-  — so the whole "redacted state read as real state" class below cannot occur here, and
-  `RummyPlayerHand.cards` is already typed `RummyCard[] | null` with a `card_count` beside it. The
-  type was written for the route; the route was never built.
-- **Harder, then easier.** Its session select still shipped both ordered piles, so redacting hands
-  alone was bypassable by subtraction — the Crazy Eights argument. `20261127120000_rummy_pile_counts.sql`
-  adds the generated `draw_count` / `discard_count` that close that off. But there is no mobile
-  Rummy view (`apps/mobile` ships only the slug), so Rummy's eventual revoke is gated on a web
-  deploy alone — no store release, no install drain. It is the cheapest of the five to finish.
+- **Easier, but only for the hands.** Neither view registers an `apply` callback for the *hands*
+  table (`RummyPlayerView.tsx`, `RummyHostView.tsx`), so hand payloads only trigger a reload and
+  cannot be read as game state. Do NOT generalise that to the session row: `RummyPlayerView` does
+  register `apply: applySessionRow` for `rummy_sessions`, and the "redacted state read as real
+  state" trap below is live there — `RummyBoard` derives its draw count from `draw_pile.length`,
+  so a payload without the pile reads as a 0-card deck and disables the draw button. That is why
+  `RUMMY_SESSION_TOAST_PRONE` exists. A pile revoke has to change that reader, not just the grant.
+  `RummyPlayerHand.cards` is already typed `RummyCard[] | null` with a `card_count` beside it: the
+  type was written for the route, which was never built.
+- **Harder, then easier.** Its session select still ships both ordered piles, so redacting hands
+  alone is bypassable by subtraction — the Crazy Eights argument.
+  `20261127120000_rummy_pile_counts.sql` adds the generated `draw_count` / `discard_count` that a
+  revoke would need, but **it is additive and closes nothing by itself**: `rummy_sessions` still
+  holds table-level SELECT for `anon` (`20261104120000_rummy.sql`) and both piles remain readable.
+  What does make Rummy the cheapest of the five to finish is that there is no mobile Rummy view
+  (`apps/mobile` ships only the slug, and `app/game/[code].tsx` falls back to opening the web
+  room), so its revoke is gated on a web deploy alone — no store release, no install drain.
 
-Note also that the original reason for parking the hands revoke has expired. `20260815120000_sec_crazy8_hide_piles.sql`
-deferred it because redacting hands "buys very little while `crazy_eights_sessions.draw_pile` still
-ships the FULL ORDERED DECK to every client". Every deck is now closed (Crazy Eights
-`20260815120000`, UNO `20261121120000`, Whot `20261120120000`, Rummy's counts above), so that
-qualifier no longer holds and the hands are the remaining exposure.
+On the state of the decks: all three revokes are **written but not applied** — Crazy Eights
+`20260815120000`, UNO `20261121120000`, Whot `20261120120000` each carry a "DO NOT APPLY TO
+PRODUCTION until a compatible mobile build has shipped" header and sit behind
+`MOBILE_ROLLOUT_ACK`. Written is not closed, and the per-game table above says as much for Crazy
+Eights. So the subtraction argument that made a hands revoke low-value is still only half
+answered in production, and Rummy's piles are not answered at all.
+
+No file records why the hands revoke was parked. `20260815120000_sec_crazy8_hide_piles.sql`
+observes that redacting hands "buys very little while `crazy_eights_sessions.draw_pile` still
+ships the FULL ORDERED DECK to every client", but that is its argument *for* revoking the piles —
+it ends "Both piles are therefore revoked" — not a stated reason for omitting the hands. Treat the
+deferral as undocumented rather than justified.
 
 ### Deliberate: the hands routes are unauthenticated reads
 
