@@ -250,6 +250,13 @@ jobs:
           # through the helper and has never been visible to this guard. Adding the helper name
           # closes that, and it matters more going forward than it did in the past, because the
           # helper's own closing note tells the next author to prefer it over a hand-rolled block.
+          #
+          # This test is still NOT a complete answer to "does this migration break installed
+          # clients". It does not see `alter table ... drop column` (which breaks a client exactly
+          # as a revoke does), `alter publication ... drop table`, or a future wrapper helper under
+          # another name. It also strips only `--` comments, so a `/* */` block or a dollar-quoted
+          # body merely DISCUSSING sec_regrant_except would false-positive — harmless, since the
+          # guard fails closed and the cost is one spurious MOBILE_ROLLOUT_ACK entry.
           case "${GITHUB_REF_NAME:-}" in
             main) GUARD_ENV="Production" ;;
             *)    GUARD_ENV="Preview" ;;

@@ -43,13 +43,33 @@
 -- (src/lib/rummy.ts) reads both tables with `select('*')` through the SERVICE ROLE, which a
 -- revoke on anon/authenticated does not affect.
 --
+-- ⚠️ EXCEPT IN LOCAL DEV, where that sentence is false and this migration will look like a bug.
+-- getSupabaseAdmin() (src/lib/supabase-admin.ts) throws in production if
+-- SUPABASE_SERVICE_ROLE_KEY is missing, but OUTSIDE production it warns and falls back to the
+-- ANON key. So a `next dev` with only the anon key in .env.local, pointed at a project where this
+-- has applied, issues those `select('*')` calls as anon and gets 42501 — every /api/rummy/* move
+-- and every hand fetch fails. It presents as a frozen board, not as a missing-env error, because
+-- the views deliberately keep the last known hands when a fetch returns null. Set
+-- SUPABASE_SERVICE_ROLE_KEY locally. This is new: before the revoke the anon fallback worked on
+-- these tables.
+--
 -- REALTIME. Revoking is the only thing that narrows a postgres_changes payload — Realtime filters
 -- columns per subscriber via has_column_privilege in realtime.apply_rls. A publication column
 -- list does NOT work; see the correction appended to 20261110120000_monopoly_realtime_columns.sql.
--- Both tables stay in the publication and anon keeps SELECT on their other columns, so the
--- subscriptions that drive reloads keep firing — `rummy_player_hands` is watched only as a reload
--- trigger (no apply callback), and RummyPlayerView.applySessionRow already treats an absent pile
--- as normal and derives counts from `draw_count`.
+-- Both tables stay in the publication and anon keeps SELECT on their other columns.
+--
+-- That a partially-privileged subscriber still RECEIVES the event is measured, not assumed:
+-- docs/games-column-revoke-audit.md records an anon `games` frame dropping 12,305 -> 9,930 bytes
+-- (-19.3%) after 29 mafia_* columns were revoked, against a control where a publication column
+-- list moved it by one byte. A frame that arrived pruned is the observation. Crazy Eights, UNO and
+-- Whot all run on realtime today with revoked piles.
+--
+-- ⚠️ But know what is being bet, because the failure mode is a SOFT-LOCK, not a slowdown. If
+-- events stopped reaching anon, `useGameTableSync`'s `connected` would stay true — it reports
+-- channel health (SUBSCRIBED + live socket), never event delivery — and the fallback poll is
+-- gated on `!connected`, so it would stay OFF. The acting player's own `await load()` keeps them
+-- current; every OPPONENT's board freezes, never sees the turn pass, and times out. That is what
+-- the playtest before the production promotion is actually checking.
 --
 -- Uses public.sec_regrant_except (20260807110000) rather than a fourth hand-rolled copy of the
 -- do-block. It VALIDATES the excluded column names and raises on a typo, where a hand-rolled
