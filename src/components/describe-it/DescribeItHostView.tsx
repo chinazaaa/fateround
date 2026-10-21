@@ -32,6 +32,7 @@ import { useHostSeat } from '@/hooks/useHostSeat'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -257,8 +258,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     setActing(true)
     try {
       await post(path, { resumeToken: hostResumeToken, ...body })
-      if (path === 'guess') void load()
-      else await load()
+      await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Action failed')
     } finally {
@@ -423,6 +423,24 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   }, [game, gameCode, hostToken, load, session?.phase, advancing, leaveGameRemovePlayer, hostMode, hostPlayerId])
   useRegisterGameSettings(hostSettingsNode)
 
+  const dItIndividual = clampDescribeItMode(game?.describe_it_mode) === 'individual'
+  const dItLeaderboard = useMemo(() => describeItIndividualLeaderboard(teamRows, players), [teamRows, players])
+  useGameScores(
+    useMemo(
+      () => (dItIndividual ? Object.fromEntries(dItLeaderboard.map((r) => [r.id, r.score])) : null),
+      [dItIndividual, dItLeaderboard]
+    ),
+    { suffix: ' pts' }
+  )
+  useGameStats(
+    useMemo(() => {
+      if (!dItIndividual) return null
+      const counts: Record<string, number> = {}
+      for (const g of guesses) if (g.correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1
+      return Object.fromEntries(dItLeaderboard.map((r) => [r.id, `✅ ${counts[r.id] ?? 0} guessed`]))
+    }, [dItIndividual, dItLeaderboard, guesses])
+  )
+
   if (loading) {
     return <HostLobbySkeleton />
   }
@@ -528,23 +546,26 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
       {game.status === 'active' && !gameFinished && session && (
         <>
-          {isIndividual ? (
-            <DescribeItPlayerScoreboard
-              leaderboard={describeItIndividualLeaderboard(teamPlain, players)}
-              describerId={session.describer_player_id}
-              myPlayerId={hostPlayerId}
-              round={session.current_round}
-              totalRounds={session.total_rounds}
-            />
-          ) : (
-            <DescribeItScoreboard
-              scores={computeDescribeItScores(words, numTeams)}
-              activeTeam={session.active_team}
-              myTeam={hostTeam}
-              round={session.current_round}
-              totalRounds={session.total_rounds}
-            />
-          )}
+          {/* Host-player gets the scoreboard here (Play tab has the full game). Spectator
+              hosts watch — Manage only carries controls. */}
+          {hostPlays &&
+            (isIndividual ? (
+              <DescribeItPlayerScoreboard
+                leaderboard={dItLeaderboard}
+                describerId={session.describer_player_id}
+                myPlayerId={hostPlayerId}
+                round={session.current_round}
+                totalRounds={session.total_rounds}
+              />
+            ) : (
+              <DescribeItScoreboard
+                scores={computeDescribeItScores(words, numTeams)}
+                activeTeam={session.active_team}
+                myTeam={hostTeam}
+                round={session.current_round}
+                totalRounds={session.total_rounds}
+              />
+            ))}
           {session.phase === 'break' && (
             <button type="button" onClick={advanceTurn} disabled={advancing} className="btn-primary w-full py-2.5">
               {advancing ? 'Starting…' : isIndividual ? 'Next describer now →' : 'Next team now →'}
