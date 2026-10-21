@@ -236,6 +236,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
+      else if (path === 'guess') void load()
       else await load()
     } finally {
       setActing(false)

@@ -257,7 +257,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     setActing(true)
     try {
       await post(path, { resumeToken: hostResumeToken, ...body })
-      await load()
+      if (path === 'guess') void load()
+      else await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Action failed')
     } finally {
@@ -527,26 +528,23 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
 
       {game.status === 'active' && !gameFinished && session && (
         <>
-          {/* Host-player gets the scoreboard here (Play tab has the full game). Spectator
-              hosts watch — Manage only carries controls. */}
-          {hostPlays &&
-            (isIndividual ? (
-              <DescribeItPlayerScoreboard
-                leaderboard={describeItIndividualLeaderboard(teamPlain, players)}
-                describerId={session.describer_player_id}
-                myPlayerId={hostPlayerId}
-                round={session.current_round}
-                totalRounds={session.total_rounds}
-              />
-            ) : (
-              <DescribeItScoreboard
-                scores={computeDescribeItScores(words, numTeams)}
-                activeTeam={session.active_team}
-                myTeam={hostTeam}
-                round={session.current_round}
-                totalRounds={session.total_rounds}
-              />
-            ))}
+          {isIndividual ? (
+            <DescribeItPlayerScoreboard
+              leaderboard={describeItIndividualLeaderboard(teamPlain, players)}
+              describerId={session.describer_player_id}
+              myPlayerId={hostPlayerId}
+              round={session.current_round}
+              totalRounds={session.total_rounds}
+            />
+          ) : (
+            <DescribeItScoreboard
+              scores={computeDescribeItScores(words, numTeams)}
+              activeTeam={session.active_team}
+              myTeam={hostTeam}
+              round={session.current_round}
+              totalRounds={session.total_rounds}
+            />
+          )}
           {session.phase === 'break' && (
             <button type="button" onClick={advanceTurn} disabled={advancing} className="btn-primary w-full py-2.5">
               {advancing ? 'Starting…' : isIndividual ? 'Next describer now →' : 'Next team now →'}
