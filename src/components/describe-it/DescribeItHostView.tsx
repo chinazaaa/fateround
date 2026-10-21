@@ -436,9 +436,13 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     useMemo(() => {
       if (!dItIndividual) return null
       const counts: Record<string, number> = {}
-      for (const g of guesses) if (g.correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1
+      for (const w of words) {
+        if (w.status === 'guessed' && w.guesser_player_id) {
+          counts[w.guesser_player_id] = (counts[w.guesser_player_id] ?? 0) + 1
+        }
+      }
       return Object.fromEntries(dItLeaderboard.map((r) => [r.id, `✅ ${counts[r.id] ?? 0} guessed`]))
-    }, [dItIndividual, dItLeaderboard, guesses])
+    }, [dItIndividual, dItLeaderboard, words])
   )
 
   if (loading) {
