@@ -10,6 +10,8 @@ declare
     {"t":"crazy_eights_sessions",      "s":["draw_pile","discard_pile"]},
     {"t":"uno_sessions",               "s":["draw_pile","discard_pile"]},
     {"t":"whot_sessions",              "s":["draw_pile","discard_pile"]},
+    {"t":"rummy_sessions",             "s":["draw_pile","discard_pile"]},
+    {"t":"rummy_player_hands",         "s":["cards"]},
     {"t":"codewords_boards",           "s":["key"]}
   ]';
   e         jsonb;
