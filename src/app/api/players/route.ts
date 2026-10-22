@@ -2179,8 +2179,8 @@ export async function DELETE(req: NextRequest) {
     // a leave that happened.
     try {
       await reconcileDescribeItAfterRemoval(getSupabaseAdmin(), id)
-    } catch {
-      /* best-effort */
+    } catch (err) {
+      console.error('[describe-it:reconcileAfterRemoval]', id, err)
     }
   }
 
