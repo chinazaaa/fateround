@@ -402,12 +402,13 @@ async function loadTeamRows(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<Array<{ player_id: string; team: number }>> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('describe_it_players')
     .select('player_id, team, players!inner(spectator)')
     .eq('game_id', gameId)
     .not('players.spectator', 'is', true)
     .order('created_at')
+  if (error) throw error
   return (data ?? []).map((r) => ({
     player_id: (r as { player_id: string }).player_id,
     team: (r as { team: number }).team,
@@ -465,6 +466,10 @@ function buildTurn(opts: {
   }
 }
 
+export function describeItTurnKey(session: { id?: string; turn_index: number } | null | undefined): string | null {
+  return session ? `${session.id ?? ''}:${session.turn_index}` : null
+}
+
 export async function initializeDescribeItGame(
   supabase: SupabaseClient,
   gameId: string,
@@ -494,11 +499,12 @@ export async function initializeDescribeItGame(
       return { error: `Need at least ${DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL} players to start` }
     }
     individualRoster = playerIds
-    await supabase
+    const { error: purgeError } = await supabase
       .from('describe_it_players')
       .delete()
       .eq('game_id', gameId)
       .not('player_id', 'in', `(${playerIds.join(',')})`)
+    if (purgeError) return internalFailure('describe-it:initialize:purge', purgeError)
     const rows = playerIds.map((player_id) => ({ game_id: gameId, player_id, team: 1, score: 0 }))
     const { error: seedError } = await supabase
       .from('describe_it_players')

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import {
   computeDescribeItScores,
   describeItTotalTurns,
+  describeItTurnKey,
   teamForTurn,
   totalDescribeItTurns,
   type DescribeItTeamScore,
@@ -106,7 +107,7 @@ export function DescribeItPlayPanel({
   teamRows,
   words,
   guesses,
-  justGuessedTurnIndex,
+  justGuessedTurnKey,
   myPlayerId,
   myWord,
   secondsLeft,
@@ -122,7 +123,7 @@ export function DescribeItPlayPanel({
   teamRows: { player_id: string; team: number; score?: number }[]
   words: DescribeItWord[]
   guesses: DescribeItGuess[]
-  justGuessedTurnIndex?: number | null
+  justGuessedTurnKey?: string | null
   myPlayerId: string | null
   /**
    * The secret word, fetched through /api/describe-it/my-word by the parent view when the local
@@ -150,7 +151,7 @@ export function DescribeItPlayPanel({
   // the server's live-roster check in processIndividualGuess.
   const inRoster = !!myPlayerId && teamRows.some((r) => r.player_id === myPlayerId)
   const myGuessedThisTurn =
-    justGuessedTurnIndex === session.turn_index ||
+    (!!justGuessedTurnKey && justGuessedTurnKey === describeItTurnKey(session)) ||
     guesses.some((g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct)
   const describerName = players.find((p) => p.id === session.describer_player_id)?.name ?? 'Someone'
   const clues = session.current_clues?.length

@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   describeItPlayableTeams,
   describeItRoleLeaderboards,
+  describeItTurnKey,
   describerForIndividualTurn,
   nextIndividualDescriberIndex,
   nextPlayableTeamIndex,
@@ -209,5 +210,24 @@ describe('processDescribeItAdvance — departed describer race', () => {
     expect(r.error).toBeTruthy()
     expect(r.error).not.toContain('connection failure') // raw message never surfaced
     expect(m.sessionUpdateCount()).toBe(1) // non-FK error is not retried
+  })
+})
+
+describe('describeItTurnKey', () => {
+  it('distinguishes the same turn index across two sessions', () => {
+    expect(describeItTurnKey({ id: 'session-a', turn_index: 0 })).not.toBe(
+      describeItTurnKey({ id: 'session-b', turn_index: 0 })
+    )
+  })
+
+  it('distinguishes two turns within one session', () => {
+    expect(describeItTurnKey({ id: 'session-a', turn_index: 0 })).not.toBe(
+      describeItTurnKey({ id: 'session-a', turn_index: 1 })
+    )
+  })
+
+  it('is null for no session, so an optimistic flag can never match one', () => {
+    expect(describeItTurnKey(null)).toBeNull()
+    expect(describeItTurnKey(undefined)).toBeNull()
   })
 })
