@@ -84,6 +84,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const [teamRows, setTeamRows] = useState<DescribeItPlayer[]>([])
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
+  const loadSeqRef = useRef(0)
   const [starting, setStarting] = useState(false)
   const [balancing, setBalancing] = useState(false)
   const [advancing, setAdvancing] = useState(false)
@@ -106,13 +107,16 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   useTurnNotifications({ status: game?.status })
 
   const load = useCallback(async (): Promise<boolean> => {
+    const seq = ++loadSeqRef.current
     const [gameRes, plrsRes] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
     ])
     if (!supabasePollOk(gameRes, plrsRes)) return false
-    setGame(gameRes.data)
-    setPlayers(plrsRes.data ?? [])
+    if (seq === loadSeqRef.current) {
+      setGame(gameRes.data)
+      setPlayers(plrsRes.data ?? [])
+    }
     setLoading(false)
 
     const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
@@ -130,10 +134,12 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
         .order('created_at', { ascending: false })
         .limit(40),
     ])
-    if (supabasePollOk(sessionRes)) setSession(sessionRes.data as DescribeItSession | null)
-    if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
-    if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
-    if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+    if (seq === loadSeqRef.current) {
+      if (supabasePollOk(sessionRes)) setSession(sessionRes.data as DescribeItSession | null)
+      if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
+      if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
+      if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+    }
     return true
   }, [gameCode])
 
@@ -258,7 +264,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     setActing(true)
     try {
       await post(path, { resumeToken: hostResumeToken, ...body })
-      await load()
+      if (path === 'guess') void load()
+      else await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Action failed')
     } finally {

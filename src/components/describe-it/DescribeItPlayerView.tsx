@@ -94,6 +94,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
   const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([])
+  const [justGuessedTurn, setJustGuessedTurn] = useState<number | null>(null)
   const [acting, setActing] = useState(false)
   const [picking, setPicking] = useState(false)
 
@@ -263,8 +264,10 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
-      else if (path === 'guess') void load()
-      else await load()
+      else if (path === 'guess') {
+        if (data.correct) setJustGuessedTurn(sessionRef.current?.turn_index ?? null)
+        void load()
+      } else await load()
     } finally {
       setActing(false)
     }
@@ -544,6 +547,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           teamRows={teamPlain}
           words={words}
           guesses={guesses}
+          justGuessedTurnIndex={justGuessedTurn}
           myPlayerId={myPlayerId}
           myWord={myWord}
           secondsLeft={secondsLeft}

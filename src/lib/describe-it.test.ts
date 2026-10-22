@@ -180,6 +180,7 @@ function makeAdvanceSupabase(sessionUpdateResults: Array<{ error: unknown }>) {
         return chain
       },
       eq: () => chain,
+      not: () => chain,
       order: () => chain,
       is: () => chain,
       maybeSingle: () => result(),

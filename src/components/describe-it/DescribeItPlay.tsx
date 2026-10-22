@@ -106,6 +106,7 @@ export function DescribeItPlayPanel({
   teamRows,
   words,
   guesses,
+  justGuessedTurnIndex,
   myPlayerId,
   myWord,
   secondsLeft,
@@ -121,6 +122,7 @@ export function DescribeItPlayPanel({
   teamRows: { player_id: string; team: number; score?: number }[]
   words: DescribeItWord[]
   guesses: DescribeItGuess[]
+  justGuessedTurnIndex?: number | null
   myPlayerId: string | null
   /**
    * The secret word, fetched through /api/describe-it/my-word by the parent view when the local
@@ -147,9 +149,9 @@ export function DescribeItPlayPanel({
   // checking the snapshot hid the guess input from them — they could only watch. This mirrors
   // the server's live-roster check in processIndividualGuess.
   const inRoster = !!myPlayerId && teamRows.some((r) => r.player_id === myPlayerId)
-  const myGuessedThisTurn = guesses.some(
-    (g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct
-  )
+  const myGuessedThisTurn =
+    justGuessedTurnIndex === session.turn_index ||
+    guesses.some((g) => g.turn_index === session.turn_index && g.player_id === myPlayerId && g.correct)
   const describerName = players.find((p) => p.id === session.describer_player_id)?.name ?? 'Someone'
   const clues = session.current_clues?.length
     ? session.current_clues

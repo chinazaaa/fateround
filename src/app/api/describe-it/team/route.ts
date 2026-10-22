@@ -5,6 +5,7 @@ import { describeItTeamSchema } from '@/lib/validation'
 import { clampDescribeItTeams } from '@/lib/describe-it'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { secretMatches } from '@/lib/secret-compare'
 import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
@@ -32,9 +33,19 @@ export async function POST(req: NextRequest) {
   // otherwise a player assigns themselves, authorized by their secret resume_token.
   let targetPlayerId: string
   if (hostToken) {
-    if (hostToken !== game.host_token) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    if (!(await secretMatches(hostToken, game.host_token))) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+    }
     if (!playerId) return NextResponse.json({ error: 'playerId is required for host assignment' }, { status: 400 })
-    targetPlayerId = playerId
+    const { data: target } = await supabase
+      .from('players')
+      .select('id, spectator')
+      .eq('id', playerId)
+      .eq('game_id', code)
+      .maybeSingle()
+    if (!target) return NextResponse.json({ error: 'Player not in this game' }, { status: 404 })
+    if (target.spectator) return NextResponse.json({ error: 'Spectators cannot join a team' }, { status: 403 })
+    targetPlayerId = target.id
   } else {
     const auth = await assertPlayer(supabase, code, resumeToken)
     if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
