@@ -118,8 +118,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     if (seq === loadSeqRef.current) {
       setGame(gameRes.data)
       setPlayers(plrsRes.data ?? [])
+      setLoading(false)
     }
-    setLoading(false)
 
     const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
       readDescribeItSession(gameCode),
@@ -238,6 +238,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Action failed')
+    return data
   }
 
   const pickTeam = async (team: number) => {

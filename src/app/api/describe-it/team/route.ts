@@ -37,12 +37,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
     if (!playerId) return NextResponse.json({ error: 'playerId is required for host assignment' }, { status: 400 })
-    const { data: target } = await supabase
+    const { data: target, error: targetError } = await supabase
       .from('players')
       .select('id, spectator')
       .eq('id', playerId)
       .eq('game_id', code)
       .maybeSingle()
+    if (targetError) {
+      return NextResponse.json({ error: internalErrorMessage('describe-it:team:target', targetError) }, { status: 500 })
+    }
     if (!target) return NextResponse.json({ error: 'Player not in this game' }, { status: 404 })
     if (target.spectator) return NextResponse.json({ error: 'Spectators cannot join a team' }, { status: 403 })
     targetPlayerId = target.id
