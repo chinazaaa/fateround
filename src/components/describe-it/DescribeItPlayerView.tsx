@@ -264,12 +264,14 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...body }),
       })
-      const data = await res.json()
-      if (!res.ok) toastError(data.error ?? 'Action failed')
+      const data = await res.json().catch(() => null)
+      if (!res.ok) toastError(data?.error ?? 'Action failed')
       else if (path === 'guess') {
-        if (data.correct) setJustGuessedKey(guessedKey)
+        if (data?.correct) setJustGuessedKey(guessedKey)
         void load()
       } else await load()
+    } catch {
+      toastError('Action failed')
     } finally {
       setActing(false)
     }

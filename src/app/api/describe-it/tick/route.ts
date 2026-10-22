@@ -49,12 +49,20 @@ export async function POST(req: NextRequest) {
 
   let advanced = 0
   for (const s of staleTurns ?? []) {
-    await processDescribeItExpireTurn(supabase, s.game_id as string)
-    advanced += 1
+    try {
+      await processDescribeItExpireTurn(supabase, s.game_id as string)
+      advanced += 1
+    } catch {
+      /* one stuck game must not abort the batch */
+    }
   }
   for (const s of staleBreaks ?? []) {
-    await processDescribeItAdvance(supabase, s.game_id as string)
-    advanced += 1
+    try {
+      await processDescribeItAdvance(supabase, s.game_id as string)
+      advanced += 1
+    } catch {
+      /* one stuck game must not abort the batch */
+    }
   }
 
   return NextResponse.json({ ok: true, advanced })

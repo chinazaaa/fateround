@@ -2174,8 +2174,14 @@ export async function DELETE(req: NextRequest) {
 
   if (isDescribeItGame(gameType)) {
     // A team may have dropped below the minimum to field a turn — skip it, or
-    // end the match if only one team can still play. Best-effort: never block.
-    await reconcileDescribeItAfterRemoval(getSupabaseAdmin(), id)
+    // end the match if only one team can still play. Best-effort: never block —
+    // the player row is already deleted, so a throw here would report failure for
+    // a leave that happened.
+    try {
+      await reconcileDescribeItAfterRemoval(getSupabaseAdmin(), id)
+    } catch {
+      /* best-effort */
+    }
   }
 
   if (isQuickDrawGame(gameType)) {

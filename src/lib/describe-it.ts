@@ -471,8 +471,10 @@ function buildTurn(opts: {
   }
 }
 
-export function describeItTurnKey(session: { id?: string; turn_index: number } | null | undefined): string | null {
-  return session ? `${session.id ?? ''}:${session.turn_index}` : null
+export function describeItTurnKey(
+  session: Pick<DescribeItSession, 'id' | 'turn_index'> | null | undefined
+): string | null {
+  return session ? `${session.id}:${session.turn_index}` : null
 }
 
 export async function initializeDescribeItGame(
@@ -1290,8 +1292,10 @@ export async function clearDescribeItSessionData(
     poolUsage = { describe_it_used: merged }
   }
 
-  await supabase.from('describe_it_guesses').delete().eq('game_id', gameId)
-  await supabase.from('describe_it_words').delete().eq('game_id', gameId)
+  const { error: guessDeleteError } = await supabase.from('describe_it_guesses').delete().eq('game_id', gameId)
+  if (guessDeleteError) return { error: internalErrorMessage('describe-it:clearGuesses', guessDeleteError) }
+  const { error: wordDeleteError } = await supabase.from('describe_it_words').delete().eq('game_id', gameId)
+  if (wordDeleteError) return { error: internalErrorMessage('describe-it:clearWords', wordDeleteError) }
   const { error: sessionDeleteError } = await supabase.from('describe_it_sessions').delete().eq('game_id', gameId)
   if (sessionDeleteError) {
     return { error: internalErrorMessage('describe-it:clearSession', sessionDeleteError) }

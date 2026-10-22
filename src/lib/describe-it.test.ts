@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  assignDescribeItLateJoinTeam,
   describeItPlayableTeams,
   describeItRoleLeaderboards,
   describeItTurnKey,
@@ -229,5 +230,25 @@ describe('describeItTurnKey', () => {
   it('is null for no session, so an optimistic flag can never match one', () => {
     expect(describeItTurnKey(null)).toBeNull()
     expect(describeItTurnKey(undefined)).toBeNull()
+  })
+})
+
+describe('assignDescribeItLateJoinTeam — roster read failure', () => {
+  it('reports an error instead of throwing, so the caller can roll the player back', async () => {
+    // loadTeamRows throws on a PostgREST error. assignDescribeItLateJoinTeam is called
+    // from the join handler AFTER the player row is inserted, and that handler cleans up
+    // on an error return — but not on an exception, which would leak the inserted row.
+    const chain: Record<string, unknown> = {}
+    Object.assign(chain, {
+      select: () => chain,
+      eq: () => chain,
+      not: () => chain,
+      order: () => Promise.resolve({ data: null, error: { message: 'boom' } }),
+      maybeSingle: () => Promise.resolve({ data: { describe_it_mode: 'team', describe_it_num_teams: 2 }, error: null }),
+    })
+    const supabase = { from: () => chain } as unknown as SupabaseClient
+
+    const res = await assignDescribeItLateJoinTeam(supabase, 'ABCD', 'player-1')
+    expect(res.error).toBeTruthy()
   })
 })
