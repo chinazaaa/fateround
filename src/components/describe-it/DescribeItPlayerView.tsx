@@ -12,12 +12,13 @@ import { DescribeItPlayPanel } from '@/components/describe-it/DescribeItPlay'
 import { DescribeItFinalResultsShareBlock } from '@/components/describe-it/DescribeItFinalResultsShareBlock'
 import { gameTypeConfig } from '@/lib/game-types'
 import {
+  DESCRIBE_IT_MIN_PLAYERS,
+  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
   clampDescribeItMode,
   clampDescribeItTeams,
   describeItIndividualLeaderboard,
+  describeItTurnKey,
   isDescribeItResultsPhase,
-  DESCRIBE_IT_MIN_PLAYERS,
-  DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL,
 } from '@/lib/describe-it'
 import { useGameScores, useGameStats, useRosterBase } from '@/components/roster/RosterDrawerContext'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
@@ -94,6 +95,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
   const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([])
+  const [justGuessedKey, setJustGuessedKey] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
   const [picking, setPicking] = useState(false)
 
@@ -254,6 +256,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       toastError('Your player session expired — rejoin to continue')
       return
     }
+    const guessedKey = path === 'guess' ? describeItTurnKey(sessionRef.current) : null
     setActing(true)
     try {
       const res = await fetch(`/api/describe-it/${path}`, {
@@ -261,10 +264,14 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gameId: gameCode, resumeToken: myResumeToken, ...body }),
       })
-      const data = await res.json()
-      if (!res.ok) toastError(data.error ?? 'Action failed')
-      else if (path === 'guess') void load()
-      else await load()
+      const data = await res.json().catch(() => null)
+      if (!res.ok) toastError(data?.error ?? 'Action failed')
+      else if (path === 'guess') {
+        if (data?.correct) setJustGuessedKey(guessedKey)
+        void load()
+      } else await load()
+    } catch {
+      toastError('Action failed')
     } finally {
       setActing(false)
     }
@@ -544,6 +551,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
           teamRows={teamPlain}
           words={words}
           guesses={guesses}
+          justGuessedTurnKey={justGuessedKey}
           myPlayerId={myPlayerId}
           myWord={myWord}
           secondsLeft={secondsLeft}
