@@ -330,7 +330,12 @@ export async function assignDescribeItLateJoinTeam(
     .eq('id', gameId)
     .maybeSingle()
   const numTeams = clampDescribeItTeams(game?.describe_it_num_teams)
-  const rows = await loadTeamRows(supabase, gameId)
+  let rows: Array<{ player_id: string; team: number }>
+  try {
+    rows = await loadTeamRows(supabase, gameId)
+  } catch (err) {
+    return { team: 1, error: internalErrorMessage('describe-it:assignLateJoinTeam:roster', err) }
+  }
   const counts = new Array(numTeams + 1).fill(0)
   for (const r of rows) if (r.team >= 1 && r.team <= numTeams) counts[r.team] += 1
   let smallest = 1
@@ -403,12 +408,17 @@ async function loadTeamRows(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<Array<{ player_id: string; team: number }>> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('describe_it_players')
-    .select('player_id, team')
+    .select('player_id, team, players!inner(spectator)')
     .eq('game_id', gameId)
+    .not('players.spectator', 'is', true)
     .order('created_at')
-  return (data ?? []) as Array<{ player_id: string; team: number }>
+  if (error) throw error
+  return (data ?? []).map((r) => ({
+    player_id: (r as { player_id: string }).player_id,
+    team: (r as { team: number }).team,
+  }))
 }
 
 async function playerName(supabase: SupabaseClient, gameId: string, playerId: string | null): Promise<string> {
@@ -462,6 +472,12 @@ function buildTurn(opts: {
   }
 }
 
+export function describeItTurnKey(
+  session: Pick<DescribeItSession, 'id' | 'turn_index'> | null | undefined
+): string | null {
+  return session ? `${session.id}:${session.turn_index}` : null
+}
+
 export async function initializeDescribeItGame(
   supabase: SupabaseClient,
   gameId: string,
@@ -491,6 +507,12 @@ export async function initializeDescribeItGame(
       return { error: `Need at least ${DESCRIBE_IT_MIN_PLAYERS_INDIVIDUAL} players to start` }
     }
     individualRoster = playerIds
+    const { error: purgeError } = await supabase
+      .from('describe_it_players')
+      .delete()
+      .eq('game_id', gameId)
+      .not('player_id', 'in', `(${playerIds.join(',')})`)
+    if (purgeError) return internalFailure('describe-it:initialize:purge', purgeError)
     const rows = playerIds.map((player_id) => ({ game_id: gameId, player_id, team: 1, score: 0 }))
     const { error: seedError } = await supabase
       .from('describe_it_players')
@@ -1271,9 +1293,14 @@ export async function clearDescribeItSessionData(
     poolUsage = { describe_it_used: merged }
   }
 
-  await supabase.from('describe_it_guesses').delete().eq('game_id', gameId)
-  await supabase.from('describe_it_words').delete().eq('game_id', gameId)
-  await supabase.from('describe_it_sessions').delete().eq('game_id', gameId)
+  const { error: guessDeleteError } = await supabase.from('describe_it_guesses').delete().eq('game_id', gameId)
+  if (guessDeleteError) return { error: internalErrorMessage('describe-it:clearGuesses', guessDeleteError) }
+  const { error: wordDeleteError } = await supabase.from('describe_it_words').delete().eq('game_id', gameId)
+  if (wordDeleteError) return { error: internalErrorMessage('describe-it:clearWords', wordDeleteError) }
+  const { error: sessionDeleteError } = await supabase.from('describe_it_sessions').delete().eq('game_id', gameId)
+  if (sessionDeleteError) {
+    return { error: internalErrorMessage('describe-it:clearSession', sessionDeleteError) }
+  }
   // Reset individual-mode scores so the next game starts from zero.
   await supabase.from('describe_it_players').update({ score: 0 }).eq('game_id', gameId)
   return poolUsage ? { poolUsage } : {}
