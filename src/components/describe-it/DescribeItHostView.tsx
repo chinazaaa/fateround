@@ -32,7 +32,7 @@ import { useHostSeat } from '@/hooks/useHostSeat'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
-import { useGameScores, useGameStats } from '@/components/roster/RosterDrawerContext'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -431,18 +431,6 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       [dItIndividual, dItLeaderboard]
     ),
     { suffix: ' pts' }
-  )
-  useGameStats(
-    useMemo(() => {
-      if (!dItIndividual) return null
-      const counts: Record<string, number> = {}
-      for (const w of words) {
-        if (w.status === 'guessed' && w.guesser_player_id) {
-          counts[w.guesser_player_id] = (counts[w.guesser_player_id] ?? 0) + 1
-        }
-      }
-      return Object.fromEntries(dItLeaderboard.map((r) => [r.id, `✅ ${counts[r.id] ?? 0} guessed`]))
-    }, [dItIndividual, dItLeaderboard, words])
   )
 
   if (loading) {
