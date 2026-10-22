@@ -73,6 +73,7 @@ async function fetchCorrectGuesserIds(gameCode: string): Promise<{ data: string[
       .select('player_id')
       .eq('game_id', gameCode)
       .eq('correct', true)
+      .order('id', { ascending: true })
       .range(from, from + CORRECT_GUESS_PAGE - 1)
     if (!supabasePollOk(res)) return { data: null, error: res.error }
     const rows = (res.data ?? []) as { player_id: string }[]
