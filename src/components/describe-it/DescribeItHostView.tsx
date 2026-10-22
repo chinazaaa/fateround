@@ -32,6 +32,7 @@ import { useHostSeat } from '@/hooks/useHostSeat'
 import type { DescribeItGuess, DescribeItPlayer, DescribeItSession, DescribeItWord, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { useGameScores } from '@/components/roster/RosterDrawerContext'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
@@ -422,6 +423,16 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   }, [game, gameCode, hostToken, load, session?.phase, advancing, leaveGameRemovePlayer, hostMode, hostPlayerId])
   useRegisterGameSettings(hostSettingsNode)
 
+  const dItIndividual = clampDescribeItMode(game?.describe_it_mode) === 'individual'
+  const dItLeaderboard = useMemo(() => describeItIndividualLeaderboard(teamRows, players), [teamRows, players])
+  useGameScores(
+    useMemo(
+      () => (dItIndividual ? Object.fromEntries(dItLeaderboard.map((r) => [r.id, r.score])) : null),
+      [dItIndividual, dItLeaderboard]
+    ),
+    { suffix: ' pts' }
+  )
+
   if (loading) {
     return <HostLobbySkeleton />
   }
@@ -532,7 +543,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
           {hostPlays &&
             (isIndividual ? (
               <DescribeItPlayerScoreboard
-                leaderboard={describeItIndividualLeaderboard(teamPlain, players)}
+                leaderboard={dItLeaderboard}
                 describerId={session.describer_player_id}
                 myPlayerId={hostPlayerId}
                 round={session.current_round}
