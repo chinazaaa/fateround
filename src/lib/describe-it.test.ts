@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  assignDescribeItLateJoinTeam,
   describeItPlayableTeams,
   describeItRoleLeaderboards,
+  describeItTurnKey,
   describerForIndividualTurn,
   nextIndividualDescriberIndex,
   nextPlayableTeamIndex,
@@ -180,6 +182,7 @@ function makeAdvanceSupabase(sessionUpdateResults: Array<{ error: unknown }>) {
         return chain
       },
       eq: () => chain,
+      not: () => chain,
       order: () => chain,
       is: () => chain,
       maybeSingle: () => result(),
@@ -208,5 +211,44 @@ describe('processDescribeItAdvance — departed describer race', () => {
     expect(r.error).toBeTruthy()
     expect(r.error).not.toContain('connection failure') // raw message never surfaced
     expect(m.sessionUpdateCount()).toBe(1) // non-FK error is not retried
+  })
+})
+
+describe('describeItTurnKey', () => {
+  it('distinguishes the same turn index across two sessions', () => {
+    expect(describeItTurnKey({ id: 'session-a', turn_index: 0 })).not.toBe(
+      describeItTurnKey({ id: 'session-b', turn_index: 0 })
+    )
+  })
+
+  it('distinguishes two turns within one session', () => {
+    expect(describeItTurnKey({ id: 'session-a', turn_index: 0 })).not.toBe(
+      describeItTurnKey({ id: 'session-a', turn_index: 1 })
+    )
+  })
+
+  it('is null for no session, so an optimistic flag can never match one', () => {
+    expect(describeItTurnKey(null)).toBeNull()
+    expect(describeItTurnKey(undefined)).toBeNull()
+  })
+})
+
+describe('assignDescribeItLateJoinTeam — roster read failure', () => {
+  it('reports an error instead of throwing, so the caller can roll the player back', async () => {
+    // loadTeamRows throws on a PostgREST error. assignDescribeItLateJoinTeam is called
+    // from the join handler AFTER the player row is inserted, and that handler cleans up
+    // on an error return — but not on an exception, which would leak the inserted row.
+    const chain: Record<string, unknown> = {}
+    Object.assign(chain, {
+      select: () => chain,
+      eq: () => chain,
+      not: () => chain,
+      order: () => Promise.resolve({ data: null, error: { message: 'boom' } }),
+      maybeSingle: () => Promise.resolve({ data: { describe_it_mode: 'team', describe_it_num_teams: 2 }, error: null }),
+    })
+    const supabase = { from: () => chain } as unknown as SupabaseClient
+
+    const res = await assignDescribeItLateJoinTeam(supabase, 'ABCD', 'player-1')
+    expect(res.error).toBeTruthy()
   })
 })

@@ -41,13 +41,6 @@ import { useDescribeItWord } from '@/hooks/useDescribeItWord'
 import { useDescribeItSounds } from '@/hooks/useDescribeItSounds'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import {
-  clampDescribeItTeams,
-  clampDescribeItRounds,
-  clampDescribeItMaxPlayers,
-  clampDescribeItMode,
-  computeDescribeItScores,
-  describeItIndividualLeaderboard,
-  describeItLobbyReady,
   DESCRIBE_IT_DEFAULT_MAX_PLAYERS,
   DESCRIBE_IT_MAX_PLAYER_OPTIONS,
   DESCRIBE_IT_MIN_PLAYERS,
@@ -55,6 +48,14 @@ import {
   DESCRIBE_IT_ROUND_OPTIONS,
   DESCRIBE_IT_TEAM_OPTIONS,
   DESCRIBE_IT_TURN_OPTIONS,
+  clampDescribeItMaxPlayers,
+  clampDescribeItMode,
+  clampDescribeItRounds,
+  clampDescribeItTeams,
+  computeDescribeItScores,
+  describeItIndividualLeaderboard,
+  describeItLobbyReady,
+  describeItTurnKey,
   isDescribeItResultsPhase,
 } from '@/lib/describe-it'
 import { parseDescribeItWords, parseExcelDescribeItWords, parseStoredDescribeItWords } from '@/lib/describe-it-words'
@@ -84,6 +85,8 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   const [teamRows, setTeamRows] = useState<DescribeItPlayer[]>([])
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
+  const loadSeqRef = useRef(0)
+  const [justGuessedKey, setJustGuessedKey] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [balancing, setBalancing] = useState(false)
   const [advancing, setAdvancing] = useState(false)
@@ -106,14 +109,17 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
   useTurnNotifications({ status: game?.status })
 
   const load = useCallback(async (): Promise<boolean> => {
+    const seq = ++loadSeqRef.current
     const [gameRes, plrsRes] = await Promise.all([
       supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
       supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
     ])
     if (!supabasePollOk(gameRes, plrsRes)) return false
-    setGame(gameRes.data)
-    setPlayers(plrsRes.data ?? [])
-    setLoading(false)
+    if (seq === loadSeqRef.current) {
+      setGame(gameRes.data)
+      setPlayers(plrsRes.data ?? [])
+      setLoading(false)
+    }
 
     const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
       readDescribeItSession(gameCode),
@@ -130,10 +136,12 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
         .order('created_at', { ascending: false })
         .limit(40),
     ])
-    if (supabasePollOk(sessionRes)) setSession(sessionRes.data as DescribeItSession | null)
-    if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
-    if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
-    if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+    if (seq === loadSeqRef.current) {
+      if (supabasePollOk(sessionRes)) setSession(sessionRes.data as DescribeItSession | null)
+      if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
+      if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
+      if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+    }
     return true
   }, [gameCode])
 
@@ -230,6 +238,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error ?? 'Action failed')
+    return data
   }
 
   const pickTeam = async (team: number) => {
@@ -255,10 +264,14 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       toastError('Your player session expired — rejoin to continue')
       return
     }
+    const guessedKey = path === 'guess' ? describeItTurnKey(session) : null
     setActing(true)
     try {
-      await post(path, { resumeToken: hostResumeToken, ...body })
-      await load()
+      const result = (await post(path, { resumeToken: hostResumeToken, ...body })) as { correct?: boolean } | undefined
+      if (path === 'guess') {
+        if (result?.correct) setJustGuessedKey(guessedKey)
+        void load()
+      } else await load()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Action failed')
     } finally {
@@ -473,6 +486,7 @@ export function DescribeItHostView({ gameCode, hostToken }: { gameCode: string; 
       teamRows={teamPlain}
       words={words}
       guesses={guesses}
+      justGuessedTurnKey={justGuessedKey}
       myPlayerId={hostPlayerId}
       myWord={myWord}
       secondsLeft={secondsLeft}
