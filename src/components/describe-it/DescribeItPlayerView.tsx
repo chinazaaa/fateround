@@ -63,6 +63,24 @@ type Screen =
   | 'finished'
   | 'not_found'
 
+const CORRECT_GUESS_PAGE = 1000
+
+async function fetchCorrectGuesserIds(gameCode: string): Promise<{ data: string[] | null; error: unknown }> {
+  const ids: string[] = []
+  for (let from = 0; ; from += CORRECT_GUESS_PAGE) {
+    const res = await supabase
+      .from('describe_it_guesses')
+      .select('player_id')
+      .eq('game_id', gameCode)
+      .eq('correct', true)
+      .range(from, from + CORRECT_GUESS_PAGE - 1)
+    if (!supabasePollOk(res)) return { data: null, error: res.error }
+    const rows = (res.data ?? []) as { player_id: string }[]
+    for (const r of rows) ids.push(r.player_id)
+    if (rows.length < CORRECT_GUESS_PAGE) return { data: ids, error: null }
+  }
+}
+
 export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
@@ -96,7 +114,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode)
         .order('created_at', { ascending: false })
         .limit(40),
-      supabase.from('describe_it_guesses').select('player_id').eq('game_id', gameCode).eq('correct', true),
+      fetchCorrectGuesserIds(gameCode),
     ])
     const sessionOk = supabasePollOk(sessionRes)
     const sessionData = sessionOk ? (sessionRes.data as DescribeItSession | null) : null
@@ -112,16 +130,14 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
       if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
       if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
-      if (supabasePollOk(correctRes)) {
-        setCorrectGuesserIds(((correctRes.data ?? []) as { player_id: string }[]).map((r) => r.player_id))
-      }
+      if (correctRes.data) setCorrectGuesserIds(correctRes.data)
     }
     // `ok` gates the polling fallback's back-off — only "ok" when every read succeeded.
     // On a failed session read, hand computeScreen the last-known session (not null) so the
     // screen doesn't briefly flip (e.g. finished→active) on a transient error.
     return {
       state: current && sessionOk ? sessionData : sessionRef.current,
-      ok: current && supabasePollOk(sessionRes, teamRes, wordRes, guessRes, correctRes),
+      ok: current && supabasePollOk(sessionRes, teamRes, wordRes, guessRes) && !!correctRes.data,
     }
   }, [gameCode])
 
