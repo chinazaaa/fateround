@@ -63,6 +63,25 @@ type Screen =
   | 'finished'
   | 'not_found'
 
+const CORRECT_GUESS_PAGE = 1000
+
+async function fetchCorrectGuesserIds(gameCode: string): Promise<{ data: string[] | null; error: unknown }> {
+  const ids: string[] = []
+  for (let from = 0; ; from += CORRECT_GUESS_PAGE) {
+    const res = await supabase
+      .from('describe_it_guesses')
+      .select('player_id')
+      .eq('game_id', gameCode)
+      .eq('correct', true)
+      .order('id', { ascending: true })
+      .range(from, from + CORRECT_GUESS_PAGE - 1)
+    if (!supabasePollOk(res)) return { data: null, error: res.error }
+    const rows = (res.data ?? []) as { player_id: string }[]
+    for (const r of rows) ids.push(r.player_id)
+    if (rows.length < CORRECT_GUESS_PAGE) return { data: ids, error: null }
+  }
+}
+
 export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
@@ -70,16 +89,19 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   // Last successfully-read session — returned as the load state when a session read fails,
   // so computeScreen keeps the current screen instead of flipping (e.g. finished→active).
   const sessionRef = useRef<DescribeItSession | null>(null)
+  const loadSeqRef = useRef(0)
   const [teamRows, setTeamRows] = useState<DescribeItPlayer[]>([])
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
+  const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([])
   const [acting, setActing] = useState(false)
   const [picking, setPicking] = useState(false)
 
   // Game-specific load: fetch the describe-it session + team/word/guess rows (the shared
   // game/players fetch + session resolution lives in useGameViewBootstrap).
   const loadGameState = useCallback(async (): Promise<{ state: DescribeItSession | null; ok: boolean }> => {
-    const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
+    const seq = ++loadSeqRef.current
+    const [sessionRes, teamRes, wordRes, guessRes, correctRes] = await Promise.all([
       readDescribeItSession(gameCode),
       supabase
         .from('describe_it_players')
@@ -93,24 +115,29 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode)
         .order('created_at', { ascending: false })
         .limit(40),
+      fetchCorrectGuesserIds(gameCode),
     ])
     const sessionOk = supabasePollOk(sessionRes)
     const sessionData = sessionOk ? (sessionRes.data as DescribeItSession | null) : null
+    const current = seq === loadSeqRef.current
     // Only touch the session when its own read succeeded: this clears a stale session
     // when the query returns no row, while a *non-session* query failing leaves the
     // real session (and screen) intact — no spurious results→active flash.
-    if (sessionOk) {
+    if (sessionOk && current) {
       setSession(sessionData)
       sessionRef.current = sessionData
     }
-    if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
-    if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
-    if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+    if (current) {
+      if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
+      if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
+      if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+      if (correctRes.data) setCorrectGuesserIds(correctRes.data)
+    }
     // `ok` gates the polling fallback's back-off — only "ok" when every read succeeded.
     // On a failed session read, hand computeScreen the last-known session (not null) so the
     // screen doesn't briefly flip (e.g. finished→active) on a transient error.
     return {
-      state: sessionOk ? sessionData : sessionRef.current,
+      state: current && sessionOk ? sessionData : sessionRef.current,
       ok: supabasePollOk(sessionRes, teamRes, wordRes, guessRes),
     }
   }, [gameCode])
@@ -173,9 +200,9 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     useMemo(() => {
       if (!dItIndividual) return null
       const counts: Record<string, number> = {}
-      for (const g of guesses) if (g.correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1
+      for (const id of correctGuesserIds) counts[id] = (counts[id] ?? 0) + 1
       return Object.fromEntries(dItLeaderboard.map((r) => [r.id, `✅ ${counts[r.id] ?? 0} guessed`]))
-    }, [dItIndividual, dItLeaderboard, guesses])
+    }, [dItIndividual, dItLeaderboard, correctGuesserIds])
   )
 
   useTurnNotifications({ status: game?.status })
@@ -236,6 +263,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       })
       const data = await res.json()
       if (!res.ok) toastError(data.error ?? 'Action failed')
+      else if (path === 'guess') void load()
       else await load()
     } finally {
       setActing(false)
