@@ -74,6 +74,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   const [teamRows, setTeamRows] = useState<DescribeItPlayer[]>([])
   const [words, setWords] = useState<DescribeItWord[]>([])
   const [guesses, setGuesses] = useState<DescribeItGuess[]>([])
+  const [correctGuesserIds, setCorrectGuesserIds] = useState<string[]>([])
   const [acting, setActing] = useState(false)
   const [picking, setPicking] = useState(false)
 
@@ -81,7 +82,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
   // game/players fetch + session resolution lives in useGameViewBootstrap).
   const loadGameState = useCallback(async (): Promise<{ state: DescribeItSession | null; ok: boolean }> => {
     const seq = ++loadSeqRef.current
-    const [sessionRes, teamRes, wordRes, guessRes] = await Promise.all([
+    const [sessionRes, teamRes, wordRes, guessRes, correctRes] = await Promise.all([
       readDescribeItSession(gameCode),
       supabase
         .from('describe_it_players')
@@ -95,6 +96,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode)
         .order('created_at', { ascending: false })
         .limit(40),
+      supabase.from('describe_it_guesses').select('player_id').eq('game_id', gameCode).eq('correct', true),
     ])
     const sessionOk = supabasePollOk(sessionRes)
     const sessionData = sessionOk ? (sessionRes.data as DescribeItSession | null) : null
@@ -110,13 +112,16 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
       if (supabasePollOk(teamRes)) setTeamRows((teamRes.data ?? []) as DescribeItPlayer[])
       if (supabasePollOk(wordRes)) setWords((wordRes.data ?? []) as DescribeItWord[])
       if (supabasePollOk(guessRes)) setGuesses((guessRes.data ?? []) as DescribeItGuess[])
+      if (supabasePollOk(correctRes)) {
+        setCorrectGuesserIds(((correctRes.data ?? []) as { player_id: string }[]).map((r) => r.player_id))
+      }
     }
     // `ok` gates the polling fallback's back-off — only "ok" when every read succeeded.
     // On a failed session read, hand computeScreen the last-known session (not null) so the
     // screen doesn't briefly flip (e.g. finished→active) on a transient error.
     return {
       state: current && sessionOk ? sessionData : sessionRef.current,
-      ok: current && supabasePollOk(sessionRes, teamRes, wordRes, guessRes),
+      ok: current && supabasePollOk(sessionRes, teamRes, wordRes, guessRes, correctRes),
     }
   }, [gameCode])
 
@@ -178,9 +183,9 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     useMemo(() => {
       if (!dItIndividual) return null
       const counts: Record<string, number> = {}
-      for (const g of guesses) if (g.correct) counts[g.player_id] = (counts[g.player_id] ?? 0) + 1
+      for (const id of correctGuesserIds) counts[id] = (counts[id] ?? 0) + 1
       return Object.fromEntries(dItLeaderboard.map((r) => [r.id, `✅ ${counts[r.id] ?? 0} guessed`]))
-    }, [dItIndividual, dItLeaderboard, guesses])
+    }, [dItIndividual, dItLeaderboard, correctGuesserIds])
   )
 
   useTurnNotifications({ status: game?.status })
