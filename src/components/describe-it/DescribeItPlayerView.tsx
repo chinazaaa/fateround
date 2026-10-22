@@ -115,8 +115,8 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     // On a failed session read, hand computeScreen the last-known session (not null) so the
     // screen doesn't briefly flip (e.g. finished→active) on a transient error.
     return {
-      state: sessionOk ? sessionData : sessionRef.current,
-      ok: supabasePollOk(sessionRes, teamRes, wordRes, guessRes),
+      state: current && sessionOk ? sessionData : sessionRef.current,
+      ok: current && supabasePollOk(sessionRes, teamRes, wordRes, guessRes),
     }
   }, [gameCode])
 
