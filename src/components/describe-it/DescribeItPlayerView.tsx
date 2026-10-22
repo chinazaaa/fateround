@@ -138,7 +138,7 @@ export function DescribeItPlayerView({ gameCode }: { gameCode: string }) {
     // screen doesn't briefly flip (e.g. finished→active) on a transient error.
     return {
       state: current && sessionOk ? sessionData : sessionRef.current,
-      ok: current && supabasePollOk(sessionRes, teamRes, wordRes, guessRes) && !!correctRes.data,
+      ok: supabasePollOk(sessionRes, teamRes, wordRes, guessRes),
     }
   }, [gameCode])
 
