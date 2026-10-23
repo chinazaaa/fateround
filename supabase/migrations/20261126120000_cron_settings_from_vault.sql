@@ -92,7 +92,29 @@ comment on function public.cron_setting(text) is
   'Exists because custom GUCs cannot be attached to a database without superuser on hosted '
   'Supabase. See 20261126120000_cron_settings_from_vault.sql.';
 
-revoke all on function public.cron_setting(text) from public, anon, authenticated;
+revoke all on function public.cron_setting(text) from public;
+
+-- service_role included deliberately, and unlike
+-- 20261123120000_reap_idle_active_games_cron.sql which leaves it alone for the tick
+-- function. This function RETURNS the decrypted secret, so EXECUTE on it is a read
+-- oracle for app.cron_secret over POST /rest/v1/rpc/cron_setting -- a different kind
+-- of exposure from a function that merely does work. Nothing needs to call it but the
+-- pg_cron job command, which runs as postgres: there is no caller in src/ and the only
+-- other references are this migration and the CI gates.
+--
+-- Guarded by to_regrole, same shape as 20261123120000, so a local database without
+-- these roles still applies cleanly.
+do $roles$
+declare
+  r text;
+begin
+  foreach r in array array['anon', 'authenticated', 'service_role'] loop
+    if to_regrole(r) is not null then
+      execute format('revoke all on function public.cron_setting(text) from %I', r);
+    end if;
+  end loop;
+end
+$roles$;
 
 -- Reschedule the reaper so its command seeds both settings from Vault first. The tick function
 -- is unchanged and still reads them with current_setting, so a stack with the GUCs set and no
@@ -108,6 +130,22 @@ begin
   if to_regprocedure('public.reap_idle_active_games_tick()') is null then
     raise exception
       'cron_settings_from_vault: public.reap_idle_active_games_tick() does not exist, so rescheduling it would register a job that errors every 15 minutes.';
+  end if;
+
+  -- Mirrors 20261124120000_noisy_http_cron_scheduling_guard.sql, which returns early
+  -- on the same condition and therefore never schedules the job on such a stack. Two
+  -- reasons to check pg_extension (installed) rather than pg_available_extensions
+  -- (installable): cron.unschedule / cron.schedule below resolve the `cron` schema at
+  -- RUN time, so without pg_cron installed this block aborts the whole migration; and
+  -- without pg_net the tick's HTTP call fails on every run, which is the "job exists,
+  -- nothing works" state issue #1167 is about. Leaving the job absent also keeps this
+  -- consistent with the deploy-equivalent inventory gate, which expects it to be
+  -- absent exactly when pg_net is unavailable.
+  if not exists (select 1 from pg_extension where extname = 'pg_cron')
+     or not exists (select 1 from pg_extension where extname = 'pg_net') then
+    raise warning
+      'cron_settings_from_vault: pg_cron and/or pg_net are not installed, so reap_idle_active_games was NOT rescheduled. Expected on local/CI stacks without them; on a hosted project it means the reaper is still reading unset settings.';
+    return;
   end if;
 
   perform cron.unschedule('reap_idle_active_games')
