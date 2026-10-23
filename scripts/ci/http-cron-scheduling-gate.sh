@@ -389,9 +389,13 @@ expected_warn_sql=${expected_warn//\'/\'\'}
 # nothing useful in production.
 #
 # Only the two jobs whose COMMAND is the HTTP call are checked this
-# way. reap_idle_active_games is registered as the single call
-# `select public.reap_idle_active_games_tick();` (#1166): its route,
-# bearer token and 90s timeout live inside the function body and are
+# way. reap_idle_active_games is registered as a call to the tick
+# function -- bare (#1166), or preceded by two set_config() seeds when
+# 20261126120000_cron_settings_from_vault.sql is the last writer; in the
+# state THIS gate builds the guard migration is last, so it is the bare
+# form here. See the byte-exact assertion below for which forms are
+# accepted and why both must stay. Either way its route, the bearer
+# token and the 90s timeout live inside the function body and are
 # re-read every run, precisely so that a URL/secret rotation cannot
 # leave a stale value baked into cron.job and so that the function's
 # https transport gate cannot be bypassed. A route/Authorization
