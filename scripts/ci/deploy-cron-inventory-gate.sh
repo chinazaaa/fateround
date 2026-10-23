@@ -543,19 +543,29 @@ fi
 # normalise to the expected text while erroring on every tick. Only
 # ASCII whitespace is collapsed, so a reindentation of a migration's
 # dollar-quoted literal is tolerated and nothing else is.
+#
+# `command_alt` is a TRANSITIONAL second accepted command, to be removed
+# by the tightening commit. This gate is pinned to the BASE branch, so a
+# PR cannot ship the expectation that judges it: until
+# 20261126120000_cron_settings_from_vault.sql is on dev, reap_idle_active_games
+# is judged here against the pre-Vault expectation and would fail. Both the
+# bare `select public.reap_idle_active_games_tick();` and the Vault-seeding
+# form are accepted for that one job. Once the migration lands on dev, drop
+# the bare form so the Vault form is the only accepted command. No other job
+# has an alt and none should gain one -- this is not a general escape hatch.
 bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
-  with expected(jobname, schedule, command, must_exist, absent_reason) as (
+  with expected(jobname, schedule, command, command_alt, must_exist, absent_reason) as (
     values
-      ('close_idle_waiting_lobbies'::text, '*/2 * * * *'::text, 'select close_idle_waiting_lobbies(15);'::text, true, null::text),
-      ('drop_stale_unconfirmed_rsvps', '*/2 * * * *', 'select drop_stale_unconfirmed_rsvps();', true, null),
-      ('notification_dispatches_gc', '17 * * * *', 'delete from public.notification_dispatches where sent_at < now() - interval ''24 hours'';', true, null),
-      ('open_scheduled_games_due', '* * * * *', 'select open_scheduled_games_due();', true, null),
-      -- Seeds app.api_base / app.cron_secret from Vault before the tick, because custom GUCs
-      -- cannot be attached to a database without superuser on hosted Supabase. The tick
-      -- function itself is unchanged. See 20261126120000_cron_settings_from_vault.sql.
-      ('reap_idle_active_games', '*/15 * * * *', \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$, $reaper_must_exist, $reaper_absent_reason),
-      ('scheduled_games_push_tick', '* * * * *', null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time'),
-      ('warn_idle_waiting_lobbies', '*/2 * * * *', null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time')
+      ('close_idle_waiting_lobbies'::text, '*/2 * * * *'::text, 'select close_idle_waiting_lobbies(15);'::text, null::text, true, null::text),
+      ('drop_stale_unconfirmed_rsvps', '*/2 * * * *', 'select drop_stale_unconfirmed_rsvps();', null, true, null),
+      ('notification_dispatches_gc', '17 * * * *', 'delete from public.notification_dispatches where sent_at < now() - interval ''24 hours'';', null, true, null),
+      ('open_scheduled_games_due', '* * * * *', 'select open_scheduled_games_due();', null, true, null),
+      -- The alt seeds app.api_base / app.cron_secret from Vault before the tick, because
+      -- custom GUCs cannot be attached to a database without superuser on hosted Supabase.
+      -- The tick function itself is unchanged. See 20261126120000_cron_settings_from_vault.sql.
+      ('reap_idle_active_games', '*/15 * * * *', 'select public.reap_idle_active_games_tick();', \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$, $reaper_must_exist, $reaper_absent_reason),
+      ('scheduled_games_push_tick', '* * * * *', null, null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time'),
+      ('warn_idle_waiting_lobbies', '*/2 * * * *', null, null, false, 'app.api_base / app.cron_secret are unset in this stack, so a migration baked a URL and a bearer token in instead of reading them at run time')
   ),
   actual as (
     select jobid, jobname, schedule, command, active, database, username, nodename, nodeport,
@@ -574,6 +584,14 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
       from expected e
       left join actual a on a.jobname = e.jobname
       cross join lateral (
+        select
+          (a.norm is not distinct from e.command
+             or (e.command_alt is not null and a.norm is not distinct from e.command_alt)) as cmd_ok,
+          (btrim(regexp_replace(a.command, '\s+', ' ', 'g')) is not distinct from e.command
+             or (e.command_alt is not null
+                 and btrim(regexp_replace(a.command, '\s+', ' ', 'g')) is not distinct from e.command_alt)) as cmd_ok_loose
+      ) as m
+      cross join lateral (
         select case
                  when a.jobid is null and e.must_exist then 'absent from cron.job'
                  when a.jobid is not null and not e.must_exist
@@ -581,11 +599,13 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
                  when a.jobid is null then null
                  when a.schedule is distinct from e.schedule
                    then format('schedule is %L, expected %L', a.schedule, e.schedule)
-                 when a.norm is distinct from e.command
-                      and btrim(regexp_replace(a.command, '\s+', ' ', 'g')) is not distinct from e.command
-                   then format('command matches %L only if NON-ASCII whitespace is treated as whitespace. It contains a character such as U+2000/U+2003/U+2028/U+2029/U+3000, which Postgres regex \s matches but the SQL lexer does not -- pg_cron would raise a syntax error on every tick. Raw command: %L', e.command, a.command)
-                 when a.norm is distinct from e.command
-                   then format('command is %L, expected %L (ASCII whitespace normalised)', a.norm, e.command)
+                 when not m.cmd_ok and m.cmd_ok_loose
+                   then format('command matches %L%s only if NON-ASCII whitespace is treated as whitespace. It contains a character such as U+2000/U+2003/U+2028/U+2029/U+3000, which Postgres regex \s matches but the SQL lexer does not -- pg_cron would raise a syntax error on every tick. Raw command: %L', e.command,
+                               case when e.command_alt is null then '' else format(' or %L', e.command_alt) end,
+                               a.command)
+                 when not m.cmd_ok
+                   then format('command is %L, expected %L%s (ASCII whitespace normalised)', a.norm, e.command,
+                               case when e.command_alt is null then '' else format(' or %L', e.command_alt) end)
                  when a.active is distinct from true
                    then 'is registered but cron.job.active is false, so it never fires -- present-and-disabled is the #1167 failure mode, not a fix for it'
                  when a.database is distinct from 'postgres'
@@ -611,11 +631,22 @@ fi
 
 # The reaper, byte-for-byte. The inventory above already compared it
 # with ASCII whitespace normalised; this repeats it exactly, because
-# #1166 is the regression that matters most here and because the HTTP
-# cron gate makes the identical byte-exact assertion. Anything other
+# #1166 is the regression that matters most here. The HTTP cron gate
+# makes a byte-exact assertion over the same two accepted commands, but
+# NOT over the same cron.job state -- it re-applies the guard migration
+# and only the branch-added migrations, so its accepted set is permanent
+# where the one here is transitional. Anything other
 # than the bare tick invocation means the route and the CRON_SECRET
 # bearer are baked into cron.job rather than re-read each run, and the
 # function's https transport gate (CWE-319) is bypassed.
+#
+# TRANSITIONAL (remove with the tightening commit): the Vault-seeding form
+# from 20261126120000_cron_settings_from_vault.sql is accepted alongside the
+# bare call while that migration is not yet on dev, for the same base-branch
+# pinning reason as the inventory above. Both forms still call the tick
+# function and neither bakes in a URL or a bearer token, so the #1166
+# property this assertion protects is unchanged. Drop the bare form once the
+# migration lands.
 if [ "$pg_net_available" = "t" ]; then
   bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
     select coalesce(
@@ -623,8 +654,9 @@ if [ "$pg_net_available" = "t" ]; then
                when j.jobid is null then 'absent from cron.job'
                when j.schedule is distinct from '*/15 * * * *'
                  then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-               when j.command is distinct from \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$
-                 then format('command is %L, expected %L', j.command, \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$)
+               when j.command is distinct from 'select public.reap_idle_active_games_tick();'
+                    and j.command is distinct from \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$
+                 then format('command is %L, expected %L or %L', j.command, 'select public.reap_idle_active_games_tick();', \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$)
              end, '')
       from (select 1) as one
       left join cron.job j on j.jobname = 'reap_idle_active_games';")
