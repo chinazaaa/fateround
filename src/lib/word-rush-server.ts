@@ -67,6 +67,7 @@ async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
     .select('player_id,team,score,players!inner(spectator)')
     .eq('game_id', gameId)
     .not('players.spectator', 'is', true)
+    .order('created_at')
   if (error) throw error
   return (data ?? []).map((r) => ({
     player_id: (r as { player_id: string }).player_id,

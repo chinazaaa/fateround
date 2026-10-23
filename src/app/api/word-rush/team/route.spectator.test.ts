@@ -21,10 +21,13 @@ vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () =>
     makeSupabaseStub({
       games: () => ({ data: gameRow({ game_type: 'word_rush', status: 'waiting' }), error: null }),
-      players: ({ filters }) => ({
-        data: filters.resume_token ? playerRow : targetRow,
-        error: null,
-      }),
+      // The host path must look the player up BY GAME: a resolver that ignores
+      // game_id cannot tell a scoped query from an unscoped one.
+      players: ({ filters }) => {
+        if (filters.resume_token) return { data: playerRow, error: null }
+        if (filters.game_id !== GAME_CODE.toUpperCase()) return { data: null, error: null }
+        return { data: targetRow, error: null }
+      },
     }),
 }))
 
@@ -59,6 +62,12 @@ describe('POST /api/word-rush/team', () => {
     const res = await post({ gameId: GAME_CODE, hostToken: HOST_TOKEN, playerId: PLAYER_UUID, team: 1 })
     expect(res.status).toBe(403)
     expect(assignCalls).toHaveLength(0)
+  })
+
+  it('lets a host assign a seated player', async () => {
+    const res = await post({ gameId: GAME_CODE, hostToken: HOST_TOKEN, playerId: PLAYER_UUID, team: 1 })
+    expect(res.status).toBe(200)
+    expect(assignCalls).toHaveLength(1)
   })
 
   it('refuses a host assigning a player who is not in this game', async () => {
