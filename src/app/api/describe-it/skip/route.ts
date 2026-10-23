@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   // The describer-only role check is enforced inside processDescribeItSkip.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (auth.player.spectator) return NextResponse.json({ error: 'Spectators cannot play' }, { status: 403 })
 
   const { error, internal } = await processDescribeItSkip(supabase, code, auth.player.id)
   if (error) return NextResponse.json({ error }, { status: internal ? 500 : 400 })

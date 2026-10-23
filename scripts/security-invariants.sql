@@ -103,5 +103,24 @@ begin
     raise exception 'SECURITY INVARIANT FAILED: RLS not enabled on: %', v_bad;
   end if;
 
+  -- 6) Functions that RETURN a secret must not be EXECUTE-able by ANY PostgREST
+  --    role -- service_role included, unlike check 1. A function that merely does
+  --    privileged work is safe for the service-role client to call; one that hands
+  --    back the decrypted value is a read oracle for that secret over
+  --    POST /rest/v1/rpc/<name>, so its only legitimate caller is the owner (the
+  --    pg_cron job command runs as postgres). See 20261126120000_cron_settings_from_vault.sql.
+  select string_agg(format('%s via %s', f.fn, f.role), ', ') into v_bad
+  from (
+    select fn, role
+    from unnest(array['public.cron_setting(text)']) as fn
+    cross join unnest(array['anon', 'authenticated', 'service_role']) as role
+  ) f
+  where to_regprocedure(f.fn) is not null
+    and to_regrole(f.role) is not null
+    and has_function_privilege(f.role, f.fn, 'EXECUTE');
+  if v_bad is not null then
+    raise exception 'SECURITY INVARIANT FAILED: secret-returning function(s) are EXECUTE-able: %', v_bad;
+  end if;
+
   raise notice 'All security invariants passed.';
 end $$;

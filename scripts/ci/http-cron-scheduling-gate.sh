@@ -389,9 +389,13 @@ expected_warn_sql=${expected_warn//\'/\'\'}
 # nothing useful in production.
 #
 # Only the two jobs whose COMMAND is the HTTP call are checked this
-# way. reap_idle_active_games is registered as the single call
-# `select public.reap_idle_active_games_tick();` (#1166): its route,
-# bearer token and 90s timeout live inside the function body and are
+# way. reap_idle_active_games is registered as a call to the tick
+# function -- bare (#1166), or preceded by two set_config() seeds when
+# 20261126120000_cron_settings_from_vault.sql is the last writer; in the
+# state THIS gate builds the guard migration is last, so it is the bare
+# form here. See the byte-exact assertion below for which forms are
+# accepted and why both must stay. Either way its route, the bearer
+# token and the 90s timeout live inside the function body and are
 # re-read every run, precisely so that a URL/secret rotation cannot
 # leave a stale value baked into cron.job and so that the function's
 # https transport gate cannot be bypassed. A route/Authorization
@@ -438,9 +442,19 @@ echo "Both direct-HTTP cron jobs are present with the expected schedule and exac
 # for the guard migration re-inlining net.http_post over the tick call:
 # anything other than the bare tick invocation means baked-in
 # credentials and a bypassed transport gate. Byte-for-byte, NOT
-# whitespace-normalised: this command is a plain constant in the
-# migration rather than a dollar-quoted block, so there is no
-# reindentation to tolerate and no reason to accept anything else.
+# whitespace-normalised, so a reindentation is not tolerated.
+#
+# BOTH forms are accepted here, PERMANENTLY -- unlike the inventory gate
+# this is not transitional. This gate builds its state by applying
+# $GUARD_MIGRATION (20261124120000, the bare form) and then only the
+# migrations the BRANCH ADDS after it. While #1223 is open,
+# 20261126120000_cron_settings_from_vault.sql is branch-added, applies
+# last and leaves the Vault-seeding form; once it merges it is in the
+# base, is no longer "added", is not re-applied, and the guard is the
+# last writer again -- so the bare form comes back. Dropping either
+# accepted form reds this gate. Note the Vault form IS a dollar-quoted
+# block in its migration, so reindenting it would red this byte-exact
+# check while the whitespace-normalising inventory tolerated it.
 bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
   select coalesce(
            case
@@ -448,7 +462,8 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
              when j.schedule is distinct from '*/15 * * * *'
                then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
              when j.command is distinct from 'select public.reap_idle_active_games_tick();'
-               then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
+                  and j.command is distinct from \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$
+               then format('command is %L, expected %L or %L', j.command, 'select public.reap_idle_active_games_tick();', \$cmd\$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();\$cmd\$)
              when j.active is distinct from true
                then 'is registered but cron.job.active is false, so it never fires'
              when j.database is distinct from 'postgres'

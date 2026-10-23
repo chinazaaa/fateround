@@ -133,10 +133,15 @@ async function loadTeamRows(
 ): Promise<Array<{ player_id: string; team: number; score?: number | null }>> {
   const { data } = await supabase
     .from('quick_draw_guess_players')
-    .select('player_id, team, score')
+    .select('player_id, team, score, players!inner(spectator)')
     .eq('game_id', gameId)
+    .not('players.spectator', 'is', true)
     .order('created_at')
-  return (data ?? []) as Array<{ player_id: string; team: number; score?: number | null }>
+  return (data ?? []).map((r) => ({
+    player_id: (r as { player_id: string }).player_id,
+    team: (r as { team: number }).team,
+    score: (r as { score?: number | null }).score,
+  }))
 }
 
 async function playerName(supabase: SupabaseClient, gameId: string, playerId: string | null): Promise<string> {
