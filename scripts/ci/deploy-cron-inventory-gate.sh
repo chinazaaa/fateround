@@ -597,7 +597,9 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
                  when a.schedule is distinct from e.schedule
                    then format('schedule is %L, expected %L', a.schedule, e.schedule)
                  when not m.cmd_ok and m.cmd_ok_loose
-                   then format('command matches %L only if NON-ASCII whitespace is treated as whitespace. It contains a character such as U+2000/U+2003/U+2028/U+2029/U+3000, which Postgres regex \s matches but the SQL lexer does not -- pg_cron would raise a syntax error on every tick. Raw command: %L', e.command, a.command)
+                   then format('command matches %L%s only if NON-ASCII whitespace is treated as whitespace. It contains a character such as U+2000/U+2003/U+2028/U+2029/U+3000, which Postgres regex \s matches but the SQL lexer does not -- pg_cron would raise a syntax error on every tick. Raw command: %L', e.command,
+                               case when e.command_alt is null then '' else format(' or %L', e.command_alt) end,
+                               a.command)
                  when not m.cmd_ok
                    then format('command is %L, expected %L%s (ASCII whitespace normalised)', a.norm, e.command,
                                case when e.command_alt is null then '' else format(' or %L', e.command_alt) end)
@@ -626,8 +628,11 @@ fi
 
 # The reaper, byte-for-byte. The inventory above already compared it
 # with ASCII whitespace normalised; this repeats it exactly, because
-# #1166 is the regression that matters most here and because the HTTP
-# cron gate makes the identical byte-exact assertion. Anything other
+# #1166 is the regression that matters most here. The HTTP cron gate
+# makes a byte-exact assertion over the same two accepted commands, but
+# NOT over the same cron.job state -- it re-applies the guard migration
+# and only the branch-added migrations, so its accepted set is permanent
+# where the one here is transitional. Anything other
 # than the bare tick invocation means the route and the CRON_SECRET
 # bearer are baked into cron.job rather than re-read each run, and the
 # function's https transport gate (CWE-319) is bypassed.
