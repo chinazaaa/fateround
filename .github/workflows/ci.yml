@@ -1117,9 +1117,16 @@ jobs:
                          then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
                        -- NOT the Vault-seeding command: Case 0 above clears the job and
                        -- re-applies \$MIG (20261123120000), which registers the bare call, and
-                       -- nothing in this step applies 20261126120000. The reschedule this PR
-                       -- adds is asserted by the deploy-equivalent inventory gate, which
-                       -- compares the full supabase start state.
+                       -- nothing in this step applies 20261126120000.
+                       --
+                       -- The reschedule this PR adds is therefore NOT asserted anywhere in
+                       -- this PR's CI. The deploy-equivalent inventory gate is the only gate
+                       -- that sees the full supabase start state, but it runs from the BASE
+                       -- branch, and dev's copy accepts the bare call and the Vault-seeding
+                       -- one alike (#1224) so that this PR could pass at all. Deleting the
+                       -- cron.schedule block from 20261126120000 would keep CI green. The
+                       -- follow-up that tightens dev's inventory gate to the Vault form only,
+                       -- once this has landed, is what closes that gap.
                        when j.command is distinct from 'select public.reap_idle_active_games_tick();'
                          then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
                      end, '')
