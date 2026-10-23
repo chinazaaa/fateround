@@ -24,7 +24,7 @@ import {
 } from '@/lib/whot'
 import { supabase } from '@/lib/supabase'
 import { fetchWhotHands } from '@/lib/hands-client'
-import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT } from '@/lib/supabase-selects'
+import { WHOT_PLAYER_HANDS_SELECT, WHOT_SESSION_SELECT, isCompleteWhotSessionRow } from '@/lib/supabase-selects'
 import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { Game, WhotPlayerHand, WhotSession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
@@ -157,6 +157,9 @@ export function WhotPlayerView({ gameCode }: { gameCode: string }) {
   // reload. The active→finished transition rides the games-row event (no apply → still
   // reloads), and the fallback poll stays the reconciliation net.
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // A truncated realtime payload (TOAST-ed arrays omitted) would blank the board and, by
+    // reporting success here, suppress the reconciling reload. Reject it so the caller reloads.
+    if (!isCompleteWhotSessionRow(row)) return false
     const next = row as unknown as WhotSession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true // stale/reordered

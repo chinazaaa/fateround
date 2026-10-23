@@ -28,6 +28,17 @@ export interface HandsRouteConfig {
    * never from anything the client sent. Not called for spectators or finished games.
    */
   extraViewerIds?: (ctx: { supabase: SupabaseClient; gameId: string; viewerId: string }) => Promise<string[]> | string[]
+  /**
+   * A game-specific "this game is over" signal, beyond `games.status === 'finished'`.
+   *
+   * Rummy needs it. Its views show the finished screen on `rummy_sessions.phase === 'finished'`
+   * OR `games.status === 'finished'`, and `finishRummyGame` writes the session phase BEFORE
+   * flipping `games.status` — so between the two writes (or forever, if the second fails) the
+   * final standings would be built from redacted rows and show every opponent at 0 cards and 0
+   * points, with the placement order wrong too. The other games gate their finished screen on
+   * `games.status` alone and need nothing here.
+   */
+  alsoFinished?: (ctx: { supabase: SupabaseClient; gameId: string }) => Promise<boolean>
 }
 
 /**
@@ -56,7 +67,11 @@ export function createHandsRoute(config: HandsRouteConfig) {
         resumeToken?: string
         hostToken?: string
       }
-      const gameId = body.gameCode?.toUpperCase()
+      // `typeof` rather than `body.gameCode?.toUpperCase()`: a non-string gameCode (e.g.
+      // `{"gameCode": 123}`) makes `.toUpperCase()` throw inside the outer try and answers 500
+      // where the siblings answer 400. The comment above claimed parity with them "for the same
+      // reason"; it was only true for the `?? {}` half until now.
+      const gameId = typeof body.gameCode === 'string' ? body.gameCode.toUpperCase() : undefined
       if (!gameId) return NextResponse.json({ error: 'gameCode is required' }, { status: 400 })
 
       const limited = await enforceRateLimit(req, RATE_LIMITS.handsFetch)
@@ -67,7 +82,8 @@ export function createHandsRoute(config: HandsRouteConfig) {
       // A finished game's hands are not secret — /history/[code] shows the final hands, and by
       // then everyone has seen them. Anything short of finished stays redacted.
       const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
-      const finished = game?.status === 'finished'
+      const finished =
+        game?.status === 'finished' || (config.alsoFinished ? await config.alsoFinished({ supabase, gameId }) : false)
 
       const viewerId = finished ? null : await resolveHandViewer(supabase, gameId, body)
 

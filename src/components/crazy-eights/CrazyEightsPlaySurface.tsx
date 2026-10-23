@@ -106,7 +106,7 @@ export function CrazyEightsPlaySurface({
   // Turn rail: order players by turn_order so seats read left→right in play order.
   const byId = new Map(players.map((p) => [p.id, p]))
   const winnerId = (session.finish_order ?? [])[0]
-  const seats: TurnSeat[] = session.turn_order
+  const seats: TurnSeat[] = (session.turn_order ?? [])
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)
     .map((p) => {

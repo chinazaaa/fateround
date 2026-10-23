@@ -67,6 +67,11 @@ jobs:
                 # environments; events are told apart by the `environment` tag, which
                 # resolveAppEnv() derives from NEXT_PUBLIC_APP_URL above.
                 echo "NEXT_PUBLIC_SENTRY_DSN=https://e954137da2d155ccb105ec5904a0f0bf@o4511987242958848.ingest.de.sentry.io/4511987244859472"
+                # Source-map upload target. Not secret — the org slug appears in every issue URL.
+                # EU region, so the uploader must be pointed away from its sentry.io default.
+                echo "SENTRY_ORG=fateround-ss"
+                echo "SENTRY_PROJECT=javascript-nextjs"
+                echo "SENTRY_URL=https://de.sentry.io/"
               } >> "$GITHUB_ENV"
               ;;
             dev)
@@ -90,6 +95,11 @@ jobs:
                 # environments; events are told apart by the `environment` tag, which
                 # resolveAppEnv() derives from NEXT_PUBLIC_APP_URL above.
                 echo "NEXT_PUBLIC_SENTRY_DSN=https://e954137da2d155ccb105ec5904a0f0bf@o4511987242958848.ingest.de.sentry.io/4511987244859472"
+                # Source-map upload target. Not secret — the org slug appears in every issue URL.
+                # EU region, so the uploader must be pointed away from its sentry.io default.
+                echo "SENTRY_ORG=fateround-ss"
+                echo "SENTRY_PROJECT=javascript-nextjs"
+                echo "SENTRY_URL=https://de.sentry.io/"
               } >> "$GITHUB_ENV"
               ;;
             *) echo "Unknown environment: $ENV" >&2; exit 1 ;;
@@ -127,7 +137,14 @@ jobs:
             NEXT_PUBLIC_VAPID_PUBLIC_KEY=${{ env.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
             NEXT_PUBLIC_SPOTIFY_CLIENT_ID=${{ env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID }}
             NEXT_PUBLIC_SENTRY_DSN=${{ env.NEXT_PUBLIC_SENTRY_DSN }}
+            SENTRY_ORG=${{ env.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ env.SENTRY_PROJECT }}
+            SENTRY_URL=${{ env.SENTRY_URL }}
             GIT_SHA=${{ github.sha }}
+          # A BuildKit secret, not a build arg: build args survive in image history where
+          # anyone with pull access could read the token. Absent, upload silently stays off.
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Redeploy on the instance (SSM)
         # Auto-redeploy on every build: a push to dev deploys the dev box; a

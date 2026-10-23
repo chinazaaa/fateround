@@ -5,6 +5,7 @@ import { persistWordRushTeamAssignment } from '@/lib/word-rush-server'
 import { wordRushBalanceSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { secretMatches } from '@/lib/secret-compare'
 
 export async function POST(req: NextRequest) {
   const { data, error: bodyError } = await parseJsonBody(req, wordRushBalanceSchema)
@@ -22,7 +23,8 @@ export async function POST(req: NextRequest) {
   if (!isWordRushGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a Word Rush game' }, { status: 400 })
   }
-  if (game.host_token !== hostToken) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  if (!(await secretMatches(hostToken, game.host_token)))
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   if (game.status !== 'waiting') return NextResponse.json({ error: 'Teams are locked' }, { status: 400 })
   if (clampWordRushMode(game.word_rush_mode) !== 'team') {
     return NextResponse.json({ error: 'Team balancing is only for team mode' }, { status: 400 })

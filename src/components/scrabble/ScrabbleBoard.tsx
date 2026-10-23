@@ -291,7 +291,7 @@ function BoardScores({
   clockMode?: boolean
   clocksByPlayer?: Map<string, number>
 }) {
-  const rows = session.turn_order
+  const rows = (session.turn_order ?? [])
     .map((pid, index) => {
       const player = players.find((p) => p.id === pid)
       const st = stateByPlayer.get(pid)

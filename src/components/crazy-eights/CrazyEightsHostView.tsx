@@ -26,7 +26,7 @@ import {
 } from '@/lib/crazy-eights'
 import { supabase } from '@/lib/supabase'
 import { fetchCrazyEightsHands } from '@/lib/hands-client'
-import { CRAZY8_SESSION_SELECT, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import { CRAZY8_SESSION_SELECT, GAME_SELECT, PLAYER_SELECT, isCompleteCrazy8SessionRow } from '@/lib/supabase-selects'
 import { appOrigin } from '@/lib/site'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -130,6 +130,9 @@ export function CrazyEightsHostView({ gameCode, hostToken }: { gameCode: string;
   // only update the board UI — patch locally and skip the reload; active→finished rides the
   // games-row event, and the fallback poll reconciles.
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // A truncated realtime payload (TOAST-ed arrays omitted) would blank the board and, by
+    // reporting success here, suppress the reconciling reload. Reject it so the caller reloads.
+    if (!isCompleteCrazy8SessionRow(row)) return false
     const next = row as unknown as CrazyEightsSession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true

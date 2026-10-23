@@ -71,10 +71,14 @@ export function RummyGamePanel({
   onDiscard?: (cardId: string) => void
   onGoOut?: (melds: string[][], discardCardId: string | null) => void
 }) {
-  const turnPlayerId = session.turn_order[session.current_turn_index] ?? null
+  const turnPlayerId = (session.turn_order ?? [])[session.current_turn_index] ?? null
   const turnName = players.find((p) => p.id === turnPlayerId)?.name ?? 'Player'
   const topDiscard = session.top_discard
-  const drawCount = (session.draw_pile as RummyCard[] | null | undefined)?.length ?? 0
+  // `draw_count` is a generated stored column (20261127120000); `draw_pile` is not in
+  // RUMMY_SESSION_SELECT and is never rendered. Realtime payloads still carry the pile until a
+  // revoke, and `applySessionRow` derives the count from it there — so this reads one field
+  // rather than choosing between two that can disagree.
+  const drawCount = session.draw_count ?? 0
   const canDrawNow = isMyTurn && !isViewer && session.turn_step === 'draw' && !acting
 
   const turnTimeLabel = hasTimer && secondsLeft != null && secondsLeft > 0 ? formatCountdown(secondsLeft) : undefined
@@ -87,7 +91,7 @@ export function RummyGamePanel({
     return -1
   }
 
-  const seats: TurnSeat[] = session.turn_order
+  const seats: TurnSeat[] = (session.turn_order ?? [])
     .map((id) => ({
       id,
       p: players.find((x) => x.id === id),
@@ -506,7 +510,10 @@ export function RummyStandingsBox({
   hands: RummyPlayerHand[]
   myPlayerId: string | null
 }) {
-  const rows = session.turn_order.map((id) => {
+  // Guarded for the same reason as WhotPlaySurface: truncated realtime payloads drop TOAST-ed
+  // columns, so the `NOT NULL` column arrives absent. The gate in `applySessionRow` is the real
+  // defence; this is the second line, for views that might not have one.
+  const rows = (session.turn_order ?? []).map((id) => {
     const p = players.find((x) => x.id === id)
     const hand = hands.find((h) => h.player_id === id)
     const cards = (hand?.cards as RummyCard[] | null) ?? []

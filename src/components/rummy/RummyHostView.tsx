@@ -15,7 +15,8 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { RUMMY_MIN_PLAYERS, RUMMY_MAX_PLAYERS } from '@/lib/rummy'
 import { lobbyMaxPlayersFromGameClient } from '@/lib/game-limits'
 import { supabase } from '@/lib/supabase'
-import { GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase-selects'
+import { fetchRummyHands } from '@/lib/hands-client'
+import { GAME_SELECT, PLAYER_SELECT, RUMMY_SESSION_SELECT } from '@/lib/supabase-selects'
 import { useHostAutoReady } from '@/hooks/useHostAutoReady'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
 import { useHostSeat } from '@/hooks/useHostSeat'
@@ -34,10 +35,6 @@ import { PostWinToCommunity } from '@/components/community/PostWinToCommunity'
 import { useRummyTurnTimer } from '@/hooks/useRummyTurnTimer'
 import { useRummyGameTimer } from '@/hooks/useRummyGameTimer'
 
-const RUMMY_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
-const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
-
 /**
  * Rummy host view. The host either watches or takes a seat (see `useHostSeat` below) —
  * when seated they act through the same /api/rummy/* routes as any other player. Uses
@@ -52,6 +49,14 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const [hands, setHands] = useState<RummyPlayerHand[]>([])
   const sessionRef = useRef<RummySession | null>(null)
   sessionRef.current = session
+  // Mirror of the host's seat token, set after `useHostSeat` runs below.
+  const hostResumeTokenRef = useRef<string | null>(null)
+  /**
+   * Monotonic id for hand fetches — see RummyPlayerView for the full reasoning. `load` runs
+   * before useHostSeat resolves the seat token, so its response is redacted; if it lands after
+   * the token-triggered effect's response, it blanks the seated host's own cards.
+   */
+  const handsSeqRef = useRef(0)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -69,14 +74,21 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     setGame(gameRes.data)
     setPlayers(plrsRes.data ?? [])
     setLoading(false)
+    const seq = ++handsSeqRef.current
     const [sessionRes, handsRes] = await Promise.all([
       supabase.from('rummy_sessions').select(RUMMY_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      supabase.from('rummy_player_hands').select(RUMMY_HAND_SELECT).eq('game_id', gameCode).order('player_order'),
+      // Hands via /api/rummy/hands, not the table. The host token identifies the room; the seat's
+      // resume token is what unredacts the host's OWN hand when they took a seat. Without it a
+      // playing host sees 0 cards. useHostSeat resolves that token after this callback is defined,
+      // so it arrives via a ref and the effect below re-fetches once it lands.
+      fetchRummyHands(gameCode, { hostToken, resumeToken: hostResumeTokenRef.current ?? undefined }),
     ])
     if (supabasePollOk(sessionRes)) setSession(sessionRes.data as RummySession | null)
-    if (supabasePollOk(handsRes)) setHands((handsRes.data as RummyPlayerHand[]) ?? [])
-    return supabasePollOk(sessionRes) && supabasePollOk(handsRes)
-  }, [gameCode])
+    // null = the fetch failed. Keep the previous hands rather than clearing them. The seq check
+    // drops a response a newer fetch has already superseded.
+    if (handsRes && seq === handsSeqRef.current) setHands(handsRes)
+    return supabasePollOk(sessionRes) && handsRes !== null
+  }, [gameCode, hostToken])
 
   useEffect(() => {
     void load()
@@ -118,6 +130,19 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
     onReload: load,
     toast: { success, error: toastError },
   })
+
+  hostResumeTokenRef.current = hostResumeToken ?? null
+
+  // The first hand fetch (in `load`) can run before useHostSeat resolves the seat token, which
+  // the redaction route answers with the host's own hand blanked — and an empty hand reads as
+  // "out". Re-fetch with the authoritative token the moment it lands.
+  useEffect(() => {
+    if (!hostResumeToken || game?.status !== 'active') return
+    const seq = ++handsSeqRef.current
+    void fetchRummyHands(gameCode, { hostToken, resumeToken: hostResumeToken }).then((h) => {
+      if (h && seq === handsSeqRef.current) setHands(h)
+    })
+  }, [hostResumeToken, game?.status, gameCode, hostToken])
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
 
@@ -333,7 +358,8 @@ export function RummyHostView({ gameCode, hostToken }: { gameCode: string; hostT
   const hostHand = hostPlayerId
     ? ((hands.find((h) => h.player_id === hostPlayerId)?.cards as import('@/types').RummyCard[] | null) ?? null)
     : null
-  const isHostTurn = hostPlays && session ? session.turn_order[session.current_turn_index] === hostPlayerId : false
+  const isHostTurn =
+    hostPlays && session ? (session.turn_order ?? [])[session.current_turn_index] === hostPlayerId : false
 
   // Active play mounts inside HostRoomShell — supplies the `.fr-room fr-room-poll` → `.pr-stage`
   // ancestor the shared card-table CSS scopes under. See RummyPlayerView for the same note.
