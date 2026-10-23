@@ -1115,11 +1115,11 @@ jobs:
                        when j.jobid is null then 'absent from cron.job'
                        when j.schedule is distinct from '*/15 * * * *'
                          then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-                       # NOT the Vault-seeding command: Case 0 above clears the job and
-                       # re-applies $MIG (20261123120000), which registers the bare call, and
-                       # nothing in this step applies 20261126120000. The reschedule this PR
-                       # adds is asserted by the deploy-equivalent inventory gate, which
-                       # compares the full `supabase start` state.
+                       -- NOT the Vault-seeding command: Case 0 above clears the job and
+                       -- re-applies \$MIG (20261123120000), which registers the bare call, and
+                       -- nothing in this step applies 20261126120000. The reschedule this PR
+                       -- adds is asserted by the deploy-equivalent inventory gate, which
+                       -- compares the full supabase start state.
                        when j.command is distinct from 'select public.reap_idle_active_games_tick();'
                          then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
                      end, '')
