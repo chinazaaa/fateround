@@ -117,9 +117,13 @@ if [ ! -f "$PSQL" ] || [ ! -x "$PSQL" ]; then
   exit 1
 fi
 
-# This script runs from $RUNNER_TEMP, so every repo-relative path below -- the
-# guard migration, the migrations git-diff, supabase/config.toml -- has to be
-# resolved against the checkout. REPO_DIR comes from `github.workspace`, an
+# This script runs from $RUNNER_TEMP, so every repo-relative path below --
+# supabase/roles.sql, supabase/seed.sql, supabase/config.toml and the
+# supabase/migrations git-diff -- has to be resolved against the checkout. (NOT
+# the guard migration: GUARD_MIGRATION_FILE is a bare filename this script only
+# ever sorts against names from `git diff`, never opens. The sibling
+# scripts/ci/http-cron-scheduling-gate.sh is the one that `psql -f`s it.)
+# REPO_DIR comes from `github.workspace`, an
 # Actions-provided value rather than anything a pull request sets. Changing
 # directory (instead of prefixing paths) keeps the body byte-identical to the
 # inline version it was extracted from.

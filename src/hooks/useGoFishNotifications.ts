@@ -43,7 +43,7 @@ export function useGoFishNotifications({
     if (!enabled || !game || !session) return
 
     const events = session.event_log ?? []
-    const activePlayerId = session.turn_order[session.current_turn_index] ?? null
+    const activePlayerId = (session.turn_order ?? [])[session.current_turn_index] ?? null
 
     // Prime the refs on first render — never play sounds for state that was already there.
     if (!readyRef.current) {

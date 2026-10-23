@@ -52,7 +52,7 @@ import { useCrazyEightsNotifications, playCrazyEightsActionSound } from '@/hooks
 import { useGamePlacements, useGameStats } from '@/components/roster/RosterDrawerContext'
 // Imported rather than re-declared inline: this file used to carry its own copy of the column
 // list, which is exactly how a redaction gets half-applied.
-import { CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
+import { CRAZY8_SESSION_SELECT, isCompleteCrazy8SessionRow } from '@/lib/supabase-selects'
 
 type Screen =
   | 'loading'
@@ -164,6 +164,9 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
   // only update the board UI — patch locally and skip the reload; the active→finished
   // transition rides the games-row event, and the fallback poll reconciles.
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // A truncated realtime payload (TOAST-ed arrays omitted) would blank the board and, by
+    // reporting success here, suppress the reconciling reload. Reject it so the caller reloads.
+    if (!isCompleteCrazy8SessionRow(row)) return false
     const next = row as unknown as CrazyEightsSession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true

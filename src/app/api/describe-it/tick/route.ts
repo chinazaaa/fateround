@@ -48,14 +48,37 @@ export async function POST(req: NextRequest) {
   }
 
   let advanced = 0
+  const failed: string[] = []
   for (const s of staleTurns ?? []) {
-    await processDescribeItExpireTurn(supabase, s.game_id as string)
-    advanced += 1
+    const gameId = s.game_id as string
+    try {
+      const res = await processDescribeItExpireTurn(supabase, gameId)
+      if (res.error) {
+        failed.push(gameId)
+        console.error('[describe-it:tick:expire]', gameId, res.error)
+      } else {
+        advanced += 1
+      }
+    } catch (err) {
+      failed.push(gameId)
+      console.error('[describe-it:tick:expire]', gameId, err)
+    }
   }
   for (const s of staleBreaks ?? []) {
-    await processDescribeItAdvance(supabase, s.game_id as string)
-    advanced += 1
+    const gameId = s.game_id as string
+    try {
+      const res = await processDescribeItAdvance(supabase, gameId)
+      if (res.error) {
+        failed.push(gameId)
+        console.error('[describe-it:tick:advance]', gameId, res.error)
+      } else {
+        advanced += 1
+      }
+    } catch (err) {
+      failed.push(gameId)
+      console.error('[describe-it:tick:advance]', gameId, err)
+    }
   }
 
-  return NextResponse.json({ ok: true, advanced })
+  return NextResponse.json({ ok: failed.length === 0, advanced, failed })
 }

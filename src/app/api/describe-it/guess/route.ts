@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   // The guesser-only role check (describer can't guess) is enforced inside processDescribeItGuess.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (auth.player.spectator) return NextResponse.json({ error: 'Spectators cannot play' }, { status: 403 })
 
   const { error, correct, internal } = await processDescribeItGuess(supabase, code, auth.player.id, text)
   if (error) return NextResponse.json({ error }, { status: internal ? 500 : 400 })

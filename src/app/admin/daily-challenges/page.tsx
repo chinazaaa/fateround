@@ -685,7 +685,9 @@ export default function AdminDailyPage() {
       })
       const json = await res.json()
       if (res.ok) {
-        success(`Saved ${json.saved} entries`)
+        const warning = (json as { warning?: string }).warning
+        if (warning) toastError(`Saved ${json.saved} entries — ${warning}`)
+        else success(`Saved ${json.saved} entries`)
         setBatchGenerated([])
         setBatchRemoved(new Set())
         void loadBatchExisting()

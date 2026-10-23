@@ -113,8 +113,12 @@ if [ ! -f "$PSQL" ] || [ ! -x "$PSQL" ]; then
 fi
 
 # This script runs from $RUNNER_TEMP, so every repo-relative path below -- the
-# guard migration, the migrations git-diff, supabase/config.toml -- has to be
-# resolved against the checkout. REPO_DIR comes from `github.workspace`, an
+# guard migration, and the post-guard migrations it re-applies after it -- has
+# to be resolved against the checkout. (This gate reads NOTHING else from the
+# tree: it never opens supabase/config.toml, and it runs no `git diff` -- its
+# re-apply list arrives as CRON_REAPPLY_MIGRATIONS, a step output, so the only
+# `git` this script runs at all is the work-tree probe below.)
+# REPO_DIR comes from `github.workspace`, an
 # Actions-provided value rather than anything a pull request sets. Changing
 # directory (instead of prefixing paths) keeps the body byte-identical to the
 # inline version it was extracted from.
