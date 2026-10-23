@@ -162,10 +162,12 @@ begin
   -- Same shape as 20261124120000_noisy_http_cron_scheduling_guard.sql and
   -- 20261123120000: re-read cron.job and raise rather than trusting that
   -- cron.schedule did what it said. This is the repo's standing defence against
-  -- issue #1167 -- "reported success, scheduled nothing" -- and it matters more
-  -- here than in either sibling, because both CI cron gates accept the bare
-  -- command as well as this one, so a reschedule that silently did not happen
-  -- is otherwise indistinguishable from success in CI and in the deploy log.
+  -- issue #1167 -- "reported success, scheduled nothing". It is the check closest
+  -- to the act: the deploy-equivalent inventory gate also pins this command, but
+  -- only in CI, and it cannot see a production stack where the early return above
+  -- took the skip path. This raises during the migration itself, in every
+  -- environment, so a reschedule that silently did not happen is never
+  -- indistinguishable from success in the deploy log.
   select case
            when j.jobid is null then 'absent from cron.job'
            when j.schedule is distinct from '*/15 * * * *'

@@ -451,9 +451,12 @@ echo "Both direct-HTTP cron jobs are present with the expected schedule and exac
 # 20261126120000_cron_settings_from_vault.sql is in the base now, so it is
 # not "added", is not re-applied, and the guard is the last writer: the
 # command in this gate's state is bare. A future PR that adds another
-# post-guard migration rescheduling this job will be re-applied here and
-# must update this expectation in the same PR -- that is the intended
-# coupling, not a bug.
+# post-guard migration rescheduling this job WILL have it re-applied here,
+# so that PR goes red -- and editing this expectation inside it does not
+# help, because the copy that runs is the BASE revision's (see the
+# base-pinned extraction in .github/workflows/ci.yml). Changing this job's
+# command therefore takes two PRs, exactly as #1224 then #1223 did: widen
+# the expectation on dev first, land the migration second, tighten after.
 bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
   select coalesce(
            case

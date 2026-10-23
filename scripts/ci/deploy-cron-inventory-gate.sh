@@ -623,14 +623,14 @@ fi
 
 # The reaper, byte-for-byte. The inventory above already compared it
 # with ASCII whitespace normalised; this repeats it exactly, because
-# #1166 is the regression that matters most here. The HTTP cron gate
-# makes a byte-exact assertion over the same two accepted commands, but
-# NOT over the same cron.job state -- it re-applies the guard migration
-# and only the branch-added migrations, so its accepted set is permanent
-# where the one here is transitional. Anything other
-# than the bare tick invocation means the route and the CRON_SECRET
-# bearer are baked into cron.job rather than re-read each run, and the
-# function's https transport gate (CWE-319) is bypassed.
+# #1166 is the regression that matters most here. The HTTP cron gate makes
+# the same kind of byte-exact assertion but over a DIFFERENT cron.job state
+# -- it re-applies the guard migration plus only the branch-added ones, so
+# it pins the BARE command while this pins the Vault-seeding one. They are
+# meant to disagree. Anything other than one of those two tick invocations
+# means the route and the CRON_SECRET bearer are baked into cron.job rather
+# than re-read each run, and the function's https transport gate (CWE-319)
+# is bypassed.
 #
 # Pinned to the Vault-seeding form only, matching the inventory above:
 # 20261126120000_cron_settings_from_vault.sql is on dev and is the last writer
