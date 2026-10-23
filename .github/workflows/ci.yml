@@ -1023,6 +1023,36 @@ jobs:
             echo "  $role -> $granted"
           done
 
+          echo '--- Case 0c: public.cron_setting(text) is EXECUTE-able by NO PostgREST role'
+          # service_role IS included here, unlike Case 0b above. The distinction is
+          # what the function hands back, not how privileged it is:
+          # reap_idle_active_games_tick() does work and is deliberately left callable
+          # by service_role (20261123120000), whereas cron_setting() RETURNS the
+          # decrypted Vault secret, so EXECUTE on it is a read oracle for
+          # app.cron_secret over POST /rest/v1/rpc/cron_setting. Its only legitimate
+          # caller is the owner: the pg_cron command runs as postgres.
+          #
+          # Skipped only when the function genuinely does not exist, which is the case
+          # on any base revision predating 20261126120000_cron_settings_from_vault.sql.
+          exists_fn=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+            "select to_regprocedure('public.cron_setting(text)') is not null;" 2>"$Q_ERR") \
+            || { echo "::error::Case 0c: could not probe for public.cron_setting(text): $(tr -s '\n' ' ' < "$Q_ERR")"; exit 1; }
+          if [ "$exists_fn" != "t" ]; then
+            echo "  public.cron_setting(text) does not exist in this stack; nothing to assert."
+          else
+            for role in anon authenticated service_role; do
+              granted=$(psql "$DB" -v ON_ERROR_STOP=1 -tAc \
+                "select case when to_regrole('$role') is null then 'no-role'
+                             else has_function_privilege('$role', 'public.cron_setting(text)', 'execute')::text end;" 2>"$Q_ERR") \
+                || granted="probe-failed: $(tr -s '\n' ' ' < "$Q_ERR")"
+              if [ "$granted" != "false" ] && [ "$granted" != "no-role" ]; then
+                echo "::error::Case 0c: expected has_function_privilege('$role', 'public.cron_setting(text)', 'execute') to be false, got '$granted'. That role can read the decrypted app.cron_secret through POST /rest/v1/rpc/cron_setting. 20261126120000_cron_settings_from_vault.sql must revoke EXECUTE from anon, authenticated AND service_role -- Supabase's default privileges grant all three by name at create time, so revoking from PUBLIC alone is not enough."
+                exit 1
+              fi
+              echo "  $role -> $granted"
+            done
+          fi
+
           echo '--- Case 1: tick with both GUCs unset -> loud skip, no request'
           before=$(request_seq "$SEQ_ERR_BEFORE")
           out=$(psql "$DB" -v ON_ERROR_STOP=1 -c "$TICK" 2>&1) || { echo "::error::The tick failed with the GUCs unset; a missing setting must warn, not error."; printf '%s\n' "$out"; exit 1; }

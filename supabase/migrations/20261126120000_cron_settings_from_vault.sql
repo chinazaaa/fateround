@@ -126,6 +126,8 @@ $roles$;
 -- NOTE: the command string is pinned by scripts/ci/deploy-cron-inventory-gate.sh. Changing it
 -- here without changing it there fails CI, which is the intended coupling.
 do $$
+declare
+  problem text;
 begin
   if to_regprocedure('public.reap_idle_active_games_tick()') is null then
     raise exception
@@ -156,6 +158,30 @@ begin
     '*/15 * * * *',
     $cmd$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
   );
+
+  -- Same shape as 20261124120000_noisy_http_cron_scheduling_guard.sql and
+  -- 20261123120000: re-read cron.job and raise rather than trusting that
+  -- cron.schedule did what it said. This is the repo's standing defence against
+  -- issue #1167 -- "reported success, scheduled nothing" -- and it matters more
+  -- here than in either sibling, because both CI cron gates accept the bare
+  -- command as well as this one, so a reschedule that silently did not happen
+  -- is otherwise indistinguishable from success in CI and in the deploy log.
+  select case
+           when j.jobid is null then 'absent from cron.job'
+           when j.schedule is distinct from '*/15 * * * *'
+             then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
+           when j.command is distinct from $cmd$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
+             then format('command is %L, which is not the Vault-seeding command', j.command)
+         end
+    into problem
+    from (select 1) as one
+    left join cron.job j on j.jobname = 'reap_idle_active_games';
+
+  if problem is not null then
+    raise exception
+      'cron_settings_from_vault: rescheduling completed but reap_idle_active_games is not correctly registered: %.',
+      problem;
+  end if;
 
   raise notice
     'cron_settings_from_vault: reap_idle_active_games rescheduled to seed app.api_base / app.cron_secret from Vault before each tick. It stays inert until vault secrets named api_base and cron_secret exist.';
