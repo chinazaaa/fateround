@@ -435,6 +435,12 @@ fi
 echo "Both direct-HTTP cron jobs are present with the expected schedule and exact command."
 
 # The reaper, asserted by exact command. This is the regression test
+# TRANSITIONAL (remove with the tightening commit): until
+# 20261126120000_cron_settings_from_vault.sql lands on dev, this gate is
+# pinned to the base branch and so judges that PR with the pre-Vault
+# expectation. Both the bare tick call and the Vault-seeding form are
+# accepted here; once the migration is on dev the bare form must be
+# dropped, leaving the Vault form as the only accepted command.
 # for the guard migration re-inlining net.http_post over the tick call:
 # anything other than the bare tick invocation means baked-in
 # credentials and a bypassed transport gate. Byte-for-byte, NOT
@@ -448,7 +454,8 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
              when j.schedule is distinct from '*/15 * * * *'
                then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
              when j.command is distinct from 'select public.reap_idle_active_games_tick();'
-               then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
+                  and j.command is distinct from $cmd$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$
+               then format('command is %L, expected %L or %L', j.command, 'select public.reap_idle_active_games_tick();', $cmd$select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();$cmd$)
              when j.active is distinct from true
                then 'is registered but cron.job.active is false, so it never fires'
              when j.database is distinct from 'postgres'
