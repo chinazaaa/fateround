@@ -62,9 +62,17 @@ async function loadSession(
 }
 
 async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
-  const { data, error } = await supabase.from('word_rush_players').select('player_id,team,score').eq('game_id', gameId)
+  const { data, error } = await supabase
+    .from('word_rush_players')
+    .select('player_id,team,score,players!inner(spectator)')
+    .eq('game_id', gameId)
+    .not('players.spectator', 'is', true)
   if (error) throw error
-  return data ?? []
+  return (data ?? []).map((r) => ({
+    player_id: (r as { player_id: string }).player_id,
+    team: (r as { team: number }).team,
+    score: (r as { score?: number | null }).score,
+  }))
 }
 
 async function playerName(supabase: SupabaseClient, gameId: string, playerId: string | null): Promise<string> {
