@@ -420,10 +420,16 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
         {cluesPanel}
       </div>
 
-      {allFilled && !submitted && (
+      {/* Manual submit. Deliberately NOT gated on every cell being filled: a player stuck on a
+          single clue could otherwise end their attempt only by sitting out the whole timer, with
+          no way to bank the answers they did get. The daily word hunt and word search buttons
+          already submit partial progress this way; the confirm dialog is what guards the
+          one-attempt rule, and `handleSubmit` already sends only the filled cells — the same
+          payload the time-up auto-submit sends. */}
+      {!submitted && !isTimeUp && filledCount > 0 && (
         <div className="text-center">
           <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
-            Submit Crossword
+            {allFilled ? 'Submit Crossword' : `Submit (${solvedCount}/${clues.length} clues)`}
           </button>
         </div>
       )}
