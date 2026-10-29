@@ -289,11 +289,15 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
         highlightNumber={highlightNumber}
       />
 
-      {/* Submit button */}
-      {allFilled && !submitted && (
+      {/* Manual submit. Deliberately NOT gated on the grid being full: a player stuck a few
+          cells short could otherwise end their attempt only by sitting out the whole timer, with
+          no way to bank the cells they did solve. Same reasoning (and same fix) as the daily
+          crossword; `handleSubmit` already sends only the filled cells, which is the very
+          payload the time-up auto-submit sends. */}
+      {!submitted && !isTimeUp && filledCells > 0 && (
         <div className="text-center">
           <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
-            Submit Puzzle
+            {allFilled ? 'Submit Puzzle' : `Submit (${filledCells}/${emptyCells} cells)`}
           </button>
         </div>
       )}
