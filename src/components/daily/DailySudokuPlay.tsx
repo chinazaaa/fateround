@@ -5,7 +5,7 @@ import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 
 interface DailySudokuPlayProps {
   challengeId: string
@@ -64,7 +64,11 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Deliberately NOT clearing saved progress here. useDailyChallengeSession owns that: it
+    // clears on success and on a 409 (score already recorded), and on a failed or dropped
+    // request it KEEPS localStorage on purpose so a refresh can retry — "otherwise the player
+    // loses both server state AND local state". Clearing here pre-emptively defeated that and
+    // left a failed submit with an empty grid.
 
     const cells: Array<{ row: number; col: number; value: number }> = []
     for (let r = 0; r < 9; r++) {
@@ -79,7 +83,7 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
       timeSeconds: elapsed,
       submission: { cells },
     })
-  }, [puzzle, userGrid, elapsed, onSubmit, challengeId])
+  }, [puzzle, userGrid, elapsed, onSubmit])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()

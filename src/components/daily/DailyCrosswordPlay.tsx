@@ -6,7 +6,7 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import type { CrosswordMetadata } from '@/lib/crossword'
 
 interface DailyCrosswordPlayProps {
@@ -117,7 +117,11 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Deliberately NOT clearing saved progress here. useDailyChallengeSession owns that: it
+    // clears on success and on a 409 (score already recorded), and on a failed or dropped
+    // request it KEEPS localStorage on purpose so a refresh can retry — "otherwise the player
+    // loses both server state AND local state". Clearing here pre-emptively defeated that and
+    // left a failed submit with an empty grid.
 
     const cells: Array<{ row: number; col: number; letter: string }> = []
     for (let r = 0; r < size; r++) {
@@ -132,7 +136,7 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
       timeSeconds: elapsed,
       submission: { cells, hintsUsed },
     })
-  }, [metadata, letterGrid, size, elapsed, hintsUsed, onSubmit, challengeId])
+  }, [metadata, letterGrid, size, elapsed, hintsUsed, onSubmit])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
@@ -429,7 +433,7 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
       {!submitted && !isTimeUp && filledCount > 0 && (
         <div className="text-center">
           <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
-            {allFilled ? 'Submit Crossword' : `Submit (${solvedCount}/${clues.length} clues)`}
+            {allFilled ? 'Submit Crossword' : `Submit (${filledCount}/${fillableCount} cells)`}
           </button>
         </div>
       )}
