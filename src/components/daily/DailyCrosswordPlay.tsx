@@ -6,7 +6,7 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 import type { CrosswordMetadata } from '@/lib/crossword'
 
 interface DailyCrosswordPlayProps {
@@ -52,7 +52,7 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
     if (!submitted) saveDailyAnswers(challengeId, letterGrid)
   }, [challengeId, letterGrid, submitted])
 
-  const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
+  const { formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
@@ -133,10 +133,10 @@ export function DailyCrosswordPlay({ challengeId, puzzle, timer: maxSeconds, onS
     }
 
     onSubmit({
-      timeSeconds: elapsed,
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
       submission: { cells, hintsUsed },
     })
-  }, [metadata, letterGrid, size, elapsed, hintsUsed, onSubmit])
+  }, [metadata, letterGrid, size, startAtMs, maxSeconds, hintsUsed, onSubmit])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()

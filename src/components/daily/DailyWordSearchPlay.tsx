@@ -5,7 +5,7 @@ import { WordSearchBoard } from '@/components/word-search/WordSearchBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 import type { WordSearchMetadata } from '@/lib/word-search'
 
 interface DailyWordSearchPlayProps {
@@ -35,7 +35,7 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
     if (!submitted) saveDailyAnswers<WordSearchProgress>(challengeId, { foundWords, myFoundCells })
   }, [challengeId, foundWords, myFoundCells, submitted])
 
-  const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
+  const { formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
@@ -51,10 +51,10 @@ export function DailyWordSearchPlay({ challengeId, puzzle, timer: maxSeconds, on
     setSubmitted(true)
     // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
-      timeSeconds: elapsed,
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
       submission: { words: foundWords, hintsUsed: 0 },
     })
-  }, [foundWords, elapsed, onSubmit])
+  }, [foundWords, startAtMs, maxSeconds, onSubmit])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -290,13 +290,13 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
     setSubmitted(true)
     // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
-      timeSeconds: Math.min(elapsed, maxSeconds),
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
       submission: {
         moves: moves.filter((_, i) => i % 2 === 0), // only attacker moves
         wrongAttempts,
       },
     })
-  }, [elapsed, maxSeconds, moves, onSubmit])
+  }, [startAtMs, maxSeconds, moves, wrongAttempts, onSubmit])
 
   // Time-up auto-submit
   useEffect(() => {

@@ -5,7 +5,7 @@ import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 
 interface DailySudokuPlayProps {
   challengeId: string
@@ -41,7 +41,7 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     if (!submitted) saveDailyAnswers(challengeId, userGrid)
   }, [challengeId, userGrid, submitted])
 
-  const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
+  const { formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
@@ -80,10 +80,10 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     }
 
     onSubmit({
-      timeSeconds: elapsed,
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
       submission: { cells },
     })
-  }, [puzzle, userGrid, elapsed, onSubmit])
+  }, [puzzle, userGrid, startAtMs, maxSeconds, onSubmit])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
