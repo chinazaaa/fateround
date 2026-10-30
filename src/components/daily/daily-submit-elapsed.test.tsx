@@ -210,6 +210,61 @@ describe('retry on a restored complete board reports the real elapsed time', () 
   })
 })
 
+/**
+ * The two components that hold a finished board on screen before submitting record the moment
+ * they finished. That moment is persisted, so a submit that fails and is retried from a later
+ * reload still reports the solve time — not the time the player happened to come back.
+ */
+describe('a persisted completion time survives the reload that retries the submit', () => {
+  it('chess mate — reports the solve time, not the reload', async () => {
+    const startedAgoMs = 600_000
+    saveProgress(
+      {
+        moves: ['Qh5+', 'Kg8'],
+        wrongAttempts: 0,
+        status: 'solved',
+        finishedAtMs: Date.now() - startedAgoMs + 120_000,
+      },
+      startedAgoMs
+    )
+    const onSubmit = vi.fn()
+    const time = await submittedTime(
+      <DailyChessMatePlay challengeId={CHALLENGE_ID} puzzle={CHESS_PUZZLE} timer={900} onSubmit={onSubmit} />,
+      onSubmit
+    )
+    expect(time).toBe(120)
+  })
+
+  it('word grouping — reports the solve time, not the reload', async () => {
+    const groups = [1, 2, 3, 4].map((difficulty) => ({
+      category: `category-${difficulty}`,
+      words: ['a', 'b', 'c', 'd'].map((w) => `w${difficulty}${w}`),
+      difficulty,
+    }))
+    const startedAgoMs = 600_000
+    saveProgress(
+      {
+        guesses: [{ words: ['w1a'] }],
+        revealedGroups: groups,
+        mistakes: 0,
+        finishedAtMs: Date.now() - startedAgoMs + 90_000,
+      },
+      startedAgoMs
+    )
+    const onSubmit = vi.fn()
+    const time = await submittedTime(
+      <DailyWordGroupingPlay
+        challengeId={CHALLENGE_ID}
+        puzzle={{ words: groups.flatMap((g) => g.words), groups }}
+        timer={900}
+        onSubmit={onSubmit}
+      />,
+      onSubmit
+    )
+    expect(time).toBe(90)
+  })
+})
+
 describe('the submitted time does not leak past the timer or into fresh attempts', () => {
   it('an expired unfinished board reports the timer length, not the wall clock', async () => {
     // 900s of wall clock against a 300s challenge: the clamp has to hold on the retry path too.

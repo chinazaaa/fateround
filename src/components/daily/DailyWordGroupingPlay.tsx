@@ -29,6 +29,8 @@ interface SavedState {
   guesses: Guess[]
   revealedGroups: RevealedGroup[]
   mistakes: number
+  /** When the board was solved, so a retry after a reload still reports the solve time. */
+  finishedAtMs?: number
 }
 
 /* Connections-style group colours by difficulty */
@@ -61,8 +63,10 @@ export function DailyWordGroupingPlay({
   const [oneAway, setOneAway] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
-  // When the puzzle was solved, so the reveal hold below isn't counted as play time.
-  const finishedAtRef = useRef<number | null>(null)
+  // When the puzzle was solved, so neither the reveal hold below nor a gap before a retried
+  // submit is counted as play time. Restored from storage: a failed submit keeps the progress,
+  // and the reload that retries it must report the solve time, not the time of the reload.
+  const finishedAtRef = useRef<number | null>(savedState?.finishedAtMs ?? null)
   const { confirm } = useConfirm()
 
   /* ---- derived ---- */
@@ -81,10 +85,22 @@ export function DailyWordGroupingPlay({
     startAtMs,
   })
 
+  /* ---- completion time ---- */
+  // Declared above the persist effect on purpose: both run in the commit that reveals the fourth
+  // group, in declaration order, so the timestamp exists by the time the state below is written.
+  useEffect(() => {
+    if (isSolved) finishedAtRef.current ??= Date.now()
+  }, [isSolved])
+
   /* ---- persist on change ---- */
   useEffect(() => {
     if (!submitted) {
-      saveDailyAnswers<SavedState>(challengeId, { guesses, revealedGroups, mistakes })
+      saveDailyAnswers<SavedState>(challengeId, {
+        guesses,
+        revealedGroups,
+        mistakes,
+        finishedAtMs: finishedAtRef.current ?? undefined,
+      })
     }
   }, [challengeId, guesses, revealedGroups, mistakes, submitted])
 
@@ -113,7 +129,6 @@ export function DailyWordGroupingPlay({
   // pause after failing.
   useEffect(() => {
     if (!isSolved || submitRef.current) return
-    finishedAtRef.current ??= Date.now()
     const t = setTimeout(() => {
       if (!submitRef.current) handleSubmit()
     }, 2800)

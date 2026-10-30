@@ -30,6 +30,8 @@ interface SavedProgress {
   moves: string[]
   wrongAttempts: number
   status: 'playing' | 'solved'
+  /** When the puzzle was solved, so a retry after a reload still reports the solve time. */
+  finishedAtMs?: number
 }
 
 /* ------------------------------------------------------------------ */
@@ -239,13 +241,31 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
   const [wrongFlash, setWrongFlash] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
-  // When the puzzle was solved, so the reveal hold below isn't counted as play time.
-  const finishedAtRef = useRef<number | null>(null)
+  // When the puzzle was solved, so neither the reveal hold below nor a gap before a retried
+  // submit is counted as play time. Restored from storage: a failed submit keeps the progress,
+  // and the reload that retries it must report the solve time, not the time of the reload.
+  const [savedFinishedAtMs] = useState<number | null>(
+    () => loadDailyAnswers<SavedProgress>(challengeId)?.finishedAtMs ?? null
+  )
+  const finishedAtRef = useRef<number | null>(savedFinishedAtMs)
   const { confirm } = useConfirm()
+
+  // Declared above the persist effect on purpose: both run in the commit that solves the puzzle,
+  // in declaration order, so the timestamp exists by the time the progress below is written.
+  useEffect(() => {
+    if (status === 'solved') finishedAtRef.current ??= Date.now()
+  }, [status])
 
   // Persist progress
   useEffect(() => {
-    if (!submitted) saveDailyAnswers(challengeId, { moves, wrongAttempts, status })
+    if (!submitted) {
+      saveDailyAnswers<SavedProgress>(challengeId, {
+        moves,
+        wrongAttempts,
+        status,
+        finishedAtMs: finishedAtRef.current ?? undefined,
+      })
+    }
   }, [challengeId, moves, wrongAttempts, status, submitted])
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
@@ -308,7 +328,6 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
   // Auto-submit on solved
   useEffect(() => {
     if (status !== 'solved' || submitRef.current) return
-    finishedAtRef.current ??= Date.now()
     if (animating) return
     const timer = setTimeout(handleSubmit, 1200)
     return () => clearTimeout(timer)
