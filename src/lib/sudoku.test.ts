@@ -326,6 +326,29 @@ describe('getPlayerTimeSpent', () => {
     expect(getPlayerTimeSpent(game, submissions, 'alice', 100, startMs + 900000)).toBe(600)
   })
 
+  /*
+   * The point of #1227 item 3: a partial solver used to be shown the whole round, while the
+   * leaderboard broke ties on their last correct action. The column and the ranking disagreed,
+   * so a partial solver who won on points could display a slower time than the player they beat.
+   */
+  it('stops at the last correct submission for a partial player once the game is finished', () => {
+    const game = { session_started_at: startAt, finished_at: '2026-07-01T20:20:00Z' }
+    const nowMs = startMs + 1800000
+    // Round ran 20 minutes; alice stopped at 20:10. The old behaviour reported 1200.
+    expect(getPlayerTimeSpent(game, submissions, 'alice', 50, nowMs)).toBe(600)
+  })
+
+  it('shows a finished round in full to a player who got nothing right', () => {
+    const game = { session_started_at: startAt, finished_at: '2026-07-01T20:20:00Z' }
+    const wrongOnly = [{ ...submissions[0], is_correct: false }]
+    expect(getPlayerTimeSpent(game, wrongOnly, 'alice', 50, startMs + 1800000)).toBe(1200)
+  })
+
+  it("ignores another player's submissions when picking the stopping point", () => {
+    const game = { session_started_at: startAt, finished_at: '2026-07-01T20:20:00Z' }
+    expect(getPlayerTimeSpent(game, submissions, 'bob', 50, startMs + 1800000)).toBe(1200)
+  })
+
   it('falls back to nowMs when completionPercent >= 100 but no correct submissions', () => {
     const game = { session_started_at: startAt }
     const nowMs = startMs + 300000 // 5 minutes
@@ -338,10 +361,11 @@ describe('getPlayerTimeSpent', () => {
     expect(getPlayerTimeSpent(game, submissions, 'alice', 50, nowMs)).toBe(300)
   })
 
-  it('uses finished_at for incomplete players when game is finished', () => {
+  it('clamps to finished_at when a submission landed after the round closed', () => {
     const game = { session_started_at: startAt, finished_at: '2026-07-01T20:08:00Z' }
     const nowMs = startMs + 600000 // 10 minutes
-    // 8 minutes = 480 seconds
+    // Alice's last correct submission reads 20:10, two minutes after the round ended at 20:08 —
+    // a late write should not buy play time, so the clock stops at the close: 480s.
     expect(getPlayerTimeSpent(game, submissions, 'alice', 50, nowMs)).toBe(480)
   })
 })
