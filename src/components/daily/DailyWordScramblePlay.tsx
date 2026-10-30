@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 import { hashWord } from '@/lib/daily-word-hash'
 import type { WordScrambleMetadata } from '@/lib/word-scramble'
 
@@ -74,12 +74,12 @@ export function DailyWordScramblePlay({
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
       timeSeconds: elapsed,
       submission: { answers: solved, hintsUsed: hintedIndices.size },
     })
-  }, [solved, elapsed, onSubmit, challengeId, hintedIndices.size])
+  }, [solved, elapsed, onSubmit, hintedIndices.size])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmitAll()

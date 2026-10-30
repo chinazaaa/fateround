@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers } from '@/lib/daily-progress'
 
 interface TriviaQuestion {
   question: string
@@ -54,14 +54,14 @@ export function DailyTriviaPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
       timeSeconds: Math.min(elapsed, maxSeconds),
       submission: {
         answers: answers.map((a) => ({ questionIndex: a.questionIndex, choiceIndex: a.choiceIndex })),
       },
     })
-  }, [answers, challengeId, elapsed, maxSeconds, onSubmit])
+  }, [answers, elapsed, maxSeconds, onSubmit])
 
   useEffect(() => {
     if (isTimeUp && !submitRef.current) handleSubmit()
