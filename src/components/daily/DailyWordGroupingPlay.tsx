@@ -61,6 +61,8 @@ export function DailyWordGroupingPlay({
   const [oneAway, setOneAway] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
+  // When the puzzle was solved, so the reveal hold below isn't counted as play time.
+  const finishedAtRef = useRef<number | null>(null)
   const { confirm } = useConfirm()
 
   /* ---- derived ---- */
@@ -93,7 +95,7 @@ export function DailyWordGroupingPlay({
     setSubmitted(true)
     // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
-      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds, finishedAtRef.current ?? undefined),
       submission: { guesses },
     })
   }, [startAtMs, maxSeconds, onSubmit, guesses])
@@ -111,6 +113,7 @@ export function DailyWordGroupingPlay({
   // pause after failing.
   useEffect(() => {
     if (!isSolved || submitRef.current) return
+    finishedAtRef.current ??= Date.now()
     const t = setTimeout(() => {
       if (!submitRef.current) handleSubmit()
     }, 2800)

@@ -34,6 +34,22 @@ describe('elapsedSinceStart', () => {
     expect(elapsedSinceStart(new Date('2026-01-01T00:05:00Z').getTime(), 600)).toBe(0)
   })
 
+  // Components that hold a finished board on screen before submitting pass the moment they
+  // finished, so the reveal hold isn't billed as play time.
+  it('measures to endAtMs when one is given, ignoring the current clock', () => {
+    at('2026-01-01T00:02:33Z')
+    const start = new Date('2026-01-01T00:00:00Z').getTime()
+    const finishedAt = new Date('2026-01-01T00:02:30Z').getTime()
+    expect(elapsedSinceStart(start, 600, finishedAt)).toBe(150)
+  })
+
+  it('still clamps and floors an explicit endAtMs', () => {
+    at('2026-01-01T02:00:00Z')
+    const start = new Date('2026-01-01T00:00:00Z').getTime()
+    expect(elapsedSinceStart(start, 600, new Date('2026-01-01T01:00:00Z').getTime())).toBe(600)
+    expect(elapsedSinceStart(start, 600, start - 5000)).toBe(0)
+  })
+
   it('floors partial seconds', () => {
     at('2026-01-01T00:00:09.900Z')
     expect(elapsedSinceStart(new Date('2026-01-01T00:00:00Z').getTime(), 600)).toBe(9)

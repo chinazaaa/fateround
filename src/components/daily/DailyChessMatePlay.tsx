@@ -239,6 +239,8 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
   const [wrongFlash, setWrongFlash] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
+  // When the puzzle was solved, so the reveal hold below isn't counted as play time.
+  const finishedAtRef = useRef<number | null>(null)
   const { confirm } = useConfirm()
 
   // Persist progress
@@ -290,7 +292,7 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
     setSubmitted(true)
     // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
-      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds, finishedAtRef.current ?? undefined),
       submission: {
         moves: moves.filter((_, i) => i % 2 === 0), // only attacker moves
         wrongAttempts,
@@ -305,10 +307,11 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
 
   // Auto-submit on solved
   useEffect(() => {
-    if (status === 'solved' && !submitRef.current && !animating) {
-      const timer = setTimeout(handleSubmit, 1200)
-      return () => clearTimeout(timer)
-    }
+    if (status !== 'solved' || submitRef.current) return
+    finishedAtRef.current ??= Date.now()
+    if (animating) return
+    const timer = setTimeout(handleSubmit, 1200)
+    return () => clearTimeout(timer)
   }, [status, handleSubmit, animating])
 
   /* ---------------------------------------------------------------- */
