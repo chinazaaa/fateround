@@ -16,12 +16,21 @@ vi.mock('@/components/word-search/WordSearchBoard', () => ({ WordSearchBoard: ()
 
 const CHALLENGE_ID = 'challenge-1'
 
-/** Persist a daily attempt the way `daily-progress` would, started `agoMs` ago. */
-function saveProgress(answers: unknown, agoMs: number) {
-  window.localStorage.setItem(
-    `daily-progress:${CHALLENGE_ID}`,
-    JSON.stringify({ startedAt: Date.now() - agoMs, answers })
-  )
+/**
+ * Persist a daily attempt the way `daily-progress` would, started `agoMs` ago.
+ *
+ * `now` lets a caller that also derives a timestamp for the answers read the clock once and pass
+ * the same instant here. Two reads a millisecond apart are enough to floor an exact assertion
+ * one second low.
+ */
+function saveProgress(answers: unknown, agoMs: number, now: number = Date.now()) {
+  window.localStorage.setItem(`daily-progress:${CHALLENGE_ID}`, JSON.stringify({ startedAt: now - agoMs, answers }))
+}
+
+/** The persisted attempt, as the component left it. */
+function readProgress(): { startedAt: number; answers: Record<string, unknown> } | null {
+  const raw = window.localStorage.getItem(`daily-progress:${CHALLENGE_ID}`)
+  return raw ? JSON.parse(raw) : null
 }
 
 /** Mount, let every reveal delay and auto-submit settle, and report the submitted timeSeconds. */
@@ -218,14 +227,16 @@ describe('retry on a restored complete board reports the real elapsed time', () 
 describe('a persisted completion time survives the reload that retries the submit', () => {
   it('chess mate — reports the solve time, not the reload', async () => {
     const startedAgoMs = 600_000
+    const now = Date.now()
     saveProgress(
       {
         moves: ['Qh5+', 'Kg8'],
         wrongAttempts: 0,
         status: 'solved',
-        finishedAtMs: Date.now() - startedAgoMs + 120_000,
+        finishedAtMs: now - startedAgoMs + 120_000,
       },
-      startedAgoMs
+      startedAgoMs,
+      now
     )
     const onSubmit = vi.fn()
     const time = await submittedTime(
@@ -242,14 +253,16 @@ describe('a persisted completion time survives the reload that retries the submi
       difficulty,
     }))
     const startedAgoMs = 600_000
+    const now = Date.now()
     saveProgress(
       {
         guesses: [{ words: ['w1a'] }],
         revealedGroups: groups,
         mistakes: 0,
-        finishedAtMs: Date.now() - startedAgoMs + 90_000,
+        finishedAtMs: now - startedAgoMs + 90_000,
       },
-      startedAgoMs
+      startedAgoMs,
+      now
     )
     const onSubmit = vi.fn()
     const time = await submittedTime(
@@ -262,6 +275,50 @@ describe('a persisted completion time survives the reload that retries the submi
       onSubmit
     )
     expect(time).toBe(90)
+  })
+
+  /*
+   * The two tests above seed the timestamp, so they only prove it is read back. These cover the
+   * other half — that a component records one and writes it to storage — which is what the
+   * declaration order of the recording and persist effects actually buys. Remove either and these
+   * fail. Driving a real solve through the board would exercise more, but the boards are mocked
+   * out here and a solve needs several interactions; the restored-solved mount reaches the same
+   * recording effect.
+   */
+  it('chess mate — records and persists a completion time when the restored board has none', async () => {
+    const startedAgoMs = 300_000
+    saveProgress({ moves: ['Qh5+', 'Kg8'], wrongAttempts: 0, status: 'solved' }, startedAgoMs)
+    const onSubmit = vi.fn()
+    await submittedTime(
+      <DailyChessMatePlay challengeId={CHALLENGE_ID} puzzle={CHESS_PUZZLE} timer={900} onSubmit={onSubmit} />,
+      onSubmit
+    )
+    const saved = readProgress()
+    expect(typeof saved?.answers.finishedAtMs).toBe('number')
+    expect(saved!.answers.finishedAtMs as number).toBeGreaterThanOrEqual(saved!.startedAt)
+  })
+
+  it('word grouping — records and persists a completion time when the restored board has none', async () => {
+    const groups = [1, 2, 3, 4].map((difficulty) => ({
+      category: `category-${difficulty}`,
+      words: ['a', 'b', 'c', 'd'].map((w) => `w${difficulty}${w}`),
+      difficulty,
+    }))
+    const startedAgoMs = 300_000
+    saveProgress({ guesses: [], revealedGroups: groups, mistakes: 0 }, startedAgoMs)
+    const onSubmit = vi.fn()
+    await submittedTime(
+      <DailyWordGroupingPlay
+        challengeId={CHALLENGE_ID}
+        puzzle={{ words: groups.flatMap((g) => g.words), groups }}
+        timer={900}
+        onSubmit={onSubmit}
+      />,
+      onSubmit
+    )
+    const saved = readProgress()
+    expect(typeof saved?.answers.finishedAtMs).toBe('number')
+    expect(saved!.answers.finishedAtMs as number).toBeGreaterThanOrEqual(saved!.startedAt)
   })
 })
 
