@@ -16,6 +16,7 @@ import { advanceStreak, type StreakState } from '@/lib/trophies/streak'
 import { syncEligibleTrophies } from '@/lib/trophies/award'
 import { computeDailyRank } from '@/lib/daily-rank'
 import { wordleFinalScore, wordleEmojiGrid } from '@/lib/daily-wordle'
+import { countSolvedClues, type CrosswordClue } from '@/lib/crossword'
 
 export const dynamic = 'force-dynamic'
 
@@ -97,29 +98,28 @@ function verifyCrossword(
   submission: Record<string, unknown>
 ): VerifiedMetrics | { error: string } {
   const solution = puzzleData.solution as string[][]
-  const metadata = puzzleData.metadata as { clues?: unknown[] }
+  const metadata = puzzleData.metadata as { clues?: CrosswordClue[] }
   const cells = submission.cells as Array<{ row: number; col: number; letter: string }>
   const hintsUsed = (submission.hintsUsed as number) ?? 0
   if (!Array.isArray(cells)) return { error: 'Missing cells array' }
 
-  const totalClues = metadata.clues?.length ?? 0
+  const clues = metadata.clues ?? []
   let correct = 0
   for (const cell of cells) {
-    if (solution[cell.row]?.[cell.col]?.toUpperCase() === cell.letter?.toUpperCase()) {
-      correct++
-    }
+    const letter = cell.letter?.toUpperCase()
+    // The client only sends filled, non-blocked squares. Skipping empty ones keeps a hand-made
+    // payload from scoring a blocked square, where both sides would read `undefined`.
+    if (!letter) continue
+    if (solution[cell.row]?.[cell.col]?.toUpperCase() === letter) correct++
   }
 
-  const totalFillable = solution.flat().filter((c) => c && c !== ' ').length
-  const wordsCompleted =
-    totalFillable > 0 && correct >= totalFillable
-      ? totalClues
-      : Math.floor((correct / Math.max(totalFillable, 1)) * totalClues)
-
+  // itemsSolved used to be pro-rata on correct CELLS, so a partial grid was recorded as a clue
+  // count the player had never been shown — 5 of 12 cells right reported 5 clues, whatever was
+  // actually finished. The two agreed only on a complete grid. Points stay cell-based.
   return {
     rawPoints: correct * 10 - hintsUsed * 3,
-    itemsSolved: wordsCompleted,
-    itemsTotal: totalClues,
+    itemsSolved: countSolvedClues(clues, solution, cells),
+    itemsTotal: clues.length,
     hintsUsed,
   }
 }

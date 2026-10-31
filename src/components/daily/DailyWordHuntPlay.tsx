@@ -7,7 +7,7 @@ import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { hashWord } from '@/lib/daily-word-hash'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 
 interface DailyWordHuntPlayProps {
   challengeId: string
@@ -46,7 +46,7 @@ export function DailyWordHuntPlay({
     if (!submitted) saveDailyAnswers(challengeId, foundWords)
   }, [challengeId, foundWords, submitted])
 
-  const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
+  const { formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
@@ -60,12 +60,12 @@ export function DailyWordHuntPlay({
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
-      timeSeconds: elapsed,
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
       submission: { words: foundWords },
     })
-  }, [foundWords, elapsed, onSubmit, challengeId])
+  }, [foundWords, startAtMs, maxSeconds, onSubmit])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 import { LudoBoard } from '@/components/ludo/LudoBoard'
 import { TRACK_GRID, HOME_GRID } from '@/lib/ludo-board-layout'
 import type { LudoSession, LudoPlayerState, LudoPiece, Player } from '@/types'
@@ -287,12 +287,12 @@ export function DailyLudoPuzzlePlay({ challengeId, puzzle, timer: maxSeconds, on
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
-      timeSeconds: Math.min(elapsed, maxSeconds),
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
       submission: { moves: state.moves },
     })
-  }, [challengeId, elapsed, maxSeconds, onSubmit, state.moves])
+  }, [startAtMs, maxSeconds, onSubmit, state.moves])
 
   useEffect(() => {
     if (isTimeUp && !submitRef.current) handleSubmit()

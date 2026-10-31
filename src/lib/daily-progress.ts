@@ -37,6 +37,23 @@ export function getOrCreateStartedAt(challengeId: string): number {
   return now
 }
 
+/**
+ * Seconds elapsed since the attempt's persisted start, clamped to the challenge's limit.
+ *
+ * Submit paths must use THIS rather than the timer hook's `elapsed` state. That state is
+ * `useState(0)` and only reaches its real value when the hook's own effect schedules it, so an
+ * auto-submit effect firing in the same commit — which is exactly what happens when a reload
+ * restores an already-finished board — reads 0 and records a perfect zero-second time.
+ *
+ * Pass `endAtMs` where the attempt stops before the submit does: a component that freezes its
+ * timer on completion and then holds the finished board on screen before submitting must report
+ * the moment it finished, not the moment the hold expired.
+ */
+export function elapsedSinceStart(startAtMs: number, maxSeconds: number, endAtMs?: number): number {
+  const seconds = Math.floor(((endAtMs ?? Date.now()) - startAtMs) / 1000)
+  return Math.min(Math.max(0, seconds), maxSeconds)
+}
+
 export function loadDailyAnswers<T>(challengeId: string): T | null {
   return read<T>(challengeId)?.answers ?? null
 }

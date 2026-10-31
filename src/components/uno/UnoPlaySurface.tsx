@@ -220,7 +220,7 @@ export function UnoPlaySurface({
   // front, ELIMINATED seats at the back. Turn flow within each group is preserved
   // (still turn_order relative), so "who's next" reads left-to-right through the live
   // block; the greyed KO'd block sits after them as a running scoreboard of who's out.
-  const seatRows: TurnSeat[] = session.turn_order
+  const seatRows: TurnSeat[] = (session.turn_order ?? [])
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)
     .map((p) => {
@@ -320,7 +320,7 @@ export function UnoPlaySurface({
     ) : null
 
   // 0-7 rule: candidates to swap hands with (other seated players still holding cards).
-  const swapTargets = session.turn_order
+  const swapTargets = (session.turn_order ?? [])
     .filter((id) => id !== myPlayerId && (handCounts[id] ?? 0) > 0)
     .map((id) => byId.get(id))
     .filter((p): p is Player => !!p)

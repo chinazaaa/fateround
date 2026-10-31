@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { finishedPieceCount } from './ludo-pieces'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
@@ -504,9 +505,7 @@ export function allPiecesFinished(pieces: LudoPiece[]): boolean {
   return pieces.every((p) => p.zone === 'finished')
 }
 
-export function finishedPieceCount(pieces: LudoPiece[]): number {
-  return pieces.filter((p) => p.zone === 'finished').length
-}
+export { finishedPieceCount } from './ludo-pieces'
 
 export type LudoStanding = {
   playerId: string

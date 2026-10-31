@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   RummyCard as RummyCardBox,
@@ -18,7 +18,7 @@ import { gameTypeConfig } from '@/lib/game-types'
 import { RUMMY_MIN_PLAYERS } from '@/lib/rummy'
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { supabase } from '@/lib/supabase'
-import { clearPlayerSession } from '@/lib/utils'
+import { clearPlayerSession, getPlayerSession } from '@/lib/utils'
 import type { Game, Player, RummyCard, RummyPlayerHand, RummySession } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { useApplyGameTheme } from '@/hooks/useApplyGameTheme'
@@ -42,6 +42,9 @@ import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } fr
 import { preJoinScreen, playerIsViewer } from '@/lib/viewers'
 import { ViewerModeBanner } from '@/components/ViewerModeBanner'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
+import { RUMMY_SESSION_SELECT, isCompleteRummySessionRow } from '@/lib/supabase-selects'
+import { RUMMY_SESSION_TOAST_PRONE, mergeRealtimeRow } from '@/lib/realtime-merge'
+import { fetchRummyHands } from '@/lib/hands-client'
 
 /**
  * Rummy player view — full lifecycle from join → lobby → active table → finished.
@@ -49,10 +52,6 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
  * shape): shared bootstrap hook resolves the player + game rows, `useGameTableSync` keeps
  * the session + hand rows in sync, and every action goes through the /api/rummy/* routes.
  */
-
-const RUMMY_SESSION_SELECT =
-  'id,game_id,turn_order,current_turn_index,phase,draw_pile,discard_pile,top_discard,turn_step,status_message,winner_player_id,winning_melds,reshuffle_count,turn_deadline_at,created_at,updated_at'
-const RUMMY_HAND_SELECT = 'id,game_id,player_id,cards,player_order,created_at'
 
 type Screen =
   | 'loading'
@@ -64,37 +63,51 @@ type Screen =
   | 'finished'
   | 'not_found'
 
-async function loadHands(gameCode: string): Promise<{ hands: RummyPlayerHand[]; ok: boolean }> {
-  const res = await supabase
-    .from('rummy_player_hands')
-    .select(RUMMY_HAND_SELECT)
-    .eq('game_id', gameCode)
-    .order('player_order')
-  if (!supabasePollOk(res)) return { hands: [], ok: false }
-  return { hands: (res.data as RummyPlayerHand[]) ?? [], ok: true }
-}
-
 export function RummyPlayerView({ gameCode }: { gameCode: string }) {
   const router = useRouter()
   const { error: toastError } = useToast()
   const [session, setSession] = useState<RummySession | null>(null)
   const sessionRef = useRef<RummySession | null>(null)
   sessionRef.current = session
+  // Mirror of the resolved resume token, set after `useGameViewBootstrap` runs below.
+  const myResumeTokenRef = useRef<string | null>(null)
+  /**
+   * Monotonic id for hand fetches, so a slower earlier request cannot overwrite a newer one.
+   *
+   * Two paths fetch hands and they race: `loadGameState` fires before the resume token resolves
+   * (so its response is REDACTED), and the effect below fires once the token lands. If the
+   * tokenless one finishes second, it replaces the player's visible cards with nulls until the
+   * next poll. A `cancelled` flag does not help — neither request was cancelled, they simply
+   * landed out of order.
+   */
+  const handsSeqRef = useRef(0)
   const [hands, setHands] = useState<RummyPlayerHand[]>([])
   const { displayName: roomDisplayName, joinExtras, resolving: resolvingRoomMember } = useRoomMemberJoin(gameCode)
   const [acting, setActing] = useState(false)
 
   const loadGameState = useCallback(async (): Promise<{ state: RummySession | null; ok: boolean }> => {
-    const [sessionRes, handsRes] = await Promise.all([
+    // Hands come from /api/rummy/hands, not the table: other players' `cards` must never reach
+    // this client (see lib/hand-redaction.ts). Own cards come back in full; everyone else's
+    // arrive as `card_count`.
+    const seq = ++handsSeqRef.current
+    const [sessionRes, handsData] = await Promise.all([
       supabase.from('rummy_sessions').select(RUMMY_SESSION_SELECT).eq('game_id', gameCode).maybeSingle(),
-      loadHands(gameCode),
+      // Prefer the localStorage session token, falling back to the bootstrap-resolved token via
+      // a ref. This callback runs BEFORE the player is resolved on the first load, so for a
+      // player who arrived via a share link the localStorage session isn't written yet — and a
+      // tokenless request makes the route redact our OWN hand. The effect below re-fetches the
+      // moment the token resolves.
+      fetchRummyHands(gameCode, {
+        resumeToken: getPlayerSession(gameCode)?.resumeToken ?? myResumeTokenRef.current ?? undefined,
+      }),
     ])
     const sessionData = supabasePollOk(sessionRes) ? (sessionRes.data as RummySession | null) : null
     if (sessionData) setSession(sessionData)
-    // A failed hands query must NOT clobber the last-known hand — otherwise a transient
-    // Supabase blip would blank the player's own hand until the next successful poll.
-    if (handsRes.ok) setHands(handsRes.hands)
-    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsRes.ok }
+    // null = the fetch failed. Leave the previous hands in place rather than clearing them — a
+    // transient blip must not masquerade as an empty hand. The seq check drops a response that
+    // a newer fetch has already superseded.
+    if (handsData && seq === handsSeqRef.current) setHands(handsData)
+    return { state: sessionData, ok: supabasePollOk(sessionRes) && handsData !== null }
   }, [gameCode])
 
   const computeScreen = useCallback(
@@ -136,15 +149,49 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
     onJoinError: toastError,
   })
 
+  myResumeTokenRef.current = myResumeToken ?? null
+
+  // The first hand fetch (in loadGameState) can run before the player — and thus the resume
+  // token — is resolved, which the redaction route answers with our own hand blanked. Re-fetch
+  // with the authoritative token the moment it lands, so a share-link player sees their cards.
+  useEffect(() => {
+    if (!myResumeToken || game?.status !== 'active') return
+    const seq = ++handsSeqRef.current
+    void fetchRummyHands(gameCode, { resumeToken: myResumeToken }).then((h) => {
+      if (h && seq === handsSeqRef.current) setHands(h)
+    })
+  }, [myResumeToken, game?.status, gameCode])
+
   useRoomMemberNamePrefill(roomDisplayName, joinName, setJoinName)
   useApplyGameTheme(screen === 'game_ended' ? 'default' : game?.theme)
 
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // A truncated realtime payload (TOAST-ed arrays omitted) would blank the board and, by
+    // reporting success here, suppress the reconciling reload. Reject it so the caller reloads.
+    if (!isCompleteRummySessionRow(row)) return false
     const next = row as unknown as RummySession
     const prev = sessionRef.current
     if (prev && next.updated_at < prev.updated_at) return true
-    setSession(next)
-    sessionRef.current = next
+    // Merge rather than replace, for two different kinds of missing. `mergeRealtimeRow` skips a
+    // key the payload omits entirely (an unpublished column must not blank known state) and
+    // keeps the previous value for a TOAST-ed pile that arrives null. The piles are no longer in
+    // RUMMY_SESSION_SELECT and nothing renders them, but they are still the fallback behind
+    // `draw_count` in RummyBoard while realtime keeps delivering them — see the note there.
+    const merged = mergeRealtimeRow<RummySession>(prev, row, RUMMY_SESSION_TOAST_PRONE)
+    // A payload that actually carried a pile is authoritative for that pile's count, so derive
+    // it here rather than letting the view choose between two sources.
+    //
+    // Without this the fallback is backwards in the one case it exists for: a payload with a
+    // fresh `draw_pile` but no `draw_count` leaves the stale `draw_count` in place (the merge
+    // only skips keys the payload omits), and `draw_count ?? draw_pile.length` then prefers the
+    // stale number. Flipping the order breaks the mirror case — a fresh `draw_count` alongside a
+    // pile carried forward from `prev`. Deriving at the point where we know which fields the
+    // payload supplied avoids both. Reads `row`, NOT `merged`: `merged` may hold a pile that
+    // came from `prev`.
+    if (Array.isArray(row.draw_pile)) merged.draw_count = row.draw_pile.length
+    if (Array.isArray(row.discard_pile)) merged.discard_count = row.discard_pile.length
+    setSession(merged)
+    sessionRef.current = merged
     // A move mutates the session AND at least one hand row; still need a full reload for hands.
     return false
   }, [])
@@ -241,7 +288,7 @@ export function RummyPlayerView({ gameCode }: { gameCode: string }) {
 
   const cfg = gameTypeConfig('rummy')
   const winner = players.find((p) => p.id === session?.winner_player_id)
-  const turnPlayerId = session?.turn_order[session.current_turn_index] ?? null
+  const turnPlayerId = session?.turn_order?.[session.current_turn_index] ?? null
   const isMyTurn = myPlayerId != null && turnPlayerId === myPlayerId
   const activePlayer = myPlayerId ? players.find((p) => p.id === myPlayerId) : undefined
   const isViewer = !!(game && activePlayer && playerIsViewer(activePlayer, game))

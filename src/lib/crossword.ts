@@ -47,6 +47,45 @@ export interface CrosswordClue {
 }
 
 /**
+ * How many of `clues` are fully correct in `entries`.
+ *
+ * A clue counts only when every one of its cells carries the right letter. That is the rule the
+ * player sees while playing — a clue lights up when the hash of its entry matches its answer
+ * hash — so a server-side metric built this way reports the same number they were just shown.
+ *
+ * `entries` is the submitted-cells payload: only filled, non-blocked squares. Cells with no
+ * letter are ignored rather than compared, so a blocked square (where the solution is empty)
+ * can never read as correct.
+ */
+export function countSolvedClues(
+  clues: CrosswordClue[],
+  solution: string[][],
+  entries: Array<{ row: number; col: number; letter: string }>
+): number {
+  const entered = new Map<string, string>()
+  for (const entry of entries) {
+    const letter = entry.letter?.toUpperCase()
+    if (letter) entered.set(`${entry.row},${entry.col}`, letter)
+  }
+
+  let solved = 0
+  for (const clue of clues) {
+    let whole = clue.length > 0
+    for (let k = 0; k < clue.length; k++) {
+      const row = clue.direction === 'across' ? clue.row : clue.row + k
+      const col = clue.direction === 'across' ? clue.col + k : clue.col
+      const expected = solution[row]?.[col]?.toUpperCase()
+      if (!expected || entered.get(`${row},${col}`) !== expected) {
+        whole = false
+        break
+      }
+    }
+    if (whole) solved++
+  }
+  return solved
+}
+
+/**
  * Client-readable puzzle description stored on `rounds.crossword_metadata`. It carries
  * everything needed to render and play the grid EXCEPT the answer letters — those live
  * in the RLS-protected `crossword_solutions` table (see buildCrosswordRoundRow).

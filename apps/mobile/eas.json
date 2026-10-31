@@ -25,15 +25,14 @@
       "autoIncrement": true,
       "env": {
         "COREPACK_INTEGRITY_KEYS": "0"
+      },
+      "android": {
+        "buildType": "apk"
       }
     }
   },
   "submit": {
     "production": {
-      "android": {
-        "track": "production",
-        "releaseStatus": "completed"
-      },
       "ios": {
         "ascAppId": "6789916127"
       }
