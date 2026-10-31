@@ -93,6 +93,11 @@ export function useDailyChallengeSession(gameType: DailyChallengeGameType): UseD
         })
 
         if (data.alreadyPlayed && data.previousScore) {
+          // The server has this player's score, so the local attempt is spent — drop it. This
+          // covers the window where the submit route inserts the row and the response never
+          // reaches the browser (dropped connection): without this the saved grid would sit in
+          // localStorage indefinitely, since the failure path below deliberately keeps it.
+          clearDailyProgress(data.challengeId)
           setPreviousScore(data.previousScore)
           setPhase('results')
         } else {

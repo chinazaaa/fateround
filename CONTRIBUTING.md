@@ -17,6 +17,29 @@ feature/fix branch  ──PR──▶  dev  ──promotion PR──▶  main
 Keep PRs small and scoped. Update your branch with the latest `dev` before
 merging (`gh pr update-branch <n>` or merge `origin/dev` in).
 
+### Branch names: type prefix, then what the change does
+
+Name branches `<type>/<short-slug>`, using the same types as commit messages:
+
+```
+fix/daily-progress-clear        feat/word-search-hints
+chore/backmerge-main-into-dev   ci/pin-cron-gate
+docs/branch-naming              security/bingo-card-redaction
+perf/realtime-egress
+```
+
+The slug describes **this change**, not the task or conversation that spawned
+it. A branch whose name no longer matches its contents is worse than no name:
+the branch list is the first place anyone looks to see what is in flight.
+
+**AI agents:** a coding session is often assigned a branch up front, named
+after the *first* thing it was asked to do, and that name never updates. If the
+work moves on — or the session is reused for an unrelated fix — start a new
+branch named for the new change rather than pushing onto the stale one. (This
+repo has shipped a crossword fix and a daily-progress fix on a branch called
+`claude/fateround-sentry-integration-…`; that is the failure mode.) Where the
+session's own instructions pin it to an assigned branch, ask before deviating.
+
 ### Merge method: squash features, **merge** promotions
 
 - **Feature/fix → `dev`:** squash-merge (one tidy commit per change).

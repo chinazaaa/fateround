@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { clampDescribeItMode } from './describe-it-mode'
 import { loadPlatformEntries } from '@/lib/platform-content'
 import { internalErrorMessage, internalFailure } from '@/lib/api-errors'
 import { markGameFinished } from '@/lib/game-finish'
@@ -35,9 +36,7 @@ export const DESCRIBE_IT_GUESS_SPEED_BONUS = 40
 // The describer is paid the mirror of their guessers' points (see endIndividualTurn),
 // not a flat per-guess rate, so describing and guessing are worth the same on average.
 
-export function clampDescribeItMode(value: unknown): DescribeItMode {
-  return value === 'individual' ? 'individual' : 'team'
-}
+export { clampDescribeItMode } from './describe-it-mode'
 
 /** Speed-scaled points for a correct guess: full bonus instantly, decaying to the base by time-up. */
 export function describeItGuessPoints(turnDeadlineAt: string | null, turnSeconds: number): number {

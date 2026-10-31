@@ -920,8 +920,19 @@ export interface RummySession {
   turn_order: string[]
   current_turn_index: number
   phase: RummyPhase
-  draw_pile: RummyCard[]
-  discard_pile: RummyCard[]
+  /**
+   * The ordered deck. Server-side reads only (src/lib/rummy.ts) — hence optional: it is no
+   * longer in RUMMY_SESSION_SELECT, because shipping the order makes hand redaction bypassable
+   * by subtraction. Clients use `draw_count`.
+   */
+  draw_pile?: RummyCard[]
+  /** Not selected by clients alongside `draw_pile` — see above. Clients use `discard_count`
+   *  for the size and `top_discard` for the face-up card. */
+  discard_pile?: RummyCard[]
+  /** Public size of `draw_pile`. Generated stored column; a count leaks no order or identity. */
+  draw_count?: number
+  /** Public size of `discard_pile`. Generated stored column. */
+  discard_count?: number
   /** Convenience mirror of the top-of-discard for realtime clients that don't hold the full pile. */
   top_discard: RummyCard | null
   /** `draw` = must draw a card to start turn; `discard` = has drawn, must discard to end turn. */

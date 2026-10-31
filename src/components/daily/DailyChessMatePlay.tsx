@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -30,6 +30,8 @@ interface SavedProgress {
   moves: string[]
   wrongAttempts: number
   status: 'playing' | 'solved'
+  /** When the puzzle was solved, so a retry after a reload still reports the solve time. */
+  finishedAtMs?: number
 }
 
 /* ------------------------------------------------------------------ */
@@ -239,11 +241,31 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
   const [wrongFlash, setWrongFlash] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const submitRef = useRef(false)
+  // When the puzzle was solved, so neither the reveal hold below nor a gap before a retried
+  // submit is counted as play time. Restored from storage: a failed submit keeps the progress,
+  // and the reload that retries it must report the solve time, not the time of the reload.
+  const [savedFinishedAtMs] = useState<number | null>(
+    () => loadDailyAnswers<SavedProgress>(challengeId)?.finishedAtMs ?? null
+  )
+  const finishedAtRef = useRef<number | null>(savedFinishedAtMs)
   const { confirm } = useConfirm()
+
+  // Declared above the persist effect on purpose: both run in the commit that solves the puzzle,
+  // in declaration order, so the timestamp exists by the time the progress below is written.
+  useEffect(() => {
+    if (status === 'solved') finishedAtRef.current ??= Date.now()
+  }, [status])
 
   // Persist progress
   useEffect(() => {
-    if (!submitted) saveDailyAnswers(challengeId, { moves, wrongAttempts, status })
+    if (!submitted) {
+      saveDailyAnswers<SavedProgress>(challengeId, {
+        moves,
+        wrongAttempts,
+        status,
+        finishedAtMs: finishedAtRef.current ?? undefined,
+      })
+    }
   }, [challengeId, moves, wrongAttempts, status, submitted])
 
   const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
@@ -288,15 +310,15 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Cleared by useDailyChallengeSession on success or a confirmed score — never before the request.
     onSubmit({
-      timeSeconds: Math.min(elapsed, maxSeconds),
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds, finishedAtRef.current ?? undefined),
       submission: {
         moves: moves.filter((_, i) => i % 2 === 0), // only attacker moves
         wrongAttempts,
       },
     })
-  }, [challengeId, elapsed, maxSeconds, moves, onSubmit])
+  }, [startAtMs, maxSeconds, moves, wrongAttempts, onSubmit])
 
   // Time-up auto-submit
   useEffect(() => {
@@ -305,10 +327,10 @@ export function DailyChessMatePlay({ challengeId, puzzle, timer: maxSeconds, onS
 
   // Auto-submit on solved
   useEffect(() => {
-    if (status === 'solved' && !submitRef.current && !animating) {
-      const timer = setTimeout(handleSubmit, 1200)
-      return () => clearTimeout(timer)
-    }
+    if (status !== 'solved' || submitRef.current) return
+    if (animating) return
+    const timer = setTimeout(handleSubmit, 1200)
+    return () => clearTimeout(timer)
   }, [status, handleSubmit, animating])
 
   /* ---------------------------------------------------------------- */

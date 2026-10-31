@@ -60,7 +60,7 @@ import {
 import { getPlayerSession } from '@/lib/secure-session'
 import { playSound } from '@/lib/sounds'
 import { getSupabase } from '@/lib/supabase'
-import { CRAZY8_SESSION_SELECT } from '@/lib/supabase-selects'
+import { CRAZY8_SESSION_SELECT, isCompleteCrazy8SessionRow } from '@/lib/supabase-selects'
 import { usePlayerSessionActions } from '@/lib/player-session'
 import type { Theme } from '@/constants/theme'
 import { useThemedStyles } from '@/constants/theme-context'
@@ -156,6 +156,8 @@ export function CrazyEightsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Delta fast-path — mirrors web CrazyEightsPlayerView.
   const applySessionRow = useCallback((row: Record<string, unknown>): boolean => {
+    // Reject a truncated realtime payload: it would blank the board AND suppress the reload.
+    if (!isCompleteCrazy8SessionRow(row)) return false
     const next = row as unknown as CrazyEightsSession
     const prev = sessionRef.current
     if (prev && next.updated_at && prev.updated_at && next.updated_at < prev.updated_at) return true

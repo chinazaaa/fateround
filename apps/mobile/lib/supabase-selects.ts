@@ -109,6 +109,31 @@ export const UNO_PLAYER_HANDS_SELECT = 'id,game_id,player_id,cards,player_order,
 // Mirrors src/lib/supabase-selects.ts.
 export const UNO_SESSION_NOT_NULL_KEYS = ['turn_order', 'left_player_ids', 'eliminated_player_ids'] as const
 
+/**
+ * Whot and Crazy Eights carry the same hazard Uno documents below, and mobile is the WORSE
+ * place for it: these views pass no `activePollMs` to `useGameTableSync`, so there is no
+ * fallback poll during active play. On web a truncated row self-corrects at the next poll; here
+ * the wrong state persists until some unrelated event reconciles it.
+ *
+ * And the damage is not only a blank rail. `setSession(next)` replaces the whole object, so a
+ * truncated payload also drops `phase` — which makes `canDraw` false and silently leaves the
+ * player unable to act, with `return true` suppressing the reload that would fix it.
+ *
+ * Both columns are `uuid[] NOT NULL`. Piles are excluded from both lists because they are
+ * revoked from anon and never arrive, exactly as for Uno.
+ */
+export const WHOT_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
+
+export function isCompleteWhotSessionRow(row: Record<string, unknown>): boolean {
+  return WHOT_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
+export const CRAZY8_SESSION_NOT_NULL_KEYS = ['turn_order', 'finish_order'] as const
+
+export function isCompleteCrazy8SessionRow(row: Record<string, unknown>): boolean {
+  return CRAZY8_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
+}
+
 export function isCompleteUnoSessionRow(row: Record<string, unknown>): boolean {
   return UNO_SESSION_NOT_NULL_KEYS.every((key) => row[key] != null)
 }

@@ -130,7 +130,12 @@ export function SudokuPlayerView({ gameCode }: { gameCode: string }) {
       return state ? 'playing' : 'waiting'
     },
     afterResolve: async (game, playerId) => {
-      if (!playerId || game.status !== 'active') return
+      // A finished game shows the final leaderboard, and its time column reads each player's
+      // last correct submission — so the submissions have to load on a cold mount into a
+      // finished game too, not just an active one. Without them every player's time falls back
+      // to the whole round. The crossword and word-search views already fetch on finish, and so
+      // does the web board; only waiting games have nothing to fetch.
+      if (!playerId || (game.status !== 'active' && game.status !== 'finished')) return
       const { data: roundData } = await getSupabase()
         .from('rounds')
         .select(ROUND_SELECT)

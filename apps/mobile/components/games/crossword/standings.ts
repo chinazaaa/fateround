@@ -4,10 +4,9 @@ import type { CrosswordSubmission } from '@fateround/shared'
 // mobile Sudoku `standings.ts`). Scoring + grid logic lives in `@fateround/shared/crossword`;
 // this file only holds palette + time/format helpers used by the view.
 
-type SubmissionLike = Pick<
-  CrosswordSubmission,
-  'player_id' | 'cell_row' | 'cell_col' | 'is_correct'
-> & { submitted_at?: string | null }
+type SubmissionLike = Pick<CrosswordSubmission, 'player_id' | 'cell_row' | 'cell_col' | 'is_correct'> & {
+  submitted_at?: string | null
+}
 
 /** Indigo highlight for cells the current player has correctly solved. */
 export const CROSSWORD_MY_CELL_COLOR = '#6366f1'
@@ -40,7 +39,19 @@ export function crosswordPlayerColor(index: number): string {
   return CROSSWORD_PLAYER_COLORS[index % CROSSWORD_PLAYER_COLORS.length]!
 }
 
-/** Time spent by a player in seconds. If completed, stops at their final correct submission. */
+/**
+ * Time spent by a player in seconds.
+ *
+ * Once a player's round is over — they completed it, or the game finished — the clock stops at
+ * their last correct submission. That is the quantity the leaderboards already break score ties on
+ * (each player's latest submission), so the figure shown and the figure ranked by are the same
+ * thing: when the player stopped, not how long the round ran. Previously only a 100% finisher
+ * got that treatment and everyone else was shown the whole round, which made a partial solver
+ * who won on points look slower than the player they beat.
+ *
+ * A player still playing keeps a running clock, and one who never got anything right is shown
+ * the whole round, since there is no moment they stopped at.
+ */
 export function getPlayerTimeSpent(
   game: { session_started_at?: string | null; finished_at?: string | null } | null,
   submissions: SubmissionLike[],
@@ -53,18 +64,20 @@ export function getPlayerTimeSpent(
   const sessionStartMs = new Date(game.session_started_at).getTime()
   const joinedMs = playerJoinedAt ? new Date(playerJoinedAt).getTime() : sessionStartMs
   const startMs = Number.isFinite(joinedMs) ? Math.max(sessionStartMs, joinedMs) : sessionStartMs
-  if (completionPercent >= 100) {
+  const finishedRaw = game.finished_at ? new Date(game.finished_at).getTime() : NaN
+  const finishedMs = Number.isFinite(finishedRaw) ? finishedRaw : null
+  if (completionPercent >= 100 || finishedMs !== null) {
     const myCorrect = submissions
       .filter((s) => s.player_id === playerId && s.is_correct && s.submitted_at)
       .sort((a, b) => new Date(a.submitted_at as string).getTime() - new Date(b.submitted_at as string).getTime())
     if (myCorrect.length > 0) {
-      const lastCorrect = myCorrect[myCorrect.length - 1]!
-      const endMs = new Date(lastCorrect.submitted_at as string).getTime()
+      const lastMs = new Date(myCorrect[myCorrect.length - 1]!.submitted_at as string).getTime()
+      // Clamped: a write that lands after the round closed is not extra play time.
+      const endMs = finishedMs !== null ? Math.min(lastMs, finishedMs) : lastMs
       if (Number.isFinite(endMs)) return Math.max(0, Math.floor((endMs - startMs) / 1000))
     }
   }
-  const endMs = completionPercent < 100 && game.finished_at ? new Date(game.finished_at).getTime() : nowMs
-  return Math.max(0, Math.floor((endMs - startMs) / 1000))
+  return Math.max(0, Math.floor(((finishedMs ?? nowMs) - startMs) / 1000))
 }
 
 export function formatMinutesSeconds(totalSeconds: number): string {

@@ -5,7 +5,7 @@ import { SudokuBoard } from '@/components/sudoku/SudokuBoard'
 import { useDailyChallengeTimer } from '@/hooks/useDailyChallengeTimer'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { DAILY_SUBMIT_CONFIRM } from '@/components/daily/daily-submit-confirm'
-import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, clearDailyProgress } from '@/lib/daily-progress'
+import { getOrCreateStartedAt, loadDailyAnswers, saveDailyAnswers, elapsedSinceStart } from '@/lib/daily-progress'
 
 interface DailySudokuPlayProps {
   challengeId: string
@@ -41,7 +41,7 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     if (!submitted) saveDailyAnswers(challengeId, userGrid)
   }, [challengeId, userGrid, submitted])
 
-  const { elapsed, formatted, isTimeUp } = useDailyChallengeTimer({
+  const { formatted, isTimeUp } = useDailyChallengeTimer({
     mode: 'countdown',
     maxSeconds,
     running: !submitted,
@@ -64,7 +64,11 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     if (submitRef.current) return
     submitRef.current = true
     setSubmitted(true)
-    clearDailyProgress(challengeId)
+    // Deliberately NOT clearing saved progress here. useDailyChallengeSession owns that: it
+    // clears on success and on a 409 (score already recorded), and on a failed or dropped
+    // request it KEEPS localStorage on purpose so a refresh can retry — "otherwise the player
+    // loses both server state AND local state". Clearing here pre-emptively defeated that and
+    // left a failed submit with an empty grid.
 
     const cells: Array<{ row: number; col: number; value: number }> = []
     for (let r = 0; r < 9; r++) {
@@ -76,10 +80,10 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
     }
 
     onSubmit({
-      timeSeconds: elapsed,
+      timeSeconds: elapsedSinceStart(startAtMs, maxSeconds),
       submission: { cells },
     })
-  }, [puzzle, userGrid, elapsed, onSubmit, challengeId])
+  }, [puzzle, userGrid, startAtMs, maxSeconds, onSubmit])
 
   const confirmAndSubmit = useCallback(async () => {
     if (await confirm(DAILY_SUBMIT_CONFIRM)) handleSubmit()
@@ -289,11 +293,15 @@ export function DailySudokuPlay({ challengeId, puzzle, timer: maxSeconds, onSubm
         highlightNumber={highlightNumber}
       />
 
-      {/* Submit button */}
-      {allFilled && !submitted && (
+      {/* Manual submit. Deliberately NOT gated on the grid being full: a player stuck a few
+          cells short could otherwise end their attempt only by sitting out the whole timer, with
+          no way to bank the cells they did solve. Same reasoning (and same fix) as the daily
+          crossword; `handleSubmit` already sends only the filled cells, which is the very
+          payload the time-up auto-submit sends. */}
+      {!submitted && !isTimeUp && filledCells > 0 && (
         <div className="text-center">
           <button className="fr-btn fr-btn--primary fr-btn--lg" onClick={confirmAndSubmit}>
-            Submit Puzzle
+            {allFilled ? 'Submit Puzzle' : `Submit (${filledCells}/${emptyCells} cells)`}
           </button>
         </div>
       )}

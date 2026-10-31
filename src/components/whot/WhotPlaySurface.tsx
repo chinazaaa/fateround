@@ -122,7 +122,12 @@ export function WhotPlaySurface({
   const finishedIds = new Set(finishOrder)
   const orderedIds = [
     ...finishOrder.filter((id) => byId.has(id)),
-    ...session.turn_order.filter((id) => !finishedIds.has(id)),
+    // `?? []` despite the type saying `string[]`: production disagrees. This line threw
+    // `undefined is not an object (evaluating 'e.turn_order.filter')` on /game/:code — 26 events
+    // across 10 users, still firing on the current release. A session row can reach the client
+    // without it (a realtime payload carrying a partial row, or a row read before the column is
+    // populated), and `finish_order` on the line above was already guarded for the same reason.
+    ...(session.turn_order ?? []).filter((id) => !finishedIds.has(id)),
   ]
   const seats: TurnSeat[] = orderedIds
     .map((id) => byId.get(id))
