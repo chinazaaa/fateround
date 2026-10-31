@@ -398,8 +398,8 @@ expected_warn_sql=${expected_warn//\'/\'\'}
 # last known writer actually applied, and explains why both must stay.
 # Either way its route, the bearer token and the 90s timeout live
 # inside the function body and are re-read every run, precisely so
-# that a URL/secret rotation cannot
-# leave a stale value baked into cron.job and so that the function's
+# that a URL/secret rotation cannot leave a stale value baked into
+# cron.job and so that the function's
 # https transport gate cannot be bypassed. A route/Authorization
 # substring test therefore cannot pass for it and must not be
 # reintroduced -- it is asserted by exact command match below.
@@ -519,7 +519,7 @@ bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
 if [ -n "$bad" ]; then
   echo "::error::reap_idle_active_games is wrong or missing in cron.job after running the guard migration (and any migration re-applied after it) with both GUCs set: $bad"
   echo "It must be registered as the tick call, not as an inlined net.http_post: the URL and the CRON_SECRET bearer must be re-read at run time (rotation-safe) and must pass the function's https transport gate (CWE-319)."
-  echo "TO FIX: find the migration that re-registers reap_idle_active_games and delete that registration. If the new command is intended (still a tick call, no inlined net.http_post), add that migration and its exact command to reaper_writer_cmd in this script on dev first, in its own PR, and land the migration after that -- this gate runs from the base revision."
+  echo "TO FIX: find the migration that re-registers reap_idle_active_games and delete that registration. If the new command is intended (still a tick call, no inlined net.http_post), add that migration and its exact command to reaper_writer_cmd in this script on dev first, in its own PR, and land the migration after that -- on pull requests this gate runs from the base revision, so editing it in the same PR as the migration has no effect."
   exit 1
 fi
 echo "reap_idle_active_games is registered as the tick call (the form $expected_reaper_writer registers) with the expected schedule."
