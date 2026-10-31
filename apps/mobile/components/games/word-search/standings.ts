@@ -37,7 +37,19 @@ export function wordSearchPlayerColor(index: number): string {
   return WORD_SEARCH_PLAYER_COLORS[index % WORD_SEARCH_PLAYER_COLORS.length]!
 }
 
-/** Time spent by a player in seconds. If completed, stops at their final word found. */
+/**
+ * Time spent by a player in seconds.
+ *
+ * Once a player's round is over — they found everything, or the game finished — the clock stops
+ * at their last find. That is the quantity the leaderboard already breaks score ties on (each
+ * player's latest find), so the figure shown and the figure ranked by are the same thing: when
+ * the player stopped, not how long the round ran. Previously only a 100% finisher got that
+ * treatment and everyone else was shown the whole round, which made a partial solver who won on
+ * points look slower than the player they beat.
+ *
+ * A player still playing keeps a running clock, and one who found nothing is shown the whole
+ * round, since there is no moment they stopped at.
+ */
 export function getPlayerTimeSpent(
   game: { session_started_at?: string | null; finished_at?: string | null } | null,
   found: FoundLike[],
@@ -50,18 +62,20 @@ export function getPlayerTimeSpent(
   const sessionStartMs = new Date(game.session_started_at).getTime()
   const joinedMs = playerJoinedAt ? new Date(playerJoinedAt).getTime() : sessionStartMs
   const startMs = Number.isFinite(joinedMs) ? Math.max(sessionStartMs, joinedMs) : sessionStartMs
-  if (completionPercent >= 100) {
+  const finishedRaw = game.finished_at ? new Date(game.finished_at).getTime() : NaN
+  const finishedMs = Number.isFinite(finishedRaw) ? finishedRaw : null
+  if (completionPercent >= 100 || finishedMs !== null) {
     const mine = found
       .filter((f) => f.player_id === playerId && f.found_at)
       .sort((a, b) => new Date(a.found_at as string).getTime() - new Date(b.found_at as string).getTime())
     if (mine.length > 0) {
-      const last = mine[mine.length - 1]!
-      const endMs = new Date(last.found_at as string).getTime()
+      const lastMs = new Date(mine[mine.length - 1]!.found_at as string).getTime()
+      // Clamped: a write that lands after the round closed is not extra play time.
+      const endMs = finishedMs !== null ? Math.min(lastMs, finishedMs) : lastMs
       if (Number.isFinite(endMs)) return Math.max(0, Math.floor((endMs - startMs) / 1000))
     }
   }
-  const endMs = completionPercent < 100 && game.finished_at ? new Date(game.finished_at).getTime() : nowMs
-  return Math.max(0, Math.floor((endMs - startMs) / 1000))
+  return Math.max(0, Math.floor(((finishedMs ?? nowMs) - startMs) / 1000))
 }
 
 export function formatMinutesSeconds(totalSeconds: number): string {

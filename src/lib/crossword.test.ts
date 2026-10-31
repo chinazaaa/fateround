@@ -6,6 +6,8 @@ import {
   playerCompletionPercent,
   isCrosswordCompleteForPlayer,
   tallyCrosswordScores,
+  countSolvedClues,
+  type CrosswordClue,
   parseCrosswordMetadata,
   CROSSWORD_WORD_POINTS,
   CROSSWORD_FIRST_WORD_BONUS,
@@ -208,5 +210,65 @@ describe('parseCrosswordMetadata', () => {
     expect(parseCrosswordMetadata(META)).not.toBeNull()
     expect(parseCrosswordMetadata(null)).toBeNull()
     expect(parseCrosswordMetadata({ size: 5 })).toBeNull()
+  })
+})
+
+/**
+ * `itemsSolved` on a daily crossword submission used to be pro-rata on correct cells, which
+ * could report a clue count the player had never been shown. These pin the rule the player
+ * actually sees: a clue counts only when all of its cells are right.
+ */
+describe('countSolvedClues', () => {
+  // C A T
+  // A . .
+  // R . .
+  const solution = [
+    ['C', 'A', 'T'],
+    ['A', '', ''],
+    ['R', '', ''],
+  ]
+  const clues: CrosswordClue[] = [
+    { number: 1, direction: 'across', row: 0, col: 0, length: 3, clue: 'feline' },
+    { number: 1, direction: 'down', row: 0, col: 0, length: 3, clue: 'motor' },
+  ]
+  const entry = (row: number, col: number, letter: string) => ({ row, col, letter })
+
+  it('counts a clue only when every cell is right', () => {
+    const across = [entry(0, 0, 'C'), entry(0, 1, 'A'), entry(0, 2, 'T')]
+    expect(countSolvedClues(clues, solution, across)).toBe(1)
+  })
+
+  it('does not count a clue whose cells are all filled but one is wrong', () => {
+    const across = [entry(0, 0, 'C'), entry(0, 1, 'A'), entry(0, 2, 'B')]
+    expect(countSolvedClues(clues, solution, across)).toBe(0)
+  })
+
+  it('does not count a partially filled clue, however many cells are right', () => {
+    // Two of three right is where the old pro-rata estimate reported progress and this does not.
+    const across = [entry(0, 0, 'C'), entry(0, 1, 'A')]
+    expect(countSolvedClues(clues, solution, across)).toBe(0)
+  })
+
+  it('counts both clues on a complete grid, as the old estimate also did', () => {
+    const full = [entry(0, 0, 'C'), entry(0, 1, 'A'), entry(0, 2, 'T'), entry(1, 0, 'A'), entry(2, 0, 'R')]
+    expect(countSolvedClues(clues, solution, full)).toBe(2)
+  })
+
+  it('is case-insensitive', () => {
+    const across = [entry(0, 0, 'c'), entry(0, 1, 'a'), entry(0, 2, 't')]
+    expect(countSolvedClues(clues, solution, across)).toBe(1)
+  })
+
+  it('ignores empty letters rather than matching an empty solution cell', () => {
+    // A blocked square reads as '' in the solution; an entry with no letter must not score it.
+    const blocked: CrosswordClue[] = [
+      { number: 2, direction: 'across', row: 1, col: 1, length: 2, clue: 'blocked run' },
+    ]
+    expect(countSolvedClues(blocked, solution, [entry(1, 1, ''), entry(1, 2, '')])).toBe(0)
+  })
+
+  it('counts nothing when there are no clues or no entries', () => {
+    expect(countSolvedClues([], solution, [entry(0, 0, 'C')])).toBe(0)
+    expect(countSolvedClues(clues, solution, [])).toBe(0)
   })
 })
