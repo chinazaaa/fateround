@@ -4,6 +4,7 @@ import { WORD_GROUPING_BANK } from '@/data/daily-banks/word-grouping-bank'
 import { CHESS_BANK } from '@/data/daily-banks/chess-bank'
 import { CODENAMES_BANK } from '@/data/daily-banks/codenames-bank'
 import { LUDO_BANK } from '@/data/daily-banks/ludo-bank'
+import { solveLudoPuzzleSteps, type LudoPuzzlePieceZone } from '@/lib/ludo-puzzle-solver'
 import { WORDLE_GENERAL_ENGLISH } from '@/data/daily-banks/wordle-general-english'
 import { WORDLE_NAIJA_SLANG } from '@/data/daily-banks/wordle-naija-slang'
 
@@ -368,112 +369,21 @@ function generateWordleContent(date: string, usedKeys: Set<string>): { content: 
   }
 }
 
-// Simplified BFS solver for ludo puzzles
-function solveLudoPuzzle(
-  startPieces: Array<{ id: number; zone: string; pos: number }>,
-  dice: number[],
-  obstacles: Array<{ trackPos: number }>
-): number | null {
-  const TRACK_SIZE = 52
-  const HOME_SIZE = 5
-  const obstacleSet = new Set(obstacles.map((o) => o.trackPos))
-
-  type PieceState = { zone: string; pos: number }
-  type State = { pieces: PieceState[]; diceIdx: number }
-
-  function stateKey(s: State): string {
-    return s.pieces.map((p) => `${p.zone}:${p.pos}`).join('|') + '|' + s.diceIdx
-  }
-
-  function movePiece(piece: PieceState, roll: number): PieceState | null {
-    if (piece.zone === 'finished') return null
-    if (piece.zone === 'base') {
-      if (roll !== 6) return null
-      return { zone: 'track', pos: 0 }
-    }
-    if (piece.zone === 'track') {
-      const newPos = piece.pos + roll
-      if (newPos >= TRACK_SIZE) {
-        const homePos = newPos - TRACK_SIZE
-        if (homePos >= HOME_SIZE) {
-          if (homePos === HOME_SIZE) return { zone: 'finished', pos: 0 }
-          return null
-        }
-        return { zone: 'home', pos: homePos }
-      }
-      if (obstacleSet.has(newPos)) return null
-      return { zone: 'track', pos: newPos }
-    }
-    if (piece.zone === 'home') {
-      const newPos = piece.pos + roll
-      if (newPos === HOME_SIZE) return { zone: 'finished', pos: 0 }
-      if (newPos > HOME_SIZE) return null
-      return { zone: 'home', pos: newPos }
-    }
-    return null
-  }
-
-  const initial: State = {
-    pieces: startPieces.map((p) => ({ zone: p.zone, pos: p.pos })),
-    diceIdx: 0,
-  }
-
-  const queue: State[] = [initial]
-  let head = 0
-  const visited = new Set<string>()
-  visited.add(stateKey(initial))
-
-  while (head < queue.length) {
-    const current = queue[head++]
-    if (current.pieces.every((p) => p.zone === 'finished')) {
-      return current.diceIdx
-    }
-    if (current.diceIdx >= dice.length) continue
-
-    const roll = dice[current.diceIdx]
-    let anyValidMove = false
-
-    for (let i = 0; i < 4; i++) {
-      const newPiece = movePiece(current.pieces[i], roll)
-      if (!newPiece) continue
-      anyValidMove = true
-      const newPieces = current.pieces.map((p, j) => (j === i ? newPiece : { ...p }))
-      const next: State = { pieces: newPieces, diceIdx: current.diceIdx + 1 }
-      const key = stateKey(next)
-      if (!visited.has(key)) {
-        visited.add(key)
-        queue.push(next)
-      }
-    }
-
-    // If no valid move, skip this die roll
-    if (!anyValidMove) {
-      const skip: State = { pieces: current.pieces.map((p) => ({ ...p })), diceIdx: current.diceIdx + 1 }
-      const key = stateKey(skip)
-      if (!visited.has(key)) {
-        visited.add(key)
-        queue.push(skip)
-      }
-    }
-  }
-
-  return null
-}
-
-// Steps a piece still needs to reach `finished`, matching solveLudoPuzzle's movement rules:
-//   track pos p -> (52 - p) to re-enter + 5 home squares  = 57 - p
+// Steps a piece still needs to reach `finished`, matching the game's geometry (see
+// src/lib/ludo-puzzle-solver.ts: track 0-50, home lane entered at step 51, finish on step 56):
+//   track pos p -> 56 - p
 //   home pos h  -> 5 - h
-//   base        -> a 6 to enter at track 0, then 57 more — at least 11 rolls on its own.
+//   base        -> a 6 to enter at track 0, then 56 more — at least 11 rolls on its own.
 function ludoStepsToFinish(piece: { zone: string; pos: number }): number {
   if (piece.zone === 'finished') return 0
   if (piece.zone === 'home') return 5 - piece.pos
-  if (piece.zone === 'track') return 57 - piece.pos
+  if (piece.zone === 'track') return 56 - piece.pos
   return Number.POSITIVE_INFINITY
 }
 
 // Build a random ludo puzzle that the solver has a real chance of solving.
 //
-// solveLudoPuzzle only returns a number once ALL FOUR pieces are finished, within a dice
+// The solver only returns a number once ALL FOUR pieces are finished, within a dice
 // sequence of just 8-14 rolls. Sampling piece positions uniformly across the 52-square track
 // (as this did originally) put almost every piece further from home than the dice could ever
 // carry it: 97.3% of generated puzzles were unsolvable, so only ~2.3% of attempts produced a
@@ -482,10 +392,11 @@ function ludoStepsToFinish(piece: { zone: string; pos: number }): number {
 //
 // So pieces are placed against a step budget the dice can actually cover. Acceptance stays
 // exactly as it was (optimal 3-12), which is what governs difficulty; this only stops us
-// proposing positions that were never winnable. Measured over 3000 attempts this lifts the
-// per-attempt success rate to ~53% (a day now fails roughly 1 time in 7 million) and, because
-// hopeless positions no longer send the BFS exploring a huge dead state space, cuts the cost
-// per attempt from ~14ms to ~0.45ms.
+// proposing positions that were never winnable. Generating a full year (365 days, no bank)
+// now fills every day in about a second, where the uniform sampler filled 140 in ~106s.
+//
+// Candidates are scored by solveLudoPuzzleSteps (src/lib/ludo-puzzle-solver.ts), which follows
+// the game's own rules, so every accepted puzzle is one a player can actually win.
 //
 // Note: pieces never start in `base`. A piece there needs 11+ rolls by itself, so the only
 // solvable base puzzle is "three pieces finished, one in base" — a forced, single-piece
@@ -517,8 +428,8 @@ function generateRandomLudoPuzzle(rng: () => number): {
       piece = { id, zone: 'home', pos: Math.floor(rng() * 5) }
     } else {
       // Nearest allowed track square is the one whose distance home fits this piece's share.
-      const minPos = Math.max(0, 57 - share)
-      const span = Math.max(1, 52 - minPos)
+      const minPos = Math.max(0, 56 - share)
+      const span = Math.max(1, 51 - minPos)
       let pos = minPos + Math.floor(rng() * span)
       for (let t = 0; t < 20 && usedTrackPositions.has(pos); t++) {
         pos = minPos + Math.floor(rng() * span)
@@ -544,15 +455,21 @@ function generateRandomLudoPuzzle(rng: () => number): {
   const obstacles: Array<{ trackPos: number }> = []
   const obsCount = Math.floor(rng() * 3)
   for (let i = 0; i < obsCount; i++) {
-    let pos = Math.floor(rng() * 52)
+    let pos = Math.floor(rng() * 51)
     for (let t = 0; t < 50 && (usedTrackPositions.has(pos) || obstacles.some((o) => o.trackPos === pos)); t++) {
-      pos = Math.floor(rng() * 52)
+      pos = Math.floor(rng() * 51)
     }
     obstacles.push({ trackPos: pos })
   }
 
-  // Solve with BFS
-  const optimal = solveLudoPuzzle(pieces, diceSequence, obstacles)
+  // Score it with the same solver the answer reveal uses, which follows the game's own rules
+  // (forced moves, exact finish on step 56). One step per roll used, skips included.
+  const steps = solveLudoPuzzleSteps(
+    pieces.map((p) => ({ zone: p.zone as LudoPuzzlePieceZone, pos: p.pos })),
+    diceSequence,
+    obstacles
+  )
+  const optimal = steps ? steps.length : null
   if (optimal === null || optimal < 3 || optimal > 12) return null
 
   return {
