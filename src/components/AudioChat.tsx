@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useParticipants } from '@livekit/components-react'
 import type { DisconnectReason } from 'livekit-client'
-import { voiceDisconnectMessage } from '@/lib/voice-errors'
+import { micToggleErrorMessage, voiceDisconnectMessage } from '@/lib/voice-errors'
 import { useToast } from '@/components/ui/Toast'
 
 /** Proof the caller is allowed in the room, verified server-side before a token is minted.
@@ -491,11 +491,15 @@ function HostBadge() {
 function AudioChatInner({ localPlayerName }: AudioChatInnerProps) {
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant()
   const participants = useParticipants()
+  const { error: toastError } = useToast()
   const localIsHost = isHostIdentity(localParticipant?.identity)
 
   const toggleMute = () => {
     if (localParticipant) {
-      void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+      localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled).catch((err: unknown) => {
+        console.warn('[voice] microphone toggle failed', err)
+        toastError(micToggleErrorMessage(err))
+      })
     }
   }
 

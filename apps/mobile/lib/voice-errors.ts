@@ -64,3 +64,24 @@ export function voiceDisconnectMessage(reason?: DisconnectReason): string | null
       return 'Voice chat disconnected. Tap Join voice to reconnect.'
   }
 }
+
+/**
+ * Player-facing message for a failed mute/unmute (`setMicrophoneEnabled`). The toggle
+ * used to be fired with `void`, so a rejection (mic permission denied, or the room
+ * mid-reconnect) escaped unhandled and the tap silently did nothing. Twin of
+ * `micToggleErrorMessage` in `src/lib/voice-errors.ts` (Sentry JAVASCRIPT-NEXTJS-1D /
+ * -16); same classification, mobile copy.
+ */
+export function micToggleErrorMessage(err: unknown): string {
+  const name = err instanceof Error ? err.name : ''
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return 'Microphone access is off. Allow it for FateRound in your device settings, then try again.'
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'No microphone was found.'
+  }
+  if (name === 'NotReadableError') {
+    return 'Your microphone is being used by another app. Close it and try again.'
+  }
+  return "Couldn't change your microphone — voice chat is reconnecting. Try again in a moment."
+}

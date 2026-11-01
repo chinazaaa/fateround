@@ -29,3 +29,27 @@ export function voiceDisconnectMessage(reason?: DisconnectReason): string | null
       return 'Voice chat disconnected. Join voice again to reconnect.'
   }
 }
+
+/**
+ * Player-facing message for a failed mute/unmute (`setMicrophoneEnabled`). The toggle
+ * used to be fired with `void`, so every rejection escaped as an unhandled promise
+ * rejection: Sentry JAVASCRIPT-NEXTJS-1D ("publishing rejected as engine not connected
+ * within timeout", the room was mid-reconnect) and JAVASCRIPT-NEXTJS-16 ("NotAllowedError:
+ * Permission dismissed", the player closed the browser's mic prompt). Neither is a bug
+ * we can fix; both need a clear message instead of a silent no-op.
+ *
+ * Twin at `apps/mobile/lib/voice-errors.ts` (same classification, touch-UI copy).
+ */
+export function micToggleErrorMessage(err: unknown): string {
+  const name = err instanceof Error ? err.name : ''
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return 'Microphone access is blocked. Allow the microphone for this site in your browser settings, then try again.'
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'No microphone was found. Connect one and try again.'
+  }
+  if (name === 'NotReadableError') {
+    return 'Your microphone is being used by another app. Close it and try again.'
+  }
+  return "Couldn't change your microphone — voice chat is reconnecting. Try again in a moment."
+}

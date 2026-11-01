@@ -13,7 +13,7 @@ import {
 import Svg, { Line, Path } from 'react-native-svg'
 import { AudioSession, LiveKitRoom, useLocalParticipant, useParticipants } from '@livekit/react-native'
 import type { DisconnectReason } from 'livekit-client'
-import { voiceDisconnectKind, voiceDisconnectMessage } from '@/lib/voice-errors'
+import { micToggleErrorMessage, voiceDisconnectKind, voiceDisconnectMessage } from '@/lib/voice-errors'
 import { LIVEKIT_URL } from '@/lib/config'
 import { useVoiceRoom, type VoiceMode } from '@/hooks/useVoiceRoom'
 import type { VoiceParticipant } from '@/lib/voice-types'
@@ -117,6 +117,7 @@ function ConnectedControls({
   const styles = useThemedStyles(makeStyles)
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant()
   const participants = useParticipants()
+  const { error: toastError } = useToast()
   const [showList, setShowList] = useState(false)
   const people = mapParticipants(participants)
   const muted = !isMicrophoneEnabled
@@ -126,7 +127,12 @@ function ConnectedControls({
       <View style={styles.pill}>
         <Pressable
           style={[styles.mainBtn, muted ? styles.mainBtnMuted : styles.mainBtnLive]}
-          onPress={() => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+          onPress={() =>
+            localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled).catch((err: unknown) => {
+              console.warn('[voice] microphone toggle failed', err)
+              toastError(micToggleErrorMessage(err))
+            })
+          }
         >
           <View style={styles.iconWrap}>
             {muted ? (

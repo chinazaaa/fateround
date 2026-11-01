@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LiveKitRoom, RoomAudioRenderer, useLocalParticipant, useParticipants } from '@livekit/components-react'
 import type { DisconnectReason } from 'livekit-client'
-import { voiceDisconnectMessage } from '@/lib/voice-errors'
+import { micToggleErrorMessage, voiceDisconnectMessage } from '@/lib/voice-errors'
 import { useToast } from '@/components/ui/Toast'
 import { RoomVoiceBar, type VoiceParticipant } from '@/components/rooms/RoomVoiceBar'
 import type { AudioAuth } from '@/components/AudioChat'
@@ -387,6 +387,7 @@ function ConnectedBar(props: {
   onLeave?: () => void
   onVoiceParticipants?: (parts: { id: string; talking: boolean; muted: boolean }[]) => void
 }) {
+  const { error: toastError } = useToast()
   const { isMicrophoneEnabled, localParticipant } = useLocalParticipant()
   const participants = useParticipants()
 
@@ -428,7 +429,12 @@ function ConnectedBar(props: {
       onEditName={props.onEditName}
       participants={mapped}
       muted={!isMicrophoneEnabled}
-      onToggleMute={() => void localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled)}
+      onToggleMute={() =>
+        localParticipant?.setMicrophoneEnabled(!isMicrophoneEnabled).catch((err: unknown) => {
+          console.warn('[voice] microphone toggle failed', err)
+          toastError(micToggleErrorMessage(err))
+        })
+      }
       onLeaveVoice={props.onLeaveVoice}
       onLeave={props.onLeave}
     />
