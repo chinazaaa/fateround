@@ -64,3 +64,26 @@ export function voiceDisconnectMessage(reason?: DisconnectReason): string | null
       return 'Voice chat disconnected. Tap Join voice to reconnect.'
   }
 }
+
+/**
+ * Player-facing message for a failed mute/unmute (`setMicrophoneEnabled`). The toggle
+ * used to be fired with `void`, so a rejection (mic permission denied, or the room
+ * mid-reconnect) escaped unhandled and the tap silently did nothing. Twin of
+ * `micToggleErrorMessage` in `src/lib/voice-errors.ts` (Sentry JAVASCRIPT-NEXTJS-1D /
+ * -16); same classification, mobile copy.
+ */
+export function micToggleErrorMessage(err: unknown): string {
+  // Not just `instanceof Error`: react-native-webrtc rejects with a MediaStreamError that
+  // carries a DOMException-style `name` but does not extend Error.
+  const name = typeof err === 'object' && err !== null && 'name' in err ? String(err.name) : ''
+  if (name === 'NotAllowedError' || name === 'SecurityError') {
+    return "Microphone access wasn't allowed. Tap unmute again and allow it — if you're not asked, turn it on for FateRound in your device settings."
+  }
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+    return 'No microphone was found.'
+  }
+  if (name === 'NotReadableError') {
+    return 'Your microphone is being used by another app. Close it and try again.'
+  }
+  return "Couldn't change your microphone. Try again in a moment."
+}
