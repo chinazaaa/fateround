@@ -2,13 +2,11 @@
  * Ludo puzzle solver — BFS over piece-state × dice-index that returns the actual
  * winning MOVE SEQUENCE, not just the roll count.
  *
- * The batch generator has its own solver (`solveLudoPuzzle` in
- * daily-batch-generator.ts) but returns only the number of rolls it took. The
- * daily answer reveal wants to show HOW to solve it — which piece moves on
- * each roll — so this walks the same state space and reconstructs the path by
- * following parent pointers back from the winning state. The transition
- * function (movePiece) is intentionally identical to the generator's so a puzzle
- * scored optimal by the generator is also solvable by this and vice versa.
+ * The daily answer reveal wants to show HOW to solve a puzzle — which piece
+ * moves on each roll — so this walks piece-state × dice-index and reconstructs the path by
+ * following parent pointers back from the winning state. The batch generator now
+ * scores its puzzles with this same function, so a puzzle the generator accepts is
+ * one this reveal can explain and a player can actually win.
  */
 
 export type LudoPuzzlePieceZone = 'base' | 'track' | 'home' | 'finished'
@@ -31,35 +29,38 @@ export interface LudoPuzzleStep {
   after: LudoPuzzlePieceState | null
 }
 
-const TRACK_SIZE = 52
-const HOME_SIZE = 5
+// Board geometry, identical to the daily play component (src/components/daily/DailyLudoPuzzlePlay.tsx),
+// which is what players actually play: track squares 0-50, the home lane is entered at step 51, and a
+// piece finishes on exactly step 56. Landing on an obstacle CAPTURES it (bonus points) rather than
+// blocking the move, so obstacles never change which moves are legal.
+//
+// This used to model a 52-square track finishing at step 57 with blocking obstacles, which made both
+// the answer reveal and the batch generator (which now calls this solver) disagree with real play:
+// a puzzle could be scored solvable here and be unwinnable in the game (CodeRabbit on #1237).
+const HOME_ENTRY_STEPS = 51
+const HOME_LANE_LENGTH = 5
+const FINISH_STEPS = HOME_ENTRY_STEPS + HOME_LANE_LENGTH
 
-function movePiece(piece: LudoPuzzlePieceState, roll: number, obstacleSet: Set<number>): LudoPuzzlePieceState | null {
+function toSteps(piece: LudoPuzzlePieceState): number {
+  if (piece.zone === 'base') return -1
+  if (piece.zone === 'track') return piece.pos
+  if (piece.zone === 'home') return HOME_ENTRY_STEPS + piece.pos
+  return FINISH_STEPS
+}
+
+function fromSteps(steps: number): LudoPuzzlePieceState {
+  if (steps < HOME_ENTRY_STEPS) return { zone: 'track', pos: steps }
+  if (steps < FINISH_STEPS) return { zone: 'home', pos: steps - HOME_ENTRY_STEPS }
+  return { zone: 'finished', pos: 0 }
+}
+
+function movePiece(piece: LudoPuzzlePieceState, roll: number): LudoPuzzlePieceState | null {
   if (piece.zone === 'finished') return null
-  if (piece.zone === 'base') {
-    if (roll !== 6) return null
-    return { zone: 'track', pos: 0 }
-  }
-  if (piece.zone === 'track') {
-    const newPos = piece.pos + roll
-    if (newPos >= TRACK_SIZE) {
-      const homePos = newPos - TRACK_SIZE
-      if (homePos >= HOME_SIZE) {
-        if (homePos === HOME_SIZE) return { zone: 'finished', pos: 0 }
-        return null
-      }
-      return { zone: 'home', pos: homePos }
-    }
-    if (obstacleSet.has(newPos)) return null
-    return { zone: 'track', pos: newPos }
-  }
-  if (piece.zone === 'home') {
-    const newPos = piece.pos + roll
-    if (newPos === HOME_SIZE) return { zone: 'finished', pos: 0 }
-    if (newPos > HOME_SIZE) return null
-    return { zone: 'home', pos: newPos }
-  }
-  return null
+  if (piece.zone === 'base') return roll === 6 ? { zone: 'track', pos: 0 } : null
+  const candidate = toSteps(piece) + roll
+  // A piece must land exactly on the finish; overshooting is not a legal move.
+  if (candidate > FINISH_STEPS) return null
+  return fromSteps(candidate)
 }
 
 function stateKey(pieces: LudoPuzzlePieceState[], diceIdx: number): string {
@@ -79,7 +80,9 @@ export function solveLudoPuzzleSteps(
   dice: number[],
   obstacles: Array<{ trackPos: number }>
 ): LudoPuzzleStep[] | null {
-  const obstacleSet = new Set(obstacles.map((o) => o.trackPos))
+  // Obstacles are captured, never blocking (see the geometry note above), so they cannot change
+  // the shortest winning line. The parameter stays so callers keep passing the full puzzle.
+  void obstacles
 
   type Node = {
     pieces: LudoPuzzlePieceState[]
@@ -122,7 +125,7 @@ export function solveLudoPuzzleSteps(
     const roll = dice[current.diceIdx]
     let any = false
     for (let i = 0; i < current.pieces.length; i++) {
-      const next = movePiece(current.pieces[i], roll, obstacleSet)
+      const next = movePiece(current.pieces[i], roll)
       if (!next) continue
       any = true
       const before = current.pieces[i]
