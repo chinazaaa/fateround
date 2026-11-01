@@ -507,7 +507,8 @@ function generateRandomLudoPuzzle(rng: () => number): {
   let spent = 0
 
   for (let id = 0; id < 4; id++) {
-    const share = Math.max(6, Math.floor((budget - spent) / (4 - id)))
+    // Unclamped, so a piece with too little budget left (< 6 steps) is forced to `finished`.
+    const share = Math.floor((budget - spent) / (4 - id))
     const r = rng()
     let piece: { id: number; zone: string; pos: number }
     if (r < 0.15 || share < 6) {
