@@ -158,9 +158,12 @@ jobs:
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      # Opt-in acknowledgement that a compatible mobile build has shipped. A repository VARIABLE,
+      # Opt-in acknowledgement that a compatible mobile build has shipped. A GitHub VARIABLE,
       # deliberately not a secret: it is an operational flag, not a credential, and it should be
-      # visible to anyone auditing why a revoke was allowed through.
+      # visible to anyone auditing why a revoke was allowed through. Set it ONLY on the GitHub
+      # ENVIRONMENT being deployed (Production / Preview), never as a repository-wide variable: a
+      # repo-level value falls through to any environment that has not defined its own, so
+      # acknowledging a version for Preview would silently authorise it for Production.
       MOBILE_ROLLOUT_ACK: ${{ vars.MOBILE_ROLLOUT_ACK }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -257,24 +260,46 @@ jobs:
           # another name. It also strips only `--` comments, so a `/* */` block or a dollar-quoted
           # body merely DISCUSSING sec_regrant_except would false-positive — harmless, since the
           # guard fails closed and the cost is one spurious MOBILE_ROLLOUT_ACK entry.
+          #
+          # Only WHOLE-LINE comments are stripped (`^\s*--`). Stripping from the first `--` to the
+          # end of the line also hid a real revoke that shared a line with an earlier `--`
+          # (including one inside a string literal, e.g. `select '--'; revoke ...;`). Leaving
+          # trailing comments in costs, at worst, a spurious acknowledgement; hiding a revoke
+          # costs a broken release. Across every migration in the repo the two give the same
+          # verdict, so nothing existing changes.
           case "${GITHUB_REF_NAME:-}" in
             main) GUARD_ENV="Production" ;;
             *)    GUARD_ENV="Preview" ;;
           esac
           GUARD_TARGET="$GUARD_ENV (ref ${GITHUB_REF_NAME:-unknown}, Supabase project $REF)"
+          # revoke-guard:begin (src/lib/revoke-guard.test.ts runs exactly this block)
           listing=$(supabase migration list --linked 2>/dev/null || true)
-          local_total=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; gsub(/[^0-9]/,"",l); if (length(l)==14) print l }' | wc -l | tr -d ' ')
+          # A version is the digits in the Local column of a TABLE row (3 `|`-separated fields, which
+          # skips prose lines), of ANY length. Supabase accepts `^([0-9]+)_(.*)\.sql$`, and 129 files
+          # here use 3-4 digit prefixes (0001_… 0128_…); matching only 14 digits made those invisible
+          # to the guard, so a revoke in one deployed unguarded (#1173).
+          local_total=$(printf '%s\n' "$listing" | awk -F'|' 'NF>=3 { l=$1; gsub(/[^0-9]/,"",l); if (length(l)>0) print l }' | wc -l | tr -d ' ')
           if [ "$local_total" = "0" ]; then
             echo "::error::Could not parse 'supabase migration list' output, so pending revokes cannot be identified."
             echo "Failing closed rather than pushing to $GUARD_TARGET blind. Check the CLI output format."
             exit 1
           fi
-          pending=$(printf '%s\n' "$listing" | awk -F'|' '{ l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)==14 && length(r)==0) print l }')
+          # Fail closed on ANY parsing surprise: the guard must have looked at every migration file.
+          # If the listing shows fewer versions than there are files, some migration is invisible to
+          # the revoke check, so refuse rather than quietly guard a smaller set.
+          files_total=$(find supabase/migrations -maxdepth 1 -name '*.sql' | wc -l | tr -d ' ')
+          if [ "$local_total" != "$files_total" ]; then
+            echo "::error::Revoke guard saw $local_total migration versions in 'supabase migration list' but supabase/migrations has $files_total .sql files."
+            echo "A migration the guard cannot see could carry an unacknowledged revoke. Failing closed rather than pushing to $GUARD_TARGET."
+            echo "Likely causes: a file name that does not match <digits>_<name>.sql, or a changed CLI output format."
+            exit 1
+          fi
+          pending=$(printf '%s\n' "$listing" | awk -F'|' 'NF>=3 { l=$1; r=$2; gsub(/[^0-9]/,"",l); gsub(/[^0-9]/,"",r); if (length(l)>0 && length(r)==0) print l }')
           unacked=""
           for version in $pending; do
             for file in supabase/migrations/"$version"_*.sql; do
               [ -f "$file" ] || continue
-              sed 's/--.*//' "$file" | grep -qiE '\brevoke\b|sec_regrant_except' || continue
+              sed 's/^[[:space:]]*--.*//' "$file" | grep -qiE '\brevoke\b|sec_regrant_except' || continue
               # acknowledged only if this exact version is listed
               case " ${MOBILE_ROLLOUT_ACK:-} " in
                 *" $version "*) echo "Revoke guard: $file acknowledged by MOBILE_ROLLOUT_ACK for $GUARD_ENV." ;;
@@ -296,6 +321,7 @@ jobs:
             exit 1
           fi
           echo "Revoke guard: $local_total migrations known, no unacknowledged pending revokes for $GUARD_TARGET."
+          # revoke-guard:end
 
           supabase db push --include-all
 
