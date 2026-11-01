@@ -13,9 +13,11 @@ on:
 permissions:
   contents: read
 
+# Superseded runs are cancelled everywhere except pushes to dev/main: those can reach the
+# `migrate` job, and cancelling mid `supabase db push` would leave migrations partly applied.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ !(github.event_name == 'push' && (github.ref_name == 'dev' || github.ref_name == 'main')) }}
 
 jobs:
   migrations-check:
