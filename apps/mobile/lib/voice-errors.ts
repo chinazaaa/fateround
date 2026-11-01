@@ -73,9 +73,11 @@ export function voiceDisconnectMessage(reason?: DisconnectReason): string | null
  * -16); same classification, mobile copy.
  */
 export function micToggleErrorMessage(err: unknown): string {
-  const name = err instanceof Error ? err.name : ''
+  // Not just `instanceof Error`: react-native-webrtc rejects with a MediaStreamError that
+  // carries a DOMException-style `name` but does not extend Error.
+  const name = typeof err === 'object' && err !== null && 'name' in err ? String(err.name) : ''
   if (name === 'NotAllowedError' || name === 'SecurityError') {
-    return 'Microphone access is off. Allow it for FateRound in your device settings, then try again.'
+    return "Microphone access wasn't allowed. Tap unmute again and allow it — if you're not asked, turn it on for FateRound in your device settings."
   }
   if (name === 'NotFoundError' || name === 'OverconstrainedError') {
     return 'No microphone was found.'
@@ -83,5 +85,5 @@ export function micToggleErrorMessage(err: unknown): string {
   if (name === 'NotReadableError') {
     return 'Your microphone is being used by another app. Close it and try again.'
   }
-  return "Couldn't change your microphone — voice chat is reconnecting. Try again in a moment."
+  return "Couldn't change your microphone. Try again in a moment."
 }

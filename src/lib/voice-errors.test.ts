@@ -9,8 +9,8 @@ function domError(name: string): Error {
 
 describe('micToggleErrorMessage', () => {
   it('points at browser settings when the mic prompt is dismissed or denied (Sentry JAVASCRIPT-NEXTJS-16)', () => {
-    expect(micToggleErrorMessage(domError('NotAllowedError'))).toMatch(/Allow the microphone/)
-    expect(micToggleErrorMessage(domError('SecurityError'))).toMatch(/Allow the microphone/)
+    expect(micToggleErrorMessage(domError('NotAllowedError'))).toMatch(/allow the prompt/)
+    expect(micToggleErrorMessage(domError('SecurityError'))).toMatch(/allow the prompt/)
   })
 
   it('says no microphone was found', () => {
@@ -21,9 +21,15 @@ describe('micToggleErrorMessage', () => {
     expect(micToggleErrorMessage(domError('NotReadableError'))).toMatch(/another app/)
   })
 
-  it('falls back to a reconnecting message, e.g. engine not connected (Sentry JAVASCRIPT-NEXTJS-1D)', () => {
-    const err = domError('PublishTrackError')
-    expect(micToggleErrorMessage(err)).toMatch(/reconnecting/)
-    expect(micToggleErrorMessage('not an error')).toMatch(/reconnecting/)
+  it('reads the name from error-like objects that do not extend Error', () => {
+    expect(micToggleErrorMessage({ name: 'NotAllowedError', message: 'denied' })).toMatch(/allow the prompt/)
+  })
+
+  it('falls back to a neutral retry message, e.g. engine not connected (Sentry JAVASCRIPT-NEXTJS-1D)', () => {
+    const fallback = "Couldn't change your microphone. Try again in a moment."
+    expect(micToggleErrorMessage(domError('PublishTrackError'))).toBe(fallback)
+    expect(micToggleErrorMessage(domError('AbortError'))).toBe(fallback)
+    expect(micToggleErrorMessage('not an error')).toBe(fallback)
+    expect(micToggleErrorMessage(null)).toBe(fallback)
   })
 })
