@@ -51,8 +51,14 @@ ENV NEXT_PUBLIC_SENTRY_RELEASE=$GIT_SHA
 # The token is readable only for the lifetime of this RUN, and only inside it. Absent (local
 # builds, forks, a laptop `docker build`), the shell expansion yields an empty string, upload
 # stays off, and the build still succeeds — missing credentials must never fail a build.
+#
+# With the token present, the Sentry plugin turns source maps on, and webpack then needs more
+# than the ~4 GB V8 heap Node picks by default inside the build container: the first build with
+# SENTRY_AUTH_TOKEN set died with "JavaScript heap out of memory" ~70s in. 6 GB fits, and the
+# hosted runner has 16 GB.
 RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
+    NODE_OPTIONS="--max-old-space-size=6144" \
     pnpm build
 
 # Minimal runtime image (Next.js standalone output).
