@@ -334,7 +334,7 @@ function generateLudoContent(date: string, usedKeys: Set<string>): { content: un
   }
 
   // Fallback to bank
-  const available = LUDO_BANK.filter((p) => {
+  const available = playableLudoBank().filter((p) => {
     const key = p.startingPieces.map((t) => `${t.zone}:${t.pos}`).join('|')
     return !usedKeys.has(key)
   })
@@ -379,6 +379,24 @@ function ludoStepsToFinish(piece: { zone: string; pos: number }): number {
   if (piece.zone === 'home') return 5 - piece.pos
   if (piece.zone === 'track') return 56 - piece.pos
   return Number.POSITIVE_INFINITY
+}
+
+// The hand-authored LUDO_BANK, restricted to puzzles that can actually be won under the game's
+// rules, with each target recomputed by the same solver (the stored `optimalRolls` values and some
+// of the puzzles predate the game's geometry and are not trustworthy). Memoised: it is pure.
+let playableLudoBankCache: typeof LUDO_BANK | null = null
+function playableLudoBank(): typeof LUDO_BANK {
+  if (!playableLudoBankCache) {
+    playableLudoBankCache = LUDO_BANK.flatMap((p) => {
+      const steps = solveLudoPuzzleSteps(
+        p.startingPieces.map(({ zone, pos }) => ({ zone, pos })),
+        p.diceSequence,
+        p.obstacles ?? []
+      )
+      return steps ? [{ ...p, optimalRolls: steps.length }] : []
+    })
+  }
+  return playableLudoBankCache
 }
 
 // Build a random ludo puzzle that the solver has a real chance of solving.
@@ -806,7 +824,7 @@ export function getBankStats() {
     wordGroupingPuzzles: WORD_GROUPING_BANK.length,
     chessPuzzles: CHESS_BANK.length,
     codenamesPuzzles: CODENAMES_BANK.length,
-    ludoPuzzles: LUDO_BANK.length,
+    ludoPuzzles: playableLudoBank().length,
     wordleWords: WORDLE_GENERAL_ENGLISH.length + WORDLE_NAIJA_SLANG.length,
   }
 }
