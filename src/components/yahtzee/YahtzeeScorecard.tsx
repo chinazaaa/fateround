@@ -89,7 +89,7 @@ export function YahtzeeScorecard({
 
   const orderedScores = players.map((p) => {
     const pScore = scores.find((s) => s.player_id === p.id)
-    return { player: p, score: pScore?.scores.categories ?? null, bonus: pScore?.scores.bonusYahtzees ?? 0 }
+    return { player: p, score: pScore?.scores?.categories ?? null, bonus: pScore?.scores?.bonusYahtzees ?? 0 }
   })
 
   const playerColClass = (playerId: string) => {
@@ -276,14 +276,15 @@ export function YahtzeeLeaderboard({
 }) {
   const sorted = [...rows].sort(
     (a, b) =>
-      totalScore(b.scores.categories, b.scores.bonusYahtzees) - totalScore(a.scores.categories, a.scores.bonusYahtzees)
+      totalScore(b.scores?.categories ?? {}, b.scores?.bonusYahtzees) -
+      totalScore(a.scores?.categories ?? {}, a.scores?.bonusYahtzees)
   )
 
   return (
     <div className="grid grid-cols-1 gap-2">
       {sorted.map((row, index) => {
         const player = players.find((p) => p.id === row.player_id)
-        const total = totalScore(row.scores.categories, row.scores.bonusYahtzees)
+        const total = totalScore(row.scores?.categories ?? {}, row.scores?.bonusYahtzees)
         const isYou = row.player_id === highlightPlayerId
         const rankColors = ['bg-amber-500', 'bg-slate-400', 'bg-amber-700', 'bg-[var(--faint)]']
 

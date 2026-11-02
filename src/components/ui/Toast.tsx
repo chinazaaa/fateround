@@ -74,10 +74,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+// Used when a component renders outside <ToastProvider> (an error boundary, or a server
+// render that does not go through the root layout). Toasts are non-essential feedback, so
+// dropping them beats crashing the whole render — Sentry JAVASCRIPT-NEXTJS-14 was exactly that.
+const NOOP_TOAST_API: ToastApi = {
+  toast: () => {},
+  success: () => {},
+  error: () => {},
+  info: () => {},
+}
+
 export function useToast(): ToastApi {
-  const ctx = useContext(ToastContext)
-  if (!ctx) {
-    throw new Error('useToast must be used within ToastProvider')
-  }
-  return ctx
+  return useContext(ToastContext) ?? NOOP_TOAST_API
 }
