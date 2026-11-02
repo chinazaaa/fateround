@@ -69,7 +69,7 @@ src/                  Web app + API routes (unchanged)
 - [x] `JoinScreen`, minimal `LobbyView`, minimal `GameChrome` (loading / not found / shell / turn banner / basic finished panel)
 - [x] `useGameViewBootstrap` + `useGameTableSync`
 - [x] `packages/shared` extracted from web types/libs
-- [x] `eas.json` scaffold, env example, `npm run mobile` from repo root
+- [x] `apps/mobile/eas.json` scaffold, env example, `npm run mobile` from repo root (run `eas` commands from `apps/mobile/`; there is deliberately no root `app.json`/`eas.json`)
 - [x] Host token storage helpers (`getHostToken` / `setHostToken`)
 
 
