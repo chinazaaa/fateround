@@ -1,9 +1,8 @@
 // ---------------------------------------------------------------------------
 // Daily Ludo Puzzle Engine
-// Self-contained, no external imports. Pre-validated puzzle bank.
+// Pre-validated puzzle bank. The only import is the dependency-free shared solver.
 //
-// Board model (mirrors src/lib/ludo.ts constants, duplicated here on purpose
-// so this file has zero external imports):
+// Board model (mirrors src/lib/ludo.ts constants, duplicated here on purpose):
 //   TRACK_LENGTH = 52, HOME_ENTRY_STEPS = 51, HOME_LANE_LENGTH = 5,
 //   FINISH_STEPS = 56. Player is always 'green' (START_POS.green = 0), so a
 //   piece's `steps` from start maps directly to board pos:
@@ -13,8 +12,11 @@
 //   `steps === -1` (internal only) represents a piece still in 'base'.
 //
 // NOTE: this puzzle has NO extra-roll-on-6 rule. The dice sequence is fixed
-// and each roll is used (or skipped) exactly once, in order.
+// and each roll is used exactly once, in order. A roll is skipped only when no
+// piece can legally use it; the play UI forces a move whenever one exists.
 // ---------------------------------------------------------------------------
+
+import { solveLudoPuzzleSteps } from '@/lib/ludo-puzzle-solver'
 
 export interface LudoPuzzlePiece {
   id: number
@@ -87,94 +89,23 @@ function orderedSteps(pieces: LudoPuzzlePiece[]): number[] {
   return byId.map(stepsFromPiece)
 }
 
-// -- Solver (BFS over the fixed dice sequence) --------------------------------
-// At each roll, at most one piece may move (if a legal move exists), or the
-// roll is skipped. BFS explores layer-by-layer (one layer per roll index) so
-// the first state that reaches "all pieces finished" is reached in the
-// minimum possible number of rolls.
-
-interface SolveState {
-  steps: number[]
-  obstacles: number[]
-}
-
-// Pieces are interchangeable for the purposes of finding the minimum number
-// of rolls to solve (only the multiset of progress values matters, not which
-// physical token holds which value), so states are canonicalised by sorting
-// `steps` ascending. This collapses permutation-equivalent states and keeps
-// the BFS state space small even for longer dice sequences.
-function stateKey(steps: number[], obstacles: number[]): string {
-  return [...steps].sort((a, b) => a - b).join(',') + '|' + [...obstacles].sort((a, b) => a - b).join(',')
-}
-
+// -- Solver ------------------------------------------------------------------------
+// The target a player is scored against ("optimal rolls") MUST be reachable by playing the real
+// game. The play UI (DailyLudoPuzzlePlay) forces a move whenever one is legal and only skips a roll
+// when nothing can move, so the optimum is computed by the shared solver that models exactly that
+// (src/lib/ludo-puzzle-solver.ts). This file used to carry its own BFS in which skipping was always
+// allowed, which could report a lower optimum than any player can actually achieve.
 function solveLudoPuzzle(
   startingPieces: LudoPuzzlePiece[],
   diceSequence: number[],
   obstacles: LudoObstacle[]
 ): { optimalRolls: number } | null {
-  const initialSteps = orderedSteps(startingPieces)
-  const initialObstacles = obstacles.map((o) => o.trackPos)
-
-  if (initialSteps.every((s) => s === FINISH_STEPS)) {
-    return { optimalRolls: 0 }
-  }
-
-  let layer: SolveState[] = [{ steps: initialSteps, obstacles: initialObstacles }]
-
-  for (let d = 0; d < diceSequence.length; d++) {
-    const roll = diceSequence[d]
-    const nextLayer: SolveState[] = []
-    const nextVisited = new Set<string>()
-
-    for (const state of layer) {
-      // Try moving each piece with this roll.
-      for (let id = 0; id < PIECE_COUNT; id++) {
-        const steps = state.steps[id]
-        let newSteps: number | null = null
-
-        if (steps === -1) {
-          if (roll === 6) newSteps = 0
-        } else if (steps < FINISH_STEPS) {
-          const candidate = steps + roll
-          if (candidate <= FINISH_STEPS) newSteps = candidate
-        }
-
-        if (newSteps === null) continue
-
-        const newStepsArr = state.steps.slice()
-        newStepsArr[id] = newSteps
-
-        let newObstacles = state.obstacles
-        if (newSteps < HOME_ENTRY_STEPS && state.obstacles.includes(newSteps)) {
-          newObstacles = state.obstacles.filter((o) => o !== newSteps)
-        }
-
-        if (newStepsArr.every((s) => s === FINISH_STEPS)) {
-          return { optimalRolls: d + 1 }
-        }
-
-        const key = stateKey(newStepsArr, newObstacles)
-        if (!nextVisited.has(key)) {
-          nextVisited.add(key)
-          nextLayer.push({ steps: newStepsArr, obstacles: newObstacles })
-        }
-      }
-
-      // Skip option (always available).
-      {
-        const key = stateKey(state.steps, state.obstacles)
-        if (!nextVisited.has(key)) {
-          nextVisited.add(key)
-          nextLayer.push(state)
-        }
-      }
-    }
-
-    if (nextLayer.length === 0) return null
-    layer = nextLayer
-  }
-
-  return null
+  const steps = solveLudoPuzzleSteps(
+    startingPieces.map(({ zone, pos }) => ({ zone, pos })),
+    diceSequence,
+    obstacles
+  )
+  return steps ? { optimalRolls: steps.length } : null
 }
 
 // -- Puzzle bank ---------------------------------------------------------------
@@ -320,14 +251,14 @@ interface CompiledPuzzle extends BankPuzzle {
 }
 
 function compileBank(bank: BankPuzzle[]): CompiledPuzzle[] {
-  return bank.map((puzzle) => {
+  const compiled: CompiledPuzzle[] = []
+  for (const puzzle of bank) {
     const solved = solveLudoPuzzle(puzzle.startingPieces, puzzle.diceSequence, puzzle.obstacles)
-    // Every bank puzzle is expected to be solvable within its own sequence.
-    // If a future edit makes one unsolvable, fall back to the full sequence
-    // length rather than throwing at import time.
-    const optimalRolls = solved ? solved.optimalRolls : puzzle.diceSequence.length
-    return { ...puzzle, optimalRolls }
-  })
+    // A puzzle nobody can win must never be served, so it is dropped here rather than given a
+    // made-up target. (It used to be kept with `diceSequence.length` as its optimum.)
+    if (solved) compiled.push({ ...puzzle, optimalRolls: solved.optimalRolls })
+  }
+  return compiled
 }
 
 const PUZZLE_BANK: CompiledPuzzle[] = compileBank(RAW_PUZZLE_BANK)
@@ -422,8 +353,11 @@ export function generateLudoFromContent(adminContent: unknown, seed: number, tim
   const diceSequence = raw.diceSequence
   const obstacles = raw.obstacles ?? []
 
+  // Curated content that cannot be won under the game's rules is rejected, so the caller falls
+  // back to the built-in bank instead of serving an unwinnable puzzle with an invented target.
   const solved = solveLudoPuzzle(startingPieces, diceSequence, obstacles)
-  const optimalRolls = solved ? solved.optimalRolls : (raw.optimalRolls ?? diceSequence.length)
+  if (!solved) return null
+  const optimalRolls = solved.optimalRolls
 
   return {
     puzzleData: {

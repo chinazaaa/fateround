@@ -318,6 +318,10 @@ if [ "${CRON_REAPPLY_COMPUTED:-}" != "yes" ]; then
   exit 1
 fi
 later_cron_migrations=()
+# Whether the Vault reschedule is among the re-applied migrations. It
+# decides which reaper command the exact-match assertion below expects.
+VAULT_RESCHEDULE_MIGRATION=supabase/migrations/20261126120000_cron_settings_from_vault.sql
+vault_reschedule_reapplied=no
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   if [ ! -f "$f" ]; then
@@ -326,6 +330,9 @@ while IFS= read -r f; do
   fi
   echo "Also applying $f with both GUCs set (it applies after the guard on production too)."
   later_cron_migrations+=(-f "$f")
+  if [ "$f" = "$VAULT_RESCHEDULE_MIGRATION" ]; then
+    vault_reschedule_reapplied=yes
+  fi
 done <<< "${CRON_REAPPLY_MIGRATIONS:-}"
 
 # psql runs repeated -c/-f options in order on one connection, so the
@@ -391,11 +398,12 @@ expected_warn_sql=${expected_warn//\'/\'\'}
 # Only the two jobs whose COMMAND is the HTTP call are checked this
 # way. reap_idle_active_games is registered as a call to the tick
 # function -- bare (#1166), or preceded by two set_config() seeds when
-# 20261126120000_cron_settings_from_vault.sql is the last writer; in the
-# state THIS gate builds the guard migration is last, so it is the bare
-# form here. See the byte-exact assertion below for which forms are
-# accepted and why both must stay. Either way its route, the bearer
-# token and the 90s timeout live inside the function body and are
+# 20261126120000_cron_settings_from_vault.sql is the last writer. Which
+# of the two THIS gate's state ends up with depends on whether that
+# migration is in the re-apply list; see the byte-exact assertion below
+# for how the expected form is chosen and why both must stay. Either
+# way its route, the bearer token and the 90s timeout live inside the
+# function body and are
 # re-read every run, precisely so that a URL/secret rotation cannot
 # leave a stale value baked into cron.job and so that the function's
 # https transport gate cannot be bypassed. A route/Authorization
@@ -440,31 +448,54 @@ echo "Both direct-HTTP cron jobs are present with the expected schedule and exac
 
 # The reaper, asserted by exact command. This is the regression test
 # for the guard migration re-inlining net.http_post over the tick call:
-# anything other than the bare tick invocation means baked-in
-# credentials and a bypassed transport gate. Byte-for-byte, NOT
-# whitespace-normalised, so a reindentation is not tolerated.
+# anything other than the tick invocation (bare, or preceded by the two
+# Vault set_config() seeds) means baked-in credentials and a bypassed
+# transport gate. Byte-for-byte, NOT whitespace-normalised, so a
+# reindentation is not tolerated.
 #
-# The BARE form, and deliberately NOT the Vault-seeding one the inventory
-# gate pins -- the two gates inspect different states and must disagree
-# here. This gate applies $GUARD_MIGRATION (20261124120000, which registers
-# the bare command) and then only the migrations the BRANCH ADDS after it.
-# 20261126120000_cron_settings_from_vault.sql is in the base now, so it is
-# not "added", is not re-applied, and the guard is the last writer: the
-# command in this gate's state is bare. A future PR that adds another
-# post-guard migration rescheduling this job WILL have it re-applied here,
-# so that PR goes red -- and editing this expectation inside it does not
-# help, because the copy that runs is the BASE revision's (see the
-# base-pinned extraction in .github/workflows/ci.yml). Changing this job's
-# command therefore takes two PRs, exactly as #1224 then #1223 did: widen
-# the expectation on dev first, land the migration second, tighten after.
+# WHICH form is expected depends on which migration wrote the job last
+# in the state THIS gate builds. It applies $GUARD_MIGRATION
+# (20261124120000, which registers the bare command) and then only the
+# migrations the pushed or proposed change ADDS after it:
+#
+#   * On a dev PR, 20261126120000_cron_settings_from_vault.sql is already
+#     in the base, so it is not "added", is not re-applied, and the guard
+#     is the last writer: the command is BARE.
+#   * On a push that brings that migration in for the first time -- the
+#     dev->main release that carried it (CI run 41250916276) -- it IS
+#     re-applied, runs after the guard, and is the last writer: the
+#     command is the VAULT-SEEDING form, exactly as on production. Expecting
+#     the bare form there failed a correct release.
+#
+# Only that one file switches the expectation, and only by being in the
+# re-apply list, which the runner holds as a step output (see above), so
+# nothing the change under test contains can choose the expectation. Any
+# OTHER post-guard migration that reschedules this job still produces a
+# command matching neither form and goes red. Editing this expectation
+# inside such a PR does not help, because the copy that runs is the BASE
+# revision's (see the base-pinned extraction in .github/workflows/ci.yml).
+# Changing this job's command therefore takes two PRs, exactly as #1224
+# then #1223 did: widen the expectation on dev first, land the migration
+# second, tighten after.
+#
+# The Vault-seeding text is byte-identical to the one the migration and
+# scripts/ci/deploy-cron-inventory-gate.sh pin. It is dollar-quoted below
+# because it contains single quotes.
+if [ "$vault_reschedule_reapplied" = yes ]; then
+  expected_reaper="select set_config('app.api_base', public.cron_setting('api_base'), false), set_config('app.cron_secret', public.cron_setting('cron_secret'), false); select public.reap_idle_active_games_tick();"
+  echo "$VAULT_RESCHEDULE_MIGRATION was re-applied after the guard, so it is the last writer: expecting the Vault-seeding reaper command."
+else
+  expected_reaper="select public.reap_idle_active_games_tick();"
+  echo "$VAULT_RESCHEDULE_MIGRATION was not re-applied, so the guard is the last writer: expecting the bare reaper command."
+fi
 bad=$("$PSQL" "$DB" -v ON_ERROR_STOP=1 -tAc "
   select coalesce(
            case
              when j.jobid is null then 'absent from cron.job'
              when j.schedule is distinct from '*/15 * * * *'
                then format('schedule is %L, expected %L', j.schedule, '*/15 * * * *')
-             when j.command is distinct from 'select public.reap_idle_active_games_tick();'
-               then format('command is %L, expected %L', j.command, 'select public.reap_idle_active_games_tick();')
+             when j.command is distinct from \$reaper\$$expected_reaper\$reaper\$
+               then format('command is %L, expected %L', j.command, \$reaper\$$expected_reaper\$reaper\$)
              when j.active is distinct from true
                then 'is registered but cron.job.active is false, so it never fires'
              when j.database is distinct from 'postgres'
@@ -484,7 +515,7 @@ if [ -n "$bad" ]; then
   echo "TO FIX: find the migration that re-registers reap_idle_active_games and delete that registration."
   exit 1
 fi
-echo "reap_idle_active_games is registered as the tick call with the expected schedule."
+echo "reap_idle_active_games is registered with the expected command ($expected_reaper) and schedule."
 
 # Finally, an INVENTORY (#1175 finding 4): everything in cron.job must
 # be one of the seven jobs this repo's migrations register. Without
