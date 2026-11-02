@@ -38,17 +38,17 @@
 # Until that is done, treat the paths below as convention.
 
 # Workflow definitions, action pins, permissions blocks, and this file.
-/.github/ @billmal071
+/.github/ @billmal071 @chinazaaa
 
 # Every script a workflow executes -- the base-pinned gates in scripts/ci, and the other
 # enforcement scripts (check-migration-security.mjs, forbidden-pattern-scan.sh) beside them.
-/scripts/ @billmal071
+/scripts/ @billmal071 @chinazaaa
 
 # The install surface of the job that runs the gates: the `prepare` hook that runs inside
 # `pnpm install`, what husky wires up, what the install resolves, and the dependency
 # build-script allow-list.
-/package.json @billmal071
-/pnpm-lock.yaml @billmal071
-/pnpm-workspace.yaml @billmal071
-/.npmrc @billmal071
-/.husky/ @billmal071
+/package.json @billmal071 @chinazaaa
+/pnpm-lock.yaml @billmal071 @chinazaaa
+/pnpm-workspace.yaml @billmal071 @chinazaaa
+/.npmrc @billmal071 @chinazaaa
+/.husky/ @billmal071 @chinazaaa
