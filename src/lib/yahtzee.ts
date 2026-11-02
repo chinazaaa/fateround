@@ -429,7 +429,7 @@ export async function processYahtzeeScore(
   if (!scoresRows || scoresRows.length === 0) return { error: 'Scores not found' }
 
   const playerRow = (scoresRows as YahtzeePlayerScore[]).find((r) => r.player_id === playerId)
-  if (!playerRow) return { error: 'Player scores not found' }
+  if (!playerRow?.scores?.categories) return { error: 'Player scores not found' }
 
   const currentPoints = playerRow.scores.categories
   if (currentPoints[category] != null) return { error: 'Category already scored' }
@@ -586,7 +586,7 @@ export async function processYahtzeeExpireTurn(
 
   // Find a category to auto-score
   const playerRow = scoresRows.find((r) => r.player_id === currentId)
-  if (!playerRow) return { error: 'Player scores not found' }
+  if (!playerRow?.scores?.categories) return { error: 'Player scores not found' }
 
   const autoPoints = playerRow.scores.categories
   const joker = jokerApplies(dice, autoPoints)

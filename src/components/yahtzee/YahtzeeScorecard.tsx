@@ -127,7 +127,8 @@ export function YahtzeeScorecard({
             <ScoreCell
               value={val}
               preview={previewVal}
-              scoreable={!!(isYou && scoringEnabled)}
+              // A row with no score data can't be scored on (the server rejects it), so don't offer the click.
+              scoreable={!!(isYou && scoringEnabled && score)}
               onScore={onScore ? () => onScore(category) : undefined}
             />
           </td>
