@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { act, renderHook, screen } from '@testing-library/react'
 import { ToastProvider, useToast } from './Toast'
 
 describe('useToast', () => {
@@ -17,6 +17,7 @@ describe('useToast', () => {
 
   it('still returns the real API inside a ToastProvider', () => {
     const { result } = renderHook(() => useToast(), { wrapper: ToastProvider })
-    expect(typeof result.current.success).toBe('function')
+    act(() => result.current.success('saved'))
+    expect(screen.getByRole('status')).toHaveTextContent('saved')
   })
 })
