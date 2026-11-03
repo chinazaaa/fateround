@@ -149,7 +149,7 @@ export function YahtzeeScorecard({
               {orderedScores.map(({ player, score, bonus }) => {
                 const isActive = player.id === activePlayerId
                 const isYou = player.id === myPlayerId
-                const total = score ? totalScore(score, bonus) : 0
+                const total = totalScore(score ?? {}, bonus)
                 const initial = player.name.charAt(0).toUpperCase()
                 return (
                   <th
@@ -249,7 +249,7 @@ export function YahtzeeScorecard({
               {orderedScores.map(({ player, score, bonus }) => (
                 <td key={player.id} className={playerColClass(player.id)}>
                   <span className="text-sm font-black tabular-nums text-[var(--primary)]">
-                    {score ? totalScore(score, bonus) : 0}
+                    {totalScore(score ?? {}, bonus)}
                   </span>
                 </td>
               ))}
