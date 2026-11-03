@@ -392,6 +392,11 @@ export async function processYahtzeeHold(
   return {}
 }
 
+/** True when every score row carries a `categories` map (the DB default for `scores` is '{}'). */
+function allRowsHaveCategories(rows: YahtzeePlayerScore[]): boolean {
+  return rows.every((r) => !!r?.scores?.categories)
+}
+
 function nextUnfinishedIndex(order: string[], scores: YahtzeePlayerScore[], startIndex: number): number | null {
   if (order.length === 0) return null
   for (let i = 1; i <= order.length; i += 1) {
@@ -428,8 +433,11 @@ export async function processYahtzeeScore(
 
   if (!scoresRows || scoresRows.length === 0) return { error: 'Scores not found' }
 
+  // Every row feeds the all-rows checks below, and the column defaults to '{}', so one row without
+  // `categories` would throw before the score is written. Refuse the whole action instead.
+  if (!allRowsHaveCategories(scoresRows as YahtzeePlayerScore[])) return { error: 'Player scores not found' }
   const playerRow = (scoresRows as YahtzeePlayerScore[]).find((r) => r.player_id === playerId)
-  if (!playerRow) return { error: 'Player scores not found' }
+  if (!playerRow?.scores?.categories) return { error: 'Player scores not found' }
 
   const currentPoints = playerRow.scores.categories
   if (currentPoints[category] != null) return { error: 'Category already scored' }
@@ -585,8 +593,9 @@ export async function processYahtzeeExpireTurn(
   }
 
   // Find a category to auto-score
+  if (!allRowsHaveCategories(scoresRows)) return { error: 'Player scores not found' }
   const playerRow = scoresRows.find((r) => r.player_id === currentId)
-  if (!playerRow) return { error: 'Player scores not found' }
+  if (!playerRow?.scores?.categories) return { error: 'Player scores not found' }
 
   const autoPoints = playerRow.scores.categories
   const joker = jokerApplies(dice, autoPoints)

@@ -317,7 +317,9 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   // total AND more than one player — never at a score of 0 or in a solo game
   // (no one to beat). Mirrors the player view.
   const hostScoreRow = scores.find((s) => s.player_id === hostPlayerId)
-  const hostTotal = hostScoreRow ? totalScore(hostScoreRow.scores.categories, hostScoreRow.scores.bonusYahtzees) : 0
+  const hostTotal = hostScoreRow
+    ? totalScore(hostScoreRow.scores?.categories ?? {}, hostScoreRow.scores?.bonusYahtzees)
+    : 0
   const hostPlays = hostMode === 'player' && !!hostPlayerId
 
   const isHostTurn = turnPlayerId === hostPlayerId
@@ -330,7 +332,10 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
 
   // Roster drawer scoreboard: total score headline + filled-categories detail.
   const rosterScores = useMemo(
-    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories, s.scores.bonusYahtzees)])),
+    () =>
+      Object.fromEntries(
+        scores.map((s) => [s.player_id, totalScore(s.scores?.categories ?? {}, s.scores?.bonusYahtzees)])
+      ),
     [scores]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
@@ -339,7 +344,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
       Object.fromEntries(
         scores.map((s) => [
           s.player_id,
-          `📋 ${Object.values(s.scores.categories).filter((v) => v !== null).length}/13 filled`,
+          `📋 ${Object.values(s.scores?.categories ?? {}).filter((v) => v !== null).length}/13 filled`,
         ])
       ),
     [scores]

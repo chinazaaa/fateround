@@ -132,7 +132,10 @@ export function ScrabblePlayerView({ gameCode }: { gameCode: string }) {
   const rosterDetails = useMemo(
     () =>
       Object.fromEntries(
-        playerStates.map((s) => [s.player_id, `🔤 ${s.rack.length} tile${s.rack.length === 1 ? '' : 's'}`])
+        playerStates.map((s) => [
+          s.player_id,
+          `🔤 ${(s.rack ?? []).length} tile${(s.rack ?? []).length === 1 ? '' : 's'}`,
+        ])
       ),
     [playerStates]
   )
