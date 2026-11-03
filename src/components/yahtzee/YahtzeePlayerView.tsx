@@ -169,7 +169,10 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // the header drawer + its live score/categories scoreboard.
   useRosterBase(game?.status === 'active' || game?.status === 'finished' ? players : undefined, game, myPlayerId)
   const rosterScores = useMemo(
-    () => Object.fromEntries(scores.map((s) => [s.player_id, totalScore(s.scores.categories, s.scores.bonusYahtzees)])),
+    () =>
+      Object.fromEntries(
+        scores.map((s) => [s.player_id, totalScore(s.scores?.categories ?? {}, s.scores?.bonusYahtzees)])
+      ),
     [scores]
   )
   useGameScores(rosterScores, { suffix: ' pts' })
@@ -178,7 +181,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
       Object.fromEntries(
         scores.map((s) => [
           s.player_id,
-          `📋 ${Object.values(s.scores.categories).filter((v) => v !== null).length}/13 filled`,
+          `📋 ${Object.values(s.scores?.categories ?? {}).filter((v) => v !== null).length}/13 filled`,
         ])
       ),
     [scores]
@@ -342,7 +345,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   // Naming it here means the player is told before they click, rather than by a rejected score.
   const jokerForcedBox = (() => {
     if (!canScore || !session?.dice) return null
-    const myCats = scores.find((s) => s.player_id === myPlayerId)?.scores.categories
+    const myCats = scores.find((s) => s.player_id === myPlayerId)?.scores?.categories
     if (!myCats || !jokerApplies(session.dice, myCats)) return null
     const forced = matchingUpperCategory(session.dice)
     return forced && myCats[forced] == null ? YAHTZEE_CATEGORY_LABELS[forced] : null
@@ -501,7 +504,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
     // game has no one to beat, so there's no real win). Matches the other
     // score-based games.
     const myScoreRow = scores.find((s) => s.player_id === myPlayerId)
-    const myTotal = myScoreRow ? totalScore(myScoreRow.scores.categories, myScoreRow.scores.bonusYahtzees) : 0
+    const myTotal = myScoreRow ? totalScore(myScoreRow.scores?.categories ?? {}, myScoreRow.scores?.bonusYahtzees) : 0
     const iWon = myPlayerId != null && session?.winner_player_id === myPlayerId && myTotal > 0 && scores.length > 1
     const shareWinnerName = iWon ? myName : winner?.name
 

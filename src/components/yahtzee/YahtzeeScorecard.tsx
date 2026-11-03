@@ -12,6 +12,9 @@ import {
   totalScore,
 } from '@/lib/yahtzee'
 
+// A row with no score data counts as an empty card (the DB default for `scores` is '{}').
+const EMPTY_CARD = {} as YahtzeeCategoryPoints
+
 const YAHTZEE_UPPER_BONUS_THRESHOLD = 63
 
 const COMPACT_LABELS: Partial<Record<YahtzeeCategory, string>> = {
@@ -89,7 +92,7 @@ export function YahtzeeScorecard({
 
   const orderedScores = players.map((p) => {
     const pScore = scores.find((s) => s.player_id === p.id)
-    return { player: p, score: pScore?.scores.categories ?? null, bonus: pScore?.scores.bonusYahtzees ?? 0 }
+    return { player: p, score: pScore?.scores?.categories ?? null, bonus: pScore?.scores?.bonusYahtzees ?? 0 }
   })
 
   const playerColClass = (playerId: string) => {
@@ -127,7 +130,8 @@ export function YahtzeeScorecard({
             <ScoreCell
               value={val}
               preview={previewVal}
-              scoreable={!!(isYou && scoringEnabled)}
+              // A row with no score data can't be scored on (the server rejects it), so don't offer the click.
+              scoreable={!!(isYou && scoringEnabled && score)}
               onScore={onScore ? () => onScore(category) : undefined}
             />
           </td>
@@ -148,7 +152,7 @@ export function YahtzeeScorecard({
               {orderedScores.map(({ player, score, bonus }) => {
                 const isActive = player.id === activePlayerId
                 const isYou = player.id === myPlayerId
-                const total = score ? totalScore(score, bonus) : 0
+                const total = totalScore(score ?? EMPTY_CARD, bonus)
                 const initial = player.name.charAt(0).toUpperCase()
                 return (
                   <th
@@ -248,7 +252,7 @@ export function YahtzeeScorecard({
               {orderedScores.map(({ player, score, bonus }) => (
                 <td key={player.id} className={playerColClass(player.id)}>
                   <span className="text-sm font-black tabular-nums text-[var(--primary)]">
-                    {score ? totalScore(score, bonus) : 0}
+                    {totalScore(score ?? EMPTY_CARD, bonus)}
                   </span>
                 </td>
               ))}
@@ -276,14 +280,15 @@ export function YahtzeeLeaderboard({
 }) {
   const sorted = [...rows].sort(
     (a, b) =>
-      totalScore(b.scores.categories, b.scores.bonusYahtzees) - totalScore(a.scores.categories, a.scores.bonusYahtzees)
+      totalScore(b.scores?.categories ?? {}, b.scores?.bonusYahtzees) -
+      totalScore(a.scores?.categories ?? {}, a.scores?.bonusYahtzees)
   )
 
   return (
     <div className="grid grid-cols-1 gap-2">
       {sorted.map((row, index) => {
         const player = players.find((p) => p.id === row.player_id)
-        const total = totalScore(row.scores.categories, row.scores.bonusYahtzees)
+        const total = totalScore(row.scores?.categories ?? {}, row.scores?.bonusYahtzees)
         const isYou = row.player_id === highlightPlayerId
         const rankColors = ['bg-amber-500', 'bg-slate-400', 'bg-amber-700', 'bg-[var(--faint)]']
 
