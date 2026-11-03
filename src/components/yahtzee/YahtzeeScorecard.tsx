@@ -12,6 +12,9 @@ import {
   totalScore,
 } from '@/lib/yahtzee'
 
+// A row with no score data counts as an empty card (the DB default for `scores` is '{}').
+const EMPTY_CARD = {} as YahtzeeCategoryPoints
+
 const YAHTZEE_UPPER_BONUS_THRESHOLD = 63
 
 const COMPACT_LABELS: Partial<Record<YahtzeeCategory, string>> = {
@@ -149,7 +152,7 @@ export function YahtzeeScorecard({
               {orderedScores.map(({ player, score, bonus }) => {
                 const isActive = player.id === activePlayerId
                 const isYou = player.id === myPlayerId
-                const total = totalScore(score ?? {}, bonus)
+                const total = totalScore(score ?? EMPTY_CARD, bonus)
                 const initial = player.name.charAt(0).toUpperCase()
                 return (
                   <th
@@ -249,7 +252,7 @@ export function YahtzeeScorecard({
               {orderedScores.map(({ player, score, bonus }) => (
                 <td key={player.id} className={playerColClass(player.id)}>
                   <span className="text-sm font-black tabular-nums text-[var(--primary)]">
-                    {totalScore(score ?? {}, bonus)}
+                    {totalScore(score ?? EMPTY_CARD, bonus)}
                   </span>
                 </td>
               ))}
