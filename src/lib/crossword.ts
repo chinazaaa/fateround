@@ -526,18 +526,21 @@ export function tallyCrosswordScores(
     if (s.via_hint && activeIds.has(s.player_id)) hints.set(s.player_id, (hints.get(s.player_id) ?? 0) + 1)
   }
 
-  // When did each (player, cell) become correct? Earliest correct submission per cell.
-  // `lastCorrect` is each player's latest correct submission — their finish time, used to
-  // break score ties so a faster solver outranks a slower one on equal points.
+  // When did each (player, cell) become correct? Earliest correct submission per cell, so a
+  // later duplicate row for a cell the player already had (a retry, a double-tap, a race past
+  // the route's "already solved" check) never counts as them solving it again.
   const cellTime = new Map<string, number>()
-  const lastCorrect = new Map<string, number>()
   for (const s of submissions) {
     if (!s.is_correct || !activeIds.has(s.player_id)) continue
     const key = `${s.player_id}|${s.cell_row}-${s.cell_col}`
     const t = new Date(s.submitted_at).getTime()
     if (!cellTime.has(key) || t < cellTime.get(key)!) cellTime.set(key, t)
-    if (t > (lastCorrect.get(s.player_id) ?? -Infinity)) lastCorrect.set(s.player_id, t)
   }
+  // `scoredAt` is when each player reached their final score: the moment they completed their
+  // LAST finished word. It breaks score ties so whoever got there first ranks higher. It is
+  // deliberately not "last correct cell": a player who keeps typing into a word they never
+  // finish earns nothing for it and must not be demoted below someone who simply stopped.
+  const scoredAt = new Map<string, number>()
 
   for (const clue of metadata.clues) {
     const cells = crosswordWordCells(clue)
@@ -560,9 +563,10 @@ export function tallyCrosswordScores(
 
     completedAt.sort((a, b) => a.time - b.time)
     const firstId = completedAt[0].playerId
-    for (const { playerId } of completedAt) {
+    for (const { playerId, time } of completedAt) {
       points.set(playerId, (points.get(playerId) ?? 0) + CROSSWORD_WORD_POINTS)
       wordsCompleted.set(playerId, (wordsCompleted.get(playerId) ?? 0) + 1)
+      if (time > (scoredAt.get(playerId) ?? -Infinity)) scoredAt.set(playerId, time)
     }
     points.set(firstId, (points.get(firstId) ?? 0) + CROSSWORD_FIRST_WORD_BONUS)
   }
@@ -583,7 +587,7 @@ export function tallyCrosswordScores(
       (a, b) =>
         b.points - a.points ||
         b.wordsCompleted - a.wordsCompleted ||
-        (lastCorrect.get(a.player_id) ?? Infinity) - (lastCorrect.get(b.player_id) ?? Infinity) ||
+        (scoredAt.get(a.player_id) ?? Infinity) - (scoredAt.get(b.player_id) ?? Infinity) ||
         a.name.localeCompare(b.name)
     )
 }
