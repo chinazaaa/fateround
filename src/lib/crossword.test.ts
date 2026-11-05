@@ -172,6 +172,50 @@ describe('tallyCrosswordScores', () => {
     expect(scores[0].player_id).toBe('p2')
   })
 
+  it('does not let a duplicate correct row for an already-solved cell push a player down', () => {
+    // Same scenario as the tie above, where p2 finishes first. A retry / double-tap / race can leave
+    // a SECOND correct row for a cell p2 already solved, long after it. That must not count as p2
+    // finishing late.
+    const submissions = [
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 0, submitted_at: '2026-07-12T00:00:01.000Z' }),
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 1, submitted_at: '2026-07-12T00:00:02.000Z' }),
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 2, submitted_at: '2026-07-12T00:00:03.000Z' }),
+      sub({ player_id: 'p1', cell_row: 1, cell_col: 0, submitted_at: '2026-07-12T00:00:10.000Z' }),
+      sub({ player_id: 'p1', cell_row: 2, cell_col: 0, submitted_at: '2026-07-12T00:00:11.000Z' }),
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 0, submitted_at: '2026-07-12T00:00:04.000Z' }),
+      sub({ player_id: 'p2', cell_row: 1, cell_col: 0, submitted_at: '2026-07-12T00:00:05.000Z' }),
+      sub({ player_id: 'p2', cell_row: 2, cell_col: 0, submitted_at: '2026-07-12T00:00:06.000Z' }),
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 1, submitted_at: '2026-07-12T00:00:07.000Z' }),
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 2, submitted_at: '2026-07-12T00:00:08.000Z' }),
+      // duplicate correct row for a cell p2 solved at :04
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 0, submitted_at: '2026-07-12T00:00:20.000Z' }),
+    ]
+    const scores = tallyCrosswordScores(META, submissions, PLAYERS)
+    expect(scores[0].points).toBe(scores[1].points)
+    expect(scores[0].player_id).toBe('p2')
+  })
+
+  it('ranks a tie by when each player reached their score, not by later partial progress', () => {
+    // Each completes exactly one word and is first on it (equal points, equal words).
+    // p1 reached its score at :03; p2 at :06. p1 then fills one more cell of the OTHER word
+    // (not completing it) at :30 — extra effort, no extra points. p1 was faster to the score and
+    // must stay on top.
+    const submissions = [
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 0, submitted_at: '2026-07-12T00:00:01.000Z' }),
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 1, submitted_at: '2026-07-12T00:00:02.000Z' }),
+      sub({ player_id: 'p1', cell_row: 0, cell_col: 2, submitted_at: '2026-07-12T00:00:03.000Z' }),
+      sub({ player_id: 'p2', cell_row: 1, cell_col: 0, submitted_at: '2026-07-12T00:00:04.000Z' }),
+      sub({ player_id: 'p2', cell_row: 2, cell_col: 0, submitted_at: '2026-07-12T00:00:05.000Z' }),
+      sub({ player_id: 'p2', cell_row: 0, cell_col: 0, submitted_at: '2026-07-12T00:00:06.000Z' }),
+      // p1 starts the down word later but never finishes it
+      sub({ player_id: 'p1', cell_row: 1, cell_col: 0, submitted_at: '2026-07-12T00:00:30.000Z' }),
+    ]
+    const scores = tallyCrosswordScores(META, submissions, PLAYERS)
+    expect(scores[0].points).toBe(scores[1].points)
+    expect(scores[0].wordsCompleted).toBe(scores[1].wordsCompleted)
+    expect(scores[0].player_id).toBe('p1')
+  })
+
   it('applies the hint penalty', () => {
     const submissions = [
       sub({ player_id: 'p1', cell_row: 0, cell_col: 0, via_hint: true }),
