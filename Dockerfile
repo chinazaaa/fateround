@@ -76,6 +76,11 @@ COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
+# Next writes its image-optimizer / fetch cache to .next/cache at runtime. The COPYs above leave
+# /app root-owned, so the unprivileged `node` user hit "EACCES: permission denied, mkdir" there
+# (Sentry JAVASCRIPT-NEXTJS-Y, /blog/[slug]). Create it up front, owned by node.
+RUN mkdir -p /app/.next/cache && chown -R node:node /app/.next/cache
+
 USER node
 EXPOSE 3000
 CMD ["node", "server.js"]
