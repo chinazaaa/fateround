@@ -28,7 +28,30 @@ function tableName(raw: string): string {
     .replace(/"/g, '')
 }
 
-/** Tables left in the publication after replaying every migration's literal ADD/DROP TABLE, in order. */
+type PublicationEvent = { at: number; op: 'add' | 'drop'; tables: string[] }
+
+/** Every literal `ALTER PUBLICATION ... ADD|DROP TABLE` and every `FOREACH ... LOOP` that adds/drops, in file order. */
+function publicationEvents(sql: string): PublicationEvent[] {
+  const events: PublicationEvent[] = []
+  const literal = /alter\s+publication\s+supabase_realtime\s+(add|drop)\s+table\s+(?:only\s+)?([^;]+?)\s*;/gi
+  for (const m of sql.matchAll(literal)) {
+    events.push({ at: m.index!, op: m[1]!.toLowerCase() as 'add' | 'drop', tables: m[2]!.split(',').map(tableName) })
+  }
+  // A DO block that loops over a table list and runs the ALTER with `format(..., tbl)` cannot be read
+  // statement by statement. Read the array literal of THAT loop, and only if its own body (up to
+  // `end loop`) runs the ALTER, so an unrelated loop's array is never mistaken for a publication list.
+  const loop = /foreach\s+\w+\s+in\s+array\s+array\[([^\]]+)\]\s+loop([\s\S]*?)end\s+loop/gi
+  for (const m of sql.matchAll(loop)) {
+    const body = m[2]!
+    const alter = /alter\s+publication\s+supabase_realtime\s+(add|drop)\s+table/i.exec(body)
+    if (!alter) continue
+    const tables = [...m[1]!.matchAll(/'(\w+)'/g)].map((n) => n[1]!)
+    events.push({ at: m.index!, op: alter[1]!.toLowerCase() as 'add' | 'drop', tables })
+  }
+  return events.sort((a, b) => a.at - b.at)
+}
+
+/** Tables left in the publication after replaying every migration's ADD/DROP TABLE in order. */
 function publishedTables(): { published: Set<string>; created: Set<string> } {
   const published = new Set<string>()
   const created = new Set<string>()
@@ -39,20 +62,11 @@ function publishedTables(): { published: Set<string>; created: Set<string> } {
     const sql = stripSqlComments(readFileSync(join(MIGRATIONS, f), 'utf8'))
     for (const m of sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?"?(\w+)"?/gi))
       created.add(m[1]!)
-    const re = /alter\s+publication\s+supabase_realtime\s+(add|drop)\s+table\s+(?:only\s+)?([^;]+?)\s*;/gi
-    for (const m of sql.matchAll(re)) {
-      for (const part of m[2]!.split(',')) {
-        const name = tableName(part)
-        if (m[1]!.toLowerCase() === 'add') published.add(name)
-        else published.delete(name)
+    for (const ev of publicationEvents(sql)) {
+      for (const t of ev.tables) {
+        if (ev.op === 'add') published.add(t)
+        else published.delete(t)
       }
-    }
-    // A DO block that loops over a table list and adds each one (like the one in
-    // 20261129130000) cannot be parsed statement by statement, so read its array literal.
-    for (const m of sql.matchAll(
-      /foreach\s+\w+\s+in\s+array\s+array\[([^\]]+)\][\s\S]*?alter\s+publication\s+supabase_realtime\s+add\s+table/gi
-    )) {
-      for (const n of m[1]!.matchAll(/'(\w+)'/g)) published.add(n[1]!)
     }
   }
   return { published, created }
@@ -77,16 +91,23 @@ function subscribedTables(): Map<string, string> {
       for (const m of src.matchAll(/table:\s*'(\w+)'/g)) tables.set(m[1]!, rel)
     }
     for (const m of src.matchAll(/useGameTableSync\(/g)) {
-      const seg = src.slice(m.index! + m[0].length, m.index! + m[0].length + 1200)
-      const start = seg.indexOf('[')
+      // Scan the WHOLE table array: find its matching `]` from the first `[` after the call, however
+      // long the list is, and fail loudly if there is none (a silent truncation would let a table
+      // appended to a long list go unchecked).
+      const from = m.index! + m[0].length
+      const start = src.indexOf('[', from)
       if (start < 0) continue
       let depth = 0
-      let end = start
-      for (; end < seg.length; end++) {
-        if (seg[end] === '[') depth++
-        else if (seg[end] === ']' && --depth === 0) break
+      let end = -1
+      for (let i = start; i < src.length; i++) {
+        if (src[i] === '[') depth++
+        else if (src[i] === ']' && --depth === 0) {
+          end = i
+          break
+        }
       }
-      const arr = seg.slice(start, end + 1)
+      if (end < 0) throw new Error(`useGameTableSync table list in ${rel} has no closing bracket`)
+      const arr = src.slice(start, end + 1)
       for (const s of arr.matchAll(/'([a-z][a-z0-9_]+)'/g)) tables.set(s[1]!, rel)
       for (const s of arr.matchAll(/table:\s*'(\w+)'/g)) tables.set(s[1]!, rel)
     }
@@ -118,6 +139,10 @@ describe('realtime publication', () => {
     expect(published.has('games')).toBe(true)
     expect(published.has('participants')).toBe(true)
     expect(subs.has('games')).toBe(true)
+    // The four tables this test was written for: the scan must see their useGameChannel bindings.
+    for (const t of ['participants', 'confessions', 'hot_seat_submissions', 'anonymous_room_bans']) {
+      expect(subs.has(t), `scan did not find a subscription to ${t}`).toBe(true)
+    }
     expect(subs.size).toBeGreaterThan(20)
   })
 })
