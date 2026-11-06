@@ -72,9 +72,15 @@ ENV HOSTNAME=0.0.0.0
 ARG GIT_SHA
 ENV GIT_SHA=$GIT_SHA
 
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
+# Next writes to .next at runtime: the image-optimizer / fetch cache under .next/cache, and ISR
+# output (e.g. /blog/[slug]) under .next/server/app. Copied as root, those directories were not
+# writable by the unprivileged `node` user: "EACCES: permission denied, mkdir" (Sentry
+# JAVASCRIPT-NEXTJS-Y). --chown hands the copied tree to node without duplicating the files into
+# another layer; .next/cache is created up front, also owned by node.
+COPY --chown=node:node --from=build /app/.next/standalone ./
+COPY --chown=node:node --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
+RUN mkdir -p /app/.next/cache && chown node:node /app/.next/cache
 
 USER node
 EXPOSE 3000
