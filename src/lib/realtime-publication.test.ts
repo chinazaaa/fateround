@@ -14,7 +14,14 @@ const MIGRATIONS = join(ROOT, 'supabase/migrations')
 
 // Tables that are deliberately NOT published (server-only / hidden state). Their views subscribe to
 // them anyway and rely on polling; fixing that is a separate change.
-const INTENTIONALLY_UNPUBLISHED = new Set(['mafia_chat_messages', 'mafia_player_states', 'mafia_sessions'])
+// `mahjong_player_state` (hidden hands, dropped by 20260803180100) is subscribed to by the mobile
+// Mahjong view, which therefore also loses its whole sync channel and relies on polling.
+const INTENTIONALLY_UNPUBLISHED = new Set([
+  'mafia_chat_messages',
+  'mafia_player_states',
+  'mafia_sessions',
+  'mahjong_player_state',
+])
 
 function stripSqlComments(sql: string): string {
   return sql.replace(/--[^\n]*/g, '')
@@ -26,6 +33,18 @@ function tableName(raw: string): string {
     .split(/\s+/)[0]!
     .replace(/^public\./i, '')
     .replace(/"/g, '')
+}
+
+/** Text between an already-opened `loop` (starting at `from`) and its balancing `end loop`. */
+function loopBody(sql: string, from: number): string {
+  const token = /\bend\s+loop\b|\bloop\b/gi
+  token.lastIndex = from
+  let depth = 1
+  for (let m = token.exec(sql); m; m = token.exec(sql)) {
+    depth += /^end/i.test(m[0]) ? -1 : 1
+    if (depth === 0) return sql.slice(from, m.index)
+  }
+  throw new Error('publication loop has no balancing `end loop`')
 }
 
 type PublicationEvent = { at: number; op: 'add' | 'drop'; tables: string[] }
@@ -40,12 +59,21 @@ function publicationEvents(sql: string): PublicationEvent[] {
   // A DO block that loops over a table list and runs the ALTER with `format(..., tbl)` cannot be read
   // statement by statement. Read the array literal of THAT loop, and only if its own body (up to
   // `end loop`) runs the ALTER, so an unrelated loop's array is never mistaken for a publication list.
-  const loop = /foreach\s+\w+\s+in\s+array\s+array\[([^\]]+)\]\s+loop([\s\S]*?)end\s+loop/gi
+  // The loop may iterate an inline `array[...]` or a variable declared as `name text[] := array[...]`
+  // earlier in the same block (20260803180100 drops hidden-state tables that way). Its body can hold
+  // nested loops, so read it up to the `end loop` that balances the opening `loop`.
+  const loop = /foreach\s+\w+\s+in\s+array\s+(array\[[^\]]+\]|\w+)\s+loop\b/gi
   for (const m of sql.matchAll(loop)) {
-    const body = m[2]!
+    const body = loopBody(sql, m.index! + m[0].length)
     const alter = /alter\s+publication\s+supabase_realtime\s+(add|drop)\s+table/i.exec(body)
     if (!alter) continue
-    const tables = [...m[1]!.matchAll(/'(\w+)'/g)].map((n) => n[1]!)
+    let list = m[1]!
+    if (!/^array\[/i.test(list)) {
+      const decl = new RegExp(`\\b${list}\\s+text\\[\\]\\s*:=\\s*array\\[([^\\]]+)\\]`, 'i').exec(sql)
+      if (!decl) throw new Error(`publication loop over '${list}' has no array declaration to read`)
+      list = decl[1]!
+    }
+    const tables = [...list.matchAll(/'(\w+)'/g)].map((n) => n[1]!)
     events.push({ at: m.index!, op: alter[1]!.toLowerCase() as 'add' | 'drop', tables })
   }
   return events.sort((a, b) => a.at - b.at)
