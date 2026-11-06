@@ -72,8 +72,10 @@ function publishedTables(): { published: Set<string>; created: Set<string> } {
   return { published, created }
 }
 
+/** Recursively collects non-test .ts/.tsx files, skipping dependency and build directories. */
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
+    if (name === 'node_modules' || name === '.next' || name === 'dist') continue
     const p = join(dir, name)
     if (statSync(p).isDirectory()) walk(p, out)
     else if (/\.(ts|tsx)$/.test(name) && !/\.test\./.test(name)) out.push(p)
@@ -81,10 +83,10 @@ function walk(dir: string, out: string[] = []): string[] {
   return out
 }
 
-/** Tables named in `postgres_changes` bindings and `useGameTableSync` table lists. */
+/** Tables named in `postgres_changes` bindings and `useGameTableSync` table lists (web and mobile). */
 function subscribedTables(): Map<string, string> {
   const tables = new Map<string, string>()
-  for (const file of walk(join(ROOT, 'src'))) {
+  for (const file of [...walk(join(ROOT, 'src')), ...walk(join(ROOT, 'apps/mobile'))]) {
     const src = readFileSync(file, 'utf8')
     const rel = file.slice(ROOT.length + 1)
     if (src.includes('postgres_changes')) {
