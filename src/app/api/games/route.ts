@@ -36,6 +36,7 @@ import {
   isTwoTruthsGame,
   isMonopolyGame,
   isYahtzeeGame,
+  isGoFishGame,
   isWhotGame,
   isCrazyEightsGame,
   isRummyGame,
@@ -683,6 +684,7 @@ export async function POST(req: NextRequest) {
     isCrazyEightsGame(game_type) ||
     isRummyGame(game_type) ||
     isUnoGame(game_type) ||
+    isGoFishGame(game_type) ||
     isLudoGame(game_type) ||
     isMahjongGame(game_type) ||
     isSnakeAndLadderGame(game_type) ||
@@ -756,6 +758,7 @@ export async function POST(req: NextRequest) {
     isCrazyEightsGame(game_type) ||
     isRummyGame(game_type) ||
     isUnoGame(game_type) ||
+    isGoFishGame(game_type) ||
     isLudoGame(game_type) ||
     isMahjongGame(game_type) ||
     isSnakeAndLadderGame(game_type) ||
