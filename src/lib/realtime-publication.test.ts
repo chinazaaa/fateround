@@ -1,0 +1,123 @@
+// @vitest-environment node
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+// A Supabase Realtime channel is all-or-nothing: one `postgres_changes` binding on a table that is
+// not in the `supabase_realtime` publication makes the server reject the WHOLE channel, so every
+// other table on it stops delivering too (players then only hear about a game starting from a slow
+// polling fallback). This reads the migrations and the client subscriptions and fails when a table
+// the client subscribes to is never added to the publication.
+
+const ROOT = process.cwd()
+const MIGRATIONS = join(ROOT, 'supabase/migrations')
+
+// Tables that are deliberately NOT published (server-only / hidden state). Their views subscribe to
+// them anyway and rely on polling; fixing that is a separate change.
+const INTENTIONALLY_UNPUBLISHED = new Set(['mafia_chat_messages', 'mafia_player_states', 'mafia_sessions'])
+
+function stripSqlComments(sql: string): string {
+  return sql.replace(/--[^\n]*/g, '')
+}
+
+function tableName(raw: string): string {
+  return raw
+    .trim()
+    .split(/\s+/)[0]!
+    .replace(/^public\./i, '')
+    .replace(/"/g, '')
+}
+
+/** Tables left in the publication after replaying every migration's literal ADD/DROP TABLE, in order. */
+function publishedTables(): { published: Set<string>; created: Set<string> } {
+  const published = new Set<string>()
+  const created = new Set<string>()
+  const files = readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+  for (const f of files) {
+    const sql = stripSqlComments(readFileSync(join(MIGRATIONS, f), 'utf8'))
+    for (const m of sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?"?(\w+)"?/gi))
+      created.add(m[1]!)
+    const re = /alter\s+publication\s+supabase_realtime\s+(add|drop)\s+table\s+(?:only\s+)?([^;]+?)\s*;/gi
+    for (const m of sql.matchAll(re)) {
+      for (const part of m[2]!.split(',')) {
+        const name = tableName(part)
+        if (m[1]!.toLowerCase() === 'add') published.add(name)
+        else published.delete(name)
+      }
+    }
+    // A DO block that loops over a table list and adds each one (like the one in
+    // 20261129130000) cannot be parsed statement by statement, so read its array literal.
+    for (const m of sql.matchAll(
+      /foreach\s+\w+\s+in\s+array\s+array\[([^\]]+)\][\s\S]*?alter\s+publication\s+supabase_realtime\s+add\s+table/gi
+    )) {
+      for (const n of m[1]!.matchAll(/'(\w+)'/g)) published.add(n[1]!)
+    }
+  }
+  return { published, created }
+}
+
+function walk(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) walk(p, out)
+    else if (/\.(ts|tsx)$/.test(name) && !/\.test\./.test(name)) out.push(p)
+  }
+  return out
+}
+
+/** Tables named in `postgres_changes` bindings and `useGameTableSync` table lists. */
+function subscribedTables(): Map<string, string> {
+  const tables = new Map<string, string>()
+  for (const file of walk(join(ROOT, 'src'))) {
+    const src = readFileSync(file, 'utf8')
+    const rel = file.slice(ROOT.length + 1)
+    if (src.includes('postgres_changes')) {
+      for (const m of src.matchAll(/table:\s*'(\w+)'/g)) tables.set(m[1]!, rel)
+    }
+    for (const m of src.matchAll(/useGameTableSync\(/g)) {
+      const seg = src.slice(m.index! + m[0].length, m.index! + m[0].length + 1200)
+      const start = seg.indexOf('[')
+      if (start < 0) continue
+      let depth = 0
+      let end = start
+      for (; end < seg.length; end++) {
+        if (seg[end] === '[') depth++
+        else if (seg[end] === ']' && --depth === 0) break
+      }
+      const arr = seg.slice(start, end + 1)
+      for (const s of arr.matchAll(/'([a-z][a-z0-9_]+)'/g)) tables.set(s[1]!, rel)
+      for (const s of arr.matchAll(/table:\s*'(\w+)'/g)) tables.set(s[1]!, rel)
+    }
+  }
+  return tables
+}
+
+describe('realtime publication', () => {
+  it('contains every table the client subscribes to', () => {
+    const { published, created } = publishedTables()
+    const missing: string[] = []
+    for (const [table, file] of subscribedTables()) {
+      // Only real tables: ignore identifiers that merely sit inside the same array literal.
+      if (!created.has(table)) continue
+      if (INTENTIONALLY_UNPUBLISHED.has(table)) continue
+      if (!published.has(table)) missing.push(`${table} (subscribed in ${file})`)
+    }
+    expect(
+      missing,
+      'These tables are subscribed to but never added to the supabase_realtime publication. ' +
+        'One unpublished binding kills the whole Realtime channel. Add them in a migration:\n' +
+        missing.join('\n')
+    ).toEqual([])
+  })
+
+  it('actually finds subscriptions and published tables (the scan itself is not broken)', () => {
+    const { published } = publishedTables()
+    const subs = subscribedTables()
+    expect(published.has('games')).toBe(true)
+    expect(published.has('participants')).toBe(true)
+    expect(subs.has('games')).toBe(true)
+    expect(subs.size).toBeGreaterThan(20)
+  })
+})
