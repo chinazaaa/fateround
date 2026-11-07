@@ -2200,6 +2200,15 @@ function CreateGameInner() {
             timer_seconds: 30,
           }
         : {}),
+      ...(isGoFishGame(type)
+        ? {
+            // Same defaults as the `?type=gofish` entry above, so both ways in give the same lobby.
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 45,
+          }
+        : {}),
       ...(isLudoGame(type)
         ? {
             participant_mode: 'joiners' as const,
