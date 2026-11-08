@@ -39,3 +39,13 @@ describe('plainText with min 0', () => {
     expect(plainText(0, 80).parse('\u0000')).toBe('')
   })
 })
+
+describe('plainText raw length cap', () => {
+  it('rejects an overlong raw value even if stripping would make it fit', () => {
+    expect(plainText(0, 80).safeParse('a'.repeat(80) + '\u0000').success).toBe(false)
+  })
+
+  it('still trims surrounding whitespace before measuring', () => {
+    expect(plainText(1, 5).parse('  abcde  ')).toBe('abcde')
+  })
+})

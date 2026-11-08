@@ -23,6 +23,9 @@ function stripNul(s: string): string {
 export const plainText = (min: number, max: number) =>
   z
     .string()
+    // Cap the raw (trimmed) input first so control-character padding cannot smuggle in an overlong value.
+    .trim()
+    .max(max, `Must be at most ${max} characters`)
     .transform((s) => stripBidiControls(stripNul(s)).trim())
     .pipe(z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`))
 
