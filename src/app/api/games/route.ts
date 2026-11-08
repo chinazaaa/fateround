@@ -1029,7 +1029,16 @@ export async function POST(req: NextRequest) {
                                                                               lobbyLimits
                                                                             )
                                                                           )
-                                                                        : null
+                                                                        : isGoFishGame(game_type)
+                                                                          ? resolveMaxPlayers(
+                                                                              'gofish',
+                                                                              rawMaxPlayers,
+                                                                              lobbyDefaultMaxPlayers(
+                                                                                'gofish',
+                                                                                lobbyLimits
+                                                                              )
+                                                                            )
+                                                                          : null
   const isSecret = isSecretMessageGame(game_type)
   const lateJoinFields = gameSupportsViewerSetting(game_type)
     ? rawLateJoinPolicy
