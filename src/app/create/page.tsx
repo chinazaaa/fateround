@@ -755,6 +755,7 @@ function CreateGameInner() {
     setCrazy8MaxPlayers((v) => clamp('crazy_eights', v))
     setRummyMaxPlayers((v) => clamp('rummy', v))
     setUnoMaxPlayers((v) => clamp('uno', v))
+    setGoFishMaxPlayers((v) => clamp('gofish', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
@@ -2097,6 +2098,10 @@ function CreateGameInner() {
     setSettings({
       ...settings,
       game_type: type,
+      // Go Fish pins rounds_count to 1 and uses its own timer options; leaving it restores the page
+      // defaults (3 rounds, 30 s) so the next game never keeps a value its controls don't offer.
+      // The per-game blocks below override these.
+      ...(isGoFishGame(settings.game_type) && !isGoFishGame(type) ? { rounds_count: 3, timer_seconds: 30 } : {}),
       // Reset the shared rounds_count + writing timer to Landmine-valid defaults (they carry over
       // from the previous game type and may not be in Landmine's option sets).
       ...(isLandmineGame(type)
@@ -2198,6 +2203,16 @@ function CreateGameInner() {
             anonymous: true,
             rounds_count: 1,
             timer_seconds: 30,
+          }
+        : {}),
+      ...(isGoFishGame(type) && !isGoFishGame(settings.game_type)
+        ? {
+            // Same defaults as the `?type=gofish` entry above, so both ways in give the same lobby.
+            // Only when switching to Go Fish: reselecting it must keep the host's timer.
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 45,
           }
         : {}),
       ...(isLudoGame(type)
