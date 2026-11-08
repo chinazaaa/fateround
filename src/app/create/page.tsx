@@ -2293,6 +2293,40 @@ function CreateGameInner() {
             rounds_count: 1,
           }
         : {}),
+      ...(isDescribeItGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: DESCRIBE_IT_DEFAULT_ROUNDS,
+            timer_seconds: DESCRIBE_IT_DEFAULT_TURN_SECONDS,
+            describe_it_num_teams: 2,
+            describe_it_mode: 'team' as const,
+          }
+        : {}),
+      ...(isWordRushGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: WORD_RUSH_DEFAULT_ROUNDS,
+            timer_seconds: WORD_RUSH_DEFAULT_TURN_SECONDS,
+            word_rush_num_teams: 2,
+            word_rush_mode: 'team' as const,
+            word_rush_prompt_mode: 'automatic' as const,
+            word_rush_difficulty: 'standard' as const,
+          }
+        : {}),
+      ...(isMafiaGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 60,
+            mafia_advanced_mode: false,
+            mafia_anonymous_votes: true,
+            mafia_day_seconds: 90,
+            mafia_voting_seconds: 45,
+          }
+        : {}),
       ...(isTrollRunGame(type)
         ? {
             participant_mode: 'joiners' as const,
