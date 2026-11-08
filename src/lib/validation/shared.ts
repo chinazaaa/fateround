@@ -14,11 +14,16 @@ export function stripBidiControls(s: string): string {
   return s.replace(/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
 }
 
-/** Zod transform: trim + strip HTML. */
+/** Strip NUL characters: Postgres text columns reject them, which would surface as a 500. */
+function stripNul(s: string): string {
+  return s.split('\u0000').join('')
+}
+
+/** Zod transform: strip NUL + bidi controls, trim, strip HTML. */
 export const sanitizedString = (min: number, max: number) =>
   z
     .string()
-    .transform((s) => stripHtml(s.trim()))
+    .transform((s) => stripHtml(stripBidiControls(stripNul(s)).trim()))
     .pipe(z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`))
 
 /** Zod transform: trim + strip HTML + uppercase (for game codes). */

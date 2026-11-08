@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
     text: trimmed,
   })
 
+  // A concurrent duplicate loses the unique-index race: report it like the pre-check above.
+  if (error?.code === '23505') return NextResponse.json({ error: 'Already submitted this round' }, { status: 400 })
   if (error) return NextResponse.json({ error: internalErrorMessage('quiplash/answer', error) }, { status: 500 })
 
   return NextResponse.json({ success: true })
