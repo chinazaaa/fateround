@@ -915,7 +915,7 @@ function CreateGameInner() {
               timer_seconds: 600,
             }
           : {}),
-        ...(isCheckersGame(type)
+        ...(isCheckersGame(type) || isDraughts10Game(type)
           ? {
               participant_mode: 'joiners' as const,
               anonymous: true,
@@ -2225,7 +2225,7 @@ function CreateGameInner() {
             timer_seconds: 600,
           }
         : {}),
-      ...(isCheckersGame(type)
+      ...(isCheckersGame(type) || isDraughts10Game(type)
         ? {
             participant_mode: 'joiners' as const,
             anonymous: true,
