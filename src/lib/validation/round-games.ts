@@ -281,7 +281,7 @@ export const landmineSetupSchema = z.object({
   resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
   category: plainText(1, 80),
-  mines: z.array(z.string().max(80)).min(1).max(3),
+  mines: z.array(plainText(0, 80)).min(1).max(3),
 })
 
 export type LandmineSetupInput = z.infer<typeof landmineSetupSchema>

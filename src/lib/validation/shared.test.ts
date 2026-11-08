@@ -33,3 +33,9 @@ describe('plainText', () => {
     expect(schema.safeParse('x'.repeat(11)).success).toBe(false)
   })
 })
+
+describe('plainText with min 0', () => {
+  it('keeps an entry that is empty after stripping so callers can filter it', () => {
+    expect(plainText(0, 80).parse('\u0000')).toBe('')
+  })
+})
