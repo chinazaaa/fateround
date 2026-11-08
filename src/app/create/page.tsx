@@ -2052,6 +2052,8 @@ function CreateGameInner() {
   }, [customQuestionCount, questionSource, settings.rounds_count, isPan])
 
   const selectGameType = (type: GameType) => {
+    // Reselecting the current game changes nothing, so the host keeps every choice (timer, uploads).
+    if (type === settings.game_type) return
     setCustomSlots(null)
     setWstQuoteSource('player')
     setQuestionSource('platform')
@@ -2099,9 +2101,10 @@ function CreateGameInner() {
       ...settings,
       game_type: type,
       // Switching game type restores the page defaults (3 rounds, 30 s) so the next game never keeps a
-      // value its controls don't offer (e.g. 1 round / 600 s left over from a board game). Reselecting
-      // the current game keeps the host's choices. The per-game blocks below override these.
-      ...(type !== settings.game_type ? { rounds_count: 3, timer_seconds: 30 } : {}),
+      // value its controls don't offer (e.g. 1 round / 600 s left over from a board game). The
+      // per-game blocks below override these.
+      rounds_count: 3,
+      timer_seconds: 30,
       // Reset the shared rounds_count + writing timer to Landmine-valid defaults (they carry over
       // from the previous game type and may not be in Landmine's option sets).
       ...(isLandmineGame(type)
