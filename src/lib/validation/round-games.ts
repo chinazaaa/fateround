@@ -1,5 +1,13 @@
 import { z } from 'zod'
-import { sanitizedString, gameCodeString, hostTokenString, uuidString, stripHtml, stripBidiControls } from './shared'
+import {
+  sanitizedString,
+  plainText,
+  gameCodeString,
+  hostTokenString,
+  uuidString,
+  stripHtml,
+  stripBidiControls,
+} from './shared'
 
 // ---------------------------------------------------------------------------
 // Bingo (POST /api/bingo/*)
@@ -147,7 +155,7 @@ export type QuickDrawAdvanceInput = z.infer<typeof quickDrawAdvanceSchema>
 export const quickDrawGuessSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
-  text: z.string().trim().min(1).max(80),
+  text: plainText(1, 80),
 })
 
 export type QuickDrawGuessInput = z.infer<typeof quickDrawGuessSchema>
@@ -272,7 +280,7 @@ export const landmineSetupSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
-  category: z.string().trim().min(1).max(80),
+  category: plainText(1, 80),
   mines: z.array(z.string().max(80)).min(1).max(3),
 })
 
@@ -341,14 +349,14 @@ export const describeItClueSchema = z.object({
   gameId: gameCodeString(),
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
   resumeToken: z.string().min(4),
-  clue: z.string().trim().min(1).max(100),
+  clue: plainText(1, 100),
 })
 
 export const describeItGuessSchema = z.object({
   gameId: gameCodeString(),
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
   resumeToken: z.string().min(4),
-  text: z.string().trim().min(1).max(80),
+  text: plainText(1, 80),
 })
 
 export const describeItPlayerActionSchema = z.object({
@@ -401,7 +409,7 @@ export const wordRushShuffleSchema = z.object({
 export const wordRushSubmitSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
-  text: z.string().trim().min(1).max(80),
+  text: plainText(1, 80),
 })
 
 export const wordRushPromptSchema = z.object({

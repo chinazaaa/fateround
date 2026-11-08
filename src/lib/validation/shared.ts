@@ -19,6 +19,13 @@ function stripNul(s: string): string {
   return s.split('\u0000').join('')
 }
 
+/** Zod transform: strip NUL + bidi controls and trim, but keep `<`/`>` (guesses, clues, categories). */
+export const plainText = (min: number, max: number) =>
+  z
+    .string()
+    .transform((s) => stripBidiControls(stripNul(s)).trim())
+    .pipe(z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`))
+
 /** Zod transform: strip NUL + bidi controls, trim, strip HTML. */
 export const sanitizedString = (min: number, max: number) =>
   z
