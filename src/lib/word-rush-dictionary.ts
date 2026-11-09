@@ -98,17 +98,39 @@ function pairSupportsMinLength(key: string, minLength: number): boolean {
   return words.some((word) => word.length >= minLength)
 }
 
-/** Pick a random start/end letter pair that has dictionary words at least minLength long. */
+/**
+ * Automatic prompts only use letter pairs with at least this many valid words, so a timed round
+ * is not handed something like "starts with U, ends with V" whose only answer is an abbreviation.
+ */
+export const WORD_RUSH_MIN_WORDS_PER_PAIR = 5
+
+function pairHasEnoughWords(key: string, minLength: number): boolean {
+  const words = buildPairIndex().get(key) ?? []
+  let count = 0
+  for (const word of words) {
+    if (word.length >= minLength && ++count >= WORD_RUSH_MIN_WORDS_PER_PAIR) return true
+  }
+  return false
+}
+
+/**
+ * Pick a random start/end letter pair for an automatic prompt. Prefers unused pairs with plenty of
+ * valid words; only falls back to used pairs, then to thinly covered pairs, when nothing better is left.
+ */
 export function pickRandomLetterPair(
   usedPairs: string[] = [],
   minLength: number = WORD_RUSH_MIN_WORD_LENGTH
 ): { start: string; end: string } | null {
   const used = new Set(usedPairs.map((p) => p.toLowerCase()))
-  const eligible = (keys: string[]) => keys.filter((key) => !used.has(key) && pairSupportsMinLength(key, minLength))
-  const candidates = eligible(loadValidPairs())
-  const pool =
-    candidates.length > 0 ? candidates : loadValidPairs().filter((key) => pairSupportsMinLength(key, minLength))
-  if (pool.length === 0) return null
+  const allPairs = loadValidPairs()
+  const tiers = [
+    allPairs.filter((key) => !used.has(key) && pairHasEnoughWords(key, minLength)),
+    allPairs.filter((key) => pairHasEnoughWords(key, minLength)),
+    allPairs.filter((key) => !used.has(key) && pairSupportsMinLength(key, minLength)),
+    allPairs.filter((key) => pairSupportsMinLength(key, minLength)),
+  ]
+  const pool = tiers.find((tier) => tier.length > 0)
+  if (!pool) return null
   const key = pool[Math.floor(Math.random() * pool.length)]!
   const [start, end] = key.split('-')
   if (!start || !end) return null

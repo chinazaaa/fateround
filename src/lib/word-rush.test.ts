@@ -3,6 +3,7 @@ import {
   isValidWordRushWord,
   pickRandomLetterPair,
   countWordsForPair,
+  WORD_RUSH_MIN_WORDS_PER_PAIR,
   validLetterPairCount,
   wordRushWordRejectReason,
 } from '@/lib/word-rush-dictionary'
@@ -124,6 +125,13 @@ describe('word-rush-dictionary', () => {
     const pair = pickRandomLetterPair()
     expect(pair).toBeTruthy()
     expect(countWordsForPair(pair!.start, pair!.end)).toBeGreaterThan(0)
+  })
+
+  it('never picks a pair with fewer than the minimum number of words', () => {
+    for (let i = 0; i < 300; i++) {
+      const pair = pickRandomLetterPair()!
+      expect(countWordsForPair(pair.start, pair.end)).toBeGreaterThanOrEqual(WORD_RUSH_MIN_WORDS_PER_PAIR)
+    }
   })
 
   it('avoids used pairs when possible', () => {
