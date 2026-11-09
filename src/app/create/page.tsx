@@ -755,6 +755,7 @@ function CreateGameInner() {
     setCrazy8MaxPlayers((v) => clamp('crazy_eights', v))
     setRummyMaxPlayers((v) => clamp('rummy', v))
     setUnoMaxPlayers((v) => clamp('uno', v))
+    setGoFishMaxPlayers((v) => clamp('gofish', v))
     setLudoMaxPlayers((v) => clamp('ludo', v))
     setSnakeLadderMaxPlayers((v) => clamp('snake_and_ladder', v))
     setNpatMaxPlayers((v) => clamp('i_call_on', v))
@@ -915,7 +916,7 @@ function CreateGameInner() {
               timer_seconds: 600,
             }
           : {}),
-        ...(isCheckersGame(type)
+        ...(isCheckersGame(type) || isDraughts10Game(type)
           ? {
               participant_mode: 'joiners' as const,
               anonymous: true,
@@ -2051,6 +2052,8 @@ function CreateGameInner() {
   }, [customQuestionCount, questionSource, settings.rounds_count, isPan])
 
   const selectGameType = (type: GameType) => {
+    // Reselecting the current game changes nothing, so the host keeps every choice (timer, uploads).
+    if (type === settings.game_type) return
     setCustomSlots(null)
     setWstQuoteSource('player')
     setQuestionSource('platform')
@@ -2097,6 +2100,11 @@ function CreateGameInner() {
     setSettings({
       ...settings,
       game_type: type,
+      // Switching game type restores the page defaults (3 rounds, 30 s) so the next game never keeps a
+      // value its controls don't offer (e.g. 1 round / 600 s left over from a board game). The
+      // per-game blocks below override these.
+      rounds_count: 3,
+      timer_seconds: 30,
       // Reset the shared rounds_count + writing timer to Landmine-valid defaults (they carry over
       // from the previous game type and may not be in Landmine's option sets).
       ...(isLandmineGame(type)
@@ -2200,6 +2208,16 @@ function CreateGameInner() {
             timer_seconds: 30,
           }
         : {}),
+      ...(isGoFishGame(type) && !isGoFishGame(settings.game_type)
+        ? {
+            // Same defaults as the `?type=gofish` entry above, so both ways in give the same lobby.
+            // Only when switching to Go Fish: reselecting it must keep the host's timer.
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 45,
+          }
+        : {}),
       ...(isLudoGame(type)
         ? {
             participant_mode: 'joiners' as const,
@@ -2225,7 +2243,7 @@ function CreateGameInner() {
             timer_seconds: 600,
           }
         : {}),
-      ...(isCheckersGame(type)
+      ...(isCheckersGame(type) || isDraughts10Game(type)
         ? {
             participant_mode: 'joiners' as const,
             anonymous: true,
@@ -2291,6 +2309,40 @@ function CreateGameInner() {
             participant_mode: 'joiners' as const,
             anonymous: true,
             rounds_count: 1,
+          }
+        : {}),
+      ...(isDescribeItGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: DESCRIBE_IT_DEFAULT_ROUNDS,
+            timer_seconds: DESCRIBE_IT_DEFAULT_TURN_SECONDS,
+            describe_it_num_teams: 2,
+            describe_it_mode: 'team' as const,
+          }
+        : {}),
+      ...(isWordRushGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: WORD_RUSH_DEFAULT_ROUNDS,
+            timer_seconds: WORD_RUSH_DEFAULT_TURN_SECONDS,
+            word_rush_num_teams: 2,
+            word_rush_mode: 'team' as const,
+            word_rush_prompt_mode: 'automatic' as const,
+            word_rush_difficulty: 'standard' as const,
+          }
+        : {}),
+      ...(isMafiaGame(type)
+        ? {
+            participant_mode: 'joiners' as const,
+            anonymous: true,
+            rounds_count: 1,
+            timer_seconds: 60,
+            mafia_advanced_mode: false,
+            mafia_anonymous_votes: true,
+            mafia_day_seconds: 90,
+            mafia_voting_seconds: 45,
           }
         : {}),
       ...(isTrollRunGame(type)
