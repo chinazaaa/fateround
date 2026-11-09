@@ -141,7 +141,8 @@ export function pairSupportsMinLengthForLetters(start: string, end: string, minL
   return pairSupportsMinLength(letterPairKey(start, end), minLength)
 }
 
-/** Count how many dictionary words match a letter pair (for sanity checks). */
-export function countWordsForPair(start: string, end: string): number {
-  return buildPairIndex().get(letterPairKey(start, end))?.length ?? 0
+/** Count how many dictionary words match a letter pair, optionally only those of at least `minLength` letters. */
+export function countWordsForPair(start: string, end: string, minLength: number = 0): number {
+  const words = buildPairIndex().get(letterPairKey(start, end)) ?? []
+  return minLength > 0 ? words.filter((word) => word.length >= minLength).length : words.length
 }
