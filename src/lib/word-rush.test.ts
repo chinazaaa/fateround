@@ -3,6 +3,7 @@ import {
   isValidWordRushWord,
   pickRandomLetterPair,
   countWordsForPair,
+  WORD_RUSH_MIN_WORDS_PER_PAIR,
   validLetterPairCount,
   wordRushWordRejectReason,
 } from '@/lib/word-rush-dictionary'
@@ -41,6 +42,7 @@ import {
   nextPlayableTeamTurnIndex,
   WORD_RUSH_MIN_WORD_LENGTH,
   WORD_RUSH_MAX_WORD_LENGTH,
+  WORD_RUSH_HARD_MAX_MIN_LENGTH,
   WORD_RUSH_POOL_USAGE_KEY,
 } from '@/lib/word-rush'
 
@@ -124,6 +126,22 @@ describe('word-rush-dictionary', () => {
     const pair = pickRandomLetterPair()
     expect(pair).toBeTruthy()
     expect(countWordsForPair(pair!.start, pair!.end)).toBeGreaterThan(0)
+  })
+
+  it('never picks a pair with fewer than the minimum number of words', () => {
+    for (let i = 0; i < 300; i++) {
+      const pair = pickRandomLetterPair()!
+      expect(countWordsForPair(pair.start, pair.end)).toBeGreaterThanOrEqual(WORD_RUSH_MIN_WORDS_PER_PAIR)
+    }
+  })
+
+  it('counts only words of the hard-mode minimum length', () => {
+    for (let i = 0; i < 300; i++) {
+      const pair = pickRandomLetterPair([], WORD_RUSH_HARD_MAX_MIN_LENGTH)!
+      expect(countWordsForPair(pair.start, pair.end, WORD_RUSH_HARD_MAX_MIN_LENGTH)).toBeGreaterThanOrEqual(
+        WORD_RUSH_MIN_WORDS_PER_PAIR
+      )
+    }
   })
 
   it('avoids used pairs when possible', () => {
