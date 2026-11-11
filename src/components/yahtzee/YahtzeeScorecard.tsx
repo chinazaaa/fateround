@@ -89,19 +89,35 @@ export function YahtzeeScorecard({
   onScore,
   timerError,
 }: YahtzeeScorecardProps) {
-  if (players.length === 0 || scores.length === 0) {
-    return <div className="glass-card p-4 text-center text-muted text-xs">Loading…</div>
-  }
-
   // A row with no `categories` can't be scored on or timed out (the server answers 400), so the turn
-  // would otherwise stall with no explanation. Say so instead of leaving players waiting.
-  const activeName = players.find((p) => p.id === activePlayerId)?.name
-  const activeCardMissing = !!activePlayerId && !scores.find((s) => s.player_id === activePlayerId)?.scores?.categories
+  // would otherwise stall with no explanation. Say so instead of leaving players waiting. Only a
+  // player who is in the roster counts, so the alert never fires before the roster has loaded.
+  const activePlayer = players.find((p) => p.id === activePlayerId)
+  const activeCardMissing = !!activePlayer && !scores.find((s) => s.player_id === activePlayer.id)?.scores?.categories
   const problem = activeCardMissing
-    ? `${activeName ?? 'This player'}'s scorecard data is missing, so their turn can't be scored or skipped. Reload the page; if it keeps happening, the host should end the game and start a new one.`
+    ? `${activePlayer.name}'s scorecard data is missing, so their turn can't be scored or skipped. Reload the page; if it keeps happening, the host should end the game and start a new one.`
     : timerError
       ? `The turn timer couldn't skip this turn: ${timerError}. Reload the page if it doesn't clear.`
       : null
+  const problemNotice = problem ? (
+    <p
+      role="alert"
+      className="border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold text-[var(--kill)]"
+    >
+      {problem}
+    </p>
+  ) : null
+
+  // Keep the alert visible even with no score rows at all (a one-player game whose row is missing),
+  // instead of "Loading…" forever.
+  if (players.length === 0 || scores.length === 0) {
+    return (
+      <div className="glass-card overflow-hidden">
+        {problemNotice}
+        <div className="p-4 text-center text-muted text-xs">Loading…</div>
+      </div>
+    )
+  }
 
   const orderedScores = players.map((p) => {
     const pScore = scores.find((s) => s.player_id === p.id)
@@ -155,14 +171,7 @@ export function YahtzeeScorecard({
 
   return (
     <div className="yahtzee-scorecard glass-card-strong overflow-hidden">
-      {problem && (
-        <p
-          role="alert"
-          className="border-b border-[var(--border)] px-3 py-2 text-center text-xs font-semibold text-[var(--kill)]"
-        >
-          {problem}
-        </p>
-      )}
+      {problemNotice}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left yahtzee-score-table">
           <thead>

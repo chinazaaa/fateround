@@ -51,4 +51,21 @@ describe('YahtzeeScorecard problem notice', () => {
     )
     expect(screen.getByRole('alert').textContent).toContain('Player scores not found')
   })
+
+  it('still shows the alert, above the loading placeholder, when there are no score rows at all', () => {
+    render(<YahtzeeScorecard players={[players[0]!]} scores={[]} activePlayerId="p1" />)
+    expect(screen.getByRole('alert').textContent).toContain("Ana's scorecard data is missing")
+    expect(screen.getByText('Loading…')).toBeTruthy()
+  })
+
+  it('does not raise the missing-card alert before the roster has loaded', () => {
+    render(<YahtzeeScorecard players={[]} scores={[]} activePlayerId="p1" />)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByText('Loading…')).toBeTruthy()
+  })
+
+  it('shows a timer error above the loading placeholder too', () => {
+    render(<YahtzeeScorecard players={players} scores={[]} timerError="Player scores not found" />)
+    expect(screen.getByRole('alert').textContent).toContain('Player scores not found')
+  })
 })
