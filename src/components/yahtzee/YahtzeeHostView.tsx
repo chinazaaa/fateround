@@ -325,7 +325,11 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
   const isHostTurn = turnPlayerId === hostPlayerId
   const canHostScore = isHostTurn && (session?.rolls_this_turn ?? 0) > 0
 
-  const { secondsLeft, hasTimer, urgent } = useYahtzeeTurnTimer(gameCode, session, game?.status === 'active')
+  const { secondsLeft, hasTimer, urgent, expireError } = useYahtzeeTurnTimer(
+    gameCode,
+    session,
+    game?.status === 'active'
+  )
   useYahtzeeNotifications({ game, session, myPlayerId: hostPlayerId, enabled: hostPlays && game?.status === 'active' })
 
   useHostAutoReady(gameCode, game?.status, hostPlayerId, players, load)
@@ -400,6 +404,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
           activePlayerId={turnPlayerId}
           dice={session.dice}
           scoringEnabled={canHostScore}
+          timerError={expireError}
           onScore={(category: YahtzeeCategory) => {
             playYahtzeeScoreSound()
             void postHostAction('/api/yahtzee/score', { category })
@@ -433,6 +438,7 @@ export function YahtzeeHostView({ gameCode, hostToken }: { gameCode: string; hos
         activePlayerId={turnPlayerId}
         dice={session.dice}
         scoringEnabled={false}
+        timerError={expireError}
       />
       <YahtzeeDiceTray
         dice={session.dice}
