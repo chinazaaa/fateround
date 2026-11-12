@@ -355,7 +355,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
   useYahtzeeNotifications({ game, session, myPlayerId, enabled: screen === 'active' })
 
   // Turn timer countdown (also fires expire-turn when deadline passes)
-  const { secondsLeft, hasTimer, urgent } = useYahtzeeTurnTimer(gameCode, session, screen === 'active')
+  const { secondsLeft, hasTimer, urgent, expireError } = useYahtzeeTurnTimer(gameCode, session, screen === 'active')
 
   // Change name · Leave game for players/spectators live behind the main chrome's ⚙
   // gear (top header). Registered while the game is active; the shared settings sheet
@@ -554,6 +554,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
             activePlayerId={turnPlayerId}
             dice={session.dice}
             scoringEnabled={false}
+            timerError={expireError}
           />
           <YahtzeeDiceTray
             dice={session.dice}
@@ -587,6 +588,7 @@ export function YahtzeePlayerView({ gameCode }: { gameCode: string }) {
           activePlayerId={turnPlayerId}
           dice={session.dice}
           scoringEnabled={canScore}
+          timerError={expireError}
           onScore={(category: YahtzeeCategory) => {
             playYahtzeeScoreSound()
             void postAction('/api/yahtzee/score', { category })
