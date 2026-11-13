@@ -51,6 +51,9 @@ export const QUICK_DRAW_REVEAL_SECONDS = 5
 export const QUICK_DRAW_MAX_TITLE_LENGTH = 80
 export const QUICK_DRAW_MAX_STROKES = 200
 export const QUICK_DRAW_MAX_POINTS_PER_STROKE = 500
+/** Canvas bounds a submitted drawing may declare. The viewer sizes a <canvas> from these, so an absurd value would blank it or exhaust the tab's memory. */
+export const QUICK_DRAW_MIN_CANVAS_SIZE = 100
+export const QUICK_DRAW_MAX_CANVAS_SIZE = 1000
 
 export type QuickDrawVariant = 'lie' | 'guess'
 
@@ -261,13 +264,18 @@ export function shuffledTitleOptions(titles: QuickDrawTitle[]): QuickDrawTitle[]
   return shuffle(titles)
 }
 
+function clampCanvasSize(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.min(Math.max(Math.round(value), QUICK_DRAW_MIN_CANVAS_SIZE), QUICK_DRAW_MAX_CANVAS_SIZE)
+}
+
 export function validateStrokeData(raw: unknown): QuickDrawDrawingStrokeData | null {
   if (!raw || typeof raw !== 'object') return null
   const data = raw as Record<string, unknown>
   if (!Array.isArray(data.strokes)) return null
 
-  const width = typeof data.width === 'number' ? data.width : 400
-  const height = typeof data.height === 'number' ? data.height : 300
+  const width = clampCanvasSize(data.width, 400)
+  const height = clampCanvasSize(data.height, 300)
   const strokes: QuickDrawDrawingStrokeData['strokes'] = []
 
   for (const stroke of data.strokes.slice(0, QUICK_DRAW_MAX_STROKES)) {

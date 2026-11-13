@@ -33,6 +33,11 @@ import { secondsUntil } from '@/lib/timer-format'
  * leaves `deadlineAt` untouched (e.g. a phase flip), mirroring the original per-game
  * effect dependencies. The expire call is skipped when `gameCode` is empty (preserves
  * the games that gate firing on a resolved game id).
+ *
+ * `expireError` is the server's refusal message (a 4xx/5xx on the expire call) for the CURRENT
+ * deadline, or null. The retries stay silent on their own, so a caller that wants players to see
+ * why a turn never advances can render it; callers that ignore it behave as before. It clears on a
+ * new deadline or a successful expire.
  */
 export function useTurnTimer({
   gameCode,
@@ -62,6 +67,7 @@ export function useTurnTimer({
   graceSkips?: number
 }) {
   const [secondsLeft, setSecondsLeft] = useState(0)
+  const [expireFailure, setExpireFailure] = useState<{ deadlineAt: string; message: string } | null>(null)
   const firingRef = useRef(false)
   const skipStreakRef = useRef(0)
   const active = enabled && hasTimer
@@ -112,6 +118,15 @@ export function useTurnTimer({
                 .then(() => (typeof res.json === 'function' ? res.json() : null))
                 .catch(() => null)
             : null
+          if (!res.ok) {
+            const body = await Promise.resolve()
+              .then(() => (typeof res.json === 'function' ? res.json() : null))
+              .catch(() => null)
+            const message = typeof body?.error === 'string' && body.error ? body.error : 'The turn could not be skipped'
+            if (effectActive) setExpireFailure({ deadlineAt, message })
+          } else if (!payload?.skipped && effectActive) {
+            setExpireFailure(null)
+          }
           if (!res.ok || payload?.skipped) {
             skipStreakRef.current += 1
             // A 200 `skipped` gets a grace window of flat-cooldown retries first — that
@@ -157,6 +172,8 @@ export function useTurnTimer({
   return {
     secondsLeft,
     hasTimer,
+    // Only an error recorded against the deadline still on screen counts; a newer deadline hides it.
+    expireError: expireFailure && expireFailure.deadlineAt === deadlineAt ? expireFailure.message : null,
     urgent: secondsLeft > 0 && secondsLeft <= urgentThreshold,
   }
 }

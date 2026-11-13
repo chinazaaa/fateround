@@ -5,6 +5,8 @@ import {
   canPlayerVoteOnDrawing,
   tallyQuickDrawScores,
   validateStrokeData,
+  QUICK_DRAW_MAX_CANVAS_SIZE,
+  QUICK_DRAW_MIN_CANVAS_SIZE,
 } from '@/lib/quick-draw'
 import type { QuickDrawDrawing, QuickDrawTitle, QuickDrawVote, Player } from '@/types'
 
@@ -19,6 +21,27 @@ describe('quick-draw', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({ round_id: 'r1', player_id: 'p1', prompt: 'A sad potato' })
     expect(rows[1]).toMatchObject({ player_id: 'p2', prompt: 'Two bees' })
+  })
+
+  it('clamps an absurd canvas size so a viewer cannot be handed a giant <canvas>', () => {
+    const stroke = {
+      color: '#000',
+      width: 3,
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+    }
+    expect(validateStrokeData({ width: 1e12, height: -5, strokes: [stroke] })).toMatchObject({
+      width: QUICK_DRAW_MAX_CANVAS_SIZE,
+      height: QUICK_DRAW_MIN_CANVAS_SIZE,
+    })
+    expect(validateStrokeData({ width: 399.6, height: 300, strokes: [stroke] })).toMatchObject({
+      width: 400,
+      height: 300,
+    })
+    // Missing or non-numeric sizes fall back to the standard canvas.
+    expect(validateStrokeData({ width: 'wide', strokes: [stroke] })).toMatchObject({ width: 400, height: 300 })
   })
 
   it('validates stroke data', () => {

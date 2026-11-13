@@ -8,6 +8,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 
+const TRIVIA_ANSWER_GRACE_MS = 1500
+
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, triviaAnswerSchema)
   if (bodyError) return bodyError
@@ -55,6 +57,11 @@ export async function POST(req: NextRequest) {
   const startedAt = round.started_at ? new Date(round.started_at).getTime() : Date.now()
   const now = Date.now()
   const timerMs = (game.timer_seconds ?? TRIVIA_DEFAULT_TIMER) * 1000
+  // Reject answers that arrive after the timer (plus a small latency grace) even if no client has
+  // advanced the round yet, so a stalled host cannot leave the question open for scoring.
+  if (now - startedAt > timerMs + TRIVIA_ANSWER_GRACE_MS) {
+    return NextResponse.json({ error: 'Time is up for this question' }, { status: 400 })
+  }
   const responseMs = Math.max(0, Math.min(now - startedAt, timerMs))
 
   const isCorrect = choiceIndex === metadata.correct_index
@@ -82,6 +89,8 @@ export async function POST(req: NextRequest) {
     .select()
     .single()
 
+  // A concurrent duplicate loses the unique-index race: report it like the pre-check above.
+  if (error?.code === '23505') return NextResponse.json({ error: 'Already answered this round' }, { status: 400 })
   if (error) return NextResponse.json({ error: internalErrorMessage('trivia/answer', error) }, { status: 500 })
 
   return NextResponse.json({

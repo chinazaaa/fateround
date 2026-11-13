@@ -327,4 +327,43 @@ describe('useTurnTimer', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
+
+  it('exposes the server refusal as expireError and clears it once an expire succeeds', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: 'Player scores not found' }),
+    } as unknown as Response)
+    const { result } = renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000 })
+    expect(result.current.expireError).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(result.current.expireError).toBe('Player scores not found')
+
+    // The 4xx backs off from `cooldownMs`; the next attempt (a 200 with no `skipped`) clears it.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    expect(result.current.expireError).toBeNull()
+  })
+
+  it('falls back to a generic message when the refusal has no readable body', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
+    const { result } = renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000 })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(result.current.expireError).toBe('The turn could not be skipped')
+  })
+
+  it('does not report an error for a 200 skipped verdict', async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true, skipped: true }) } as unknown as Response)
+    const { result } = renderTimer({ deadlineAt: inSeconds(1), cooldownMs: 1000 })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500)
+    })
+    expect(result.current.expireError).toBeNull()
+  })
 })
