@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseJsonBody } from '@/lib/parse-body'
+import { coercedNumber, optionalCoercedNumber } from '@/lib/validation/shared'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { getProfileFromRequest } from '@/lib/identity-server'
@@ -239,9 +240,9 @@ const eliminationConfigSchema = z
   .object({
     mode: z.enum(['per-round', 'lives']),
     rule: z.enum(['bottom-n', 'score-threshold']).optional(),
-    eliminateCount: z.coerce.number().int().min(1).max(10).optional(),
-    threshold: z.coerce.number().min(0).optional(),
-    startingLives: z.coerce.number().int().min(1).max(10).optional(),
+    eliminateCount: optionalCoercedNumber((n) => n.int().min(1).max(10)),
+    threshold: optionalCoercedNumber((n) => n.min(0)),
+    startingLives: optionalCoercedNumber((n) => n.int().min(1).max(10)),
     livesLostRule: z.literal('bottom-n').optional(),
   })
   .optional()

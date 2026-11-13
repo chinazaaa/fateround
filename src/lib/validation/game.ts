@@ -17,6 +17,8 @@ import {
   wstQuoteSourceEnum,
   participantFilterEnum,
   triviaCategoryEnum,
+  coercedNumber,
+  optionalCoercedNumber,
 } from './shared'
 
 const mahjongRulesetEnum = z.enum(['fate_round', 'hong_kong', 'riichi', 'mcr'])
@@ -27,17 +29,17 @@ const trollRunWorldEnum = z.enum(TROLL_RUN_WORLD_IDS)
 const mahjongRuleOptionsSchema = z
   .object({
     matchLength: z.enum(['east', 'hanchan']).optional(),
-    startingScore: z.coerce.number().int().min(0).max(100000).optional(),
-    returnScore: z.coerce.number().int().min(0).max(100000).optional(),
+    startingScore: optionalCoercedNumber((n) => n.int().min(0).max(100000)),
+    returnScore: optionalCoercedNumber((n) => n.int().min(0).max(100000)),
     bankruptcyEndsMatch: z.boolean().optional(),
     agariYame: z.boolean().optional(),
     okaEnabled: z.boolean().optional(),
     uma: z
       .tuple([
-        z.coerce.number().int().min(-100000).max(100000),
-        z.coerce.number().int().min(-100000).max(100000),
-        z.coerce.number().int().min(-100000).max(100000),
-        z.coerce.number().int().min(-100000).max(100000),
+        coercedNumber((n) => n.int().min(-100000).max(100000)),
+        coercedNumber((n) => n.int().min(-100000).max(100000)),
+        coercedNumber((n) => n.int().min(-100000).max(100000)),
+        coercedNumber((n) => n.int().min(-100000).max(100000)),
       ])
       .optional(),
     doubleYakuman: z.boolean().optional(),
@@ -49,10 +51,16 @@ const mahjongRuleOptionsSchema = z
     nagashiMangan: z.boolean().optional(),
     renhou: z.enum(['off', 'mangan', 'yakuman']).optional(),
     chomboPenalty: z.enum(['mangan', 'none']).optional(),
-    hongKongMinimumFan: z.coerce.number().int().min(0).max(13).optional(),
-    hongKongLimitFan: z.coerce.number().int().min(3).max(13).optional(),
-    mcrMinimumPoints: z.coerce.number().int().min(0).max(88).optional(),
+    hongKongMinimumFan: optionalCoercedNumber((n) => n.int().min(0).max(13)),
+    hongKongLimitFan: optionalCoercedNumber((n) => n.int().min(3).max(13)),
+    mcrMinimumPoints: optionalCoercedNumber((n) => n.int().min(0).max(88)),
   })
+  // A blank/null number parses to `undefined` but Zod keeps the key. Callers spread these options over the
+  // saved ones, so drop such keys: otherwise an omitted field would overwrite a saved value with `undefined`.
+  .transform(
+    (options) =>
+      Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) as typeof options
+  )
   .optional()
 
 // ---------------------------------------------------------------------------
@@ -71,9 +79,9 @@ export const createGameSchema = z.object({
   title: sanitizedString(1, 100),
   // Player-facing content label ("Maths", "Bible trivia") for CSV/library content games.
   content_label: z.string().max(40).optional(),
-  rounds_count: z.coerce.number().int().min(1).max(100).optional(),
-  timer_seconds: z.coerce.number().optional(),
-  operative_timer_seconds: z.coerce.number().optional(),
+  rounds_count: optionalCoercedNumber((n) => n.int().min(1).max(100)),
+  timer_seconds: optionalCoercedNumber((n) => n),
+  operative_timer_seconds: optionalCoercedNumber((n) => n),
   anonymous: z.boolean().optional(),
   auto_reveal: z.boolean().optional(),
   auto_submit_behavior: autoSubmitBehaviorEnum.optional(),
@@ -94,47 +102,43 @@ export const createGameSchema = z.object({
   // future. Only accepted when isPublic=true (a private scheduled game has no
   // RSVP audience — it'd be a dead row). The route rejects invalid pairs.
   scheduled_at: z.string().datetime().optional(),
-  max_players: z.coerce.number().int().min(1).max(100).optional(),
-  monopoly_board_size: z.coerce
-    .number()
-    .int()
-    .refine((value) => value === 40 || value === 48)
-    .optional(),
+  max_players: optionalCoercedNumber((n) => n.int().min(1).max(100)),
+  monopoly_board_size: optionalCoercedNumber((n) => n.int().refine((value) => value === 40 || value === 48)),
   monopoly_double_go_salary: z.boolean().optional(),
   monopoly_forced_auctions: z.boolean().optional(),
-  monopoly_auction_timer_seconds: z.coerce.number().int().min(5).max(60).optional(),
+  monopoly_auction_timer_seconds: optionalCoercedNumber((n) => n.int().min(5).max(60)),
   monopoly_no_rent_in_jail: z.boolean().optional(),
   monopoly_estate_dividend: z.boolean().optional(),
   monopoly_loans_enabled: z.boolean().optional(),
-  monopoly_loan_interest: z.coerce.number().int().min(0).max(100).optional(),
-  monopoly_loan_term_rounds: z.coerce.number().int().min(1).max(20).optional(),
+  monopoly_loan_interest: optionalCoercedNumber((n) => n.int().min(0).max(100)),
+  monopoly_loan_term_rounds: optionalCoercedNumber((n) => n.int().min(1).max(20)),
   codewords_player_picks: z.boolean().optional(),
   codewords_late_join: z.boolean().optional(),
-  describe_it_num_teams: z.coerce.number().int().min(2).max(4).optional(),
+  describe_it_num_teams: optionalCoercedNumber((n) => n.int().min(2).max(4)),
   describe_it_mode: z.enum(['team', 'individual']).optional(),
   quick_draw_variant: z.enum(['lie', 'guess']).optional(),
   quick_draw_play_mode: z.enum(['team', 'individual']).optional(),
-  quick_draw_num_teams: z.coerce.number().int().min(2).max(4).optional(),
-  word_rush_num_teams: z.coerce.number().int().min(2).max(4).optional(),
+  quick_draw_num_teams: optionalCoercedNumber((n) => n.int().min(2).max(4)),
+  word_rush_num_teams: optionalCoercedNumber((n) => n.int().min(2).max(4)),
   word_rush_mode: z.enum(['team', 'individual']).optional(),
   word_rush_prompt_mode: z.enum(['automatic', 'manual']).optional(),
   word_rush_difficulty: z.enum(['standard', 'hard']).optional(),
   landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
   landmine_mine_source: z.enum(['system', 'manual']).optional(),
   checkers_nigeria_street_rules: z.boolean().optional(),
-  landmine_elim_seconds: z.coerce.number().int().optional(),
-  landmine_mine_count: z.coerce.number().int().min(1).max(3).optional(),
+  landmine_elim_seconds: optionalCoercedNumber((n) => n.int()),
+  landmine_mine_count: optionalCoercedNumber((n) => n.int().min(1).max(3)),
   landmine_originality_bonus: z.boolean().optional(),
   landmine_review: z.boolean().optional(),
-  landmine_review_seconds: z.coerce.number().int().optional(),
+  landmine_review_seconds: optionalCoercedNumber((n) => n.int()),
   allow_viewers: z.boolean().optional(),
   allow_late_players: z.boolean().optional(),
   late_join_policy: z.enum(['lobby_only', 'viewers_only', 'viewers_and_players']).optional(),
   codewords_randomize_teams: z.boolean().optional(),
   trivia_category: triviaCategoryEnum.optional(),
   bingo_call_mode: z.enum(['manual', 'auto']).optional(),
-  bingo_call_interval_seconds: z.coerce.number().optional(),
-  game_duration_seconds: z.coerce.number().optional(),
+  bingo_call_interval_seconds: optionalCoercedNumber((n) => n),
+  game_duration_seconds: optionalCoercedNumber((n) => n),
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
@@ -152,8 +156,8 @@ export const createGameSchema = z.object({
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
   uno_wd4_challenge: z.boolean().optional(),
-  uno_uno_penalty: z.coerce.number().int().optional(),
-  uno_wd4_challenge_penalty: z.coerce.number().int().optional(),
+  uno_uno_penalty: optionalCoercedNumber((n) => n.int()),
+  uno_wd4_challenge_penalty: optionalCoercedNumber((n) => n.int()),
   uno_zero_seven: z.boolean().optional(),
   uno_stacking: z.boolean().optional(),
   uno_multi_play_mode: z.enum(['off', 'same_color', 'same_number', 'same_color_or_number']).optional(),
@@ -162,14 +166,14 @@ export const createGameSchema = z.object({
   uno_mode: z.enum(['classic', 'no_mercy']).optional(),
   uno_no_mercy_win: z.enum(['first_out', 'last_standing']).optional(),
   uno_series_scoring: z.boolean().optional(),
-  uno_series_target: z.coerce.number().int().min(100).max(10000).optional(),
+  uno_series_target: optionalCoercedNumber((n) => n.int().min(100).max(10000)),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
   ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
   mahjong_rule_options: mahjongRuleOptionsSchema,
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
-  scrabble_clock_seconds: z.coerce.number().optional(),
+  scrabble_clock_seconds: optionalCoercedNumber((n) => n),
   chess_board_theme: z.string().optional(),
   chess_piece_set: z.string().optional(),
   crossword_theme: z.string().optional(),
@@ -206,8 +210,8 @@ export const createGameSchema = z.object({
   mafia_red_lady_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
   mafia_advanced_mode: z.boolean().optional(),
-  mafia_day_seconds: z.coerce.number().int().min(10).max(600).optional(),
-  mafia_voting_seconds: z.coerce.number().int().min(10).max(600).optional(),
+  mafia_day_seconds: optionalCoercedNumber((n) => n.int().min(10).max(600)),
+  mafia_voting_seconds: optionalCoercedNumber((n) => n.int().min(10).max(600)),
   wordle_room_category: z
     .enum([
       'general_english',
@@ -223,11 +227,7 @@ export const createGameSchema = z.object({
       'travel',
     ])
     .optional(),
-  wordle_room_word_count: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => [5, 10, 15, 20].includes(val))
-    .optional(),
+  wordle_room_word_count: optionalCoercedNumber((n) => n.int().refine((val: number) => [5, 10, 15, 20].includes(val))),
   wordle_room_words: z
     .array(
       z.object({
@@ -244,8 +244,8 @@ export const createGameSchema = z.object({
     .max(2000)
     .optional(),
   library_pack_id: z.string().uuid().optional(),
-  troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
-  troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
+  troll_run_rounds: optionalCoercedNumber((n) => n.int().min(1).max(20)),
+  troll_run_time_limit: optionalCoercedNumber((n) => n.int().min(30).max(600)),
   troll_run_world: trollRunWorldEnum.optional(),
   custom_slots: z
     .object({
@@ -281,13 +281,13 @@ export const updateGameSchema = z.object({
   content_label: z.string().max(40).optional(),
   theme: themeEnum.optional(),
   edition_slug: z.string().min(1).max(64).optional(),
-  rounds_count: z.coerce.number().int().min(1, 'rounds_count is required').optional(),
-  timer_seconds: z.coerce.number().optional(),
-  operative_timer_seconds: z.coerce.number().optional(),
-  game_duration_seconds: z.coerce.number().optional(),
+  rounds_count: optionalCoercedNumber((n) => n.int().min(1, 'rounds_count is required')),
+  timer_seconds: optionalCoercedNumber((n) => n),
+  operative_timer_seconds: optionalCoercedNumber((n) => n),
+  game_duration_seconds: optionalCoercedNumber((n) => n),
   scrabble_dictionary_id: z.enum(SCRABBLE_DICTIONARY_OPTIONS).optional(),
   scrabble_clock_mode: z.enum(['standard', 'chess']).optional(),
-  scrabble_clock_seconds: z.coerce.number().optional(),
+  scrabble_clock_seconds: optionalCoercedNumber((n) => n),
   // Chess host-default appearance — editable in the lobby (cosmetic, validated server-side).
   chess_board_theme: z.string().optional(),
   chess_piece_set: z.string().optional(),
@@ -318,11 +318,11 @@ export const updateGameSchema = z.object({
   landmine_mode: z.enum(['zero_points', 'elimination']).optional(),
   landmine_mine_source: z.enum(['system', 'manual']).optional(),
   checkers_nigeria_street_rules: z.boolean().optional(),
-  landmine_elim_seconds: z.coerce.number().int().optional(),
-  landmine_mine_count: z.coerce.number().int().optional(),
+  landmine_elim_seconds: optionalCoercedNumber((n) => n.int()),
+  landmine_mine_count: optionalCoercedNumber((n) => n.int()),
   landmine_originality_bonus: z.boolean().optional(),
   landmine_review: z.boolean().optional(),
-  landmine_review_seconds: z.coerce.number().int().optional(),
+  landmine_review_seconds: optionalCoercedNumber((n) => n.int()),
   // Discovery Phase A — "Keep open" button on the host T-13min banner. Bumps
   // last_activity_at + stamps host_idle_warning_sent_at so the pg_cron close
   // job holds off and the banner never re-fires for this game. The plan
@@ -344,7 +344,7 @@ export const hostActionSchema = z.object({
 export type HostActionInput = z.infer<typeof hostActionSchema>
 
 export const monopolyExtendTimeSchema = hostActionSchema.extend({
-  extensionSeconds: z.coerce.number().int().positive(),
+  extensionSeconds: coercedNumber((n) => n.int().positive()),
 })
 
 export const playAgainSchema = hostActionSchema.extend({
@@ -382,16 +382,16 @@ export const bingoSettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
   bingo_call_mode: z.enum(['manual', 'auto']).optional(),
-  bingo_call_interval_seconds: z.coerce.number().optional(),
-  max_players: z.coerce.number().int().min(2).max(100).optional(),
+  bingo_call_interval_seconds: optionalCoercedNumber((n) => n),
+  max_players: optionalCoercedNumber((n) => n.int().min(2).max(100)),
 })
 
 export const codewordsLobbySettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
-  max_players: z.coerce.number().int().min(2).max(100).optional(),
-  spymasterTimerSeconds: z.coerce.number().optional(),
-  operativeTimerSeconds: z.coerce.number().optional(),
+  max_players: optionalCoercedNumber((n) => n.int().min(2).max(100)),
+  spymasterTimerSeconds: optionalCoercedNumber((n) => n),
+  operativeTimerSeconds: optionalCoercedNumber((n) => n),
 })
 
 export type BingoSettingsInput = z.infer<typeof bingoSettingsSchema>
@@ -412,23 +412,19 @@ export const boardGameLobbySettingsSchema = z.object({
   checkers_nigeria_street_rules: z.boolean().optional(),
   // Player-facing content label ("Maths", "Bible trivia"). Empty string clears it.
   content_label: z.string().max(40).optional(),
-  max_players: z.coerce.number().int().min(1).max(100).optional(),
-  timer_seconds: z.coerce.number().optional(),
-  game_duration_seconds: z.coerce.number().optional(),
-  rounds_count: z.coerce.number().int().min(1).max(100).optional(),
+  max_players: optionalCoercedNumber((n) => n.int().min(1).max(100)),
+  timer_seconds: optionalCoercedNumber((n) => n),
+  game_duration_seconds: optionalCoercedNumber((n) => n),
+  rounds_count: optionalCoercedNumber((n) => n.int().min(1).max(100)),
   monopoly_double_go_salary: z.boolean().optional(),
   monopoly_forced_auctions: z.boolean().optional(),
   monopoly_auction_timer_seconds: z.number().int().min(5).max(60).nullable().optional(),
   monopoly_no_rent_in_jail: z.boolean().optional(),
   monopoly_estate_dividend: z.boolean().optional(),
   monopoly_loans_enabled: z.boolean().optional(),
-  monopoly_loan_interest: z.coerce.number().int().min(0).max(100).optional(),
-  monopoly_loan_term_rounds: z.coerce.number().int().min(1).max(20).optional(),
-  monopoly_board_size: z.coerce
-    .number()
-    .int()
-    .refine((value) => value === 40 || value === 48)
-    .optional(),
+  monopoly_loan_interest: optionalCoercedNumber((n) => n.int().min(0).max(100)),
+  monopoly_loan_term_rounds: optionalCoercedNumber((n) => n.int().min(1).max(20)),
+  monopoly_board_size: optionalCoercedNumber((n) => n.int().refine((value) => value === 40 || value === 48)),
   whot_pick3_enabled: z.boolean().optional(),
   whot_cards_enabled: z.boolean().optional(),
   whot_number_calls_enabled: z.boolean().optional(),
@@ -437,8 +433,8 @@ export const boardGameLobbySettingsSchema = z.object({
   crazy8_jokers: z.boolean().optional(),
   crazy8_pick2_stacking: z.boolean().optional(),
   uno_wd4_challenge: z.boolean().optional(),
-  uno_uno_penalty: z.coerce.number().int().optional(),
-  uno_wd4_challenge_penalty: z.coerce.number().int().optional(),
+  uno_uno_penalty: optionalCoercedNumber((n) => n.int()),
+  uno_wd4_challenge_penalty: optionalCoercedNumber((n) => n.int()),
   uno_zero_seven: z.boolean().optional(),
   uno_stacking: z.boolean().optional(),
   uno_multi_play_mode: z.enum(['off', 'same_color', 'same_number', 'same_color_or_number']).optional(),
@@ -447,7 +443,7 @@ export const boardGameLobbySettingsSchema = z.object({
   uno_mode: z.enum(['classic', 'no_mercy']).optional(),
   uno_no_mercy_win: z.enum(['first_out', 'last_standing']).optional(),
   uno_series_scoring: z.boolean().optional(),
-  uno_series_target: z.coerce.number().int().min(100).max(10000).optional(),
+  uno_series_target: optionalCoercedNumber((n) => n.int().min(100).max(10000)),
   ludo_variant: z.enum(['modern', 'traditional']).optional(),
   ayo_variant: z.enum(['traditional', 'oware']).optional(),
   mahjong_ruleset: mahjongRulesetEnum.optional(),
@@ -477,12 +473,12 @@ export const boardGameLobbySettingsSchema = z.object({
   mafia_red_lady_enabled: z.boolean().optional(),
   mafia_anonymous_votes: z.boolean().optional(),
   mafia_advanced_mode: z.boolean().optional(),
-  mafia_day_seconds: z.coerce.number().int().min(10).max(600).optional(),
-  mafia_voting_seconds: z.coerce.number().int().min(10).max(600).optional(),
-  operative_timer_seconds: z.coerce.number().optional(),
+  mafia_day_seconds: optionalCoercedNumber((n) => n.int().min(10).max(600)),
+  mafia_voting_seconds: optionalCoercedNumber((n) => n.int().min(10).max(600)),
+  operative_timer_seconds: optionalCoercedNumber((n) => n),
   quick_draw_variant: z.enum(['lie', 'guess']).optional(),
   quick_draw_play_mode: z.enum(['team', 'individual']).optional(),
-  quick_draw_num_teams: z.coerce.number().int().min(2).max(4).optional(),
+  quick_draw_num_teams: optionalCoercedNumber((n) => n.int().min(2).max(4)),
   crossword_theme: z.string().max(64).optional(),
   crossword_difficulty: z.enum(['easy', 'medium', 'hard']).optional(),
   word_search_theme: z.string().max(64).optional(),
@@ -515,11 +511,7 @@ export const boardGameLobbySettingsSchema = z.object({
       'travel',
     ])
     .optional(),
-  wordle_room_word_count: z.coerce
-    .number()
-    .int()
-    .refine((val: number) => [5, 10, 15, 20].includes(val))
-    .optional(),
+  wordle_room_word_count: optionalCoercedNumber((n) => n.int().refine((val: number) => [5, 10, 15, 20].includes(val))),
   wordle_room_words: z
     .array(
       z.object({
@@ -535,8 +527,8 @@ export const boardGameLobbySettingsSchema = z.object({
     )
     .max(2000)
     .optional(),
-  troll_run_rounds: z.coerce.number().int().min(1).max(20).optional(),
-  troll_run_time_limit: z.coerce.number().int().min(30).max(600).optional(),
+  troll_run_rounds: optionalCoercedNumber((n) => n.int().min(1).max(20)),
+  troll_run_time_limit: optionalCoercedNumber((n) => n.int().min(30).max(600)),
   troll_run_world: trollRunWorldEnum.optional(),
 })
 
@@ -567,7 +559,7 @@ export const patchGamePlayerLimitsSchema = z.object({
     .array(
       z.object({
         game_type: z.enum(LOBBY_LIMIT_GAME_TYPES),
-        max_players: z.coerce.number().int().min(2).max(100),
+        max_players: coercedNumber((n) => n.int().min(2).max(100)),
       })
     )
     .min(1),
