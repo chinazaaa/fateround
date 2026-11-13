@@ -7,6 +7,8 @@ import {
   uuidString,
   stripHtml,
   stripBidiControls,
+  coercedNumber,
+  optionalCoercedNumber,
 } from './shared'
 
 // ---------------------------------------------------------------------------
@@ -16,7 +18,7 @@ import {
 export const bingoCallSchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
-  number: z.coerce.number().int().min(1).max(75).optional(),
+  number: optionalCoercedNumber((n) => n.int().min(1).max(75)),
   random: z.boolean().optional(),
 })
 
@@ -24,7 +26,7 @@ export const bingoMarkSchema = z.object({
   gameId: gameCodeString(),
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
   resumeToken: z.string().min(4),
-  cellIndex: z.coerce.number().int().min(0).max(24),
+  cellIndex: coercedNumber((n) => n.int().min(0).max(24)),
 })
 
 export const bingoClaimSchema = z.object({
@@ -42,7 +44,7 @@ export const triviaAnswerSchema = z.object({
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
   resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
-  choiceIndex: z.coerce.number().int().min(0).max(3),
+  choiceIndex: coercedNumber((n) => n.int().min(0).max(3)),
 })
 
 export type TriviaAnswerInput = z.infer<typeof triviaAnswerSchema>
@@ -64,7 +66,7 @@ export const ttlStatementSchema = z.object({
   statementA: ttlStatementText,
   statementB: ttlStatementText,
   statementC: ttlStatementText,
-  lieIndex: z.coerce.number().int().min(0).max(2),
+  lieIndex: coercedNumber((n) => n.int().min(0).max(2)),
 })
 
 export type TtlStatementInput = z.infer<typeof ttlStatementSchema>
@@ -74,7 +76,7 @@ export const ttlGuessSchema = z.object({
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
   resumeToken: z.string().min(4),
   roundId: uuidString('roundId'),
-  guessedIndex: z.coerce.number().int().min(0).max(2),
+  guessedIndex: coercedNumber((n) => n.int().min(0).max(2)),
 })
 
 export type TtlGuessInput = z.infer<typeof ttlGuessSchema>
@@ -180,7 +182,7 @@ export const quickDrawGuessTeamSchema = z.object({
   resumeToken: z.string().min(4).optional(),
   hostToken: z.string().min(1).optional(),
   playerId: uuidString('playerId').optional(),
-  team: z.coerce.number().int().min(1).max(4),
+  team: coercedNumber((n) => n.int().min(1).max(4)),
 })
 
 export type QuickDrawGuessTeamInput = z.infer<typeof quickDrawGuessTeamSchema>
@@ -336,7 +338,7 @@ export type LandmineAdvanceInput = z.infer<typeof landmineAdvanceSchema>
 
 export const describeItTeamSchema = z.object({
   gameId: gameCodeString(),
-  team: z.coerce.number().int().min(1).max(4),
+  team: coercedNumber((n) => n.int().min(1).max(4)),
   // Two auth paths (route enforces exactly one):
   //  - self-pick: player authorized by their resume_token
   //  - host reassign of another player: hostToken + target playerId
@@ -373,10 +375,10 @@ export const describeItSettingsSchema = z.object({
   gameId: gameCodeString(),
   hostToken: z.string().min(1),
   mode: z.enum(['team', 'individual']).optional(),
-  numTeams: z.coerce.number().int().min(2).max(4).optional(),
-  turnSeconds: z.coerce.number().int().optional(),
-  rounds: z.coerce.number().int().optional(),
-  maxPlayers: z.coerce.number().int().min(4).max(20).optional(),
+  numTeams: optionalCoercedNumber((n) => n.int().min(2).max(4)),
+  turnSeconds: optionalCoercedNumber((n) => n.int()),
+  rounds: optionalCoercedNumber((n) => n.int()),
+  maxPlayers: optionalCoercedNumber((n) => n.int().min(4).max(20)),
   words: z.string().max(8000).optional(),
 })
 
@@ -417,12 +419,12 @@ export const wordRushPromptSchema = z.object({
   resumeToken: z.string().min(4),
   startLetter: z.string().trim().min(1).max(1),
   endLetter: z.string().trim().min(1).max(1),
-  minWordLength: z.coerce.number().int().min(3).max(20).optional(),
+  minWordLength: optionalCoercedNumber((n) => n.int().min(3).max(20)),
 })
 
 export const wordRushTeamSchema = z.object({
   gameId: gameCodeString(),
-  team: z.coerce.number().int().min(1).max(4),
+  team: coercedNumber((n) => n.int().min(1).max(4)),
   resumeToken: z.string().min(4).optional(),
   hostToken: z.string().min(1).optional(),
   playerId: uuidString('playerId').optional(),
@@ -448,10 +450,10 @@ export const wordRushSettingsSchema = z.object({
   mode: z.enum(['team', 'individual']).optional(),
   promptMode: z.enum(['automatic', 'manual']).optional(),
   difficulty: z.enum(['standard', 'hard']).optional(),
-  numTeams: z.coerce.number().int().min(2).max(4).optional(),
-  turnSeconds: z.coerce.number().int().optional(),
-  rounds: z.coerce.number().int().optional(),
-  maxPlayers: z.coerce.number().int().min(2).max(20).optional(),
+  numTeams: optionalCoercedNumber((n) => n.int().min(2).max(4)),
+  turnSeconds: optionalCoercedNumber((n) => n.int()),
+  rounds: optionalCoercedNumber((n) => n.int()),
+  maxPlayers: optionalCoercedNumber((n) => n.int().min(2).max(20)),
 })
 
 const codewordsTeamEnum = z.enum(['red', 'blue'])
@@ -470,14 +472,14 @@ export const codewordsClueSchema = z.object({
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
   resumeToken: z.string().min(4),
   clueWord: sanitizedString(1, 40).refine((s) => !/\s/.test(s), 'Clue must be one word (no spaces)'),
-  clueNumber: z.coerce.number().int().min(0).max(9),
+  clueNumber: coercedNumber((n) => n.int().min(0).max(9)),
 })
 
 export const codewordsGuessSchema = z.object({
   gameId: gameCodeString(),
   // Player action authorized by the secret resume_token (see snakeLadderActionSchema).
   resumeToken: z.string().min(4),
-  cellIndex: z.coerce.number().int().min(0).max(24),
+  cellIndex: coercedNumber((n) => n.int().min(0).max(24)),
 })
 
 export const codewordsEndTurnSchema = z.object({
