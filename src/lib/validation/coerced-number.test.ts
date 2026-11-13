@@ -71,3 +71,25 @@ describe('optional game settings that are blank or null', () => {
     expect(schema.safeParse(7).success).toBe(false)
   })
 })
+
+describe('mahjong_rule_options with blank numbers', () => {
+  it('drops blank and null numbers instead of keeping the key as undefined', () => {
+    const schema = createGameSchema.shape.mahjong_rule_options
+    const parsed = schema.parse({
+      hongKongLimitFan: null,
+      hongKongMinimumFan: '',
+      mcrMinimumPoints: '8',
+      matchLength: 'east',
+    })
+    expect(parsed).toEqual({ mcrMinimumPoints: 8, matchLength: 'east' })
+    expect('hongKongLimitFan' in (parsed ?? {})).toBe(false)
+    // so spreading over saved options keeps the saved value
+    expect({ hongKongLimitFan: 13, ...parsed }.hongKongLimitFan).toBe(13)
+  })
+
+  it('still validates real values', () => {
+    const schema = createGameSchema.shape.mahjong_rule_options
+    expect(schema.safeParse({ hongKongLimitFan: 2 }).success).toBe(false)
+    expect(schema.parse({ hongKongLimitFan: '7' })).toEqual({ hongKongLimitFan: 7 })
+  })
+})

@@ -55,6 +55,12 @@ const mahjongRuleOptionsSchema = z
     hongKongLimitFan: optionalCoercedNumber((n) => n.int().min(3).max(13)),
     mcrMinimumPoints: optionalCoercedNumber((n) => n.int().min(0).max(88)),
   })
+  // A blank/null number parses to `undefined` but Zod keeps the key. Callers spread these options over the
+  // saved ones, so drop such keys: otherwise an omitted field would overwrite a saved value with `undefined`.
+  .transform(
+    (options) =>
+      Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) as typeof options
+  )
   .optional()
 
 // ---------------------------------------------------------------------------
