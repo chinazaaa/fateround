@@ -10,7 +10,8 @@ import { WORD_GROUPING_MAX_MISTAKES, WORD_GROUPING_TOTAL_GROUPS } from '@/lib/wo
 const submitSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
   resumeToken: z.string().min(4),
-  words: z.array(z.string()).length(4),
+  // Cap each word: it is stored verbatim in `guess_words`, and real puzzle words are short.
+  words: z.array(z.string().max(80)).length(4),
 })
 
 interface WordGroupingSolution {
@@ -101,18 +102,41 @@ export async function POST(req: NextRequest) {
   const isCorrect = matchedGroup !== null
   const newMistakes = isCorrect ? mistakeCount : mistakeCount + 1
 
-  const { error: insertError } = await supabase.from('word_grouping_submissions').insert({
-    game_id: code,
-    round_id: round.id,
-    player_id: auth.player.id,
-    group_index: isCorrect ? matchedIndex : -1,
-    difficulty: isCorrect ? matchedGroup!.difficulty : 0,
-    guess_words: words,
-    is_correct: isCorrect,
-    mistakes_at_time: newMistakes,
-  })
+  const { data: inserted, error: insertError } = await supabase
+    .from('word_grouping_submissions')
+    .insert({
+      game_id: code,
+      round_id: round.id,
+      player_id: auth.player.id,
+      group_index: isCorrect ? matchedIndex : -1,
+      difficulty: isCorrect ? matchedGroup!.difficulty : 0,
+      guess_words: words,
+      is_correct: isCorrect,
+      mistakes_at_time: newMistakes,
+    })
+    .select('id')
+    .single()
   if (insertError) {
     return NextResponse.json({ error: internalErrorMessage('word-grouping/submit', insertError) }, { status: 500 })
+  }
+
+  // The mistake count above was read BEFORE this insert, so several simultaneous wrong guesses all
+  // saw room for one more and all went in. Re-rank this player's wrong guesses now that ours is
+  // stored: if ours is past the limit, take it back and refuse.
+  if (!isCorrect && inserted) {
+    const { data: wrongSubs } = await supabase
+      .from('word_grouping_submissions')
+      .select('id')
+      .eq('round_id', round.id)
+      .eq('player_id', auth.player.id)
+      .eq('is_correct', false)
+      .order('submitted_at', { ascending: true })
+      .order('id', { ascending: true })
+    const rank = (wrongSubs ?? []).findIndex((s) => s.id === inserted.id)
+    if (rank >= WORD_GROUPING_MAX_MISTAKES) {
+      await supabase.from('word_grouping_submissions').delete().eq('id', inserted.id)
+      return NextResponse.json({ error: 'Out of guesses' }, { status: 400 })
+    }
   }
 
   const newCorrectCount = isCorrect ? correctCount + 1 : correctCount
