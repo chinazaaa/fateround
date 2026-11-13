@@ -768,16 +768,13 @@ export async function processRummyDiscard(
   const newHand = [...hand.slice(0, idx), ...hand.slice(idx + 1)]
   const newDiscard = pushDiscard(session.discard_pile ?? [], card)
 
-  const { error: hErr } = await supabase
-    .from(RUMMY_HANDS)
-    .update({ cards: newHand })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
-
   const nextIndex = advanceTurnIndex(session)
   const nextId = session.turn_order[nextIndex]
-  const { error: sErr } = await supabase
+  // Claim the session row with an optimistic-concurrency check on `updated_at` BEFORE touching the
+  // hand, like processRummyDraw. Without it, several concurrent discard requests from the same
+  // player each passed the turn checks above, each removed a card from the hand and each advanced
+  // the turn: extra cards shed in one turn, and cards lost from the game.
+  const { data: claim, error: sErr } = await supabase
     .from(RUMMY_SESSIONS)
     .update({
       discard_pile: newDiscard,
@@ -789,7 +786,17 @@ export async function processRummyDiscard(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
   if (sErr) return { error: internalErrorMessage('rummy', sErr) }
+  if ((claim?.length ?? 0) === 0) return { error: 'Another action already updated this turn — try again' }
+
+  const { error: hErr } = await supabase
+    .from(RUMMY_HANDS)
+    .update({ cards: newHand })
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
   return {}
 }
 
@@ -840,18 +847,12 @@ export async function processRummyGoOut(
   const melds = buildRummyMelds(hand, meldCards, { discard })
   if (!melds) return { error: 'That is not a valid lay-down — every card must belong to a set or run' }
 
-  // Empty the player's hand.
-  const { error: hErr } = await supabase
-    .from(RUMMY_HANDS)
-    .update({ cards: [] })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
-
   const discardPile = discard ? pushDiscard(session.discard_pile ?? [], discard) : (session.discard_pile ?? [])
   const topDiscard = discardPile[discardPile.length - 1] ?? null
 
-  const { error: sErr } = await supabase
+  // Claim the session row first (same optimistic check as draw/discard), so a concurrent discard,
+  // go-out or expire-turn cannot also land on this turn.
+  const { data: claim, error: sErr } = await supabase
     .from(RUMMY_SESSIONS)
     .update({
       phase: 'finished',
@@ -864,7 +865,18 @@ export async function processRummyGoOut(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
   if (sErr) return { error: internalErrorMessage('rummy', sErr) }
+  if ((claim?.length ?? 0) === 0) return { error: 'Another action already updated this turn — try again' }
+
+  // Empty the player's hand.
+  const { error: hErr } = await supabase
+    .from(RUMMY_HANDS)
+    .update({ cards: [] })
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
 
   await markGameFinished(supabase, gameId)
   return {}
