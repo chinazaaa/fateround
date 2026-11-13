@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { coercedNumber, optionalCoercedNumber } from './shared'
 import { triviaAnswerSchema } from './round-games'
+import { createGameSchema, boardGameLobbySettingsSchema } from './game'
 
 const field = coercedNumber((n) => n.int().min(0).max(3))
 
@@ -48,5 +49,25 @@ describe('triviaAnswerSchema choiceIndex', () => {
     expect(triviaAnswerSchema.safeParse({ ...base, choiceIndex: null }).success).toBe(false)
     expect(triviaAnswerSchema.parse({ ...base, choiceIndex: 0 }).choiceIndex).toBe(0)
     expect(triviaAnswerSchema.parse({ ...base, choiceIndex: '3' }).choiceIndex).toBe(3)
+  })
+})
+
+describe('optional game settings that are blank or null', () => {
+  it.each([
+    ['createGameSchema wordle_room_word_count', createGameSchema.shape.wordle_room_word_count],
+    ['createGameSchema monopoly_board_size', createGameSchema.shape.monopoly_board_size],
+    ['boardGameLobbySettingsSchema wordle_room_word_count', boardGameLobbySettingsSchema.shape.wordle_room_word_count],
+    ['boardGameLobbySettingsSchema monopoly_board_size', boardGameLobbySettingsSchema.shape.monopoly_board_size],
+  ])('%s treats blank and null as omitted', (_name, schema) => {
+    expect(schema.safeParse(undefined).success).toBe(true)
+    expect(schema.safeParse('').success).toBe(true)
+    expect(schema.safeParse(null).success).toBe(true)
+    expect(schema.safeParse(false).success).toBe(false)
+  })
+
+  it('still enforces the allowed Wordle word counts', () => {
+    const schema = createGameSchema.shape.wordle_room_word_count
+    expect(schema.safeParse('10').success).toBe(true)
+    expect(schema.safeParse(7).success).toBe(false)
   })
 })

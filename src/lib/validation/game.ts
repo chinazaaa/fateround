@@ -221,9 +221,7 @@ export const createGameSchema = z.object({
       'travel',
     ])
     .optional(),
-  wordle_room_word_count: coercedNumber((n) =>
-    n.int().refine((val: number) => [5, 10, 15, 20].includes(val))
-  ).optional(),
+  wordle_room_word_count: optionalCoercedNumber((n) => n.int().refine((val: number) => [5, 10, 15, 20].includes(val))),
   wordle_room_words: z
     .array(
       z.object({
@@ -507,9 +505,7 @@ export const boardGameLobbySettingsSchema = z.object({
       'travel',
     ])
     .optional(),
-  wordle_room_word_count: coercedNumber((n) =>
-    n.int().refine((val: number) => [5, 10, 15, 20].includes(val))
-  ).optional(),
+  wordle_room_word_count: optionalCoercedNumber((n) => n.int().refine((val: number) => [5, 10, 15, 20].includes(val))),
   wordle_room_words: z
     .array(
       z.object({
