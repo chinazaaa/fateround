@@ -4,6 +4,7 @@ import { hotSeatSubmissionSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { supabase as supabaseReadonly } from '@/lib/supabase'
 import { assertPlayer } from '@/lib/game-admin'
+import { playerIsViewer } from '@/lib/viewers'
 import { parseJsonBody } from '@/lib/parse-body'
 
 export async function POST(req: NextRequest) {
@@ -15,7 +16,11 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin()
 
   // Validate game exists and is active
-  const { data: game } = await supabase.from('games').select('id, status').eq('id', gameId).maybeSingle()
+  const { data: game } = await supabase
+    .from('games')
+    .select('id, status, session_started_at')
+    .eq('id', gameId)
+    .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
 
@@ -34,6 +39,11 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, gameId, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const playerId = auth.player.id
+
+  // Viewers (spectators, late joiners, eliminated players) watch read-only.
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Viewers cannot submit' }, { status: 403 })
+  }
 
   // Player cannot submit about themselves (the hot seat player)
   if (round.submitter_player_id === playerId) {
