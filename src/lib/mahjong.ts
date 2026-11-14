@@ -156,8 +156,13 @@ async function loadMahjong(
   timerSeconds: number
   error?: string
 }> {
-  const [sessionRes, statesRes, playersRes, gameRes] = await Promise.all([
-    supabase.from('mahjong_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+  // Read the session BEFORE the player states, never in parallel. Every transition writes the
+  // session and the hands in one transaction (mahjong_apply_transition), so a player-state read
+  // that starts after the session read is at least as new as that session version. If the session
+  // we read is already stale by the time we write, its updated_at CAS fails; a session read that is
+  // newer than the hand read can no longer happen.
+  const sessionRes = await supabase.from('mahjong_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  const [statesRes, playersRes, gameRes] = await Promise.all([
     supabase.from('mahjong_player_state').select('*').eq('game_id', gameId).order('player_order'),
     supabase.from('players').select('id, name').eq('game_id', gameId),
     supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle(),
