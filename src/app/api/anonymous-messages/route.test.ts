@@ -137,7 +137,7 @@ describe('POST /api/anonymous-messages', () => {
   })
 
   it('treats a zero-width-only message as empty', async () => {
-    for (const text of ['\u200B', '\u200B\u200C\u200D\u2060\uFEFF', ' \u200B ']) {
+    for (const text of ['\u200B', '\u200B\u200C\u200D\u2060\uFEFF', ' \u200B ', '\u061C', '\u2066\u2067\u2068\u2069']) {
       const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text })
       expect(res.status).toBe(400)
     }
