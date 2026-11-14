@@ -1295,7 +1295,7 @@ export async function processWhotDraw(
     timerSeconds,
     session.updated_at
   )
-  if (!won) return {}
+  if (!won) return { error: 'Another action already updated this turn — try again' }
 
   // Fold this draw's trophy counters forward. A draw under an active Pick 2/3 is a penalty the
   // player was made to take (`penaltyActive`), distinct from a voluntary single draw.
