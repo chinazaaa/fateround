@@ -101,4 +101,53 @@ describe('POST /api/anonymous-messages', () => {
     expect(insert).toHaveBeenCalledTimes(5)
     expect(rpc).toHaveBeenCalledTimes(1)
   })
+  it('rejects mediaUrl on a text message', async () => {
+    const res = await send({
+      gameId: 'abcd',
+      resumeToken: PLAYER.resume_token,
+      text: 'hi',
+      mediaUrl: 'https://tracker.example/p.gif',
+    })
+    expect(res.status).toBe(400)
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('rejects non-https gif URLs', async () => {
+    for (const mediaUrl of ['javascript:alert(1)', 'http://media.example/a.gif', 'data:image/gif;base64,AAAA']) {
+      const res = await send({
+        gameId: 'abcd',
+        resumeToken: PLAYER.resume_token,
+        messageType: 'gif',
+        mediaUrl,
+      })
+      expect(res.status).toBe(400)
+    }
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('still accepts an https gif', async () => {
+    const res = await send({
+      gameId: 'abcd',
+      resumeToken: PLAYER.resume_token,
+      messageType: 'gif',
+      mediaUrl: 'https://static.klipy.com/a.gif',
+    })
+    expect(res.status).toBe(200)
+    expect(insert).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a zero-width-only message as empty', async () => {
+    for (const text of ['\u200B', '\u200B\u200C\u200D\u2060\uFEFF', ' \u200B ']) {
+      const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text })
+      expect(res.status).toBe(400)
+    }
+    expect(insert).not.toHaveBeenCalled()
+  })
+
+  it('keeps emoji ZWJ sequences intact', async () => {
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'
+    const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text: family })
+    expect(res.status).toBe(200)
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ text: family }))
+  })
 })
