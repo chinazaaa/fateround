@@ -12,7 +12,11 @@
 -- Existing data: if a game already holds more than one approved claim (this race, or testing), keep
 -- the earliest and mark the rest rejected so the index can be built. Rows are never deleted.
 --
--- Additive and idempotent.
+-- Additive and idempotent. The lock is taken first so a claim that commits mid-migration cannot add
+-- a duplicate approved row after the cleanup snapshot and before the index build; it is held until
+-- the migration's transaction ends. Reads are not blocked.
+
+lock table public.bingo_claims in share row exclusive mode;
 
 update public.bingo_claims c
 set status = 'rejected'
