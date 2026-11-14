@@ -13,13 +13,16 @@ import { supabase } from '@/lib/supabase'
 import { GAME_SELECT } from '@/lib/supabase-selects'
 import { appDomain, appOrigin } from '@/lib/site'
 import { shareImageBlob } from '@/lib/share-image'
-import type { AnonymousMessage, Game } from '@/types'
+import type { AnonymousMessage, Game, Player } from '@/types'
 import { useToast } from '@/components/ui/Toast'
 import { CreateNewGameButton } from '@/components/ui/CreateNewGameButton'
 import { ExitIcon } from '@/components/host/host-icons'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useGameTableSync } from '@/hooks/useGameTableSync'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
+
+/** Stable reference: a fresh `[]` each render would recreate the hook's loader and re-run its load effect. */
+const NO_PLAYERS: Pick<Player, 'id' | 'name'>[] = []
 
 export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: string; hostToken: string }) {
   const { error: toastError, success } = useToast()
@@ -33,7 +36,7 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
   const sharingLock = useRef(false)
 
   const inboxEnabled = game?.status === 'active'
-  const { messages, removeMessage } = useAnonymousMessages(gameCode, !!inboxEnabled, [], { hostToken })
+  const { messages, removeMessage } = useAnonymousMessages(gameCode, !!inboxEnabled, NO_PLAYERS, { hostToken })
   useAnonymousMessageTrim(gameCode, game?.status === 'active')
 
   const load = useCallback(async (): Promise<boolean> => {

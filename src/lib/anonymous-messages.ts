@@ -134,11 +134,31 @@ export async function trimAnonymousMessagesIfDue(
 
   if (gameError) return { trimmed: 0 }
 
-  const lastTrimMs = game?.anonymous_messages_trimmed_at ? new Date(game.anonymous_messages_trimmed_at).getTime() : 0
+  const lastTrimAt: string | null = game?.anonymous_messages_trimmed_at ?? null
+  const lastTrimMs = lastTrimAt ? new Date(lastTrimAt).getTime() : 0
 
   if (Date.now() - lastTrimMs < ANONYMOUS_ROOM_TRIM_INTERVAL_MS) {
     return { trimmed: 0 }
   }
+
+  // Claim the trim window before deleting: a compare-and-swap on the timestamp we just read.
+  // Concurrent callers that passed the checks above all try this update, but only the one
+  // that still sees the old value gets a row back and goes on to delete.
+  const claimQuery = supabase
+    .from('games')
+    .update({ anonymous_messages_trimmed_at: new Date().toISOString() })
+    .eq('id', gameId)
+  const { data: claimed, error: claimError } = await (
+    lastTrimAt
+      ? claimQuery.eq('anonymous_messages_trimmed_at', lastTrimAt)
+      : claimQuery.is('anonymous_messages_trimmed_at', null)
+  ).select('id')
+
+  if (claimError || !claimed?.length) return { trimmed: 0 }
+
+  // If anything below fails, hand the window back so a later call can retry.
+  const releaseClaim = () =>
+    supabase.from('games').update({ anonymous_messages_trimmed_at: lastTrimAt }).eq('id', gameId)
 
   const { data: oldest, error: fetchError } = await supabase
     .from('anonymous_messages')
@@ -147,7 +167,10 @@ export async function trimAnonymousMessagesIfDue(
     .order('created_at', { ascending: true })
     .limit(ANONYMOUS_ROOM_TRIM_BATCH)
 
-  if (fetchError || !oldest?.length) return { trimmed: 0 }
+  if (fetchError || !oldest?.length) {
+    await releaseClaim()
+    return { trimmed: 0 }
+  }
 
   const { error: deleteError } = await supabase
     .from('anonymous_messages')
@@ -157,9 +180,10 @@ export async function trimAnonymousMessagesIfDue(
       oldest.map((row) => row.id)
     )
 
-  if (deleteError) return { trimmed: 0 }
-
-  await supabase.from('games').update({ anonymous_messages_trimmed_at: new Date().toISOString() }).eq('id', gameId)
+  if (deleteError) {
+    await releaseClaim()
+    return { trimmed: 0 }
+  }
 
   return { trimmed: oldest.length }
 }

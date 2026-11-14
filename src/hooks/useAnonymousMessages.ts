@@ -41,10 +41,13 @@ export const ANONYMOUS_MESSAGES_HISTORY_LIMIT = 50
  */
 export type HostInboxOptions = { hostToken: string }
 
+/** Stable default so omitting `players` does not recreate `nameById` (and the loader) every render. */
+const NO_PLAYERS: Pick<Player, 'id' | 'name'>[] = []
+
 export function useAnonymousMessages(
   gameCode: string,
   enabled: boolean,
-  players: Pick<Player, 'id' | 'name'>[] = [],
+  players: Pick<Player, 'id' | 'name'>[] = NO_PLAYERS,
   hostInbox?: HostInboxOptions
 ) {
   const hostToken = hostInbox?.hostToken
