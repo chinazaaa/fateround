@@ -53,6 +53,8 @@ export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
 // Anonymous messages (POST /api/anonymous-messages)
 // ---------------------------------------------------------------------------
 
+const INVISIBLE_CHARS = /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g
+
 export const createAnonymousMessageSchema = z.object({
   gameId: gameCodeString(),
   // The SENDER's secret, not their public id. Posting used to be authorized by a bare
@@ -62,12 +64,24 @@ export const createAnonymousMessageSchema = z.object({
   resumeToken: z.string().min(4),
   text: z
     .string()
-    .transform((s) => stripHtml(s.trim()))
+    .transform((s) => {
+      const cleaned = stripHtml(s.trim())
+      // A message made only of zero-width / invisible format characters is empty. ZWJ inside
+      // an emoji sequence still leaves visible characters behind, so those are untouched.
+      return cleaned.replace(INVISIBLE_CHARS, '').trim() === '' ? '' : cleaned
+    })
     .pipe(z.string().max(500))
     .default(''),
   replyToId: uuidString('replyToId').optional(),
   messageType: z.enum(['text', 'gif']).default('text'),
-  mediaUrl: z.string().url().max(2000).optional().nullable(),
+  // GIF messages only (the route rejects it on text); https so no javascript:/http trackers.
+  mediaUrl: z
+    .string()
+    .url()
+    .max(2000)
+    .refine((u) => u.startsWith('https://') && !u.includes('@'), 'mediaUrl must be an https URL')
+    .optional()
+    .nullable(),
 })
 
 export type CreateAnonymousMessageInput = z.infer<typeof createAnonymousMessageSchema>

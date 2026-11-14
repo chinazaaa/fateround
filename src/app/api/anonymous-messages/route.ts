@@ -67,6 +67,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'GIFs are not supported on secret message boards' }, { status: 400 })
   }
 
+  if (messageType === 'text' && body.mediaUrl) {
+    return NextResponse.json({ error: 'Media is only allowed on GIF messages' }, { status: 400 })
+  }
   if (messageType === 'text' && !text.trim()) {
     return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
   }
