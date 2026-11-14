@@ -34,7 +34,20 @@ function normalizeMessage(row: RawAnonymousMessage, nameById: Map<string, string
  */
 export const ANONYMOUS_MESSAGES_HISTORY_LIMIT = 50
 
-export function useAnonymousMessages(gameCode: string, enabled: boolean, players: Pick<Player, 'id' | 'name'>[] = []) {
+/**
+ * Secret Message boards are host-only: `anonymous_messages` is not readable by anon for them, so
+ * the host reads through POST /api/anonymous-messages/list with the host token (polling only,
+ * no realtime, no sender identity). Omit `hostInbox` for anonymous-room clients.
+ */
+export type HostInboxOptions = { hostToken: string }
+
+export function useAnonymousMessages(
+  gameCode: string,
+  enabled: boolean,
+  players: Pick<Player, 'id' | 'name'>[] = [],
+  hostInbox?: HostInboxOptions
+) {
+  const hostToken = hostInbox?.hostToken
   const [messages, setMessages] = useState<AnonymousMessage[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -53,6 +66,23 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean, players
   }, [])
 
   const loadMessages = useCallback(async (): Promise<boolean> => {
+    if (hostToken) {
+      try {
+        const r = await fetch('/api/anonymous-messages/list', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gameId: gameCode, hostToken }),
+        })
+        if (!r.ok) return false
+        const json = (await r.json()) as { messages?: Omit<AnonymousMessage, 'player_id'>[] }
+        // Sender identity is never sent to the host; player_id stays empty.
+        setMessages((json.messages ?? []).map((m) => ({ ...m, player_id: '' })))
+        setLoading(false)
+        return true
+      } catch {
+        return false
+      }
+    }
     const res = await supabase
       .from('anonymous_messages')
       .select(
@@ -73,7 +103,7 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean, players
     setMessages((res.data ?? []).map((row) => normalizeMessage(row as RawAnonymousMessage, names)).reverse())
     setLoading(false)
     return true
-  }, [gameCode, nameById])
+  }, [gameCode, hostToken, nameById])
 
   useEffect(() => {
     if (!enabled) return
@@ -81,7 +111,8 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean, players
   }, [enabled, loadMessages])
 
   useEffect(() => {
-    if (!enabled) return
+    // Host inbox is poll-only: RLS hides these rows from anon, so realtime would deliver nothing.
+    if (!enabled || hostToken) return
 
     const channel = supabase
       .channel(`anon-messages-${gameCode}`)
@@ -103,10 +134,10 @@ export function useAnonymousMessages(gameCode: string, enabled: boolean, players
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [enabled, gameCode, mergeMessage, removeMessage])
+  }, [enabled, gameCode, hostToken, mergeMessage, removeMessage])
 
   usePolling(() => loadMessages(), [gameCode, loadMessages], {
-    intervalMs: POLL_INTERVALS.realtimeFallback,
+    intervalMs: hostToken ? POLL_INTERVALS.activeGame : POLL_INTERVALS.realtimeFallback,
     enabled,
   })
 

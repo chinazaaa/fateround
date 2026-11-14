@@ -33,7 +33,7 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
   const sharingLock = useRef(false)
 
   const inboxEnabled = game?.status === 'active'
-  const { messages, removeMessage } = useAnonymousMessages(gameCode, !!inboxEnabled)
+  const { messages, removeMessage } = useAnonymousMessages(gameCode, !!inboxEnabled, [], { hostToken })
   useAnonymousMessageTrim(gameCode, game?.status === 'active')
 
   const load = useCallback(async (): Promise<boolean> => {
