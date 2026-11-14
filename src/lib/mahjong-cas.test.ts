@@ -89,26 +89,43 @@ function tableWith(southHand: string[]): MahjongPlayerState[] {
 }
 
 type StateWrite = { id: string; patch: Record<string, unknown> }
+type RpcCall = {
+  fn: string
+  args: {
+    p_game_id: string
+    p_expected_updated_at: string
+    p_session_patch: Record<string, unknown>
+    p_state_writes: StateWrite[]
+  }
+}
 type Fake = {
   client: SupabaseClient
-  stateWrites: StateWrite[]
-  sessionWrites: Record<string, unknown>[]
-  order: string[]
+  rpcCalls: RpcCall[]
+  /** Any write that bypassed the transactional RPC (direct table updates). */
+  directWrites: string[]
 }
 
 /**
- * Fake Supabase client. `casWins(call)` decides whether the compare-and-swap on the session row
- * (`.eq('updated_at', ...)`) matches a row. `order` records the table of every write, in order.
+ * Fake Supabase client. `casWins(expectedUpdatedAt)` decides whether the compare-and-swap inside the
+ * `mahjong_apply_transition` RPC matches the session row (the RPC returns {status:'conflict'} when
+ * it does not). `rpcError` makes the RPC itself fail (nothing is written by the real function then).
+ * Direct table writes are recorded in `directWrites` so tests can assert none happen.
  */
 function fakeSupabase(
   session: MahjongSession,
   states: MahjongPlayerState[],
-  casWins: (expectedUpdatedAt: string) => boolean
+  casWins: (expectedUpdatedAt: string) => boolean,
+  rpcError?: string
 ): Fake {
-  const stateWrites: StateWrite[] = []
-  const sessionWrites: Record<string, unknown>[] = []
-  const order: string[] = []
+  const rpcCalls: RpcCall[] = []
+  const directWrites: string[] = []
   const client = {
+    rpc: async (fn: string, args: RpcCall['args']) => {
+      rpcCalls.push({ fn, args })
+      if (rpcError) return { data: null, error: { message: rpcError } }
+      if (!casWins(args.p_expected_updated_at)) return { data: { status: 'conflict' }, error: null }
+      return { data: { status: 'ok', updated_at: 'NEW-VERSION' }, error: null }
+    },
     from(table: string) {
       if (table === 'mahjong_sessions') {
         return {
@@ -121,9 +138,8 @@ function fakeSupabase(
                 return chain
               },
               select: async () => {
-                order.push(table)
+                directWrites.push(`${table}:${Object.keys(patch).join(',')}`)
                 const win = casWins(expected)
-                sessionWrites.push(patch)
                 return { data: win ? [{ game_id: session.game_id, updated_at: 'NEW-VERSION' }] : [], error: null }
               },
             }
@@ -135,9 +151,8 @@ function fakeSupabase(
         return {
           select: () => ({ eq: () => ({ order: async () => ({ data: states, error: null }) }) }),
           update: (patch: Record<string, unknown>) => ({
-            eq: async (_col: string, id: string) => {
-              order.push(table)
-              stateWrites.push({ id, patch })
+            eq: async () => {
+              directWrites.push(`${table}:${Object.keys(patch).join(',')}`)
               return { error: null }
             },
           }),
@@ -154,7 +169,7 @@ function fakeSupabase(
       throw new Error(`unexpected table ${table}`)
     },
   } as unknown as SupabaseClient
-  return { client, stateWrites, sessionWrites, order }
+  return { client, rpcCalls, directWrites }
 }
 
 type Scenario = {
@@ -162,7 +177,9 @@ type Scenario = {
   session: MahjongSession
   states: MahjongPlayerState[]
   run: (client: SupabaseClient) => Promise<{ error?: string }>
-  expectWinnerWrites: (writes: StateWrite[]) => void
+  /** Number of RPC calls a winning request makes (the action itself, plus any automatic follow-up draw). */
+  rpcCount: number
+  expectFirstCall: (call: RpcCall) => void
 }
 
 const scenarios: Scenario[] = [
@@ -171,12 +188,14 @@ const scenarios: Scenario[] = [
     session: makeSession(),
     states: tableWith(['m6', 'm9', 'p2', 'p4', 'p6', 's1', 's3', 's5', 'we', 'we', 'wn', 'wn', 'dr', 'dg']),
     run: (c) => processMahjongDiscard(c, 'MJCAS', 'south-player', 'm6'),
-    expectWinnerWrites: (writes) => {
-      // The discarder's write, then the next player's auto-draw (nobody can claim).
-      expect(writes).toHaveLength(2)
-      expect(writes[0]?.id).toBe('south-player-state')
-      expect(writes[0]?.patch.hand).not.toContain('m6')
-      expect(writes[0]?.patch.discarded).toEqual(['m1', 'm6'])
+    // The discard itself, then the next player's auto-draw (nobody can claim).
+    rpcCount: 2,
+    expectFirstCall: (call) => {
+      expect(call.args.p_session_patch).toMatchObject({ phase: 'claim', last_action: 'discard' })
+      expect(call.args.p_state_writes).toHaveLength(1)
+      expect(call.args.p_state_writes[0]?.id).toBe('south-player-state')
+      expect(call.args.p_state_writes[0]?.patch.hand).not.toContain('m6')
+      expect(call.args.p_state_writes[0]?.patch.discarded).toEqual(['m1', 'm6'])
     },
   },
   {
@@ -184,10 +203,12 @@ const scenarios: Scenario[] = [
     session: makeSession({ phase: 'draw' }),
     states: tableWith(FILLER),
     run: (c) => processMahjongDraw(c, 'MJCAS', 'south-player'),
-    expectWinnerWrites: (writes) => {
-      expect(writes).toHaveLength(1)
-      expect(writes[0]?.patch.hand).toContain('m4')
-      expect(writes[0]?.patch.last_drawn_tile).toBe('m4')
+    rpcCount: 1,
+    expectFirstCall: (call) => {
+      expect(call.args.p_session_patch).toMatchObject({ phase: 'discard', wall: ['m1', 'm2', 'm3'] })
+      expect(call.args.p_state_writes).toHaveLength(1)
+      expect(call.args.p_state_writes[0]?.patch.hand).toContain('m4')
+      expect(call.args.p_state_writes[0]?.patch.last_drawn_tile).toBe('m4')
     },
   },
   {
@@ -195,11 +216,12 @@ const scenarios: Scenario[] = [
     session: makeSession({ wall: ['p9', 'p8', 'p7', 'p6'] }),
     states: tableWith(['m5', 'm5', 'm5', 'm5', 'p1', 'p2', 'p4', 's1', 's3', 's5', 'we', 'wn', 'dr', 'dg']),
     run: (c) => processMahjongClaim(c, 'MJCAS', 'south-player', 'kong', ['m5']),
-    expectWinnerWrites: (writes) => {
-      // The meld write comes first, then the replacement draw.
-      expect(writes).toHaveLength(2)
-      expect(writes[0]?.patch.melds).toHaveLength(1)
-      expect(writes[1]?.patch.last_drawn_tile).toBeTruthy()
+    // The meld and the replacement draw travel in the same call as the session patch.
+    rpcCount: 1,
+    expectFirstCall: (call) => {
+      expect(call.args.p_state_writes).toHaveLength(2)
+      expect(call.args.p_state_writes[0]?.patch.melds).toHaveLength(1)
+      expect(call.args.p_state_writes[1]?.patch.last_drawn_tile).toBeTruthy()
     },
   },
   {
@@ -212,9 +234,11 @@ const scenarios: Scenario[] = [
     }),
     states: tableWith(['p5', 'p5', 'm1', 'm4', 'm7', 's1', 's4', 's7', 'we', 'wn', 'dr', 'dg', 'ws']),
     run: (c) => processMahjongClaim(c, 'MJCAS', 'south-player', 'pung'),
-    expectWinnerWrites: (writes) => {
-      expect(writes).toHaveLength(1)
-      expect(writes[0]?.patch.melds).toHaveLength(1)
+    rpcCount: 1,
+    expectFirstCall: (call) => {
+      expect(call.args.p_session_patch).toMatchObject({ phase: 'discard' })
+      expect(call.args.p_state_writes).toHaveLength(1)
+      expect(call.args.p_state_writes[0]?.patch.melds).toHaveLength(1)
     },
   },
   {
@@ -222,41 +246,65 @@ const scenarios: Scenario[] = [
     session: makeSession({ ruleset: 'riichi' }),
     states: tableWith(['m1', 'm2', 'm3', 'p1', 'p2', 'p3', 's1', 's2', 's3', 'we', 'we', 'wn', 'wn']),
     run: (c) => processMahjongRiichi(c, 'MJCAS', 'south-player'),
-    expectWinnerWrites: (writes) => {
-      expect(writes).toEqual([{ id: 'south-player-state', patch: { riichi_declared: true, riichi_discard_index: 1 } }])
+    rpcCount: 1,
+    expectFirstCall: (call) => {
+      // The 1000-point stick and the riichi flag are written in the same transaction.
+      expect(call.args.p_session_patch).toMatchObject({
+        riichi_sticks: 1,
+        last_action: 'riichi',
+        scores: { 'south-player': 24000 },
+      })
+      expect(call.args.p_state_writes).toEqual([
+        { id: 'south-player-state', patch: { riichi_declared: true, riichi_discard_index: 1 } },
+      ])
     },
   },
 ]
 
-describe('Mahjong session compare-and-swap ordering', () => {
+describe('Mahjong session compare-and-swap + player state in one transaction', () => {
   for (const scenario of scenarios) {
-    it(`${scenario.name}: loser of the session CAS never writes player state`, async () => {
+    it(`${scenario.name}: loser of the CAS gets a conflict and nothing else is written`, async () => {
       const fake = fakeSupabase(scenario.session, scenario.states, () => false)
       const result = await scenario.run(fake.client)
       expect(result.error).toBe(CONFLICT)
-      expect(fake.sessionWrites).toHaveLength(1)
-      expect(fake.stateWrites).toEqual([])
+      expect(fake.rpcCalls).toHaveLength(1)
+      expect(fake.directWrites).toEqual([])
     })
 
-    it(`${scenario.name}: winner claims the session first, then writes player state`, async () => {
+    it(`${scenario.name}: winner makes ONE rpc carrying the session patch and the state writes`, async () => {
       const fake = fakeSupabase(scenario.session, scenario.states, () => true)
       const result = await scenario.run(fake.client)
       expect(result.error).toBeUndefined()
-      expect(fake.order[0]).toBe('mahjong_sessions')
-      scenario.expectWinnerWrites(fake.stateWrites)
+      expect(fake.rpcCalls).toHaveLength(scenario.rpcCount)
+      expect(fake.directWrites).toEqual([])
+      const first = fake.rpcCalls[0]!
+      expect(first.fn).toBe('mahjong_apply_transition')
+      expect(first.args.p_game_id).toBe('MJCAS')
+      expect(first.args.p_expected_updated_at).toBe(NOW)
+      scenario.expectFirstCall(first)
+    })
+
+    it(`${scenario.name}: rpc error is returned and nothing else is written`, async () => {
+      const fake = fakeSupabase(scenario.session, scenario.states, () => true, 'boom')
+      const result = await scenario.run(fake.client)
+      expect(result.error).toBe('boom')
+      expect(fake.rpcCalls).toHaveLength(1)
+      expect(fake.directWrites).toEqual([])
     })
   }
 
-  it('discard: session patch carries the discard', async () => {
+  it('discard: a follow-up auto-draw chains on the updated_at returned by the first rpc', async () => {
     const scenario = scenarios[0]!
     const fake = fakeSupabase(scenario.session, scenario.states, () => true)
     await scenario.run(fake.client)
-    expect(fake.sessionWrites[0]).toMatchObject({ phase: 'claim', last_action: 'discard' })
+    expect(fake.rpcCalls[1]?.args.p_expected_updated_at).toBe('NEW-VERSION')
+    expect(fake.rpcCalls[1]?.args.p_session_patch).toMatchObject({ phase: 'discard' })
+    expect(fake.rpcCalls[1]?.args.p_state_writes[0]?.id).toBe('west-player-state')
   })
 
   it('concurrent discards of different tiles by one player: exactly one hand write lands', async () => {
     const scenario = scenarios[0]!
-    // One shared session row: the first CAS to arrive wins, every later one matches 0 rows.
+    // One shared session row: the first CAS to arrive wins, every later one reports a conflict.
     let version = NOW
     const casWins = (expected: string) => {
       if (expected !== version) return false
@@ -269,11 +317,13 @@ describe('Mahjong session compare-and-swap ordering', () => {
     )
     expect(results.filter((r) => !r.error)).toHaveLength(1)
     expect(results.filter((r) => r.error === CONFLICT)).toHaveLength(2)
-    // The winner's discard write plus the next player's auto-draw; the two losers wrote nothing.
-    expect(fake.stateWrites.filter((w) => w.id === 'south-player-state')).toHaveLength(1)
+    // Only the winner's rpc applied south's hand write; losers' rpcs were rejected as a whole.
+    const southWrites = fake.rpcCalls.filter((c) => c.args.p_state_writes.some((w) => w.id === 'south-player-state'))
+    expect(southWrites).toHaveLength(3)
+    expect(fake.directWrites).toEqual([])
   })
 
-  it('pass (riichi win pass): loser does not set temporary furiten, winner does', async () => {
+  it('pass (riichi win pass): temporary furiten rides in the same rpc as the claim pass', async () => {
     const session = makeSession({
       ruleset: 'riichi',
       phase: 'claim',
@@ -281,15 +331,16 @@ describe('Mahjong session compare-and-swap ordering', () => {
       last_discard: { tile: 'we', player_id: 'east-player', discard_index: 0 },
       discard_pile: [{ tile: 'we', player_id: 'east-player' }],
     })
-    // South waits on 'we' (m123 p123 s123 + we we + wn wn wn?) -> use a clear 13-tile tenpai.
     const states = tableWith(['m1', 'm2', 'm3', 'p1', 'p2', 'p3', 's1', 's2', 's3', 'we', 'we', 'wn', 'wn'])
     const loser = fakeSupabase(session, states, () => false)
     expect((await processMahjongPass(loser.client, 'MJCAS', 'south-player')).error).toBe(CONFLICT)
-    expect(loser.stateWrites).toEqual([])
+    expect(loser.directWrites).toEqual([])
 
     const winner = fakeSupabase(session, states, () => true)
     expect((await processMahjongPass(winner.client, 'MJCAS', 'south-player')).error).toBeUndefined()
-    expect(winner.order[0]).toBe('mahjong_sessions')
-    expect(winner.stateWrites).toEqual([{ id: 'south-player-state', patch: { temporary_furiten: true } }])
+    expect(winner.directWrites).toEqual([])
+    expect(winner.rpcCalls[0]?.args.p_state_writes).toEqual([
+      { id: 'south-player-state', patch: { temporary_furiten: true } },
+    ])
   })
 })
