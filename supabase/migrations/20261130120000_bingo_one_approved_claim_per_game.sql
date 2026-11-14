@@ -14,7 +14,10 @@
 --
 -- Additive and idempotent. The lock is taken first so a claim that commits mid-migration cannot add
 -- a duplicate approved row after the cleanup snapshot and before the index build; it is held until
--- the migration's transaction ends. Reads are not blocked.
+-- the explicit transaction below ends (the migration runner does not wrap files in one, and LOCK
+-- TABLE is only allowed inside a transaction block). Reads are not blocked.
+
+begin;
 
 lock table public.bingo_claims in share row exclusive mode;
 
@@ -32,3 +35,5 @@ where c.status = 'approved'
 create unique index if not exists bingo_claims_one_approved_per_game
   on public.bingo_claims (game_id)
   where status = 'approved';
+
+commit;
