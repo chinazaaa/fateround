@@ -204,12 +204,17 @@ export async function POST(req: NextRequest) {
 
     // The picker sets the question once. Re-sending the same number is an idempotent retry;
     // a different number is rejected so the revealed question cannot be rewritten.
-    const { data: ownPick } = await supabase
+    const { data: ownPick, error: ownPickError } = await supabase
       .from('votes')
       .select('picked_number')
       .eq('round_id', roundId)
       .eq('player_id', playerId)
       .maybeSingle()
+    // A failed read must not look like "no pick yet": the write-once guard would be skipped and a
+    // different number could rewrite the revealed question.
+    if (ownPickError) {
+      return NextResponse.json({ error: internalErrorMessage('votes', ownPickError) }, { status: 500 })
+    }
     if (ownPick?.picked_number != null) {
       if (ownPick.picked_number === pickedNumber) {
         return NextResponse.json({

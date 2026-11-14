@@ -10,6 +10,7 @@ let game: Record<string, unknown> = {}
 let round: Record<string, unknown> = {}
 let animeMetadata: unknown = null
 let ownVote: { picked_number: number | null } | null = null
+let ownVoteError: { message: string } | null = null
 const upserts: unknown[] = []
 const roundUpdates: unknown[] = []
 
@@ -34,7 +35,7 @@ function makeClient() {
         maybeSingle: async () => {
           if (table === 'games') return { data: game, error: null }
           if (table === 'rounds') return { data: { ...round, anime_metadata: animeMetadata }, error: null }
-          if (table === 'votes') return { data: ownVote, error: null }
+          if (table === 'votes') return { data: ownVote, error: ownVoteError }
           return { data: null, error: null }
         },
         then: (resolve: (v: unknown) => void) =>
@@ -64,6 +65,7 @@ beforeEach(() => {
   upserts.length = 0
   roundUpdates.length = 0
   ownVote = null
+  ownVoteError = null
   animeMetadata = null
   game = { game_type: 'would_you_rather', status: 'active', timer_seconds: 30, custom_questions: null }
   round = {
@@ -130,6 +132,15 @@ describe('POST /api/votes Pick a Number', () => {
     expect(res.status).toBe(200)
     expect((await res.json()).revealedQuestion).toBe('Q two')
     expect(roundUpdates).toHaveLength(0)
+  })
+
+  it('fails closed when the existing-pick lookup errors, instead of treating it as no pick', async () => {
+    ownVote = null
+    ownVoteError = { message: 'db down' }
+    const res = await send({ pickedNumber: 3 })
+    expect(res.status).toBe(500)
+    expect(roundUpdates).toHaveLength(0)
+    expect(upserts).toHaveLength(0)
   })
 
   it('rejects a pre-pick on a pending round and a re-pick on a finished round', async () => {
