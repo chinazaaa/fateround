@@ -13,7 +13,11 @@ type GameRow = { anonymous_messages_trimmed_at: string | null }
  * The games UPDATE honours `.eq('anonymous_messages_trimmed_at', x)` / `.is(..., null)` against the
  * shared row, so concurrent callers behave like a compare-and-swap.
  */
-function makeFake({ messageCount = ANONYMOUS_ROOM_MAX_MESSAGES + 50, deleteFails = false } = {}) {
+function makeFake({
+  messageCount = ANONYMOUS_ROOM_MAX_MESSAGES + 50,
+  deleteFails = false,
+  onDelete,
+}: { messageCount?: number; deleteFails?: boolean; onDelete?: (game: GameRow) => void } = {}) {
   const game: GameRow = { anonymous_messages_trimmed_at: null }
   const state = { deletes: 0 }
 
@@ -39,6 +43,7 @@ function makeFake({ messageCount = ANONYMOUS_ROOM_MAX_MESSAGES + 50, deleteFails
           delete: () => ({
             in: async () => {
               state.deletes += 1
+              onDelete?.(game)
               return { error: deleteFails ? { message: 'boom' } : null }
             },
           }),
@@ -115,5 +120,19 @@ describe('trimAnonymousMessagesIfDue', () => {
     expect(result.trimmed).toBe(0)
     expect(state.deletes).toBe(1)
     expect(game.anonymous_messages_trimmed_at).toBeNull()
+  })
+
+  it('does not overwrite a newer claim when a slow trim fails after its window expired', async () => {
+    const newerClaim = '2099-01-01T00:00:00.000Z'
+    const { client, game } = makeFake({
+      deleteFails: true,
+      // While our delete is in flight, another caller claims a fresh window.
+      onDelete: (row) => {
+        row.anonymous_messages_trimmed_at = newerClaim
+      },
+    })
+    const result = await trimAnonymousMessagesIfDue(client, 'ABC123')
+    expect(result.trimmed).toBe(0)
+    expect(game.anonymous_messages_trimmed_at).toBe(newerClaim)
   })
 })

@@ -144,10 +144,8 @@ export async function trimAnonymousMessagesIfDue(
   // Claim the trim window before deleting: a compare-and-swap on the timestamp we just read.
   // Concurrent callers that passed the checks above all try this update, but only the one
   // that still sees the old value gets a row back and goes on to delete.
-  const claimQuery = supabase
-    .from('games')
-    .update({ anonymous_messages_trimmed_at: new Date().toISOString() })
-    .eq('id', gameId)
+  const claimedAt = new Date().toISOString()
+  const claimQuery = supabase.from('games').update({ anonymous_messages_trimmed_at: claimedAt }).eq('id', gameId)
   const { data: claimed, error: claimError } = await (
     lastTrimAt
       ? claimQuery.eq('anonymous_messages_trimmed_at', lastTrimAt)
@@ -156,9 +154,15 @@ export async function trimAnonymousMessagesIfDue(
 
   if (claimError || !claimed?.length) return { trimmed: 0 }
 
-  // If anything below fails, hand the window back so a later call can retry.
+  // If anything below fails, hand the window back so a later call can retry — but only while the
+  // row still holds OUR claim. If this trim ran past the interval and another caller has since
+  // claimed a newer window, restoring the old value would overwrite theirs.
   const releaseClaim = () =>
-    supabase.from('games').update({ anonymous_messages_trimmed_at: lastTrimAt }).eq('id', gameId)
+    supabase
+      .from('games')
+      .update({ anonymous_messages_trimmed_at: lastTrimAt })
+      .eq('id', gameId)
+      .eq('anonymous_messages_trimmed_at', claimedAt)
 
   const { data: oldest, error: fetchError } = await supabase
     .from('anonymous_messages')
