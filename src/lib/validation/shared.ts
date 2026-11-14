@@ -36,6 +36,31 @@ export const sanitizedString = (min: number, max: number) =>
     .transform((s) => stripHtml(stripBidiControls(stripNul(s)).trim()))
     .pipe(z.string().min(min, `Must be at least ${min} character(s)`).max(max, `Must be at most ${max} characters`))
 
+/**
+ * Zod number field for request bodies that tolerates numeric strings ("3") but, unlike
+ * `z.coerce.number()`, does not turn junk into 0. `z.coerce.number()` runs `Number(x)`, so `""`,
+ * `"  "`, `null`, `false` and `[]` all silently became 0 (e.g. an empty Trivia answer recorded
+ * choice A). Here blank/`null` count as "not provided" (so `.optional()` fields stay optional and
+ * required ones fail), and booleans, arrays and objects are rejected as invalid.
+ *
+ * Pass the usual number checks as a builder: `coercedNumber((n) => n.int().min(0).max(3))`. Use
+ * `optionalCoercedNumber` for a field that may be left out.
+ */
+function blankToUndefined(value: unknown): unknown {
+  if (value === null || value === undefined) return undefined
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') return value.trim() === '' ? undefined : Number(value)
+  return Number.NaN
+}
+
+export function coercedNumber(build: (n: z.ZodNumber) => z.ZodNumber = (n) => n) {
+  return z.preprocess(blankToUndefined, build(z.number()))
+}
+
+export function optionalCoercedNumber(build: (n: z.ZodNumber) => z.ZodNumber = (n) => n) {
+  return z.preprocess(blankToUndefined, build(z.number()).optional())
+}
+
 /** Zod transform: trim + strip HTML + uppercase (for game codes). */
 export const gameCodeString = () =>
   z

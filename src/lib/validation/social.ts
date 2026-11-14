@@ -7,6 +7,7 @@ import {
   stripHtml,
   pairFlagEnum,
   wyrChoiceEnum,
+  coercedNumber,
 } from './shared'
 
 // ---------------------------------------------------------------------------
@@ -77,13 +78,18 @@ export const deleteAnonymousMessageSchema = z.object({
   hostToken: hostTokenString(),
 })
 
+export const listSecretMessagesSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+})
+
 export type DeleteAnonymousMessageInput = z.infer<typeof deleteAnonymousMessageSchema>
 
 export const anonymousRoomBanSchema = z.object({
   gameId: gameCodeString(),
   playerId: uuidString('playerId'),
   hostToken: hostTokenString(),
-  durationMinutes: z.coerce.number().int().min(1).max(120),
+  durationMinutes: coercedNumber((n) => n.int().min(1).max(120)),
 })
 
 export type AnonymousRoomBanInput = z.infer<typeof anonymousRoomBanSchema>

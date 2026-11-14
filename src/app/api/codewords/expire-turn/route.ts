@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { cluePhaseUpdate, isTurnExpired, otherTeam } from '@/lib/codewords'
+import { cluePhaseUpdate, isTurnExpired, maskCodewordsBoardKey, otherTeam } from '@/lib/codewords'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { CodewordsBoard, CodewordsTeam } from '@/types'
@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
   if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
 
   const typedBoard = board as CodewordsBoard
-  if (typedBoard.winner) return NextResponse.json({ success: true, board: typedBoard })
+  if (typedBoard.winner) return NextResponse.json({ success: true, board: maskCodewordsBoardKey(typedBoard) })
   if (!typedBoard.turn_deadline_at || !isTurnExpired(typedBoard.turn_deadline_at)) {
-    return NextResponse.json({ success: true, board: typedBoard, skipped: true })
+    return NextResponse.json({ success: true, board: maskCodewordsBoardKey(typedBoard), skipped: true })
   }
 
   let update: Record<string, unknown>
@@ -58,5 +58,5 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/expire-turn', error) }, { status: 500 })
-  return NextResponse.json({ success: true, board: updated })
+  return NextResponse.json({ success: true, board: maskCodewordsBoardKey(updated as CodewordsBoard) })
 }

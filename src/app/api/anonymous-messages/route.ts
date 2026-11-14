@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: internalErrorMessage('anonymous-messages', error) }, { status: 500 })
 
-  await trimAnonymousMessagesIfDue(supabase, gameCode)
+  await trimAnonymousMessagesIfDue(getSupabaseAdmin(), gameCode)
 
   return NextResponse.json({ success: true })
 }
@@ -152,7 +152,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Messages can only be removed during an active session' }, { status: 400 })
   }
 
-  const { data: message } = await supabase
+  // Service role: Secret Message boards are not readable by anon (host-only inbox).
+  const { data: message } = await getSupabaseAdmin()
     .from('anonymous_messages')
     .select('id')
     .eq('id', messageId)
