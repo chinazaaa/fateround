@@ -6,6 +6,7 @@ import { npatDraftSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { playerIsViewer } from '@/lib/viewers'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, npatDraftSchema)
@@ -39,6 +40,9 @@ export async function POST(req: NextRequest) {
   // Authorize by the secret resume_token; the resolved player.id is authoritative.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
+  }
 
   const { data: existing } = await supabase
     .from('npat_answers')

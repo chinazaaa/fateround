@@ -31,6 +31,14 @@ export async function POST(req: NextRequest) {
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
   const { session, state } = guard
 
+  if (!session.level_order.includes(levelId)) {
+    return NextResponse.json({ error: 'That level is not in this round' }, { status: 400 })
+  }
+  // Finished runners can no longer die: acknowledge as ignored (report-clear's convention).
+  if (state.current_level_index >= session.level_order.length) {
+    return NextResponse.json({ ok: true, ignored: true, deaths: state.deaths })
+  }
+
   const { error: eventError } = await supabase.from('troll_run_events').insert({
     game_id: gameId,
     player_id: state.player_id,

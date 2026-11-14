@@ -6,6 +6,7 @@ import { npatSubmitSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { playerIsViewer } from '@/lib/viewers'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, npatSubmitSchema)
@@ -39,6 +40,19 @@ export async function POST(req: NextRequest) {
   // Authorize by the secret resume_token; the resolved player.id is authoritative.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
+  }
+
+  // A repeat submit is an idempotent no-op (same convention as draft): the first submission
+  // stands and cannot be overwritten.
+  const { data: existing } = await supabase
+    .from('npat_answers')
+    .select('submitted_at')
+    .eq('round_id', roundId)
+    .eq('player_id', auth.player.id)
+    .maybeSingle()
+  if (existing?.submitted_at) return NextResponse.json({ success: true, alreadySubmitted: true })
 
   const now = new Date().toISOString()
   const payload = {
