@@ -100,6 +100,9 @@ export const RATE_LIMITS = {
   // new signed-in device calls this once. Sized to absorb reconnect storms without stalling a
   // real recovery — it never gates gameplay, only hands back the token the profile already owns.
   hostReclaim: { bucket: 'host-reclaim', max: 60, windowSeconds: 300 },
+  // Host inbox poll for Secret Message boards: one request per 10 s per host (~30 per window), so
+  // 120 per 5 minutes leaves room for visibility refreshes and a few open tabs.
+  anonymousMessagesList: { bucket: 'anonymous-messages-list', max: 120, windowSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered

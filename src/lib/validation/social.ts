@@ -78,6 +78,11 @@ export const deleteAnonymousMessageSchema = z.object({
   hostToken: hostTokenString(),
 })
 
+export const listSecretMessagesSchema = z.object({
+  gameId: gameCodeString(),
+  hostToken: hostTokenString(),
+})
+
 export type DeleteAnonymousMessageInput = z.infer<typeof deleteAnonymousMessageSchema>
 
 export const anonymousRoomBanSchema = z.object({
