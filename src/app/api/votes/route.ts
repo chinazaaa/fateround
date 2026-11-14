@@ -469,6 +469,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: internalErrorMessage('votes', rpcError) }, { status: 500 })
     }
     const outcome = result as { status?: string; picked_number?: number | null } | null
+    if (outcome?.status === 'game_not_active') {
+      return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+    }
     if (outcome?.status === 'round_not_active') {
       return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
     }

@@ -20,8 +20,16 @@ as $$
 declare
   v_locked uuid;
   v_status text;
+  v_game_status text;
   v_existing integer;
 begin
+  -- FOR SHARE conflicts with the UPDATE that finishes a game, so a pick and game completion
+  -- serialise: either the game is already finished here, or completion waits for this pick.
+  select status into v_game_status from public.games where id = upper(p_game_id) for share;
+  if v_game_status is distinct from 'active' then
+    return jsonb_build_object('status', 'game_not_active');
+  end if;
+
   select id, status into v_locked, v_status from public.rounds where id = p_round_id for update;
   if v_locked is null then
     raise exception 'pick_a_number_submit: round % not found', p_round_id;

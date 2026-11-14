@@ -158,6 +158,13 @@ describe('POST /api/votes Pick a Number', () => {
     expect((await res.json()).error).toBe('Round is not active')
   })
 
+  it('rejects with 400 when the function finds the game finished after the route check', async () => {
+    rpcResult = { data: { status: 'game_not_active' }, error: null }
+    const res = await send({ pickedNumber: 2 })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Game is not active')
+  })
+
   it('returns 500 when the rpc errors', async () => {
     rpcResult = { data: null, error: { message: 'db down' } }
     const res = await send({ pickedNumber: 2 })
