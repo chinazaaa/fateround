@@ -136,3 +136,25 @@ $$;
 -- authenticated). This writes hidden Mahjong state, so only the service role may call it.
 revoke execute on function public.mahjong_apply_transition(text, timestamptz, jsonb, jsonb) from public, anon, authenticated;
 grant execute on function public.mahjong_apply_transition(text, timestamptz, jsonb, jsonb) to service_role;
+
+-- The session `updated_at` is the optimistic-concurrency version, so every write must move it to a
+-- value that has never been used before. The app stamps it with a millisecond timestamp and the RPC
+-- above with now(); two writes in the same millisecond (or one transaction's now() lagging another's
+-- commit) could repeat a value and let a stale compare-and-swap succeed. This trigger overrides the
+-- supplied value with one that is strictly greater than the previous version, at microsecond
+-- precision, for every update of mahjong_sessions.
+create or replace function public.mahjong_sessions_bump_version()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  new.updated_at := greatest(clock_timestamp(), old.updated_at + interval '1 microsecond');
+  return new;
+end;
+$$;
+
+drop trigger if exists mahjong_sessions_bump_version on public.mahjong_sessions;
+create trigger mahjong_sessions_bump_version
+  before update on public.mahjong_sessions
+  for each row execute function public.mahjong_sessions_bump_version();
