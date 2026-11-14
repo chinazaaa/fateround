@@ -480,7 +480,7 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
-        spectator: spectatorOnJoin(gameRow as Game, true),
+        spectator: spectatorForActiveJoin(gameRow as Game, true),
       })
       .select()
       .single()
