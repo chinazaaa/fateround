@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
+import { playerIsViewer } from '@/lib/viewers'
+import { isMatchingPairsGame, parseGameType } from '@/lib/game-types'
 import { parseJsonBody } from '@/lib/parse-body'
 import { internalErrorMessage } from '@/lib/api-errors'
 import {
@@ -10,6 +12,7 @@ import {
   finishMatchingPairsRoundIfAllDone,
   MATCHING_PAIRS_POINTS_PER_PAIR,
   MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
+  matchingPairsGameSessionExpired,
   type MatchingPairsGridSize,
 } from '@/lib/memory-match'
 
@@ -34,6 +37,23 @@ const flipSchema = z.object({
   /** true = matched pair, false = mismatch attempt. */
   isMatch: z.boolean(),
 })
+
+/** Grace (seconds) added to the round timer so a flip made just before time-up still lands. */
+const DEADLINE_GRACE_SECONDS = 2
+
+/**
+ * Plausibility floor: every resolved attempt (match or miss) takes two card clicks
+ * plus the player looking at the board. 300 ms per attempt, averaged cumulatively
+ * since the round started, is far faster than any human can sustain (a perfect-memory
+ * speedrunner still needs two clicks and a render per pair). The bound is cumulative
+ * rather than per-request so network jitter that bunches requests cannot trip it, and
+ * the round's `started_at` can only be earlier than the player's first click, so it
+ * can only make the real elapsed time longer than measured here.
+ */
+const MIN_MS_PER_ATTEMPT = 300
+
+/** Postgres unique_violation. */
+const PG_UNIQUE_VIOLATION = '23505'
 
 const playerLocks = new Map<string, Promise<void>>()
 
@@ -63,11 +83,14 @@ export async function POST(req: NextRequest) {
   // Verify game is active and read round info.
   const { data: game } = await supabase
     .from('games')
-    .select('id, status, current_round_number, rounds_count')
+    .select('id, status, game_type, session_started_at, timer_seconds, current_round_number, rounds_count')
     .eq('id', code)
     .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+  if (!isMatchingPairsGame(parseGameType(game.game_type))) {
+    return NextResponse.json({ error: 'Not a Matching Pairs game' }, { status: 400 })
+  }
 
   const currentRoundNumber = game.current_round_number ?? 1
   const totalRounds = game.rounds_count ?? 1
@@ -77,16 +100,35 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const playerId = auth.player.id
 
+  // Viewers (spectators, late joiners, eliminated players) watch read-only.
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Viewers cannot submit' }, { status: 403 })
+  }
+
   const release = await acquireLock(playerId)
   try {
     // Load the active round to get metadata.
     const { data: round } = await supabase
       .from('rounds')
-      .select('id, memory_match_metadata')
+      .select('id, status, started_at, memory_match_metadata')
       .eq('game_id', code)
       .eq('round_number', currentRoundNumber)
       .maybeSingle()
     if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
+
+    if (round.status !== 'active') return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+
+    // Same anchor as the expire route: each round's own started_at (round 1 falls back
+    // to the session start). A small grace covers in-flight requests at time-up.
+    const roundAnchor = round.started_at ?? game.session_started_at
+    const timerSeconds = game.timer_seconds
+    if (
+      timerSeconds &&
+      timerSeconds > 0 &&
+      matchingPairsGameSessionExpired(roundAnchor, timerSeconds + DEADLINE_GRACE_SECONDS)
+    ) {
+      return NextResponse.json({ error: 'Time is up' }, { status: 400 })
+    }
 
     const meta = parseMatchingPairsMetadata(round.memory_match_metadata)
     if (!meta) return NextResponse.json({ error: 'Round metadata missing' }, { status: 500 })
@@ -131,6 +173,20 @@ export async function POST(req: NextRequest) {
       .eq('round_id', round.id)
       .eq('player_id', playerId)
       .order('submitted_at', { ascending: true })
+
+    // Cannot match more pairs than the grid holds.
+    const priorMatches = (prevSubs ?? []).filter((s) => (s as { is_match: boolean }).is_match).length
+    if (isMatch && priorMatches >= gridSizePairs) {
+      return NextResponse.json({ error: 'All pairs already matched' }, { status: 409 })
+    }
+
+    // Plausibility floor (see MIN_MS_PER_ATTEMPT).
+    if (roundAnchor) {
+      const elapsedMs = Date.now() - new Date(roundAnchor).getTime()
+      if (elapsedMs < ((prevSubs ?? []).length + 1) * MIN_MS_PER_ATTEMPT) {
+        return NextResponse.json({ error: 'Flipping too fast' }, { status: 429 })
+      }
+    }
 
     // Reconstruct current_streak from the last run of consecutive matches.
     let currentStreak = 0
@@ -178,6 +234,11 @@ export async function POST(req: NextRequest) {
       points_after: pointsAfter,
     })
     if (subError) {
+      // A concurrent duplicate (e.g. a second instance past the in-memory lock) hit a
+      // unique index: a client error, not a server fault.
+      if ((subError as { code?: string }).code === PG_UNIQUE_VIOLATION) {
+        return NextResponse.json({ error: 'This pair was already matched' }, { status: 400 })
+      }
       return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', subError) }, { status: 500 })
     }
 
