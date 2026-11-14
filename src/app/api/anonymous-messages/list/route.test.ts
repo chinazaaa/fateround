@@ -3,6 +3,12 @@ import { GAME_CODE, HOST_TOKEN, WRONG_TOKEN, gameRow, jsonRequest, makeSupabaseS
 
 vi.mock('server-only', () => ({}))
 
+const { rateLimit } = vi.hoisted(() => ({ rateLimit: vi.fn(async (): Promise<Response | null> => null) }))
+vi.mock('@/lib/rate-limit', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/rate-limit')>()
+  return { ...actual, enforceRateLimit: rateLimit }
+})
+
 let game: Record<string, unknown> | null = null
 const selects: unknown[] = []
 
@@ -46,6 +52,8 @@ beforeAll(async () => {
 beforeEach(() => {
   game = gameRow({ status: 'active', game_type: 'secret_message' })
   selects.length = 0
+  rateLimit.mockReset()
+  rateLimit.mockResolvedValue(null)
 })
 
 const call = (body: unknown) => POST(jsonRequest('/api/anonymous-messages/list', body))
@@ -55,6 +63,14 @@ describe('POST /api/anonymous-messages/list', () => {
   it('rejects a missing hostToken', async () => {
     const res = await call({ gameId: GAME_CODE })
     expect(res.status).toBe(400)
+  })
+
+  it('returns the limiter response before touching the database when rate limited', async () => {
+    rateLimit.mockResolvedValue(new Response(JSON.stringify({ error: 'Too many requests' }), { status: 429 }))
+    game = null // would 404 if the route got as far as the lookup
+    const res = await call(valid())
+    expect(res.status).toBe(429)
+    expect(selects).toHaveLength(0)
   })
 
   it('rejects a wrong hostToken with 403', async () => {

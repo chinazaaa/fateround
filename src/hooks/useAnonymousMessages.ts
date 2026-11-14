@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { AnonymousMessage, Player } from '@/types'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
@@ -53,6 +53,10 @@ export function useAnonymousMessages(
   const hostToken = hostInbox?.hostToken
   const [messages, setMessages] = useState<AnonymousMessage[]>([])
   const [loading, setLoading] = useState(true)
+  // Host reads can overlap (mount + visibility refresh). Each gets a generation; only a response newer
+  // than the last applied one may replace the list, and a removal invalidates reads started before it.
+  const hostRequestRef = useRef(0)
+  const hostAppliedRef = useRef(0)
 
   const nameById = useCallback(() => new Map(players.map((p) => [p.id, p.name])), [players])
 
@@ -65,11 +69,14 @@ export function useAnonymousMessages(
   )
 
   const removeMessage = useCallback((messageId: string) => {
+    // Drop host responses requested before this removal so they cannot restore the message.
+    hostAppliedRef.current = hostRequestRef.current
     setMessages((prev) => prev.filter((m) => m.id !== messageId))
   }, [])
 
   const loadMessages = useCallback(async (): Promise<boolean> => {
     if (hostToken) {
+      const generation = ++hostRequestRef.current
       try {
         const r = await fetch('/api/anonymous-messages/list', {
           method: 'POST',
@@ -79,7 +86,10 @@ export function useAnonymousMessages(
         if (!r.ok) return false
         const json = (await r.json()) as { messages?: Omit<AnonymousMessage, 'player_id'>[] }
         // Sender identity is never sent to the host; player_id stays empty.
-        setMessages((json.messages ?? []).map((m) => ({ ...m, player_id: '' })))
+        if (generation > hostAppliedRef.current) {
+          hostAppliedRef.current = generation
+          setMessages((json.messages ?? []).map((m) => ({ ...m, player_id: '' })))
+        }
         setLoading(false)
         return true
       } catch {

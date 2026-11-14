@@ -3,6 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { assertHostAny } from '@/lib/game-admin'
 import { isSecretMessageGame, parseGameType } from '@/lib/game-types'
 import { parseJsonBody } from '@/lib/parse-body'
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { listSecretMessagesSchema } from '@/lib/validation'
 
@@ -20,6 +21,9 @@ const SECRET_MESSAGE_LIST_LIMIT = 1000
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, listSecretMessagesSchema)
   if (bodyError) return bodyError
+
+  const limited = await enforceRateLimit(req, RATE_LIMITS.anonymousMessagesList)
+  if (limited) return limited
 
   const gameCode = body.gameId.toUpperCase()
   const admin = getSupabaseAdmin()
