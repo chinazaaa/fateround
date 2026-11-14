@@ -11,6 +11,7 @@ let round: Record<string, unknown> = {}
 let animeMetadata: unknown = null
 let ownVote: { picked_number: number | null } | null = null
 let ownVoteError: { message: string } | null = null
+let upsertError: { message: string } | null = null
 const upserts: unknown[] = []
 const roundUpdates: unknown[] = []
 
@@ -30,7 +31,7 @@ function makeClient() {
         },
         upsert: (row: unknown) => {
           upserts.push(row)
-          return Promise.resolve({ error: null })
+          return Promise.resolve({ error: upsertError })
         },
         maybeSingle: async () => {
           if (table === 'games') return { data: game, error: null }
@@ -66,6 +67,7 @@ beforeEach(() => {
   roundUpdates.length = 0
   ownVote = null
   ownVoteError = null
+  upsertError = null
   animeMetadata = null
   game = { game_type: 'would_you_rather', status: 'active', timer_seconds: 30, custom_questions: null }
   round = {
@@ -141,6 +143,14 @@ describe('POST /api/votes Pick a Number', () => {
     expect(res.status).toBe(500)
     expect(roundUpdates).toHaveLength(0)
     expect(upserts).toHaveLength(0)
+  })
+
+  it('rolls the reveal back when saving the pick fails, so a retry is not stuck with a revealed question', async () => {
+    upsertError = { message: 'db down' }
+    const res = await send({ pickedNumber: 2 })
+    expect(res.status).toBe(500)
+    // reveal first, then compensated back to null
+    expect(roundUpdates).toEqual([{ mlt_question: 'Q two' }, { mlt_question: null }])
   })
 
   it('rejects a pre-pick on a pending round and a re-pick on a finished round', async () => {

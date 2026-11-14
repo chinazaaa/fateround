@@ -95,6 +95,10 @@ export async function POST(req: NextRequest) {
   const roundIds = round.participant_ids as string[]
   const roundIdSet = new Set(roundIds)
 
+  // Pick a Number reveals the question (rounds.mlt_question) before the vote is saved. If saving the
+  // vote then fails, the reveal is rolled back so the picker is not left with a revealed question and
+  // no pick (which would let a different number overwrite it on the next request).
+  let revealedThisRequest = false
   let row: {
     kiss_participant_id: string | null
     marry_participant_id: string | null
@@ -264,6 +268,7 @@ export async function POST(req: NextRequest) {
     if (revealError) {
       return NextResponse.json({ error: internalErrorMessage('votes', revealError) }, { status: 500 })
     }
+    revealedThisRequest = true
   } else if (isNeverHaveIEver(gameType)) {
     const wyrChoice = rawWyrChoice === 'a' || rawWyrChoice === 'b' ? rawWyrChoice : null
     if (!wyrChoice) {
@@ -492,7 +497,13 @@ export async function POST(req: NextRequest) {
     { onConflict: 'player_id,round_id' }
   )
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('votes', error) }, { status: 500 })
+  if (error) {
+    if (revealedThisRequest) {
+      // Best effort: no pick was stored for this round, so no question should be revealed either.
+      await supabase.from('rounds').update({ mlt_question: null }).eq('id', roundId)
+    }
+    return NextResponse.json({ error: internalErrorMessage('votes', error) }, { status: 500 })
+  }
 
   if (isPickANumber(gameType)) {
     const pool = parsePickANumberPool(game.custom_questions)
