@@ -213,7 +213,6 @@ export async function POST(req: NextRequest) {
     wordIndex: result.nextWordIndex,
     wordsSolved,
     finished: result.finished,
-    nextWord: result.finished ? null : (words[result.nextWordIndex] ?? null),
     guessId: recordedResult?.guess_id ?? null,
   })
 }
