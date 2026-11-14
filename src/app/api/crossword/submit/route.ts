@@ -99,6 +99,11 @@ export async function POST(req: NextRequest) {
     via_hint: hint,
   })
   if (insertError) {
+    // A concurrent identical submit won the race (unique index on the player's correct cell):
+    // answer exactly like the sequential duplicate above. The winner already ran the finish check.
+    if (insertError.code === '23505') {
+      return NextResponse.json({ success: true, isCorrect: true, alreadySolved: true })
+    }
     return NextResponse.json({ error: internalErrorMessage('crossword/submit', insertError) }, { status: 500 })
   }
 
