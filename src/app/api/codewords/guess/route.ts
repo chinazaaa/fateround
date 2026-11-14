@@ -3,7 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { codewordsGuessSchema } from '@/lib/validation'
 import { parseJsonBody } from '@/lib/parse-body'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { finishCodewordsGame } from '@/lib/codewords'
+import { finishCodewordsGame, maskCodewordsBoardKey } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { CodewordsBoard, CodewordsCellType } from '@/types'
@@ -94,5 +94,5 @@ export async function POST(req: NextRequest) {
     if (cleanupError) console.error(`codewords/guess: chat cleanup failed for ${code} — not retried`, cleanupError)
   }
 
-  return NextResponse.json({ success: true, board: updated, cellType })
+  return NextResponse.json({ success: true, board: maskCodewordsBoardKey(updated), cellType })
 }

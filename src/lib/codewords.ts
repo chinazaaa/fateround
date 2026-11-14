@@ -749,3 +749,25 @@ export function mergeCodewordsBoardUpdate(
     key_totals: incoming.key_totals ?? prev.key_totals,
   }
 }
+
+/**
+ * The board as every non-spymaster may see it: the key card is masked down to the cells already
+ * revealed (unrevealed cells become null, the actual secret), and the red/blue/neutral/assassin
+ * split is sent as `key_totals` because it can't be derived from a masked key. Mirrors what
+ * POST /api/codewords/board returns to operatives.
+ *
+ * Routes that act as an operative, or with no authentication at all, must return the board
+ * through this instead of the raw database row: the service-role read includes the full `key`.
+ * Once the game has a winner the key is no longer secret and is returned as is.
+ */
+export function maskCodewordsBoardKey(board: CodewordsBoard): CodewordsBoard {
+  if (board.winner) return board
+  const fullKey = (board.key ?? []) as CodewordsBoard['key']
+  const key_totals = fullKey.reduce<Record<string, number>>((acc, cell) => {
+    if (cell) acc[cell] = (acc[cell] ?? 0) + 1
+    return acc
+  }, {})
+  const revealed = new Set((board.revealed_indices ?? []) as number[])
+  const key = fullKey.map((cell, index) => (revealed.has(index) ? cell : null)) as CodewordsBoard['key']
+  return { ...board, key, key_totals }
+}
