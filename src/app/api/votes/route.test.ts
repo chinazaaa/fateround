@@ -9,14 +9,17 @@ const PLAYER = { id: 'p-1', spectator: false, is_eliminated: false, joined_at: n
 let game: Record<string, unknown> = {}
 let round: Record<string, unknown> = {}
 let animeMetadata: unknown = null
-let ownVote: { picked_number: number | null } | null = null
-let ownVoteError: { message: string } | null = null
-let upsertError: { message: string } | null = null
+let rpcResult: { data: unknown; error: { message: string } | null } = { data: { status: 'ok' }, error: null }
+const rpcCalls: { fn: string; args: unknown }[] = []
 const upserts: unknown[] = []
 const roundUpdates: unknown[] = []
 
 function makeClient() {
   return {
+    rpc: async (fn: string, args: unknown) => {
+      rpcCalls.push({ fn, args })
+      return rpcResult
+    },
     from: (table: string) => {
       let updating = false
       const chain: Record<string, unknown> = {
@@ -31,12 +34,11 @@ function makeClient() {
         },
         upsert: (row: unknown) => {
           upserts.push(row)
-          return Promise.resolve({ error: upsertError })
+          return Promise.resolve({ error: null })
         },
         maybeSingle: async () => {
           if (table === 'games') return { data: game, error: null }
           if (table === 'rounds') return { data: { ...round, anime_metadata: animeMetadata }, error: null }
-          if (table === 'votes') return { data: ownVote, error: ownVoteError }
           return { data: null, error: null }
         },
         then: (resolve: (v: unknown) => void) =>
@@ -65,9 +67,8 @@ function send(extra: Record<string, unknown>) {
 beforeEach(() => {
   upserts.length = 0
   roundUpdates.length = 0
-  ownVote = null
-  ownVoteError = null
-  upsertError = null
+  rpcCalls.length = 0
+  rpcResult = { data: { status: 'ok', picked_number: 2 }, error: null }
   animeMetadata = null
   game = { game_type: 'would_you_rather', status: 'active', timer_seconds: 30, custom_questions: null }
   round = {
@@ -113,44 +114,61 @@ describe('POST /api/votes Pick a Number', () => {
     round.submitter_player_id = PLAYER.id
   })
 
-  it('lets the picker pick once and reveals the question', async () => {
+  it('reveals and saves the pick through one atomic rpc call', async () => {
     const res = await send({ pickedNumber: 2 })
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ success: true, pickedNumber: 2, revealedQuestion: 'Q two' })
-    expect(roundUpdates).toEqual([{ mlt_question: 'Q two' }])
+    expect(rpcCalls).toEqual([
+      {
+        fn: 'pick_a_number_submit',
+        args: {
+          p_game_id: 'ABCD',
+          p_round_id: ROUND_ID,
+          p_player_id: PLAYER.id,
+          p_picked_number: 2,
+          p_question: 'Q two',
+        },
+      },
+    ])
+    expect(roundUpdates).toHaveLength(0)
+    expect(upserts).toHaveLength(0)
   })
 
-  it('rejects a second, different pick and leaves the question alone', async () => {
-    ownVote = { picked_number: 2 }
+  it('treats re-sending the same pick as an idempotent retry', async () => {
+    rpcResult = { data: { status: 'already_picked', picked_number: 2 }, error: null }
+    const res = await send({ pickedNumber: 2 })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, pickedNumber: 2, revealedQuestion: 'Q two' })
+    expect(roundUpdates).toHaveLength(0)
+    expect(upserts).toHaveLength(0)
+  })
+
+  it('rejects a second, different pick', async () => {
+    rpcResult = { data: { status: 'already_picked', picked_number: 2 }, error: null }
     const res = await send({ pickedNumber: 3 })
     expect(res.status).toBe(400)
     expect(roundUpdates).toHaveLength(0)
     expect(upserts).toHaveLength(0)
   })
 
-  it('treats re-sending the same pick as an idempotent retry', async () => {
-    ownVote = { picked_number: 2 }
+  it('rejects with 400 when the function finds the round ended after the route check', async () => {
+    rpcResult = { data: { status: 'round_not_active' }, error: null }
     const res = await send({ pickedNumber: 2 })
-    expect(res.status).toBe(200)
-    expect((await res.json()).revealedQuestion).toBe('Q two')
-    expect(roundUpdates).toHaveLength(0)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Round is not active')
   })
 
-  it('fails closed when the existing-pick lookup errors, instead of treating it as no pick', async () => {
-    ownVote = null
-    ownVoteError = { message: 'db down' }
-    const res = await send({ pickedNumber: 3 })
+  it('returns 500 when the rpc errors', async () => {
+    rpcResult = { data: null, error: { message: 'db down' } }
+    const res = await send({ pickedNumber: 2 })
     expect(res.status).toBe(500)
     expect(roundUpdates).toHaveLength(0)
     expect(upserts).toHaveLength(0)
   })
 
-  it('rolls the reveal back when saving the pick fails, so a retry is not stuck with a revealed question', async () => {
-    upsertError = { message: 'db down' }
-    const res = await send({ pickedNumber: 2 })
-    expect(res.status).toBe(500)
-    // reveal first, then compensated back to null
-    expect(roundUpdates).toEqual([{ mlt_question: 'Q two' }, { mlt_question: null }])
+  it('does not call the rpc for an out-of-range number', async () => {
+    expect((await send({ pickedNumber: 9 })).status).toBe(400)
+    expect(rpcCalls).toHaveLength(0)
   })
 
   it('rejects a pre-pick on a pending round and a re-pick on a finished round', async () => {
@@ -158,7 +176,7 @@ describe('POST /api/votes Pick a Number', () => {
     expect((await send({ pickedNumber: 1 })).status).toBe(400)
     round.status = 'finished'
     expect((await send({ pickedNumber: 1 })).status).toBe(400)
-    expect(roundUpdates).toHaveLength(0)
+    expect(rpcCalls).toHaveLength(0)
   })
 })
 

@@ -95,10 +95,6 @@ export async function POST(req: NextRequest) {
   const roundIds = round.participant_ids as string[]
   const roundIdSet = new Set(roundIds)
 
-  // Pick a Number reveals the question (rounds.mlt_question) before the vote is saved. If saving the
-  // vote then fails, the reveal is rolled back so the picker is not left with a revealed question and
-  // no pick (which would let a different number overwrite it on the next request).
-  let revealedThisRequest = false
   let row: {
     kiss_participant_id: string | null
     marry_participant_id: string | null
@@ -206,30 +202,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Pick a number between 1 and ${pool.length}` }, { status: 400 })
     }
 
-    // The picker sets the question once. Re-sending the same number is an idempotent retry;
-    // a different number is rejected so the revealed question cannot be rewritten.
-    const { data: ownPick, error: ownPickError } = await supabase
-      .from('votes')
-      .select('picked_number')
-      .eq('round_id', roundId)
-      .eq('player_id', playerId)
-      .maybeSingle()
-    // A failed read must not look like "no pick yet": the write-once guard would be skipped and a
-    // different number could rewrite the revealed question.
-    if (ownPickError) {
-      return NextResponse.json({ error: internalErrorMessage('votes', ownPickError) }, { status: 500 })
-    }
-    if (ownPick?.picked_number != null) {
-      if (ownPick.picked_number === pickedNumber) {
-        return NextResponse.json({
-          success: true,
-          pickedNumber,
-          revealedQuestion: pickANumberQuestionAt(pool, pickedNumber),
-        })
-      }
-      return NextResponse.json({ error: 'You already picked a number this round' }, { status: 400 })
-    }
-
+    // The write-once pick guard, the question reveal and the vote save happen atomically in the
+    // pick_a_number_submit Postgres function (called below).
     const { data: priorPicks } = await supabase
       .from('votes')
       .select('picked_number')
@@ -260,15 +234,6 @@ export async function POST(req: NextRequest) {
       target_participant_id: null,
       picked_number: pickedNumber,
     }
-
-    const { error: revealError } = await supabase
-      .from('rounds')
-      .update({ mlt_question: revealedQuestion })
-      .eq('id', roundId)
-    if (revealError) {
-      return NextResponse.json({ error: internalErrorMessage('votes', revealError) }, { status: 500 })
-    }
-    revealedThisRequest = true
   } else if (isNeverHaveIEver(gameType)) {
     const wyrChoice = rawWyrChoice === 'a' || rawWyrChoice === 'b' ? rawWyrChoice : null
     if (!wyrChoice) {
@@ -487,6 +452,38 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (isPickANumber(gameType)) {
+    const pool = parsePickANumberPool(game.custom_questions)
+    const picked = row.picked_number as number
+    const revealedQuestion = pickANumberQuestionAt(pool, picked)
+    // One transaction: lock the round, reject a different existing pick, reveal the question and
+    // save the vote. Concurrent picks serialise on the round lock, so a loser never touches the winner's reveal.
+    const { data: result, error: rpcError } = await supabase.rpc('pick_a_number_submit', {
+      p_game_id: gameId,
+      p_round_id: roundId,
+      p_player_id: playerId,
+      p_picked_number: picked,
+      p_question: revealedQuestion,
+    })
+    if (rpcError) {
+      return NextResponse.json({ error: internalErrorMessage('votes', rpcError) }, { status: 500 })
+    }
+    const outcome = result as { status?: string; picked_number?: number | null } | null
+    if (outcome?.status === 'round_not_active') {
+      return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+    }
+    if (outcome?.status === 'already_picked' && outcome.picked_number !== picked) {
+      return NextResponse.json({ error: 'You already picked a number this round' }, { status: 400 })
+    }
+    if (outcome?.status !== 'ok' && outcome?.status !== 'already_picked') {
+      return NextResponse.json(
+        { error: internalErrorMessage('votes', new Error('unexpected pick result')) },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ success: true, pickedNumber: picked, revealedQuestion })
+  }
+
   const { error } = await supabase.from('votes').upsert(
     {
       player_id: playerId,
@@ -498,21 +495,7 @@ export async function POST(req: NextRequest) {
   )
 
   if (error) {
-    if (revealedThisRequest) {
-      // Best effort: no pick was stored for this round, so no question should be revealed either.
-      await supabase.from('rounds').update({ mlt_question: null }).eq('id', roundId)
-    }
     return NextResponse.json({ error: internalErrorMessage('votes', error) }, { status: 500 })
-  }
-
-  if (isPickANumber(gameType)) {
-    const pool = parsePickANumberPool(game.custom_questions)
-    const picked = row.picked_number ?? null
-    return NextResponse.json({
-      success: true,
-      pickedNumber: picked,
-      revealedQuestion: picked ? pickANumberQuestionAt(pool, picked) : null,
-    })
   }
 
   return NextResponse.json({ success: true })
