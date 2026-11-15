@@ -952,7 +952,13 @@ export async function processRummyExpireTurn(
   if (state.error) return { error: state.error }
   const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Session not found' }
-  if (session.phase === 'finished') return { skipped: true }
+  if (session.phase === 'finished') {
+    // A previous finalization may have committed the session but failed on the games row: retry it
+    // (single-winner active -> finished guard; a no-op when the game is already finished).
+    const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
+    return { skipped: true }
+  }
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -1030,7 +1036,10 @@ async function finalizeByLowestHand(
   const meldable = maxMeldableCount(winnerHand)
   const detail =
     winnerHand.length === 0 ? 'empty hand' : `closest to going out (${meldable}/${winnerHand.length} cards would meld)`
-  const { error } = await supabase
+  // Version-check against the snapshot this decision was made from: a go-out (or another finish)
+  // may have committed after we loaded the session, and we must not overwrite its winner or run
+  // finalization from the stale snapshot.
+  const { data: claimed, error } = await supabase
     .from(RUMMY_SESSIONS)
     .update({
       phase: 'finished',
@@ -1040,7 +1049,10 @@ async function finalizeByLowestHand(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
   if (error) return { error: internalErrorMessage('rummy', error) }
+  if (!claimed || claimed.length === 0) return { error: RUMMY_CONFLICT_ERROR }
   // markGameFinished flips games.status from 'active' → 'finished'. If THAT write fails the
   // rummy_sessions row is already finished but games.status is still active — game-tick would
   // keep poking the expire route while the client sees a finished session. Propagate so the

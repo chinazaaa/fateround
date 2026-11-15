@@ -4,7 +4,7 @@ import type { RummyCard, RummySuit } from '@/types'
 
 vi.mock('server-only', () => ({}))
 
-import { processRummyDiscard, processRummyGoOut } from './rummy'
+import { processRummyDiscard, processRummyGoOut, processRummyExpireTurn } from './rummy'
 
 /**
  * Concurrent discard / go-out requests from the same player used to each pass the turn checks and
@@ -27,6 +27,10 @@ type Faults = {
   gamesUpdateError?: string
   /** Records the order in which the sessions/hands reads start and finish. */
   readLog?: string[]
+  /** Runs right after the rummy_sessions row has been read (lets a test commit something after the load). */
+  afterSessionRead?: (tables: Record<string, Row[]>) => void
+  /** Make the game clock look expired (game_duration_seconds / session_started_at in the past). */
+  clockExpired?: boolean
   /** Runs right after a transition commits (lets a test interleave another request). */
   afterRpc?: (tables: Record<string, Row[]>) => void
 }
@@ -60,7 +64,15 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
       { id: 'p1', game_id: 'ABCD', name: 'Ana' },
       { id: 'p2', game_id: 'ABCD', name: 'Ben' },
     ],
-    games: [{ id: 'ABCD', status: 'active', timer_seconds: 0, game_duration_seconds: 0, session_started_at: null }],
+    games: [
+      {
+        id: 'ABCD',
+        status: 'active',
+        timer_seconds: 0,
+        game_duration_seconds: faults.clockExpired ? 60 : 0,
+        session_started_at: faults.clockExpired ? '2020-01-01T00:00:00.000Z' : null,
+      },
+    ],
   }
   let tick = 0
   const gamesWrites = { count: 0 }
@@ -94,7 +106,9 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
         }
         return { data: rows.map((r) => ({ ...r })), error: null }
       }
-      return { data: match().map((r) => ({ ...r })), error: null }
+      const out = match().map((r) => ({ ...r }))
+      if (table === 'rummy_sessions') faults.afterSessionRead?.(tables)
+      return { data: out, error: null }
     }
     const api: Record<string, unknown> = {
       select: () => api,
@@ -287,5 +301,34 @@ describe('Rummy concurrent turn actions', () => {
       'rummy_player_hands:start',
       'rummy_player_hands:end',
     ])
+  })
+  it('does not let a clock-expiry finish overwrite a go-out that committed after it loaded the session', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      clockExpired: true,
+      // A go-out wins the session right after the expiry request has read it.
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        Object.assign(t.rummy_sessions[0], { phase: 'finished', winner_player_id: 'p2', updated_at: 'committed-v1' })
+      },
+    }
+    const { client, tables, gamesWrites } = makeDb(hand, faults)
+
+    const res = await processRummyExpireTurn(client, 'ABCD')
+    expect(res.error).toBeTruthy()
+    // The go-out's committed winner is untouched and the stale snapshot did not run finalization.
+    expect(tables.rummy_sessions[0].winner_player_id).toBe('p2')
+    expect(gamesWrites.count).toBe(0)
+  })
+
+  it('retries a failed game finalization from the turn-expiry path when the session is already finished', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const { client, tables } = makeDb(hand)
+    Object.assign(tables.rummy_sessions[0], { phase: 'finished', winner_player_id: 'p1' })
+    expect(tables.games[0].status).toBe('active')
+
+    const res = await processRummyExpireTurn(client, 'ABCD')
+    expect(res).toEqual({ skipped: true })
+    expect(tables.games[0].status).toBe('finished')
   })
 })
