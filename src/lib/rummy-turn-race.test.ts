@@ -25,6 +25,8 @@ type Faults = {
   handWriteFails?: boolean
   /** Update of the `games` row (markGameFinished) fails. */
   gamesUpdateError?: string
+  /** Records the order in which the sessions/hands reads start and finish. */
+  readLog?: string[]
   /** Runs right after a transition commits (lets a test interleave another request). */
   afterRpc?: (tables: Record<string, Row[]>) => void
 }
@@ -71,7 +73,13 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
         filters.every(([k, v]) => (k === 'id' && table === 'games' ? r.id === v : r[k] === v))
       )
     const run = async () => {
-      await Promise.resolve()
+      const logName = !patch && (table === 'rummy_sessions' || table === 'rummy_player_hands') ? table : null
+      if (logName) faults.readLog?.push(`${logName}:start`)
+      // The session read is the slow one, so a parallel Promise.all would start the hands read
+      // (and even finish it) before the session read ends; only sequential reads keep the order.
+      if (faults.readLog && logName === 'rummy_sessions') await new Promise((r) => setTimeout(r, 0))
+      else await Promise.resolve()
+      if (logName) faults.readLog?.push(`${logName}:end`)
       if (patch) {
         if (table === 'games' && faults.gamesUpdateError) {
           return { data: null, error: { message: faults.gamesUpdateError } }
@@ -266,5 +274,18 @@ describe('Rummy concurrent turn actions', () => {
     // The original go-out's finalization is guarded by status = 'active', so it must not write
     // (or award room points) a second time.
     expect(gamesWrites.count).toBe(0)
+  })
+  it('reads the session before the hands (never in parallel) so a hand is never older than its session version', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const readLog: string[] = []
+    const { client } = makeDb(hand, { readLog })
+    await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5')
+    const firstRead = readLog.slice(0, 4)
+    expect(firstRead).toEqual([
+      'rummy_sessions:start',
+      'rummy_sessions:end',
+      'rummy_player_hands:start',
+      'rummy_player_hands:end',
+    ])
   })
 })

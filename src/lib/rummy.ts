@@ -656,8 +656,14 @@ async function loadRummyState(
   sessionStartedAt: string | null
   error?: string
 }> {
-  const [sRes, hRes, pRes, gRes] = await Promise.all([
-    supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle(),
+  // Read the session BEFORE the hands, never in parallel. Every turn action commits the session
+  // and the hand in one transaction (rummy_apply_transition), so a hand read that starts after
+  // the session read is at least as new as that session version. A request holding an older
+  // session version then loses the updated_at compare-and-swap; a hand OLDER than its session can
+  // no longer be paired with that session's version (the mixed read that would let a discard
+  // delete a freshly drawn card).
+  const sRes = await supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle()
+  const [hRes, pRes, gRes] = await Promise.all([
     supabase.from(RUMMY_HANDS).select('*').eq('game_id', gameId).order('player_order'),
     supabase.from('players').select('id, name').eq('game_id', gameId),
     supabase
