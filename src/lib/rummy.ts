@@ -1030,6 +1030,14 @@ async function finalizeByLowestHand(
   names: Map<string, string>,
   reason: string
 ): Promise<{ error?: string }> {
+  // The session may already be finished (a go-out committed but its markGameFinished failed, and
+  // the clock/expiry route now loads that finished session). Never re-rank and replace the
+  // committed winner: only retry the single-winner games finalization.
+  if (session.phase === 'finished') {
+    const retry = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    if (retry.error) return { error: internalErrorMessage('rummy', retry.error) }
+    return {}
+  }
   const winnerId = rummyPlacementOrder(hands, session.turn_order ?? [], null)[0] ?? null
   const winnerName = winnerId ? playerNameFrom(names, winnerId) : 'Nobody'
   const winnerHand = winnerId ? handForPlayer(hands, winnerId) : []

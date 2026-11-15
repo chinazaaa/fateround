@@ -4,7 +4,7 @@ import type { RummyCard, RummySuit } from '@/types'
 
 vi.mock('server-only', () => ({}))
 
-import { processRummyDiscard, processRummyGoOut, processRummyExpireTurn } from './rummy'
+import { processRummyDiscard, processRummyGoOut, processRummyExpireTurn, finishExpiredRummyGame } from './rummy'
 
 /**
  * Concurrent discard / go-out requests from the same player used to each pass the turn checks and
@@ -329,6 +329,30 @@ describe('Rummy concurrent turn actions', () => {
 
     const res = await processRummyExpireTurn(client, 'ABCD')
     expect(res).toEqual({ skipped: true })
+    expect(tables.games[0].status).toBe('finished')
+  })
+  it('does not replace a committed go-out winner when the expiry route loads the already-finished session', async () => {
+    // p1 went out (empty hand, winner) but the games finalization failed, so the game is still active.
+    const { client, tables } = makeDb([], { clockExpired: true })
+    tables.rummy_player_hands[1].cards = [c('hearts', 5), c('spades', 5), c('clubs', 5)]
+    Object.assign(tables.rummy_sessions[0], {
+      phase: 'finished',
+      winner_player_id: 'p1',
+      status_message: 'Ana went out',
+    })
+
+    const ok = await finishExpiredRummyGame(client, {
+      id: 'ABCD',
+      status: 'active',
+      session_started_at: '2020-01-01T00:00:00.000Z',
+      game_duration_seconds: 60,
+    } as never)
+
+    expect(ok).toBe(true)
+    // p2 holds the closest-to-going-out hand, but the committed winner is untouched...
+    expect(tables.rummy_sessions[0].winner_player_id).toBe('p1')
+    expect(tables.rummy_sessions[0].status_message).toBe('Ana went out')
+    // ...and only the games finalization was retried.
     expect(tables.games[0].status).toBe('finished')
   })
 })
