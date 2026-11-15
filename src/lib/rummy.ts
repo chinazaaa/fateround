@@ -625,8 +625,17 @@ export async function removeRummyPlayer(
       update.turn_deadline_at = rummyTurnDeadline(timerSeconds)
     }
 
-    const { error: sessionError } = await supabase.from(RUMMY_SESSIONS).update(update).eq('game_id', gameId)
+    // Version-check against the session we computed the new turn state from: if a discard (or any
+    // other turn action) committed in between, this write would restore the pre-discard turn index.
+    // On a conflict nothing is deleted and the leaver can simply retry.
+    const { data: claimed, error: sessionError } = await supabase
+      .from(RUMMY_SESSIONS)
+      .update(update)
+      .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
     if (sessionError) return { error: internalErrorMessage('rummy', sessionError) }
+    if (!claimed || claimed.length === 0) return { error: RUMMY_CONFLICT_ERROR }
 
     await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
     if (finishing) await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })

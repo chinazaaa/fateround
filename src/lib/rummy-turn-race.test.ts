@@ -4,7 +4,13 @@ import type { RummyCard, RummySuit } from '@/types'
 
 vi.mock('server-only', () => ({}))
 
-import { processRummyDiscard, processRummyGoOut, processRummyExpireTurn, finishExpiredRummyGame } from './rummy'
+import {
+  processRummyDiscard,
+  processRummyGoOut,
+  processRummyExpireTurn,
+  finishExpiredRummyGame,
+  removeRummyPlayer,
+} from './rummy'
 
 /**
  * Concurrent discard / go-out requests from the same player used to each pass the turn checks and
@@ -80,6 +86,7 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
   const builder = (table: string) => {
     const filters: [string, unknown][] = []
     let patch: Row | null = null
+    let deleting = false
     const match = () =>
       tables[table].filter((r) =>
         filters.every(([k, v]) => (k === 'id' && table === 'games' ? r.id === v : r[k] === v))
@@ -92,6 +99,11 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
       if (faults.readLog && logName === 'rummy_sessions') await new Promise((r) => setTimeout(r, 0))
       else await Promise.resolve()
       if (logName) faults.readLog?.push(`${logName}:end`)
+      if (deleting) {
+        const doomed = match()
+        tables[table] = tables[table].filter((r) => !doomed.includes(r))
+        return { data: null, error: null }
+      }
       if (patch) {
         if (table === 'games' && faults.gamesUpdateError) {
           return { data: null, error: { message: faults.gamesUpdateError } }
@@ -119,6 +131,10 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
       },
       update: (p: Row) => {
         patch = p
+        return api
+      },
+      delete: () => {
+        deleting = true
         return api
       },
       maybeSingle: async () => {
@@ -354,5 +370,42 @@ describe('Rummy concurrent turn actions', () => {
     expect(tables.rummy_sessions[0].status_message).toBe('Ana went out')
     // ...and only the games finalization was retried.
     expect(tables.games[0].status).toBe('finished')
+  })
+  it('does not remove a leaving player (or restore the old turn index) when a turn action commits after the session was read', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      // A discard advances the turn right after removeRummyPlayer has read the session.
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        Object.assign(t.rummy_sessions[0], { current_turn_index: 1, updated_at: 'committed-v1' })
+      },
+    }
+    const { client, tables } = makeDb(hand, faults)
+    tables.players.push({ id: 'p3', game_id: 'ABCD', name: 'Cy' })
+    tables.rummy_sessions[0].turn_order = ['p1', 'p2', 'p3']
+    tables.rummy_player_hands.push({ id: 'h3', game_id: 'ABCD', player_id: 'p3', player_order: 2, cards: [] })
+
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+
+    expect(res.error).toBeTruthy()
+    // The committed turn state is untouched and the leaver was not deleted (they can retry).
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(1)
+    expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2', 'p3'])
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(true)
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(true)
+  })
+
+  it('removes a leaving player normally when nothing raced', async () => {
+    const { client, tables } = makeDb([c('hearts', 5)])
+    tables.players.push({ id: 'p3', game_id: 'ABCD', name: 'Cy' })
+    tables.rummy_sessions[0].turn_order = ['p1', 'p2', 'p3']
+    tables.rummy_player_hands.push({ id: 'h3', game_id: 'ABCD', player_id: 'p3', player_order: 2, cards: [] })
+
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+
+    expect(res.error).toBeNull()
+    expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2'])
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(false)
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
   })
 })
