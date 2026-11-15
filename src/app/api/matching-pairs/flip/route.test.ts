@@ -134,8 +134,12 @@ describe('POST /api/matching-pairs/flip hardening', () => {
   })
 
   it('rejects more matches than pairs', async () => {
-    subs = Array.from({ length: GRID }, (_, i) => ({ is_match: true, pair_index: i, points_after: 1000 }))
-    expect((await send(0, true)).status).toBe(409)
+    // Matched rows use a different pair than the request, so the duplicate-pair guard does not fire
+    // first and the request actually reaches the "all pairs matched" count guard.
+    subs = Array.from({ length: GRID }, () => ({ is_match: true, pair_index: 1, points_after: 1000 }))
+    const res = await send(0, true)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'All pairs already matched' })
     expect(insert).not.toHaveBeenCalled()
   })
 
