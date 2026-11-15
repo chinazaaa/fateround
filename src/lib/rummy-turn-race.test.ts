@@ -18,7 +18,16 @@ const c = (suit: RummySuit, rank: number): RummyCard => ({ id: `${suit}-${rank}`
 
 type Row = Record<string, unknown>
 
-function makeDb(hand: RummyCard[]) {
+type Faults = {
+  /** rpc('rummy_apply_transition') returns a transport error before touching anything. */
+  rpcError?: string
+  /** The hand write inside the transition fails (after the session CAS) and must roll it back. */
+  handWriteFails?: boolean
+  /** Update of the `games` row (markGameFinished) fails. */
+  gamesUpdateError?: string
+}
+
+function makeDb(hand: RummyCard[], faults: Faults = {}) {
   const tables: Record<string, Row[]> = {
     rummy_sessions: [
       {
@@ -47,7 +56,7 @@ function makeDb(hand: RummyCard[]) {
       { id: 'p1', game_id: 'ABCD', name: 'Ana' },
       { id: 'p2', game_id: 'ABCD', name: 'Ben' },
     ],
-    games: [{ id: 'ABCD', timer_seconds: 0, game_duration_seconds: 0, session_started_at: null }],
+    games: [{ id: 'ABCD', status: 'active', timer_seconds: 0, game_duration_seconds: 0, session_started_at: null }],
   }
   let tick = 0
 
@@ -61,6 +70,9 @@ function makeDb(hand: RummyCard[]) {
     const run = async () => {
       await Promise.resolve()
       if (patch) {
+        if (table === 'games' && faults.gamesUpdateError) {
+          return { data: null, error: { message: faults.gamesUpdateError } }
+        }
         const rows = match()
         const stamp =
           typeof patch.updated_at === 'string' ? `2026-01-01T00:00:${String(++tick).padStart(2, '0')}.000Z` : null
@@ -92,7 +104,31 @@ function makeDb(hand: RummyCard[]) {
     return api
   }
 
-  return { client: { from: builder } as unknown as SupabaseClient, tables }
+  // In-memory rummy_apply_transition: same semantics as the Postgres function. The session
+  // compare-and-swap and every hand write apply atomically; any failure restores a snapshot.
+  const rpc = async (fn: string, args: Record<string, unknown>) => {
+    await Promise.resolve()
+    if (fn !== 'rummy_apply_transition') return { data: null, error: { message: `unknown rpc ${fn}` } }
+    if (faults.rpcError) return { data: null, error: { message: faults.rpcError } }
+    const session = tables.rummy_sessions.find((r) => r.game_id === args.p_game_id)
+    if (!session || session.updated_at !== args.p_expected_updated_at) {
+      return { data: { status: 'conflict' }, error: null }
+    }
+    const snapshot = structuredClone(tables)
+    Object.assign(session, args.p_session_patch as Row)
+    session.updated_at = `2026-01-01T00:00:${String(++tick).padStart(2, '0')}.000Z`
+    for (const w of args.p_hand_writes as { id: string; patch: Row }[]) {
+      const row = tables.rummy_player_hands.find((h) => h.id === w.id && h.game_id === args.p_game_id)
+      if (!row || faults.handWriteFails) {
+        for (const k of Object.keys(tables)) tables[k] = snapshot[k]
+        return { data: null, error: { message: 'rummy_apply_transition: hand not found' } }
+      }
+      Object.assign(row, w.patch)
+    }
+    return { data: { status: 'ok', updated_at: session.updated_at }, error: null }
+  }
+
+  return { client: { from: builder, rpc } as unknown as SupabaseClient, tables }
 }
 
 const handOf = (tables: Record<string, Row[]>, id: string) =>
@@ -144,5 +180,69 @@ describe('Rummy concurrent turn actions', () => {
       expect(session.current_turn_index).toBe(1)
       expect(handOf(tables, 'p1')).toHaveLength(hand.length - 1)
     }
+  })
+
+  it('returns the rpc error and leaves session and hand untouched', async () => {
+    const hand = [c('hearts', 5), c('hearts', 6)]
+    const { client, tables } = makeDb(hand, { rpcError: 'boom' })
+    const before = structuredClone(tables)
+    const res = await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5')
+    expect(res.error).toBeTruthy()
+    expect(tables.rummy_sessions).toEqual(before.rummy_sessions)
+    expect(tables.rummy_player_hands).toEqual(before.rummy_player_hands)
+  })
+
+  it('rolls the discard back when the hand write fails, and a retry succeeds', async () => {
+    const faults: Faults = { handWriteFails: true }
+    const { client, tables } = makeDb([c('hearts', 5), c('hearts', 6)], faults)
+    const before = structuredClone(tables)
+    expect((await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5')).error).toBeTruthy()
+    expect(tables.rummy_sessions).toEqual(before.rummy_sessions)
+    expect(tables.rummy_player_hands).toEqual(before.rummy_player_hands)
+
+    faults.handWriteFails = false
+    expect(await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5')).toEqual({})
+    expect(handOf(tables, 'p1').map((x) => x.id)).toEqual(['hearts-6'])
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(1)
+  })
+
+  it('keeps the session unfinished when the go-out hand write fails, and a retry succeeds', async () => {
+    const hand = [c('hearts', 5), c('spades', 5), c('clubs', 5), c('diamonds', 9)]
+    const faults: Faults = { handWriteFails: true }
+    const { client, tables } = makeDb(hand, faults)
+    const meld = [['hearts-5', 'spades-5', 'clubs-5']]
+
+    expect((await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')).error).toBeTruthy()
+    expect(tables.rummy_sessions[0].phase).toBe('playing')
+    expect(handOf(tables, 'p1')).toHaveLength(hand.length)
+    expect(tables.games[0].status).toBe('active')
+
+    faults.handWriteFails = false
+    expect(await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')).toEqual({})
+    expect(tables.rummy_sessions[0].phase).toBe('finished')
+    expect(handOf(tables, 'p1')).toHaveLength(0)
+    expect(tables.games[0].status).toBe('finished')
+  })
+
+  it('recovers when markGameFinished fails after a committed go-out', async () => {
+    const hand = [c('hearts', 5), c('spades', 5), c('clubs', 5), c('diamonds', 9)]
+    const faults: Faults = { gamesUpdateError: 'games down' }
+    const { client, tables } = makeDb(hand, faults)
+    const meld = [['hearts-5', 'spades-5', 'clubs-5']]
+
+    const first = await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')
+    expect(first.error).toBeTruthy()
+    // The transition itself committed...
+    expect(tables.rummy_sessions[0].phase).toBe('finished')
+    expect(handOf(tables, 'p1')).toHaveLength(0)
+    expect(tables.games[0].status).toBe('active')
+
+    // ...and while the games write keeps failing, a retry keeps reporting it instead of "finished".
+    expect((await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')).error).not.toBe('Game is finished')
+
+    // Once it recovers, the retry finalizes the game.
+    faults.gamesUpdateError = undefined
+    expect((await processRummyDiscard(client, 'ABCD', 'p1', 'diamonds-9')).error).toBe('Game is finished')
+    expect(tables.games[0].status).toBe('finished')
   })
 })
