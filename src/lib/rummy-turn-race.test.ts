@@ -25,6 +25,8 @@ type Faults = {
   handWriteFails?: boolean
   /** Update of the `games` row (markGameFinished) fails. */
   gamesUpdateError?: string
+  /** Runs right after a transition commits (lets a test interleave another request). */
+  afterRpc?: (tables: Record<string, Row[]>) => void
 }
 
 function makeDb(hand: RummyCard[], faults: Faults = {}) {
@@ -59,6 +61,7 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
     games: [{ id: 'ABCD', status: 'active', timer_seconds: 0, game_duration_seconds: 0, session_started_at: null }],
   }
   let tick = 0
+  const gamesWrites = { count: 0 }
 
   const builder = (table: string) => {
     const filters: [string, unknown][] = []
@@ -74,6 +77,7 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
           return { data: null, error: { message: faults.gamesUpdateError } }
         }
         const rows = match()
+        if (table === 'games' && rows.length > 0) gamesWrites.count++
         const stamp =
           typeof patch.updated_at === 'string' ? `2026-01-01T00:00:${String(++tick).padStart(2, '0')}.000Z` : null
         for (const r of rows) {
@@ -125,10 +129,11 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
       }
       Object.assign(row, w.patch)
     }
+    faults.afterRpc?.(tables)
     return { data: { status: 'ok', updated_at: session.updated_at }, error: null }
   }
 
-  return { client: { from: builder, rpc } as unknown as SupabaseClient, tables }
+  return { client: { from: builder, rpc } as unknown as SupabaseClient, tables, gamesWrites }
 }
 
 const handOf = (tables: Record<string, Row[]>, id: string) =>
@@ -244,5 +249,22 @@ describe('Rummy concurrent turn actions', () => {
     faults.gamesUpdateError = undefined
     expect((await processRummyDiscard(client, 'ABCD', 'p1', 'diamonds-9')).error).toBe('Game is finished')
     expect(tables.games[0].status).toBe('finished')
+  })
+  it('does not finalize twice when a retry already finished the game before the original go-out does', async () => {
+    const hand = [c('hearts', 5), c('spades', 5), c('clubs', 5), c('diamonds', 9)]
+    const faults: Faults = {
+      // A retry reaches the finished-session guard and finalizes the game right after the commit.
+      afterRpc: (t) => {
+        t.games[0].status = 'finished'
+      },
+    }
+    const { client, tables, gamesWrites } = makeDb(hand, faults)
+    const meld = [['hearts-5', 'spades-5', 'clubs-5']]
+
+    expect(await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')).toEqual({})
+    expect(tables.games[0].status).toBe('finished')
+    // The original go-out's finalization is guarded by status = 'active', so it must not write
+    // (or award room points) a second time.
+    expect(gamesWrites.count).toBe(0)
   })
 })

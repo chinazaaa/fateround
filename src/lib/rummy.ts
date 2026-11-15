@@ -629,7 +629,7 @@ export async function removeRummyPlayer(
     if (sessionError) return { error: internalErrorMessage('rummy', sessionError) }
 
     await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
-    if (finishing) await markGameFinished(supabase, gameId)
+    if (finishing) await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
     return { error: error?.message ?? null }
   }
@@ -900,7 +900,7 @@ export async function processRummyGoOut(
 
   // The transition is committed. If marking the game finished fails, surface the error (the client
   // retries): the retry reaches the finished-session guard above, which re-runs markGameFinished.
-  const finish = await markGameFinished(supabase, gameId)
+  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
   if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return {}
 }
@@ -1039,7 +1039,7 @@ async function finalizeByLowestHand(
   // rummy_sessions row is already finished but games.status is still active — game-tick would
   // keep poking the expire route while the client sees a finished session. Propagate so the
   // caller returns false and the route retries next tick instead of misreporting success.
-  const finish = await markGameFinished(supabase, gameId)
+  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
   if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return {}
 }
