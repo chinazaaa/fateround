@@ -86,9 +86,10 @@ describe('POST /api/npat/draft', () => {
   })
 
   it('fails with a 500, without writing, when the submitted-answer lookup errors', async () => {
-    // With the lookup result lost, `existing` is null and the upsert would overwrite a submitted answer.
+    // A failed lookup returns no data, so `existing` is null and, without the guard, the upsert would
+    // overwrite an answer that was already submitted.
     lookupError = { message: 'lookup failed' }
-    existingAnswer = { submitted_at: '2026-01-01T00:01:00.000Z' }
+    existingAnswer = null
     expect((await send()).status).toBe(500)
     expect(upsert).not.toHaveBeenCalled()
   })
