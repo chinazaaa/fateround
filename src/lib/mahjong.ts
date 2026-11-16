@@ -61,6 +61,8 @@ import {
   finishMahjongMultiRon,
   finishMahjongWin,
   finishWallDraw,
+  persistMahjongTransition,
+  type MahjongPlayerStateWrite,
   mahjongGameCounters,
   maybeFinishMahjongMatch,
   riichiAbortiveDrawReason,
@@ -154,8 +156,13 @@ async function loadMahjong(
   timerSeconds: number
   error?: string
 }> {
-  const [sessionRes, statesRes, playersRes, gameRes] = await Promise.all([
-    supabase.from('mahjong_sessions').select('*').eq('game_id', gameId).maybeSingle(),
+  // Read the session BEFORE the player states, never in parallel. Every transition writes the
+  // session and the hands in one transaction (mahjong_apply_transition), so a player-state read
+  // that starts after the session read is at least as new as that session version. If the session
+  // we read is already stale by the time we write, its updated_at CAS fails; a session read that is
+  // newer than the hand read can no longer happen.
+  const sessionRes = await supabase.from('mahjong_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  const [statesRes, playersRes, gameRes] = await Promise.all([
     supabase.from('mahjong_player_state').select('*').eq('game_id', gameId).order('player_order'),
     supabase.from('players').select('id, name').eq('game_id', gameId),
     supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle(),
@@ -215,7 +222,10 @@ async function autoDrawForPlayer(
   players: Pick<Player, 'id' | 'name'>[],
   timerSeconds: number,
   playerId: string | null,
-  turnIndex: number
+  turnIndex: number,
+  // Player-state writes that belong to the same action (e.g. the meld of a Kong). They are applied
+  // only once the session compare-and-swap has been won, before the replacement draw is written.
+  pendingStateWrites: MahjongPlayerStateWrite[] = []
 ): Promise<{ error?: string }> {
   if (!playerId) return { error: 'Next player not found' }
   const ruleset = parseMahjongRuleset(session.ruleset)
@@ -223,31 +233,21 @@ async function autoDrawForPlayer(
   const kongReplacement = !!session.status_message?.includes('Kong')
   const drawFromDeadWall = cfg.deadWall && kongReplacement
   const drawSource = drawFromDeadWall ? (session.dead_wall ?? []) : session.wall
-  if (drawSource.length === 0) return finishWallDraw(supabase, session.game_id, session, states)
+  if (drawSource.length === 0) return finishWallDraw(supabase, session.game_id, session, states, pendingStateWrites)
 
   const state = stateFor(states, playerId)
   if (!state) return { error: 'Player not found' }
 
   const { tile, wall: nextDrawSource, flowers } = drawPlayableTileFromWall(drawSource, ruleset)
-  if (!tile) return finishWallDraw(supabase, session.game_id, session, states)
+  if (!tile) return finishWallDraw(supabase, session.game_id, session, states, pendingStateWrites)
   const nextWall = drawFromDeadWall ? session.wall : nextDrawSource
   const nextDeadWall = drawFromDeadWall ? nextDrawSource : (session.dead_wall ?? [])
   const nextDoraIndicators = drawFromDeadWall
     ? doraIndicatorsAfterKong(session, nextDeadWall)
     : (session.dora_indicators ?? [])
 
-  const { error: stateError } = await supabase
-    .from('mahjong_player_state')
-    .update({
-      hand: sortMahjongTiles([...state.hand, tile]),
-      last_drawn_tile: tile,
-      flowers: [...(state.flowers ?? []), ...flowers],
-      temporary_furiten: false,
-    })
-    .eq('id', state.id)
-  if (stateError) return { error: stateError.message }
-
-  return persistMahjongSession(
+  // Session CAS and the player-state writes (pending meld + the drawn tile) land in one transaction.
+  const sessionWrite = await persistMahjongTransition(
     supabase,
     session.game_id,
     {
@@ -268,8 +268,21 @@ async function autoDrawForPlayer(
           : `${playerName(players, playerId)} drew a tile and must discard`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
     },
+    [
+      ...pendingStateWrites,
+      {
+        id: state.id,
+        patch: {
+          hand: sortMahjongTiles([...state.hand, tile]),
+          last_drawn_tile: tile,
+          flowers: [...(state.flowers ?? []), ...flowers],
+          temporary_furiten: false,
+        },
+      },
+    ],
     session.updated_at
   )
+  return { error: sessionWrite.error }
 }
 
 export async function initializeMahjongGame(
@@ -656,18 +669,9 @@ export async function processMahjongDraw(
   const { tile, wall, flowers } = drawPlayableTileFromWall(session.wall, parseMahjongRuleset(session.ruleset))
   if (!tile) return { error: 'Wall is empty' }
 
-  const { error: stateError } = await supabase
-    .from('mahjong_player_state')
-    .update({
-      hand: sortMahjongTiles([...state.hand, tile]),
-      last_drawn_tile: tile,
-      flowers: [...(state.flowers ?? []), ...flowers],
-      temporary_furiten: false,
-    })
-    .eq('id', state.id)
-  if (stateError) return { error: stateError.message }
-
-  const sessionWrite = await persistMahjongSession(
+  // Session compare-and-swap and the hand write are ONE transaction: a request that loses the
+  // race writes nothing, and no one can see the new phase with the old hand.
+  const sessionWrite = await persistMahjongTransition(
     supabase,
     gameId,
     {
@@ -676,6 +680,17 @@ export async function processMahjongDraw(
       status_message: `${playerName(players, playerId)} drew a tile`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
     },
+    [
+      {
+        id: state.id,
+        patch: {
+          hand: sortMahjongTiles([...state.hand, tile]),
+          last_drawn_tile: tile,
+          flowers: [...(state.flowers ?? []), ...flowers],
+          temporary_furiten: false,
+        },
+      },
+    ],
     session.updated_at
   )
   if (sessionWrite.error) return { error: sessionWrite.error }
@@ -710,23 +725,6 @@ export async function processMahjongDiscard(
   const discardPile = [...session.discard_pile, discard]
   const lastDiscard: MahjongLastDiscard = { tile, player_id: playerId, discard_index: discardPile.length - 1 }
 
-  const { error: stateError } = await supabase
-    .from('mahjong_player_state')
-    .update({
-      hand: sortMahjongTiles(nextHand),
-      last_drawn_tile: null,
-      discarded: [...state.discarded, tile],
-      permanent_furiten: hasDiscardedWinningTile({
-        ...state,
-        hand: sortMahjongTiles(nextHand),
-        discarded: [...state.discarded, tile],
-      }),
-      // First Discard / lifetime discards — bumped in the same write as the discard itself.
-      game_counters: bumpMahjongCounters(mahjongGameCounters(state), { mahjong_discards: 1 }),
-    })
-    .eq('id', state.id)
-  if (stateError) return { error: stateError.message }
-
   const draftSession: MahjongSession = {
     ...session,
     phase: 'claim',
@@ -740,7 +738,8 @@ export async function processMahjongDiscard(
       : row
   )
 
-  const sessionWrite = await persistMahjongSession(
+  // Session compare-and-swap and the player's hand/discard write are ONE transaction.
+  const sessionWrite = await persistMahjongTransition(
     supabase,
     gameId,
     {
@@ -752,6 +751,23 @@ export async function processMahjongDiscard(
       status_message: `${playerName(players, playerId)} discarded ${mahjongTileShortLabel(tile)}`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
     },
+    [
+      {
+        id: state.id,
+        patch: {
+          hand: sortMahjongTiles(nextHand),
+          last_drawn_tile: null,
+          discarded: [...state.discarded, tile],
+          permanent_furiten: hasDiscardedWinningTile({
+            ...state,
+            hand: sortMahjongTiles(nextHand),
+            discarded: [...state.discarded, tile],
+          }),
+          // First Discard / lifetime discards — bumped in the same write as the discard itself.
+          game_counters: bumpMahjongCounters(mahjongGameCounters(state), { mahjong_discards: 1 }),
+        },
+      },
+    ],
     session.updated_at
   )
   if (sessionWrite.error) return { error: sessionWrite.error }
@@ -876,18 +892,21 @@ export async function processMahjongClaim(
       const kongDeltas: Record<string, number> = concealedTile
         ? { mahjong_kongs_called: 1, mahjong_concealed_kongs: 1 }
         : { mahjong_kongs_called: 1, mahjong_added_kongs: 1 }
-      const { error: stateError } = await supabase
-        .from('mahjong_player_state')
-        .update({
-          hand: nextState.hand,
-          last_drawn_tile: null,
-          melds: nextState.melds,
-          game_counters: bumpMahjongCounters(mahjongGameCounters(state), kongDeltas),
-        })
-        .eq('id', state.id)
-      if (stateError) return { error: stateError.message }
+      // Applied in the same transaction as the session compare-and-swap.
+      const kongStateWrites: MahjongPlayerStateWrite[] = [
+        {
+          id: state.id,
+          patch: {
+            hand: nextState.hand,
+            last_drawn_tile: null,
+            melds: nextState.melds,
+            game_counters: bumpMahjongCounters(mahjongGameCounters(state), kongDeltas),
+          },
+        },
+      ]
       const abortReason = riichiAbortiveDrawReason(session, nextStates)
-      if (abortReason) return finishAbortiveDraw(supabase, gameId, abortReason, session, nextStates)
+      if (abortReason)
+        return finishAbortiveDraw(supabase, session.game_id, abortReason, session, nextStates, kongStateWrites)
       return autoDrawForPlayer(
         supabase,
         { ...session, status_message: status },
@@ -895,7 +914,8 @@ export async function processMahjongClaim(
         players,
         timerSeconds,
         playerId,
-        session.current_turn_index
+        session.current_turn_index,
+        kongStateWrites
       )
     }
   }
@@ -981,20 +1001,23 @@ export async function processMahjongClaim(
       : claimType === 'pung'
         ? { mahjong_pungs_called: 1 }
         : { mahjong_kongs_called: 1 }
-  const { error: stateError } = await supabase
-    .from('mahjong_player_state')
-    .update({
-      hand: nextState.hand,
-      last_drawn_tile: null,
-      melds: nextState.melds,
-      game_counters: bumpMahjongCounters(mahjongGameCounters(state), callDeltas),
-    })
-    .eq('id', state.id)
-  if (stateError) return { error: stateError.message }
+  // Applied in the same transaction as the session compare-and-swap.
+  const meldStateWrites: MahjongPlayerStateWrite[] = [
+    {
+      id: state.id,
+      patch: {
+        hand: nextState.hand,
+        last_drawn_tile: null,
+        melds: nextState.melds,
+        game_counters: bumpMahjongCounters(mahjongGameCounters(state), callDeltas),
+      },
+    },
+  ]
 
   if (claimType === 'kong') {
     const abortReason = riichiAbortiveDrawReason(session, nextStates)
-    if (abortReason) return finishAbortiveDraw(supabase, gameId, abortReason, session, nextStates)
+    if (abortReason)
+      return finishAbortiveDraw(supabase, session.game_id, abortReason, session, nextStates, meldStateWrites)
     return autoDrawForPlayer(
       supabase,
       {
@@ -1009,11 +1032,12 @@ export async function processMahjongClaim(
       players,
       timerSeconds,
       playerId,
-      nextTurnIndex
+      nextTurnIndex,
+      meldStateWrites
     )
   }
 
-  const sessionWrite = await persistMahjongSession(
+  const sessionWrite = await persistMahjongTransition(
     supabase,
     gameId,
     {
@@ -1025,6 +1049,7 @@ export async function processMahjongClaim(
       status_message: `${playerName(players, playerId)} called ${claimType.toUpperCase()}`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
     },
+    meldStateWrites,
     session.updated_at
   )
   return { error: sessionWrite.error }
@@ -1046,12 +1071,11 @@ export async function processMahjongPass(
   const winPass =
     parseMahjongRuleset(session.ruleset) === 'riichi' &&
     mahjongClaimOptionsForPlayer(session, states, playerId).some((option) => option.type === 'mahjong')
-  if (winPass) {
-    const state = stateFor(states, playerId)
-    if (state) {
-      await supabase.from('mahjong_player_state').update({ temporary_furiten: true }).eq('id', state.id)
-    }
-  }
+  // Temporary furiten is written only after the session compare-and-swap is won.
+  const passState = winPass ? stateFor(states, playerId) : undefined
+  const furitenWrites: MahjongPlayerStateWrite[] = passState
+    ? [{ id: passState.id, patch: { temporary_furiten: true } }]
+    : []
   const claimPasses = Array.from(new Set([...(session.claim_passes ?? []), playerId]))
   const allPassed = eligible.every((id) => claimPasses.includes(id))
 
@@ -1065,11 +1089,22 @@ export async function processMahjongPass(
       players,
       timerSeconds,
       nextPlayerId,
-      nextIndex
+      nextIndex,
+      furitenWrites
     )
   }
 
-  return persistMahjongSession(supabase, gameId, { claim_passes: claimPasses }, session.updated_at)
+  const passWrite =
+    furitenWrites.length > 0
+      ? await persistMahjongTransition(
+          supabase,
+          gameId,
+          { claim_passes: claimPasses },
+          furitenWrites,
+          session.updated_at
+        )
+      : await persistMahjongSession(supabase, gameId, { claim_passes: claimPasses }, session.updated_at)
+  return { error: passWrite.error }
 }
 
 export async function processMahjongRiichi(
@@ -1091,21 +1126,13 @@ export async function processMahjongRiichi(
   if (!isTenpai(state.hand, state.melds)) return { error: 'Riichi requires a tenpai hand' }
   if ((session.scores?.[playerId] ?? 0) < 1000) return { error: 'Riichi requires at least 1000 points' }
 
-  const { error: stateError } = await supabase
-    .from('mahjong_player_state')
-    .update({
-      riichi_declared: true,
-      riichi_discard_index: session.discard_pile.length,
-    })
-    .eq('id', state.id)
-  if (stateError) return { error: stateError.message }
-
   const ippatsu = Array.from(new Set([...(session.ippatsu_eligible_player_ids ?? []), playerId]))
   const nextScores =
     session.scores && Object.keys(session.scores).length > 0
       ? { ...session.scores, [playerId]: (session.scores[playerId] ?? 0) - 1000 }
       : session.scores
-  const sessionWrite = await persistMahjongSession(
+  // The score deduction and the riichi flag land together, so a retry can never deduct twice.
+  const sessionWrite = await persistMahjongTransition(
     supabase,
     gameId,
     {
@@ -1116,6 +1143,7 @@ export async function processMahjongRiichi(
       status_message: `${playerName(players, playerId)} declared Riichi and must discard`,
       turn_deadline_at: mahjongTurnDeadline(timerSeconds),
     },
+    [{ id: state.id, patch: { riichi_declared: true, riichi_discard_index: session.discard_pile.length } }],
     session.updated_at
   )
   return { error: sessionWrite.error }

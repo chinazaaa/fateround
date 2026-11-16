@@ -447,6 +447,49 @@ function popcount(x: number): number {
 const RUMMY_SESSIONS = 'rummy_sessions'
 const RUMMY_HANDS = 'rummy_player_hands'
 
+const RUMMY_CONFLICT_ERROR = 'Another action already updated this turn — try again'
+
+function handRowId(hands: RummyPlayerHand[], playerId: string): string | null {
+  return hands.find((h) => h.player_id === playerId)?.id ?? null
+}
+
+/**
+ * Win the session compare-and-swap on `updated_at` AND write the hand rows in ONE database
+ * transaction (rummy_apply_transition). Either everything lands or nothing does: a failed hand write
+ * rolls the session change back, so a retry sees the original turn instead of a half-applied one.
+ */
+export async function persistRummyTransition(
+  supabase: SupabaseClient,
+  gameId: string,
+  sessionPatch: Partial<RummySession>,
+  handWrites: { id: string; patch: Partial<Pick<RummyPlayerHand, 'cards' | 'player_order'>> }[],
+  expectedUpdatedAt: string
+): Promise<{ error?: string; updatedAt?: string }> {
+  const { data, error } = await supabase.rpc('rummy_apply_transition', {
+    p_game_id: gameId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_session_patch: sessionPatch,
+    p_hand_writes: handWrites,
+  })
+  if (error) return { error: internalErrorMessage('rummy', error) }
+  const result = (data ?? {}) as { status?: string; updated_at?: string }
+  if (result.status === 'conflict') return { error: RUMMY_CONFLICT_ERROR }
+  if (result.status !== 'ok') return { error: 'Unexpected Rummy transition result' }
+  return { updatedAt: result.updated_at }
+}
+
+/**
+ * A finished session whose games row is still 'active' means a previous finalization (go-out or
+ * clock) committed the session but its markGameFinished failed. Retry it here (single-winner
+ * active -> finished CAS, so a game that is already finished is a no-op and awards nothing twice);
+ * otherwise report the normal "Game is finished".
+ */
+async function finishedSessionResult(supabase: SupabaseClient, gameId: string): Promise<{ error: string }> {
+  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+  if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
+  return { error: 'Game is finished' }
+}
+
 export function currentPlayerId(session: RummySession): string | null {
   return session.turn_order?.[session.current_turn_index] ?? null
 }
@@ -582,11 +625,20 @@ export async function removeRummyPlayer(
       update.turn_deadline_at = rummyTurnDeadline(timerSeconds)
     }
 
-    const { error: sessionError } = await supabase.from(RUMMY_SESSIONS).update(update).eq('game_id', gameId)
+    // Version-check against the session we computed the new turn state from: if a discard (or any
+    // other turn action) committed in between, this write would restore the pre-discard turn index.
+    // On a conflict nothing is deleted and the leaver can simply retry.
+    const { data: claimed, error: sessionError } = await supabase
+      .from(RUMMY_SESSIONS)
+      .update(update)
+      .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
     if (sessionError) return { error: internalErrorMessage('rummy', sessionError) }
+    if (!claimed || claimed.length === 0) return { error: RUMMY_CONFLICT_ERROR }
 
     await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
-    if (finishing) await markGameFinished(supabase, gameId)
+    if (finishing) await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
     return { error: error?.message ?? null }
   }
@@ -613,8 +665,14 @@ async function loadRummyState(
   sessionStartedAt: string | null
   error?: string
 }> {
-  const [sRes, hRes, pRes, gRes] = await Promise.all([
-    supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle(),
+  // Read the session BEFORE the hands, never in parallel. Every turn action commits the session
+  // and the hand in one transaction (rummy_apply_transition), so a hand read that starts after
+  // the session read is at least as new as that session version. A request holding an older
+  // session version then loses the updated_at compare-and-swap; a hand OLDER than its session can
+  // no longer be paired with that session's version (the mixed read that would let a discard
+  // delete a freshly drawn card).
+  const sRes = await supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle()
+  const [hRes, pRes, gRes] = await Promise.all([
     supabase.from(RUMMY_HANDS).select('*').eq('game_id', gameId).order('player_order'),
     supabase.from('players').select('id, name').eq('game_id', gameId),
     supabase
@@ -654,7 +712,7 @@ export async function processRummyDraw(
   if (state.error) return { error: state.error }
   const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
-  if (session.phase === 'finished') return { error: 'Game is finished' }
+  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId)
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -701,13 +759,13 @@ export async function processRummyDraw(
   const newHand = [...hand, card]
   const top = discardPile[discardPile.length - 1] ?? null
 
-  // Claim the session row with an optimistic-concurrency check on `updated_at` BEFORE
-  // touching the hand. Without this a stale request could win the hand write even when
-  // a concurrent action already advanced the turn — the pattern the other card engines
-  // (Crazy Eights / Whot) use.
-  const { data: claim, error: sErr } = await supabase
-    .from(RUMMY_SESSIONS)
-    .update({
+  // Session claim (optimistic check on `updated_at`) and hand write are ONE database transaction.
+  const handId = handRowId(hands, playerId)
+  if (!handId) return { error: 'Your hand was not found' }
+  const write = await persistRummyTransition(
+    supabase,
+    gameId,
+    {
       draw_pile: drawPile,
       discard_pile: discardPile,
       top_discard: top,
@@ -717,20 +775,11 @@ export async function processRummyDraw(
         source === 'discard'
           ? `${playerNameFrom(names, playerId)} took ${rummyCardLabel(card)} from the discard — now discarding`
           : `${playerNameFrom(names, playerId)} drew from the pile — now discarding`,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-    .eq('updated_at', session.updated_at)
-    .select('game_id')
-  if (sErr) return { error: internalErrorMessage('rummy', sErr) }
-  if ((claim?.length ?? 0) === 0) return { error: 'Another action already updated this turn — try again' }
-
-  const { error: hErr } = await supabase
-    .from(RUMMY_HANDS)
-    .update({ cards: newHand })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
+    },
+    [{ id: handId, patch: { cards: newHand } }],
+    session.updated_at
+  )
+  if (write.error) return { error: write.error }
   return {}
 }
 
@@ -746,7 +795,7 @@ export async function processRummyDiscard(
   if (state.error) return { error: state.error }
   const { session, hands, names, timerSeconds, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
-  if (session.phase === 'finished') return { error: 'Game is finished' }
+  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId)
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -768,28 +817,28 @@ export async function processRummyDiscard(
   const newHand = [...hand.slice(0, idx), ...hand.slice(idx + 1)]
   const newDiscard = pushDiscard(session.discard_pile ?? [], card)
 
-  const { error: hErr } = await supabase
-    .from(RUMMY_HANDS)
-    .update({ cards: newHand })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
-
   const nextIndex = advanceTurnIndex(session)
   const nextId = session.turn_order[nextIndex]
-  const { error: sErr } = await supabase
-    .from(RUMMY_SESSIONS)
-    .update({
+  // Session claim and hand write are ONE database transaction (see persistRummyTransition), so
+  // concurrent discards cannot shed extra cards and a failed hand write cannot leave the turn
+  // advanced with the card both on the pile and in the hand.
+  const handId = handRowId(hands, playerId)
+  if (!handId) return { error: 'Your hand was not found' }
+  const write = await persistRummyTransition(
+    supabase,
+    gameId,
+    {
       discard_pile: newDiscard,
       top_discard: card,
       current_turn_index: nextIndex,
       turn_step: 'draw',
       status_message: `${playerNameFrom(names, playerId)} discarded ${rummyCardLabel(card)} · ${playerNameFrom(names, nextId)}'s turn`,
       turn_deadline_at: rummyTurnDeadline(timerSeconds),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-  if (sErr) return { error: internalErrorMessage('rummy', sErr) }
+    },
+    [{ id: handId, patch: { cards: newHand } }],
+    session.updated_at
+  )
+  if (write.error) return { error: write.error }
   return {}
 }
 
@@ -806,7 +855,7 @@ export async function processRummyGoOut(
   if (state.error) return { error: state.error }
   const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
-  if (session.phase === 'finished') return { error: 'Game is finished' }
+  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId)
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -840,20 +889,17 @@ export async function processRummyGoOut(
   const melds = buildRummyMelds(hand, meldCards, { discard })
   if (!melds) return { error: 'That is not a valid lay-down — every card must belong to a set or run' }
 
-  // Empty the player's hand.
-  const { error: hErr } = await supabase
-    .from(RUMMY_HANDS)
-    .update({ cards: [] })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (hErr) return { error: internalErrorMessage('rummy', hErr) }
-
   const discardPile = discard ? pushDiscard(session.discard_pile ?? [], discard) : (session.discard_pile ?? [])
   const topDiscard = discardPile[discardPile.length - 1] ?? null
 
-  const { error: sErr } = await supabase
-    .from(RUMMY_SESSIONS)
-    .update({
+  // The `finished` session patch and the emptied winning hand commit together or not at all, so a
+  // failed hand write leaves the round playable and the same go-out can simply be retried.
+  const handId = handRowId(hands, playerId)
+  if (!handId) return { error: 'Your hand was not found' }
+  const write = await persistRummyTransition(
+    supabase,
+    gameId,
+    {
       phase: 'finished',
       winner_player_id: playerId,
       winning_melds: melds,
@@ -861,12 +907,16 @@ export async function processRummyGoOut(
       top_discard: topDiscard,
       status_message: `${playerNameFrom(names, playerId)} went out and wins the round!`,
       turn_deadline_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-  if (sErr) return { error: internalErrorMessage('rummy', sErr) }
+    },
+    [{ id: handId, patch: { cards: [] } }],
+    session.updated_at
+  )
+  if (write.error) return { error: write.error }
 
-  await markGameFinished(supabase, gameId)
+  // The transition is committed. If marking the game finished fails, surface the error (the client
+  // retries): the retry reaches the finished-session guard above, which re-runs markGameFinished.
+  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+  if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return {}
 }
 
@@ -911,7 +961,13 @@ export async function processRummyExpireTurn(
   if (state.error) return { error: state.error }
   const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Session not found' }
-  if (session.phase === 'finished') return { skipped: true }
+  if (session.phase === 'finished') {
+    // A previous finalization may have committed the session but failed on the games row: retry it
+    // (single-winner active -> finished guard; a no-op when the game is already finished).
+    const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
+    return { skipped: true }
+  }
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -983,13 +1039,24 @@ async function finalizeByLowestHand(
   names: Map<string, string>,
   reason: string
 ): Promise<{ error?: string }> {
+  // The session may already be finished (a go-out committed but its markGameFinished failed, and
+  // the clock/expiry route now loads that finished session). Never re-rank and replace the
+  // committed winner: only retry the single-winner games finalization.
+  if (session.phase === 'finished') {
+    const retry = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    if (retry.error) return { error: internalErrorMessage('rummy', retry.error) }
+    return {}
+  }
   const winnerId = rummyPlacementOrder(hands, session.turn_order ?? [], null)[0] ?? null
   const winnerName = winnerId ? playerNameFrom(names, winnerId) : 'Nobody'
   const winnerHand = winnerId ? handForPlayer(hands, winnerId) : []
   const meldable = maxMeldableCount(winnerHand)
   const detail =
     winnerHand.length === 0 ? 'empty hand' : `closest to going out (${meldable}/${winnerHand.length} cards would meld)`
-  const { error } = await supabase
+  // Version-check against the snapshot this decision was made from: a go-out (or another finish)
+  // may have committed after we loaded the session, and we must not overwrite its winner or run
+  // finalization from the stale snapshot.
+  const { data: claimed, error } = await supabase
     .from(RUMMY_SESSIONS)
     .update({
       phase: 'finished',
@@ -999,12 +1066,15 @@ async function finalizeByLowestHand(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('updated_at', session.updated_at)
+    .select('game_id')
   if (error) return { error: internalErrorMessage('rummy', error) }
+  if (!claimed || claimed.length === 0) return { error: RUMMY_CONFLICT_ERROR }
   // markGameFinished flips games.status from 'active' → 'finished'. If THAT write fails the
   // rummy_sessions row is already finished but games.status is still active — game-tick would
   // keep poking the expire route while the client sees a finished session. Propagate so the
   // caller returns false and the route retries next tick instead of misreporting success.
-  const finish = await markGameFinished(supabase, gameId)
+  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
   if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return {}
 }

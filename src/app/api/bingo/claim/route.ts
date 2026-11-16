@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
     .select()
     .single()
 
+  // The partial unique index on approved claims makes a concurrent winner lose this insert.
+  if (claimError?.code === '23505') {
+    return NextResponse.json({ error: 'Someone already won this round' }, { status: 400 })
+  }
   if (claimError) return NextResponse.json({ error: internalErrorMessage('bingo/claim', claimError) }, { status: 500 })
 
   const { error: gameError } = await markGameFinished(supabase, code)
