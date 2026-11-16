@@ -82,64 +82,43 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: existingSubs } = await supabase
-    .from('word_grouping_submissions')
-    .select('id, group_index, is_correct')
-    .eq('round_id', round.id)
-    .eq('player_id', auth.player.id)
+  const isCorrect = matchedGroup !== null
 
-  const correctCount = existingSubs?.filter((s) => s.is_correct).length ?? 0
-  const mistakeCount = existingSubs?.filter((s) => !s.is_correct).length ?? 0
-
-  if (mistakeCount >= WORD_GROUPING_MAX_MISTAKES) {
+  // The limit checks and the insert happen atomically in the word_grouping_submit Postgres
+  // function: it serialises this player's guesses, so simultaneous wrong guesses can neither
+  // exceed the limit nor leave a rejected row behind, and it returns the post-insert counts.
+  const { data: result, error: rpcError } = await supabase.rpc('word_grouping_submit', {
+    p_game_id: code,
+    p_round_id: round.id,
+    p_player_id: auth.player.id,
+    p_group_index: isCorrect ? matchedIndex : -1,
+    p_difficulty: isCorrect ? matchedGroup!.difficulty : 0,
+    p_guess_words: words,
+    p_is_correct: isCorrect,
+    p_max_mistakes: WORD_GROUPING_MAX_MISTAKES,
+  })
+  if (rpcError) {
+    return NextResponse.json({ error: internalErrorMessage('word-grouping/submit', rpcError) }, { status: 500 })
+  }
+  const outcome = result as { status?: string; correct_count?: number; mistake_count?: number } | null
+  if (outcome?.status === 'game_not_active') {
+    return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+  }
+  if (outcome?.status === 'out_of_guesses') {
     return NextResponse.json({ error: 'Out of guesses' }, { status: 400 })
   }
-
-  if (matchedGroup && existingSubs?.some((s) => s.is_correct && s.group_index === matchedIndex)) {
+  if (outcome?.status === 'already_solved') {
     return NextResponse.json({ success: true, isCorrect: true, alreadySolved: true })
   }
-
-  const isCorrect = matchedGroup !== null
-  const newMistakes = isCorrect ? mistakeCount : mistakeCount + 1
-
-  const { data: inserted, error: insertError } = await supabase
-    .from('word_grouping_submissions')
-    .insert({
-      game_id: code,
-      round_id: round.id,
-      player_id: auth.player.id,
-      group_index: isCorrect ? matchedIndex : -1,
-      difficulty: isCorrect ? matchedGroup!.difficulty : 0,
-      guess_words: words,
-      is_correct: isCorrect,
-      mistakes_at_time: newMistakes,
-    })
-    .select('id')
-    .single()
-  if (insertError) {
-    return NextResponse.json({ error: internalErrorMessage('word-grouping/submit', insertError) }, { status: 500 })
+  if (outcome?.status !== 'ok') {
+    return NextResponse.json(
+      { error: internalErrorMessage('word-grouping/submit', new Error('unexpected submit result')) },
+      { status: 500 }
+    )
   }
 
-  // The mistake count above was read BEFORE this insert, so several simultaneous wrong guesses all
-  // saw room for one more and all went in. Re-rank this player's wrong guesses now that ours is
-  // stored: if ours is past the limit, take it back and refuse.
-  if (!isCorrect && inserted) {
-    const { data: wrongSubs } = await supabase
-      .from('word_grouping_submissions')
-      .select('id')
-      .eq('round_id', round.id)
-      .eq('player_id', auth.player.id)
-      .eq('is_correct', false)
-      .order('submitted_at', { ascending: true })
-      .order('id', { ascending: true })
-    const rank = (wrongSubs ?? []).findIndex((s) => s.id === inserted.id)
-    if (rank >= WORD_GROUPING_MAX_MISTAKES) {
-      await supabase.from('word_grouping_submissions').delete().eq('id', inserted.id)
-      return NextResponse.json({ error: 'Out of guesses' }, { status: 400 })
-    }
-  }
-
-  const newCorrectCount = isCorrect ? correctCount + 1 : correctCount
+  const newCorrectCount = outcome.correct_count ?? 0
+  const newMistakes = outcome.mistake_count ?? 0
   const playerDone = newCorrectCount >= WORD_GROUPING_TOTAL_GROUPS || newMistakes >= WORD_GROUPING_MAX_MISTAKES
 
   if (playerDone) {
