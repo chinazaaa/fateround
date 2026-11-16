@@ -2484,6 +2484,11 @@ export async function processMonopolyTradePropose(
   offer: { cash: number; properties: number[]; getOutCards: number },
   request: { cash: number; properties: number[]; getOutCards: number }
 ): Promise<{ error?: string }> {
+  // A trade with yourself moves nothing, but it would occupy the game's single pending-trade slot
+  // and block everyone else from proposing. UUIDs are case-insensitive (the route forwards
+  // `toPlayerId` as sent), so compare them lowercased.
+  if (fromPlayerId.toLowerCase() === toPlayerId.toLowerCase()) return { error: 'You cannot trade with yourself' }
+
   const { data: boardRaw } = await supabase.from('monopoly_boards').select('*').eq('game_id', gameId).maybeSingle()
   if (!boardRaw) return { error: 'Board not found' }
   const board = boardRaw as MonopolyBoard

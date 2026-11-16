@@ -518,6 +518,9 @@ async function loadSession(
   return { session: data as CheckersSession | null }
 }
 
+/** Returned when a concurrent request already advanced the turn (same wording as Rummy). */
+const LOST_RACE_MESSAGE = 'Another action already updated this turn — try again'
+
 /**
  * Optimistic-concurrency session write (CAS on updated_at). Mirrors the Chess
  * engine: the update only lands if the row still carries the updated_at we read,
@@ -686,7 +689,7 @@ export async function processCheckersMove(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!won) return { error: LOST_RACE_MESSAGE }
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -726,7 +729,7 @@ export async function processCheckersExpireTurn(supabase: SupabaseClient, gameId
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!won) return { error: LOST_RACE_MESSAGE }
 
   await markGameFinished(supabase, gameId)
   return {}
@@ -765,7 +768,7 @@ export async function processCheckersResign(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!won) return { error: LOST_RACE_MESSAGE }
 
   await markGameFinished(supabase, gameId)
   return {}

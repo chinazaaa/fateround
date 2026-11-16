@@ -61,6 +61,33 @@ export function optionalCoercedNumber(build: (n: z.ZodNumber) => z.ZodNumber = (
   return z.preprocess(blankToUndefined, build(z.number()).optional())
 }
 
+/**
+ * Zod boolean field for request bodies. `z.coerce.boolean()` runs `Boolean(x)`, so the strings
+ * `"false"` and `"0"` became `true` (e.g. `challenge: "false"` challenged a Wild Draw Four). Here
+ * only real booleans and the strings `"true"`/`"false"` (trimmed, case-insensitive) are accepted;
+ * blank/`null` count as "not provided" (required fields fail, optional ones are omitted) and
+ * everything else is rejected. Use `optionalCoercedBoolean` for a field that may be left out.
+ */
+function strictBooleanOrUndefined(value: unknown): unknown {
+  if (value === null || value === undefined) return undefined
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    const s = value.trim().toLowerCase()
+    if (s === '') return undefined
+    if (s === 'true') return true
+    if (s === 'false') return false
+  }
+  return Symbol.for('invalid-boolean')
+}
+
+export function coercedBoolean() {
+  return z.preprocess(strictBooleanOrUndefined, z.boolean())
+}
+
+export function optionalCoercedBoolean() {
+  return z.preprocess(strictBooleanOrUndefined, z.boolean().optional())
+}
+
 /** Zod transform: trim + strip HTML + uppercase (for game codes). */
 export const gameCodeString = () =>
   z
