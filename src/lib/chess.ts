@@ -212,6 +212,9 @@ async function loadSession(
  * keeps two requests from both calling markGameFinished. Returns true if this
  * write won. The caller supplies the full patch (including turn_deadline_at).
  */
+/** Returned when a concurrent request already advanced the turn (same wording as Rummy/Checkers). */
+const LOST_RACE_MESSAGE = 'Another action already updated this turn — try again'
+
 async function persistSession(
   supabase: SupabaseClient,
   gameId: string,
@@ -362,8 +365,9 @@ export async function processChessMove(
 
   // Claim the session from the exact state we read. If another request already
   // moved the game (e.g. a concurrent expire-turn flagged a timeout) we lose the
-  // CAS and bail without error — the winner finalizes, so a played move is never
-  // double-finished or overwritten by a stale timeout.
+  // CAS and report it as an error — the winner finalizes, so a played move is never
+  // double-finished or overwritten by a stale timeout, and the caller isn't told
+  // its (unapplied) move succeeded.
   const won = await persistSession(
     supabase,
     gameId,
@@ -386,7 +390,7 @@ export async function processChessMove(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!won) return { error: LOST_RACE_MESSAGE }
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -457,7 +461,7 @@ export async function processChessResign(
   const winnerName = names.get(winnerPlayerId) ?? (winnerColor === 'w' ? 'White' : 'Black')
 
   // Claim from the exact state we read. If a concurrent move/expire-turn already
-  // finished the game, we lose the CAS and bail without error so we don't
+  // finished the game, we lose the CAS and return an error so we don't
   // double-finish or overwrite the real result.
   const won = await persistSession(
     supabase,
@@ -472,7 +476,7 @@ export async function processChessResign(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!won) return { error: LOST_RACE_MESSAGE }
 
   await markGameFinished(supabase, gameId)
   return {}
