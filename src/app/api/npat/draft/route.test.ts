@@ -13,6 +13,7 @@ const ROUND = {
 
 let player: Record<string, unknown> = {}
 let existingAnswer: Record<string, unknown> | null = null
+let lookupError: { message: string } | null = null
 const upsert = vi.fn()
 
 function makeClient() {
@@ -23,7 +24,7 @@ function makeClient() {
         eq: () => chain,
         maybeSingle: async () => ({
           data: table === 'games' ? GAME : table === 'rounds' ? ROUND : existingAnswer,
-          error: null,
+          error: table === 'npat_answers' ? lookupError : null,
         }),
         upsert: async (row: unknown) => {
           upsert(row)
@@ -63,6 +64,7 @@ describe('POST /api/npat/draft', () => {
   beforeEach(() => {
     upsert.mockClear()
     existingAnswer = null
+    lookupError = null
     player = { id: 'p-1', spectator: false, is_eliminated: false, joined_at: '2025-12-31T00:00:00.000Z' }
   })
 
@@ -80,6 +82,14 @@ describe('POST /api/npat/draft', () => {
   it('no-ops after submit', async () => {
     existingAnswer = { submitted_at: '2026-01-01T00:01:00.000Z' }
     expect((await send()).status).toBe(200)
+    expect(upsert).not.toHaveBeenCalled()
+  })
+
+  it('fails with a 500, without writing, when the submitted-answer lookup errors', async () => {
+    // With the lookup result lost, `existing` is null and the upsert would overwrite a submitted answer.
+    lookupError = { message: 'lookup failed' }
+    existingAnswer = { submitted_at: '2026-01-01T00:01:00.000Z' }
+    expect((await send()).status).toBe(500)
     expect(upsert).not.toHaveBeenCalled()
   })
 })

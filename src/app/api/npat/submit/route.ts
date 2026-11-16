@@ -46,12 +46,16 @@ export async function POST(req: NextRequest) {
 
   // A repeat submit is an idempotent no-op (same convention as draft): the first submission
   // stands and cannot be overwritten.
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from('npat_answers')
     .select('submitted_at')
     .eq('round_id', roundId)
     .eq('player_id', auth.player.id)
     .maybeSingle()
+  // A failed lookup must stop here: with `existing` null the upsert below would overwrite an
+  // answer that was already submitted.
+  if (lookupError)
+    return NextResponse.json({ error: internalErrorMessage('npat/submit', lookupError) }, { status: 500 })
   if (existing?.submitted_at) return NextResponse.json({ success: true, alreadySubmitted: true })
 
   const now = new Date().toISOString()
