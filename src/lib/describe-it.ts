@@ -130,6 +130,18 @@ export function clueContainsWord(clue: string, word: string): boolean {
   }
   // Multi-word answer run together as a single clue word, e.g. "ice cream" → "icecream".
   if (normalizeGuess(word).includes(' ') && tokens.join('').includes(wKey)) return true
+  // Spelled-out words: "e l e p h a n t", "e.l.e.p.h.a.n.t", "e-l-e-p-h-a-n-t". Strip every
+  // non-alphanumeric character from the whole clue and look for the word. Limited to words of
+  // 4+ characters: short words would collide with ordinary adjacent words run together
+  // (e.g. "i can" → "ican", "a nice at" → "aniceat").
+  if (
+    wKey.length >= 4 &&
+    clue
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '')
+      .includes(wKey)
+  )
+    return true
   return false
 }
 
