@@ -1886,7 +1886,6 @@ export interface WordleRoomGuessResponse {
   wordIndex?: number
   wordsSolved?: number
   finished?: boolean
-  nextWord?: string | null
   guessId?: string | null
 }
 

@@ -178,6 +178,34 @@ async function persistMahjongSession(
   return { updatedAt: data?.[0]?.updated_at as string | undefined }
 }
 
+export type MahjongPlayerStateWrite = { id: string; patch: Record<string, unknown> }
+
+/**
+ * Session compare-and-swap AND player-state writes in ONE database transaction
+ * (`mahjong_apply_transition` RPC). Either the CAS wins and every write lands, or nothing is
+ * written. This closes the window where a request could observe the new session phase with the
+ * old hand, and the failure mode where the session moved but the hand write failed.
+ */
+export async function persistMahjongTransition(
+  supabase: SupabaseClient,
+  gameId: string,
+  sessionPatch: Partial<MahjongSession>,
+  stateWrites: MahjongPlayerStateWrite[],
+  expectedUpdatedAt: string
+): Promise<{ error?: string; updatedAt?: string }> {
+  const { data, error } = await supabase.rpc('mahjong_apply_transition', {
+    p_game_id: gameId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_session_patch: sessionPatch,
+    p_state_writes: stateWrites,
+  })
+  if (error) return { error: error.message }
+  const result = (data ?? {}) as { status?: string; updated_at?: string }
+  if (result.status === 'conflict') return { error: MAHJONG_CONFLICT_ERROR }
+  if (result.status !== 'ok') return { error: 'Unexpected Mahjong transition result' }
+  return { updatedAt: result.updated_at }
+}
+
 function buildExhaustiveDrawSummary(session: MahjongSession, states: MahjongPlayerState[]): MahjongScoreSummary | null {
   const tenpai = states.filter((state) => isTenpai(state.hand, state.melds))
   if (tenpai.length === 0 || tenpai.length === states.length) return null
@@ -368,7 +396,9 @@ export async function finishWallDraw(
   supabase: SupabaseClient,
   gameId: string,
   session?: MahjongSession,
-  states: MahjongPlayerState[] = []
+  states: MahjongPlayerState[] = [],
+  // Player-state writes of the same action (e.g. a Kong meld) applied atomically with the session write.
+  stateWrites: MahjongPlayerStateWrite[] = []
 ): Promise<{ error?: string }> {
   const now = new Date().toISOString()
   const tenpaiIds = states.filter((state) => isTenpai(state.hand, state.melds)).map((state) => state.player_id)
@@ -405,29 +435,28 @@ export async function finishWallDraw(
           payments: matchFinish.payments,
           payer_player_id: null,
         } satisfies MahjongScoreSummary)
-  const sessionWrite = await persistMahjongSession(
-    supabase,
-    gameId,
-    {
-      phase: 'finished',
-      hand_result: nagashiSummary ? 'win' : 'exhaustive_draw',
-      status_message: nagashiSummary
-        ? `Nagashi Mangan — ${winnerIds.length} player${winnerIds.length === 1 ? '' : 's'}`
-        : tenpaiIds.length > 0
-          ? `The wall is empty — ${tenpaiIds.length} player(s) tenpai`
-          : 'The wall is empty — draw game',
-      winner_player_id: winnerIds[0] ?? null,
-      winning_tile: null,
-      win_type: nagashiSummary ? 'self_draw' : null,
-      exhaustive_draw_tenpai_player_ids: tenpaiIds,
-      score_summary: finalSummary,
-      scores: matchFinish.scores,
-      winner_player_ids: winnerIds,
-      riichi_sticks: nagashiSummary ? 0 : (session?.riichi_sticks ?? 0),
-      turn_deadline_at: null,
-    },
-    session?.updated_at
-  )
+  const wallDrawPatch: Partial<MahjongSession> = {
+    phase: 'finished',
+    hand_result: nagashiSummary ? 'win' : 'exhaustive_draw',
+    status_message: nagashiSummary
+      ? `Nagashi Mangan — ${winnerIds.length} player${winnerIds.length === 1 ? '' : 's'}`
+      : tenpaiIds.length > 0
+        ? `The wall is empty — ${tenpaiIds.length} player(s) tenpai`
+        : 'The wall is empty — draw game',
+    winner_player_id: winnerIds[0] ?? null,
+    winning_tile: null,
+    win_type: nagashiSummary ? 'self_draw' : null,
+    exhaustive_draw_tenpai_player_ids: tenpaiIds,
+    score_summary: finalSummary,
+    scores: matchFinish.scores,
+    winner_player_ids: winnerIds,
+    riichi_sticks: nagashiSummary ? 0 : (session?.riichi_sticks ?? 0),
+    turn_deadline_at: null,
+  }
+  const sessionWrite =
+    stateWrites.length > 0 && session?.updated_at
+      ? await persistMahjongTransition(supabase, gameId, wallDrawPatch, stateWrites, session.updated_at)
+      : await persistMahjongSession(supabase, gameId, wallDrawPatch, session?.updated_at)
   // The wall ran out with everyone still in the hand — credit Wall Watcher to all seated players.
   // (Nagashi Mangan reaches here too and its winners are not credited to the hand-win trophies;
   // it is a rare special ruling, noted in the report.)
@@ -440,7 +469,9 @@ export async function finishAbortiveDraw(
   gameId: string,
   reason: string,
   session: MahjongSession,
-  states: MahjongPlayerState[]
+  states: MahjongPlayerState[],
+  // Player-state writes of the same action (e.g. a Kong meld) applied atomically with the session write.
+  stateWrites: MahjongPlayerStateWrite[] = []
 ): Promise<{ error?: string }> {
   const now = new Date().toISOString()
   const tenpaiIds = states.filter((state) => isTenpai(state.hand, state.melds)).map((state) => state.player_id)
@@ -467,24 +498,22 @@ export async function finishAbortiveDraw(
           payer_player_id: null,
         } satisfies MahjongScoreSummary)
       : null
-  return persistMahjongSession(
-    supabase,
-    gameId,
-    {
-      phase: 'finished',
-      hand_result: 'abortive_draw',
-      status_message: reason,
-      winner_player_id: null,
-      winner_player_ids: [],
-      winning_tile: null,
-      win_type: null,
-      exhaustive_draw_tenpai_player_ids: tenpaiIds,
-      score_summary: scoreSummary,
-      scores: matchFinish.scores,
-      turn_deadline_at: null,
-    },
-    session.updated_at
-  )
+  const abortivePatch: Partial<MahjongSession> = {
+    phase: 'finished',
+    hand_result: 'abortive_draw',
+    status_message: reason,
+    winner_player_id: null,
+    winner_player_ids: [],
+    winning_tile: null,
+    win_type: null,
+    exhaustive_draw_tenpai_player_ids: tenpaiIds,
+    score_summary: scoreSummary,
+    scores: matchFinish.scores,
+    turn_deadline_at: null,
+  }
+  return stateWrites.length > 0
+    ? persistMahjongTransition(supabase, gameId, abortivePatch, stateWrites, session.updated_at)
+    : persistMahjongSession(supabase, gameId, abortivePatch, session.updated_at)
 }
 
 export function riichiAbortiveDrawReason(session: MahjongSession, states: MahjongPlayerState[]): string | null {
