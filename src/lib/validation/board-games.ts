@@ -1,6 +1,13 @@
 import { z } from 'zod'
 import { normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
-import { gameCodeString, uuidString, coercedNumber, optionalCoercedNumber } from './shared'
+import {
+  gameCodeString,
+  uuidString,
+  coercedNumber,
+  optionalCoercedNumber,
+  coercedBoolean,
+  optionalCoercedBoolean,
+} from './shared'
 import { hostActionSchema } from './game'
 
 export const monopolyActionSchema = z.object({
@@ -218,19 +225,19 @@ export const unoActionSchema = z.object({
 export const unoPlaySchema = unoActionSchema.extend({
   cardId: z.string().min(1),
   // True when the player is calling "UNO" as they play their second-to-last card.
-  callUno: z.coerce.boolean().optional(),
+  callUno: optionalCoercedBoolean(),
 })
 
 export const unoPlayMultiSchema = unoActionSchema.extend({
   // Cards to lay down together, in play order (the last one stays on top).
   cardIds: z.array(z.string().min(1)).min(2).max(20),
-  callUno: z.coerce.boolean().optional(),
+  callUno: optionalCoercedBoolean(),
 })
 
 export const unoJumpInSchema = unoActionSchema.extend({
   // The exact-match card played out of turn.
   cardId: z.string().min(1),
-  callUno: z.coerce.boolean().optional(),
+  callUno: optionalCoercedBoolean(),
 })
 
 export const unoDrawSchema = unoActionSchema
@@ -241,7 +248,7 @@ export const unoChooseSchema = unoActionSchema.extend({
 
 export const unoChallengeSchema = unoActionSchema.extend({
   // true = challenge the Wild Draw Four, false = accept the draw.
-  challenge: z.coerce.boolean(),
+  challenge: coercedBoolean(),
 })
 
 export const unoCallSchema = unoActionSchema

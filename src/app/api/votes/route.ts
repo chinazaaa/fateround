@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     // Scope the round to the authorized game so a known roundId from another game is rejected.
     supabase
       .from('rounds')
-      .select('participant_ids, submitter_player_id, quote_text, started_at, quote_submitted_at')
+      .select('status, participant_ids, submitter_player_id, quote_text, started_at, quote_submitted_at')
       .eq('id', roundId)
       .eq('game_id', gameId.toUpperCase())
       .maybeSingle(),
@@ -88,6 +88,8 @@ export async function POST(req: NextRequest) {
   if (playerIsViewer(player, game)) {
     return NextResponse.json({ error: 'Viewers cannot vote' }, { status: 403 })
   }
+  if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+  if (round.status !== 'active') return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
 
   const gameType = parseGameType(game.game_type)
   const roundIds = round.participant_ids as string[]
@@ -108,6 +110,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (isWhoSaidThis(gameType)) {
+    // The question's author never votes on it (applies to pool/anime rounds as well as player rounds).
+    if (round.submitter_player_id === playerId) {
+      return NextResponse.json({ error: 'The writer does not vote on their own quote' }, { status: 400 })
+    }
     const { data: fullRound } = await supabase.from('rounds').select('anime_metadata').eq('id', roundId).maybeSingle()
 
     const animeMetadata = fullRound?.anime_metadata as { choices: string[]; correct_character: string } | null
@@ -130,7 +136,8 @@ export async function POST(req: NextRequest) {
       // quickly it came in, with a bonus for the first correct answerer — same formula as trivia.
       const isCorrect = animeChoice === animeMetadata.correct_character
       const roundStart = round.quote_submitted_at ?? round.started_at
-      const startMs = roundStart ? Date.parse(roundStart) : Date.now()
+      if (!roundStart) return NextResponse.json({ error: 'Round has not started' }, { status: 400 })
+      const startMs = Date.parse(roundStart)
       const timerMs = Math.max(1, (game.timer_seconds ?? 30) * 1000)
       const responseMs = Math.max(0, Math.min(timerMs, Date.now() - startMs))
       let isFirstCorrect = false
@@ -195,6 +202,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `Pick a number between 1 and ${pool.length}` }, { status: 400 })
     }
 
+    // The write-once pick guard, the question reveal and the vote save happen atomically in the
+    // pick_a_number_submit Postgres function (called below).
     const { data: priorPicks } = await supabase
       .from('votes')
       .select('picked_number')
@@ -224,14 +233,6 @@ export async function POST(req: NextRequest) {
       target_player_id: null,
       target_participant_id: null,
       picked_number: pickedNumber,
-    }
-
-    const { error: revealError } = await supabase
-      .from('rounds')
-      .update({ mlt_question: revealedQuestion })
-      .eq('id', roundId)
-    if (revealError) {
-      return NextResponse.json({ error: internalErrorMessage('votes', revealError) }, { status: 500 })
     }
   } else if (isNeverHaveIEver(gameType)) {
     const wyrChoice = rawWyrChoice === 'a' || rawWyrChoice === 'b' ? rawWyrChoice : null
@@ -451,6 +452,41 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (isPickANumber(gameType)) {
+    const pool = parsePickANumberPool(game.custom_questions)
+    const picked = row.picked_number as number
+    const revealedQuestion = pickANumberQuestionAt(pool, picked)
+    // One transaction: lock the round, reject a different existing pick, reveal the question and
+    // save the vote. Concurrent picks serialise on the round lock, so a loser never touches the winner's reveal.
+    const { data: result, error: rpcError } = await supabase.rpc('pick_a_number_submit', {
+      p_game_id: gameId,
+      p_round_id: roundId,
+      p_player_id: playerId,
+      p_picked_number: picked,
+      p_question: revealedQuestion,
+    })
+    if (rpcError) {
+      return NextResponse.json({ error: internalErrorMessage('votes', rpcError) }, { status: 500 })
+    }
+    const outcome = result as { status?: string; picked_number?: number | null } | null
+    if (outcome?.status === 'game_not_active') {
+      return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+    }
+    if (outcome?.status === 'round_not_active') {
+      return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+    }
+    if (outcome?.status === 'already_picked' && outcome.picked_number !== picked) {
+      return NextResponse.json({ error: 'You already picked a number this round' }, { status: 400 })
+    }
+    if (outcome?.status !== 'ok' && outcome?.status !== 'already_picked') {
+      return NextResponse.json(
+        { error: internalErrorMessage('votes', new Error('unexpected pick result')) },
+        { status: 500 }
+      )
+    }
+    return NextResponse.json({ success: true, pickedNumber: picked, revealedQuestion })
+  }
+
   const { error } = await supabase.from('votes').upsert(
     {
       player_id: playerId,
@@ -461,16 +497,8 @@ export async function POST(req: NextRequest) {
     { onConflict: 'player_id,round_id' }
   )
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('votes', error) }, { status: 500 })
-
-  if (isPickANumber(gameType)) {
-    const pool = parsePickANumberPool(game.custom_questions)
-    const picked = row.picked_number ?? null
-    return NextResponse.json({
-      success: true,
-      pickedNumber: picked,
-      revealedQuestion: picked ? pickANumberQuestionAt(pool, picked) : null,
-    })
+  if (error) {
+    return NextResponse.json({ error: internalErrorMessage('votes', error) }, { status: 500 })
   }
 
   return NextResponse.json({ success: true })

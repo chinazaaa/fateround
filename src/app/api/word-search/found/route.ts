@@ -106,6 +106,11 @@ export async function POST(req: NextRequest) {
     via_hint: hint,
   })
   if (insertError) {
+    // A concurrent identical find won the race (unique index on player/round/word): answer
+    // exactly like the sequential duplicate above. The winner already ran the finish check.
+    if (insertError.code === '23505') {
+      return NextResponse.json({ found: true, word: placement.word, alreadyFound: true })
+    }
     return NextResponse.json({ error: internalErrorMessage('word-search/found', insertError) }, { status: 500 })
   }
 
