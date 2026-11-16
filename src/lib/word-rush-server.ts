@@ -388,11 +388,25 @@ export async function processWordRushSubmit(
       correct: true as const,
     }
 
+    // Only the request whose write actually landed may award points. Parallel identical
+    // submits all pass the pre-check above; the unique index lets exactly one insert win
+    // and the rest must be rejected here rather than adding score again.
+    let recorded: { data: unknown[] | null; error: { code?: string } | null }
     if (priorIndividualAnswer) {
-      await supabase.from('word_rush_answers').update(answerRow).eq('id', priorIndividualAnswer.id)
+      recorded = await supabase
+        .from('word_rush_answers')
+        .update(answerRow)
+        .eq('id', priorIndividualAnswer.id)
+        .eq('correct', false)
+        .select('id')
     } else {
-      await supabase.from('word_rush_answers').insert(answerRow)
+      recorded = await supabase.from('word_rush_answers').insert(answerRow).select('id')
     }
+    if (recorded.error) {
+      if (recorded.error.code === '23505') return { error: 'You already got this round right' }
+      return internalFailure('word-rush individual answer', recorded.error, 'Could not record your answer')
+    }
+    if (!recorded.data?.length) return { error: 'You already got this round right' }
     const points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds, normalized.length)
     await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
 

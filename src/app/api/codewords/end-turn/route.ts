@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { codewordsEndTurnSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { cluePhaseUpdate, otherTeam } from '@/lib/codewords'
+import { cluePhaseUpdate, maskCodewordsBoardKey, otherTeam } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
@@ -58,5 +58,5 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/end-turn', error) }, { status: 500 })
-  return NextResponse.json({ success: true, board: updated })
+  return NextResponse.json({ success: true, board: maskCodewordsBoardKey(updated as CodewordsBoard) })
 }
