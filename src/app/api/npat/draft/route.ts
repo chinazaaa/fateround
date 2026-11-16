@@ -6,6 +6,7 @@ import { npatDraftSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { playerIsViewer } from '@/lib/viewers'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, npatDraftSchema)
@@ -39,13 +40,19 @@ export async function POST(req: NextRequest) {
   // Authorize by the secret resume_token; the resolved player.id is authoritative.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
+  }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: lookupError } = await supabase
     .from('npat_answers')
     .select('submitted_at')
     .eq('round_id', roundId)
     .eq('player_id', auth.player.id)
     .maybeSingle()
+  // A failed lookup must stop here: with `existing` null the upsert below would overwrite an
+  // answer that was already submitted.
+  if (lookupError) return NextResponse.json({ error: internalErrorMessage('npat/draft', lookupError) }, { status: 500 })
 
   if (existing?.submitted_at) return NextResponse.json({ success: true })
 
