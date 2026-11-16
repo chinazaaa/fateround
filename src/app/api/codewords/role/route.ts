@@ -75,6 +75,15 @@ export async function POST(req: NextRequest) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('codewords/role', error) }, { status: 500 })
+  if (error) {
+    // Partial unique index (game_id, team) where role = 'spymaster': a concurrent claim won the race.
+    if (error.code === '23505' && role === 'spymaster') {
+      return NextResponse.json(
+        { error: `${team === 'red' ? 'Red' : 'Blue'} team already has a spymaster` },
+        { status: 400 }
+      )
+    }
+    return NextResponse.json({ error: internalErrorMessage('codewords/role', error) }, { status: 500 })
+  }
   return NextResponse.json({ success: true, role: roleRow })
 }

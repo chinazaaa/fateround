@@ -66,6 +66,18 @@ export async function POST(req: NextRequest) {
     if (rpcError.message?.includes('ALREADY_REVEALED')) {
       return NextResponse.json({ error: 'That word is already revealed' }, { status: 400 })
     }
+    // Re-checks made by the RPC after it takes the row lock (the pre-read above can be stale).
+    const msg = rpcError.message ?? ''
+    if (msg.includes('GAME_OVER')) return NextResponse.json({ error: 'Game is over' }, { status: 400 })
+    if (msg.includes('NOT_YOUR_TURN')) {
+      return NextResponse.json({ error: "Not your team's turn" }, { status: 400 })
+    }
+    if (msg.includes('NO_CLUE')) {
+      return NextResponse.json({ error: 'Wait for your spymaster to give a clue' }, { status: 400 })
+    }
+    if (msg.includes('NO_GUESSES_LEFT')) {
+      return NextResponse.json({ error: 'No guesses left this turn' }, { status: 400 })
+    }
     return NextResponse.json({ error: internalErrorMessage('codewords/guess', rpcError) }, { status: 500 })
   }
 
