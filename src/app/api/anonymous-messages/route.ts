@@ -67,6 +67,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'GIFs are not supported on secret message boards' }, { status: 400 })
   }
 
+  if (messageType === 'text' && body.mediaUrl) {
+    return NextResponse.json({ error: 'Media is only allowed on GIF messages' }, { status: 400 })
+  }
   if (messageType === 'text' && !text.trim()) {
     return NextResponse.json({ error: 'Message cannot be empty' }, { status: 400 })
   }
@@ -122,7 +125,7 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: internalErrorMessage('anonymous-messages', error) }, { status: 500 })
 
-  await trimAnonymousMessagesIfDue(supabase, gameCode)
+  await trimAnonymousMessagesIfDue(getSupabaseAdmin(), gameCode)
 
   return NextResponse.json({ success: true })
 }
@@ -152,7 +155,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Messages can only be removed during an active session' }, { status: 400 })
   }
 
-  const { data: message } = await supabase
+  // Service role: Secret Message boards are not readable by anon (host-only inbox).
+  const { data: message } = await getSupabaseAdmin()
     .from('anonymous_messages')
     .select('id')
     .eq('id', messageId)
