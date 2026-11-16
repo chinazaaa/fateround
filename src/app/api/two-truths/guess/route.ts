@@ -98,6 +98,10 @@ export async function POST(req: NextRequest) {
   // (20261115120000) makes the check atomic with the write and raises check_violation (23514);
   // surface that as 409, which is what actually happened, rather than a 500.
   if (error) {
+    // A concurrent duplicate loses the unique-index race: report it like the pre-check above.
+    if ((error as { code?: string }).code === '23505') {
+      return NextResponse.json({ error: 'Already guessed this round' }, { status: 400 })
+    }
     if ((error as { code?: string }).code === '23514') {
       return NextResponse.json({ error: 'This round has already ended' }, { status: 409 })
     }
