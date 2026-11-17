@@ -19,13 +19,13 @@
  * deliberate: the hosted `RLS Boundaries` job exports real credentials, and a fixture-creating
  * suite must never be one `pnpm vitest run` away from a shared project.
  *
- * Run locally:
- *   supabase start
- *   export NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
- *   export NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from `supabase status`>
- *   export SUPABASE_SERVICE_ROLE_KEY=<service_role key from `supabase status`>
+ * Run locally: start a stack with `supabase start`, then give the test the local API URL
+ * (http://127.0.0.1:54321) and the stack's anon and service_role keys from `supabase status`, as the
+ * NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY environment
+ * variables. A database built from scratch also needs the hosted-parity grant the CI job applies:
  *   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres \
  *     -c 'grant all privileges on all tables in schema public to service_role;'
+ * and then:
  *   pnpm vitest run src/lib/db-concurrency.integration.test.ts
  *
  * In CI it runs in the `db-concurrency` job (.github/workflows/ci.yml). Without those variables the
@@ -415,18 +415,23 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
       })
     })
 
-    it('rolls the session back when a write in the same transition fails', async () => {
+    it('rolls the session and every earlier write back when a later write in the transition fails', async () => {
       const f = await fixture()
-      const before = await readSession(f.gameId)
+      const sessionBefore = await readSession(f.gameId)
+      const childBefore = await readChild(f.childIds[0])
 
-      // The session update is valid and would win the compare-and-swap; the write to a row that is
-      // not in this game then fails. The old route had already moved the session by this point.
+      // The session update is valid and would win the compare-and-swap, and so is the first child
+      // write; the second write, to a row that is not in this game, then fails. The old route had
+      // already moved the session by this point, and a half-applied transition leaves the earlier
+      // child written too.
       const res = await transition(f.gameId, f.updatedAt, { status_message: 'must-not-stick' }, [
+        { id: f.childIds[0], patch: { [t.childColumn]: ['must-not-stick'] } },
         { id: '00000000-0000-4000-8000-000000000000', patch: { [t.childColumn]: [] } },
       ])
 
       expect(res.error?.message).toMatch(/not found/)
-      expect(await readSession(f.gameId)).toEqual(before)
+      expect(await readSession(f.gameId)).toEqual(sessionBefore)
+      expect(await readChild(f.childIds[0])).toEqual(childBefore)
     })
 
     it('rejects an unknown column before writing anything', async () => {
