@@ -1335,6 +1335,80 @@ jobs:
           echo "http-cron-scheduling-gate.sh matches the digest recorded at extraction ($actual); running the verified snapshot."
           exec /usr/bin/bash <(printf '%s\n' "$snapshot") < /dev/null
 
+  db-concurrency:
+    name: DB Concurrency (local)
+    # Runs src/lib/db-concurrency.integration.test.ts against a throwaway Supabase stack started
+    # inside the runner: the atomic game-transition functions (word_grouping_submit,
+    # pick_a_number_submit, mahjong_apply_transition, rummy_apply_transition) called by many
+    # concurrent requests at once. Unit tests mock the database and would pass with the lock or
+    # the transaction removed; this is the check that would not.
+    #
+    # It is its own job, not a step in `rls-boundaries-local`, on purpose: that job is the security
+    # gate and may be a required check, and a flaky timing test must not be able to block merges
+    # through it. It starts its own stack (about four minutes, in parallel with the other jobs).
+    # Promote it to a required check once it has a track record.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # The Supabase CLI's local-development demo keys. Constant across every local stack and
+      # published in Supabase's own docs -- not secrets, and deliberately not stored as any.
+      # Same values as in `rls-boundaries-local`.
+      LOCAL_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+      LOCAL_SERVICE_ROLE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1 branch head
+        with:
+          version: 2.108.0
+
+      # Applies every migration in supabase/migrations from scratch, in order, so the functions
+      # under test are the ones this branch ships.
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Export local credentials
+        run: |
+          set -euo pipefail
+          # Capture first, then parse: a `supabase status` that fails must reach the ::error:: below
+          # instead of aborting the step at the assignment.
+          status_env=$(supabase status -o env) || status_env=''
+          api_url=$(printf '%s\n' "$status_env" | { grep -E '^API_URL=' || true; } | cut -d= -f2- | tr -d '"')
+          if [ -z "$api_url" ]; then
+            echo "::error::supabase status reported no API_URL. Refusing to run against a half-started stack."
+            exit 1
+          fi
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$api_url"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$LOCAL_ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$LOCAL_SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+
+      # Hosted-parity grant for the SERVICE role, and only the service role. A database built from
+      # scratch lacks the table grants that hosted projects received when their tables were created
+      # (see the same step in `rls-boundaries-local`); the suite writes fixtures as the service role.
+      - name: Grant the service role hosted-parity access
+        run: |
+          set -euo pipefail
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -c "grant all privileges on all tables in schema public to service_role;" \
+            -c "grant all privileges on all sequences in schema public to service_role;"
+
+      - name: Atomic database functions hold under concurrent callers
+        env:
+          # Turns "no local stack configured" from a silent skip into a failure; see the suite.
+          DB_CONCURRENCY_REQUIRED: '1'
+        run: pnpm vitest run src/lib/db-concurrency.integration.test.ts
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
