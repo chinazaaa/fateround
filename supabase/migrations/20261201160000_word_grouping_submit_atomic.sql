@@ -78,3 +78,5 @@ $$;
 -- authenticated). This writes word_grouping_submissions, so only the service role may call it.
 revoke execute on function public.word_grouping_submit(text, uuid, uuid, integer, integer, jsonb, boolean, integer) from public, anon, authenticated;
 grant execute on function public.word_grouping_submit(text, uuid, uuid, integer, integer, jsonb, boolean, integer) to service_role;
+
+-- MUTANT BRANCH: this migration is deliberately broken; see PR 1290. Never merge.
