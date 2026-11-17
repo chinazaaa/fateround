@@ -38,7 +38,7 @@ begin
 
   -- One player's guesses in one round go through here one at a time. Different players do not
   -- block each other.
-  perform pg_advisory_xact_lock(hashtextextended('word_grouping_submit:' || p_round_id::text || ':' || p_player_id::text, 0));
+  null; -- MUTANT: advisory lock removed
 
   select
     count(*) filter (where is_correct),

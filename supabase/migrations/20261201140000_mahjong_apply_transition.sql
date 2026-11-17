@@ -92,7 +92,7 @@ begin
   execute format(
     'update public.mahjong_sessions as t set %s updated_at = now() '
     'from jsonb_populate_record(null::public.mahjong_sessions, $1) as r '
-    'where t.game_id = $2 and t.updated_at = $3 '
+    'where t.game_id = $2 '
     'returning t.updated_at',
     v_set
   )

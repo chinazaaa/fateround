@@ -125,9 +125,7 @@ begin
     using v_patch, v_id, p_game_id;
 
     get diagnostics v_count = row_count;
-    if v_count = 0 then
-      raise exception 'rummy_apply_transition: hand % not found in game %', v_id, p_game_id;
-    end if;
+    -- MUTANT: a write to a missing hand is silently ignored
   end loop;
 
   return jsonb_build_object('status', 'ok', 'updated_at', v_new_updated_at);

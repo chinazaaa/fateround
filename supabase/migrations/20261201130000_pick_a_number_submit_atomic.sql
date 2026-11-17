@@ -30,7 +30,7 @@ begin
     return jsonb_build_object('status', 'game_not_active');
   end if;
 
-  select id, status into v_locked, v_status from public.rounds where id = p_round_id for update;
+  select id, status into v_locked, v_status from public.rounds where id = p_round_id; -- MUTANT: row lock removed
   if v_locked is null then
     raise exception 'pick_a_number_submit: round % not found', p_round_id;
   end if;
