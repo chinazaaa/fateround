@@ -18,10 +18,12 @@ const board = {
   current_turn: 'blue',
   current_clue_word: 'clue',
   current_clue_number: 2,
+  clue_seq: 3,
   guesses_remaining: 3,
   winner: null,
 }
 
+let lastRpcArgs: Record<string, unknown> | undefined
 let rpcResult: { data: unknown; error: { message: string } | null } = { data: null, error: null }
 
 const base = makeSupabaseStub({
@@ -31,7 +33,13 @@ const base = makeSupabaseStub({
   codewords_boards: () => ({ data: board, error: null }),
   codewords_guesses: () => ({ data: null, error: null }),
 })
-const supabase = { ...base, rpc: async () => rpcResult }
+const supabase = {
+  ...base,
+  rpc: async (_fn: string, args: Record<string, unknown>) => {
+    lastRpcArgs = args
+    return rpcResult
+  },
+}
 
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => supabase }))
 vi.mock('@/lib/codewords', async (importOriginal) => ({
@@ -63,6 +71,13 @@ describe('POST /api/codewords/guess — RPC re-check errors', () => {
     const res = await post()
     expect(res.status).toBe(400)
     await expect(res.json()).resolves.toEqual({ error: message })
+  })
+
+  it('maps STALE_CLUE to 409 and passes the observed clue_seq to the RPC', async () => {
+    rpcResult = { data: null, error: { message: 'STALE_CLUE' } }
+    const res = await post()
+    expect(res.status).toBe(409)
+    expect(lastRpcArgs?.p_clue_seq).toBe(3)
   })
 
   it('keeps unknown RPC errors as 500', async () => {

@@ -60,6 +60,8 @@ export async function POST(req: NextRequest) {
     p_board_id: typedBoard.id,
     p_cell_index: cellIndex,
     p_player_team: role.team,
+    // The clue this route validated; the RPC rejects the guess if a newer clue has replaced it.
+    p_clue_seq: typedBoard.clue_seq ?? null,
   })
 
   if (rpcError) {
@@ -74,6 +76,9 @@ export async function POST(req: NextRequest) {
     }
     if (msg.includes('NO_CLUE')) {
       return NextResponse.json({ error: 'Wait for your spymaster to give a clue' }, { status: 400 })
+    }
+    if (msg.includes('STALE_CLUE')) {
+      return NextResponse.json({ error: 'The clue changed — try again' }, { status: 409 })
     }
     if (msg.includes('NO_GUESSES_LEFT')) {
       return NextResponse.json({ error: 'No guesses left this turn' }, { status: 400 })
