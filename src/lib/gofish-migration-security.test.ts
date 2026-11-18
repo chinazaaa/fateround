@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const ROOT = process.cwd()
 const FILE = '20261130130000_sec_gofish_hide_hands_and_ocean.sql'
-const sql = readFileSync(join(ROOT, 'supabase', 'migrations', FILE), 'utf8')
+// Held out of supabase/migrations on this branch (see supabase/held-migrations/README.md); on dev it is applied.
+const sql = readFileSync(
+  existsSync(join(ROOT, 'supabase', 'migrations', FILE))
+    ? join(ROOT, 'supabase', 'migrations', FILE)
+    : join(ROOT, 'supabase', 'held-migrations', FILE),
+  'utf8'
+)
 
 describe('Go Fish hide hands + ocean migration', () => {
   it('passes the migration security gate', () => {
