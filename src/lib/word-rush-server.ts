@@ -343,8 +343,6 @@ export async function processWordRushSubmit(
   const mine = teamRows.find((r) => r.player_id === playerId)
   if (!mine) return { error: 'You are not in this game' }
 
-  let priorIndividualAnswer: { id: string; correct: boolean } | null = null
-
   if (session.mode === 'team') {
     if (mine.team !== session.active_team) return { error: "It's not your team's turn" }
     if (session.prompt_setter_player_id === playerId && session.prompt_mode === 'manual') {
@@ -361,7 +359,6 @@ export async function processWordRushSubmit(
       .eq('turn_index', session.turn_index)
       .eq('player_id', playerId)
       .maybeSingle()
-    priorIndividualAnswer = existing
     if (existing?.correct) return { error: 'You already got this round right' }
   }
 
@@ -374,41 +371,36 @@ export async function processWordRushSubmit(
   if (rejectReason) return { correct: false, message: rejectReason }
 
   if (session.mode === 'individual') {
-    const answerRow = {
-      game_id: gameId,
-      turn_index: session.turn_index,
-      round: session.current_round,
-      team: mine.team,
-      team_turn_index: null,
-      prompt_index: session.prompt_index,
-      start_letter: session.start_letter,
-      end_letter: session.end_letter,
-      player_id: playerId,
-      text: guess.slice(0, 80),
-      correct: true as const,
-    }
-
-    // Only the request whose write actually landed may award points. Parallel identical
-    // submits all pass the pre-check above; the unique index lets exactly one insert win
-    // and the rest must be rejected here rather than adding score again.
-    let recorded: { data: unknown[] | null; error: { code?: string } | null }
-    if (priorIndividualAnswer) {
-      recorded = await supabase
-        .from('word_rush_answers')
-        .update(answerRow)
-        .eq('id', priorIndividualAnswer.id)
-        .eq('correct', false)
-        .select('id')
-    } else {
-      recorded = await supabase.from('word_rush_answers').insert(answerRow).select('id')
-    }
-    if (recorded.error) {
-      if (recorded.error.code === '23505') return { error: 'You already got this round right' }
-      return internalFailure('word-rush individual answer', recorded.error, 'Could not record your answer')
-    }
-    if (!recorded.data?.length) return { error: 'You already got this round right' }
     const points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds, normalized.length)
-    await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
+
+    // One transaction: re-checks the round is still open (it may have closed since the read
+    // above), writes the answer and adds the score. Parallel identical submits all pass the
+    // pre-check; exactly one is recorded and scored. If scoring fails the answer rolls back so
+    // the player can retry instead of being stuck with a correct answer and no points.
+    const { data: outcome, error: recordError } = await supabase.rpc('word_rush_record_individual_answer', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+      p_turn_index: session.turn_index,
+      p_prompt_index: session.prompt_index,
+      p_round: session.current_round,
+      p_team: mine.team,
+      p_start_letter: session.start_letter,
+      p_end_letter: session.end_letter,
+      p_text: guess.slice(0, 80),
+      p_points: points,
+    })
+    if (recordError) {
+      return internalFailure('word-rush individual answer', recordError, 'Could not record your answer')
+    }
+    if (outcome === 'round_closed') return { error: 'This round has ended — wait for the next one' }
+    if (outcome === 'already_correct') return { error: 'You already got this round right' }
+    if (outcome !== 'recorded') {
+      return internalFailure(
+        'word-rush individual answer',
+        new Error(`unexpected outcome ${String(outcome)}`),
+        'Could not record your answer'
+      )
+    }
 
     const { data: roundAnswers } = await supabase
       .from('word_rush_answers')
@@ -563,18 +555,22 @@ async function endIndividualRound(
   if (guessesError) return internalFailure('word-rush:end-individual-round:guesses', guessesError)
 
   const setterId = session.prompt_setter_player_id
-  let mirrorPoints = 0
-  let guessedCount = 0
-  for (const guess of correctGuesses ?? []) {
-    if (guess.player_id === setterId) continue
-    guessedCount += 1
-    mirrorPoints += wordRushIndividualGuessPointsAt(
-      session.turn_deadline_at,
-      session.turn_seconds,
-      new Date(guess.created_at).getTime(),
-      normalizeWordRushWord(guess.text).length
-    )
+  const tally = (guesses: Array<{ player_id: string; created_at: string; text: string }> | null) => {
+    let points = 0
+    let count = 0
+    for (const guess of guesses ?? []) {
+      if (guess.player_id === setterId) continue
+      count += 1
+      points += wordRushIndividualGuessPointsAt(
+        session.turn_deadline_at,
+        session.turn_seconds,
+        new Date(guess.created_at).getTime(),
+        normalizeWordRushWord(guess.text).length
+      )
+    }
+    return { points, count }
   }
+  const guessedCount = tally(correctGuesses).count
 
   const nextRound = session.turn_index + 1
   const isLastRound = nextRound >= session.total_rounds
@@ -623,6 +619,27 @@ async function endIndividualRound(
 
   if (error) return internalFailure('word-rush:end-individual-round', error)
   if (!claimed?.length) return {}
+
+  // Answer admission checks the phase under a row lock, so once the claim above has landed no
+  // new answer can be admitted. Re-read to include one admitted between the first read and the
+  // claim; otherwise its points would be missing from the setter's mirror score and the message.
+  const { data: finalGuesses, error: finalError } = await supabase
+    .from('word_rush_answers')
+    .select('player_id, created_at, text')
+    .eq('game_id', gameId)
+    .eq('turn_index', session.turn_index)
+    .eq('correct', true)
+  if (finalError) return internalFailure('word-rush:end-individual-round:final-guesses', finalError)
+  const finalTally = tally(finalGuesses)
+  const mirrorPoints = finalTally.points
+  if (finalTally.count !== guessedCount && !isLastRound) {
+    await supabase
+      .from('word_rush_sessions')
+      .update({ status_message: `Round ${session.current_round} complete — ${finalTally.count} guessed it` })
+      .eq('game_id', gameId)
+      .eq('turn_index', session.turn_index + 1)
+      .eq('phase', 'intermission')
+  }
 
   if (mirrorPoints > 0 && setterId) {
     await supabase.rpc('word_rush_add_score', {

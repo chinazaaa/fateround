@@ -25,14 +25,26 @@ const session = {
   used_pairs: [],
 }
 
-/** Fake client: the pre-check sees no row, but the unique index admits only one insert. */
-function makeClient() {
-  const calls = { inserts: 0, scoreRpcs: 0 }
-  let inserted = false
+type Outcome = 'recorded' | 'round_closed' | 'already_correct'
+
+/**
+ * Fake client: the pre-check sees no row; the record RPC (one transaction in the database) is
+ * the only writer of answers/score, and admits exactly one of the racing submits.
+ */
+function makeClient(opts: { rpcError?: { message: string }; closed?: boolean } = {}) {
+  const calls = { recordRpcs: 0, scoreRpcs: 0, answerWrites: 0 }
+  let recorded = false
   const client = {
     rpc: (fn: string) => {
       if (fn === 'word_rush_add_score') calls.scoreRpcs++
-      return Promise.resolve({ data: null, error: null })
+      if (fn !== 'word_rush_record_individual_answer') return Promise.resolve({ data: null, error: null })
+      calls.recordRpcs++
+      if (opts.rpcError) return Promise.resolve({ data: null, error: opts.rpcError })
+      let outcome: Outcome = 'recorded'
+      if (opts.closed) outcome = 'round_closed'
+      else if (recorded) outcome = 'already_correct'
+      recorded = true
+      return Promise.resolve({ data: outcome, error: null })
     },
     from: (table: string) => {
       const q: Record<string, unknown> = {}
@@ -40,15 +52,10 @@ function makeClient() {
       const result = () => {
         if (table === 'word_rush_sessions') return { data: op === 'select' ? session : null, error: null }
         if (table === 'word_rush_players') return { data: [{ player_id: 'p1', team: 0, score: 0 }], error: null }
-        if (table === 'word_rush_answers' && op === 'insert') {
-          calls.inserts++
-          if (inserted) return { data: null, error: { code: '23505', message: 'duplicate key' } }
-          inserted = true
-          return { data: [{ id: 'a1' }], error: null }
-        }
+        if (table === 'word_rush_answers' && op !== 'select') calls.answerWrites++
         return { data: null, error: null }
       }
-      for (const m of ['select', 'eq', 'not', 'order']) q[m] = () => q
+      for (const m of ['select', 'eq', 'not', 'order', 'in']) q[m] = () => q
       q.update = () => {
         op = 'update'
         return q
@@ -73,7 +80,25 @@ describe('processWordRushSubmit individual duplicates', () => {
     const rejected = results.filter((r) => !r.correct)
     expect(rejected).toHaveLength(3)
     for (const r of rejected) expect(r.error).toBe('You already got this round right')
-    expect(calls.inserts).toBe(4)
-    expect(calls.scoreRpcs).toBe(1)
+    expect(calls.recordRpcs).toBe(4)
+    // Scoring happens inside the record function, never as a separate client call.
+    expect(calls.scoreRpcs).toBe(0)
+    expect(calls.answerWrites).toBe(0)
+  })
+
+  it('rejects an answer admitted after the round closed', async () => {
+    const { client, calls } = makeClient({ closed: true })
+    const result = await processWordRushSubmit(client, GAME, 'p1', 'cat')
+    expect(result.correct).toBeUndefined()
+    expect(result.error).toBe('This round has ended — wait for the next one')
+    expect(calls.scoreRpcs).toBe(0)
+  })
+
+  it('fails (retryable) instead of reporting success when the transaction errors', async () => {
+    const { client } = makeClient({ rpcError: { message: 'score update failed' } })
+    const result = await processWordRushSubmit(client, GAME, 'p1', 'cat')
+    expect(result.correct).toBeUndefined()
+    expect(result.points).toBeUndefined()
+    expect(result.internal).toBe(true)
   })
 })
