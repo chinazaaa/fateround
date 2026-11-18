@@ -53,6 +53,7 @@ vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => makeClient() })
 vi.mock('@/lib/game-admin', () => ({ assertPlayer: async () => ({ player: PLAYER }) }))
 
 import { POST } from './route'
+import { buildRoundsFromDeck } from '@/lib/who-said-this'
 
 function send(extra: Record<string, unknown>) {
   return POST(
@@ -98,6 +99,38 @@ describe('POST /api/votes status checks', () => {
     const res = await send({ wyrChoice: 'a' })
     expect(res.status).toBe(400)
     expect(upserts).toHaveLength(0)
+  })
+
+  describe('close grace window', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-01T00:00:30.000Z'))
+      round.status = 'finished'
+    })
+    afterEach(() => vi.useRealTimers())
+
+    it('accepts a timer vote that lands just after the host closed the round', async () => {
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      expect((await send({ wyrChoice: 'a' })).status).toBe(200)
+      expect(upserts).toHaveLength(1)
+    })
+
+    it('rejects a vote long after the round closed', async () => {
+      round.ended_at = '2026-01-01T00:00:20.000Z'
+      expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+      expect(upserts).toHaveLength(0)
+    })
+
+    it('rejects a vote on a finished round with no ended_at', async () => {
+      round.ended_at = null
+      expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+    })
+
+    it('never accepts a vote on a pending round', async () => {
+      round.status = 'pending'
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+    })
   })
 
   it.each(['waiting', 'finished'])('rejects a vote when the game is %s', async (status) => {
@@ -205,6 +238,20 @@ describe('POST /api/votes Who Said This', () => {
     round.submitter_player_id = PLAYER.id
     expect((await send({ targetParticipantId: 'a' })).status).toBe(400)
     animeMetadata = { choices: ['x', 'y'], correct_character: 'x' }
+    expect((await send({ animeChoice: 'x' })).status).toBe(400)
+    expect(upserts).toHaveLength(0)
+  })
+
+  it('rejects the lobby author on a round built by the player-authored start path', async () => {
+    const [built] = buildRoundsFromDeck({
+      gameId: 'ABCD',
+      participantIds: ['a', 'b'],
+      deck: [{ quote: 'q', options: ['x', 'y'], correctIndex: 0, playerId: PLAYER.id }],
+      startIndex: 0,
+      now: '2026-01-01T00:00:00.000Z',
+    })
+    round.submitter_player_id = built.submitter_player_id
+    animeMetadata = built.anime_metadata
     expect((await send({ animeChoice: 'x' })).status).toBe(400)
     expect(upserts).toHaveLength(0)
   })
