@@ -150,6 +150,17 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
   // compare-and-swap and every hand write apply atomically; any failure restores a snapshot.
   const rpc = async (fn: string, args: Record<string, unknown>) => {
     await Promise.resolve()
+    if (fn === 'rummy_finish_game_for_session') {
+      // Same semantics as the Postgres function: flips games only while it is active and the
+      // observed session is still the game's (finished) session.
+      if (faults.gamesUpdateError) return { data: null, error: { message: faults.gamesUpdateError } }
+      const game = tables.games.find((g) => g.id === args.p_game_id)
+      const sess = tables.rummy_sessions.find((r) => r.game_id === args.p_game_id && r.id === args.p_session_id)
+      if (!game || game.status !== 'active' || !sess || sess.phase !== 'finished') return { data: false, error: null }
+      game.status = 'finished'
+      gamesWrites.count++
+      return { data: true, error: null }
+    }
     if (fn !== 'rummy_apply_transition') return { data: null, error: { message: `unknown rpc ${fn}` } }
     if (faults.rpcError) return { data: null, error: { message: faults.rpcError } }
     const session = tables.rummy_sessions.find((r) => r.game_id === args.p_game_id)
@@ -303,6 +314,24 @@ describe('Rummy concurrent turn actions', () => {
     expect(tables.games[0].status).toBe('finished')
     // The original go-out's finalization is guarded by status = 'active', so it must not write
     // (or award room points) a second time.
+    expect(gamesWrites.count).toBe(0)
+  })
+  it('does not let a stale finalizer finish a newer round started under the same game id', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      // Round A's finished session has been read; Play Again and a new round (new session id)
+      // replace it before the retry's finalization write runs.
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        t.rummy_sessions[0] = { ...t.rummy_sessions[0], id: 's2', phase: 'playing', winner_player_id: null }
+      },
+    }
+    const { client, tables, gamesWrites } = makeDb(hand, faults)
+    Object.assign(tables.rummy_sessions[0], { phase: 'finished', winner_player_id: 'p1' })
+
+    const res = await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5')
+    expect(res.error).toBe('Game is finished')
+    expect(tables.games[0].status).toBe('active')
     expect(gamesWrites.count).toBe(0)
   })
   it('reads the session before the hands (never in parallel) so a hand is never older than its session version', async () => {
