@@ -36,6 +36,10 @@ function makeSupabase(rows: unknown[] | null, error: unknown = null) {
     calls.eqs.push([col, val])
     return b
   }
+  b.is = (col: string, val: unknown) => {
+    calls.eqs.push([col, val])
+    return b
+  }
   b.select = () => {
     calls.selected = true
     return b
@@ -53,6 +57,13 @@ beforeEach(() => {
 })
 
 describe('markGameFinished', () => {
+  it('binds the finish to the inspected session when onlySessionStartedAt is given', async () => {
+    const { supabase, calls } = makeSupabase([{ id: 'GAME' }])
+    await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true, onlySessionStartedAt: 'T1' })
+    expect(calls.eqs).toContainEqual(['session_started_at', 'T1'])
+    expect(calls.eqs).toContainEqual(['status', 'active'])
+  })
+
   it('guards the active→finished transition and awards points for the winner', async () => {
     const { supabase, calls } = makeSupabase([{ id: 'GAME' }])
     const res = await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true })

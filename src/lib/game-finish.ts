@@ -33,10 +33,26 @@ export async function markGameFinished(
   // sudoku's "first to solve the whole board") should pass `onlyIfActive` so the
   // active→finished transition is a single-winner CAS — otherwise every racer's
   // update succeeds and `awardRoomGamePoints` runs more than once for one game.
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  {
+    onlyIfActive = false,
+    onlySessionStartedAt,
+  }: {
+    onlyIfActive?: boolean
+    // Bind the finish to the session whose state the caller inspected (requires onlyIfActive).
+    // A stalled request must not finish a NEW session started under the same game id by Play
+    // Again; `null` matches only a row whose session_started_at is still null.
+    onlySessionStartedAt?: string | null
+  } = {}
 ) {
   const update = supabase.from('games').update({ status: 'finished', finished_at: finishedAt }).eq('id', gameId)
-  const result = onlyIfActive ? await update.eq('status', 'active').select('id') : await update
+  let guarded = onlyIfActive ? update.eq('status', 'active') : null
+  if (guarded && onlySessionStartedAt !== undefined) {
+    guarded =
+      onlySessionStartedAt === null
+        ? guarded.is('session_started_at', null)
+        : guarded.eq('session_started_at', onlySessionStartedAt)
+  }
+  const result = guarded ? await guarded.select('id') : await update
 
   // With the guard, only the request that actually flipped the row (non-empty data)
   // won the transition and should award points; losers get an empty set, no error.
