@@ -13,8 +13,11 @@ const CARD = {
 }
 
 let existingWinner: { id: string } | null = null
-let insertResult: { data: unknown; error: { code: string } | null } = { data: { id: 'claim-1' }, error: null }
-const insert = vi.fn()
+let rpcResult: { data: unknown; error: { message: string } | null } = {
+  data: { status: 'won', claim: { id: 'claim-1' } },
+  error: null,
+}
+const rpc = vi.fn()
 const finish = vi.fn()
 
 function makeClient() {
@@ -29,12 +32,12 @@ function makeClient() {
           if (table === 'bingo_cards') return { data: CARD, error: null }
           return { data: null, error: null }
         },
-        insert: (row: unknown) => {
-          insert(row)
-          return { select: () => ({ single: async () => insertResult }) }
-        },
       }
       return chain
+    },
+    rpc: async (fn: string, args: unknown) => {
+      rpc(fn, args)
+      return rpcResult
     },
   }
 }
@@ -42,9 +45,8 @@ function makeClient() {
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => makeClient() }))
 vi.mock('@/lib/game-admin', () => ({ assertPlayer: async () => ({ player: PLAYER }) }))
 vi.mock('@/lib/game-finish', () => ({
-  markGameFinished: async (...args: unknown[]) => {
+  runFinishSideEffects: async (...args: unknown[]) => {
     finish(...args)
-    return { error: null, won: true }
   },
 }))
 
@@ -62,16 +64,18 @@ function send() {
 
 describe('POST /api/bingo/claim', () => {
   beforeEach(() => {
-    insert.mockClear()
+    rpc.mockClear()
     finish.mockClear()
     existingWinner = null
-    insertResult = { data: { id: 'claim-1' }, error: null }
+    rpcResult = { data: { status: 'won', claim: { id: 'claim-1' } }, error: null }
   })
 
-  it('approves a valid line and finishes the game', async () => {
+  it('approves a valid line and finishes the game in one database call, then runs the bookkeeping once', async () => {
     const res = await send()
     expect(res.status).toBe(200)
-    expect(insert).toHaveBeenCalledTimes(1)
+    expect((await res.json()).claim).toEqual({ id: 'claim-1' })
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc.mock.calls[0][0]).toBe('bingo_claim_win')
     expect(finish).toHaveBeenCalledTimes(1)
   })
 
@@ -79,14 +83,31 @@ describe('POST /api/bingo/claim', () => {
     existingWinner = { id: 'claim-0' }
     const res = await send()
     expect(res.status).toBe(400)
-    expect(insert).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('treats losing the unique-index race as "already won", not a 500, and does not finish the game', async () => {
-    insertResult = { data: null, error: { code: '23505' } }
+  it('treats losing the unique-index race as "already won", not a 500, and does not run the bookkeeping', async () => {
+    rpcResult = { data: { status: 'already_won' }, error: null }
     const res = await send()
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe('Someone already won this round')
     expect(finish).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the round finished between the read and the claim', async () => {
+    rpcResult = { data: { status: 'game_not_active' }, error: null }
+    const res = await send()
+    expect(res.status).toBe(400)
+    expect(finish).not.toHaveBeenCalled()
+  })
+
+  it('returns a 500 and runs no bookkeeping when the atomic write fails, leaving a retry possible', async () => {
+    rpcResult = { data: null, error: { message: 'db down' } }
+    const res = await send()
+    expect(res.status).toBe(500)
+    expect(finish).not.toHaveBeenCalled()
+    // Nothing was committed (claim + finish are one transaction), so a retry is admitted.
+    rpcResult = { data: { status: 'won', claim: { id: 'claim-1' } }, error: null }
+    expect((await send()).status).toBe(200)
   })
 })

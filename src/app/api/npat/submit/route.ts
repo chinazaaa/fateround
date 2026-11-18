@@ -44,31 +44,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
   }
 
-  // A repeat submit is an idempotent no-op (same convention as draft): the first submission
-  // stands and cannot be overwritten.
-  const { data: existing, error: lookupError } = await supabase
-    .from('npat_answers')
-    .select('submitted_at')
-    .eq('round_id', roundId)
-    .eq('player_id', auth.player.id)
-    .maybeSingle()
-  // A failed lookup must stop here: with `existing` null the upsert below would overwrite an
-  // answer that was already submitted.
-  if (lookupError)
-    return NextResponse.json({ error: internalErrorMessage('npat/submit', lookupError) }, { status: 500 })
-  if (existing?.submitted_at) return NextResponse.json({ success: true, alreadySubmitted: true })
-
-  const now = new Date().toISOString()
-  const payload = {
-    game_id: code,
-    round_id: roundId,
-    player_id: auth.player.id,
-    ...trimmed,
-    submitted_at: now,
-  }
-
-  const { error } = await supabase.from('npat_answers').upsert(payload, { onConflict: 'player_id,round_id' })
+  // The "first submission wins" check lives in the database write (npat_save_answer only updates a
+  // row that is still unsubmitted), so two concurrent submits cannot both pass a read-then-write.
+  const { data: saved, error } = await supabase.rpc('npat_save_answer', {
+    p_game_id: code,
+    p_round_id: roundId,
+    p_player_id: auth.player.id,
+    p_name: trimmed.name,
+    p_animal: trimmed.animal,
+    p_place: trimmed.place,
+    p_thing: trimmed.thing,
+    p_food: trimmed.food,
+    p_submit: true,
+    p_now: new Date().toISOString(),
+  })
   if (error) return NextResponse.json({ error: internalErrorMessage('npat/submit', error) }, { status: 500 })
+  // A repeat submit is an idempotent no-op (same convention as draft): the first submission stands.
+  if ((saved as { status?: string } | null)?.status === 'already_submitted') {
+    return NextResponse.json({ success: true, alreadySubmitted: true })
+  }
 
   return NextResponse.json({ success: true })
 }

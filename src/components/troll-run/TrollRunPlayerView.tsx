@@ -44,6 +44,7 @@ import { markPlayerReady } from '@/lib/player-ready'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
+import { createSerialQueue } from '@/lib/serial-queue'
 
 type Screen =
   | 'loading'
@@ -434,31 +435,40 @@ export function TrollRunPlayerView({
     [gameCode, effectiveMyResumeToken]
   )
 
+  // Reports go out strictly in the order the engine raised them. A death on the last level is
+  // followed at once by that level's clear; sent in parallel, the clear can advance the server's
+  // level index first and the death is then dropped as "runner already finished".
+  const raceReportQueueRef = useRef(createSerialQueue())
+  const enqueueRaceReport = useCallback(
+    (path: string, payload: Record<string, unknown>) => raceReportQueueRef.current(() => postRaceReport(path, payload)),
+    [postRaceReport]
+  )
+
   const handleDeath = useCallback(
     (levelId: string, levelName: string) => {
       vibrate([40, 60, 40])
-      void postRaceReport('/api/troll-run/report-death', { levelId, levelName })
+      void enqueueRaceReport('/api/troll-run/report-death', { levelId, levelName })
     },
-    [postRaceReport]
+    [enqueueRaceReport]
   )
 
   const handleLevelClear = useCallback(
     (levelId: string, levelName: string, timeMs: number) => {
       vibrate([50, 50, 100])
-      void postRaceReport('/api/troll-run/report-clear', {
+      void enqueueRaceReport('/api/troll-run/report-clear', {
         levelId,
         levelName,
         timeMs: Math.max(0, Math.round(timeMs)),
       })
     },
-    [postRaceReport]
+    [enqueueRaceReport]
   )
 
   const handleAllLevelsCleared = useCallback(() => {
     vibrate([100, 50, 100, 50, 200])
     // Nothing about the result is sent: the server accepts the claim only if its own progress row
     // shows every level cleared, and reads the finishing time off the shared round clock.
-    void postRaceReport('/api/troll-run/report-round-finish', {}).then((outcome) => {
+    void enqueueRaceReport('/api/troll-run/report-round-finish', {}).then((outcome) => {
       if (outcome.ok) return
 
       // Refused because the server still holds levels this runner has played, so a clear report
@@ -469,7 +479,7 @@ export function TrollRunPlayerView({
         engineRef.current?.start(resumeIndex)
       }
     })
-  }, [postRaceReport, roundLevels.length])
+  }, [enqueueRaceReport, roundLevels.length])
 
   const handleEndGameEarly = useCallback(async () => {
     await onEndGameEarly?.()
