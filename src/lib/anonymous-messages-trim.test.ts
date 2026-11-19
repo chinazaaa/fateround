@@ -20,10 +20,11 @@ function makeFake({
   rpcDeleted,
 }: { messageCount?: number; deleteFails?: boolean; rpcDeleted?: number; onDelete?: (game: GameRow) => void } = {}) {
   const game: GameRow = { anonymous_messages_trimmed_at: null }
-  const state = { deletes: 0 }
+  const state = { deletes: 0, rpcCalls: [] as { fn: string; args: unknown }[] }
 
   const client = {
-    rpc: async () => {
+    rpc: async (fn: string, args: unknown) => {
+      state.rpcCalls.push({ fn, args })
       state.deletes += 1
       onDelete?.(game)
       return deleteFails
@@ -86,6 +87,12 @@ describe('trimAnonymousMessagesIfDue', () => {
     const result = await trimAnonymousMessagesIfDue(client, 'ABC123')
     expect(result.trimmed).toBe(ANONYMOUS_ROOM_TRIM_BATCH)
     expect(state.deletes).toBe(1)
+    expect(state.rpcCalls).toEqual([
+      {
+        fn: 'trim_anonymous_messages',
+        args: { p_game_id: 'ABC123', p_max: ANONYMOUS_ROOM_MAX_MESSAGES, p_batch: ANONYMOUS_ROOM_TRIM_BATCH },
+      },
+    ])
     expect(game.anonymous_messages_trimmed_at).not.toBeNull()
   })
 

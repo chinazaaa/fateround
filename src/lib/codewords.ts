@@ -760,7 +760,10 @@ export function mergeCodewordsBoardUpdate(
  * through this instead of the raw database row: the service-role read includes the full `key`.
  * Once the game has a winner the key is no longer secret and is returned as is.
  */
-export function maskCodewordsBoardKey(board: CodewordsBoard): CodewordsBoard {
+export function maskCodewordsBoardKey(fullBoard: CodewordsBoard): CodewordsBoard {
+  // clue_seq is a server-side concurrency counter (see codewords_process_guess); clients never need it.
+  const board = { ...fullBoard }
+  delete board.clue_seq
   if (board.winner) return board
   const fullKey = (board.key ?? []) as CodewordsBoard['key']
   const key_totals = fullKey.reduce<Record<string, number>>((acc, cell) => {
