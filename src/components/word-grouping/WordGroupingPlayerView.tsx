@@ -10,6 +10,7 @@ import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeade
 import { PLAYER_SELECT, WORD_GROUPING_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
+import { useWordGroupingCompletionNudge } from '@/hooks/useWordGroupingCompletionNudge'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
@@ -475,6 +476,10 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
     }
   }, [timeRemaining, screen, gameCode, load])
 
+  // If the finish that should have ended the game after the last player's final guess failed, nothing
+  // else would retry it (see the hook): nudge the server until the game finishes.
+  useWordGroupingCompletionNudge(gameCode, screen === 'playing' && isMyPuzzleDone, load)
+
   // Hold the board for a beat when the game ends mid-play. Without this the standings
   // replace the grid the instant the last player finishes, so you never see the fourth
   // group land. Only applies to the play -> finished transition: opening an already-finished
@@ -518,6 +523,9 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
       // shook the grid and recorded no mistake, so the puzzle became unloseable.
       if (!res.ok) {
         toastError(data.error || 'Could not submit that guess')
+        // A 5xx can come AFTER the guess committed (the last player's finish failed). Pull the committed
+        // submissions so the completion nudge sees this puzzle as done even if its realtime event was missed.
+        if (res.status >= 500) void load()
         return
       }
       if (data.isCorrect && data.group) {

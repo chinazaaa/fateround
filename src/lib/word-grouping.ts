@@ -108,6 +108,9 @@ export function pickWordGroupingPuzzle(
   base[key] = (base[key] ?? 0) + 1
   return { puzzle, nextUsage: base }
 }
+/** Longest allowed puzzle tile; shared by the puzzle parser and the submit route's guess schema. */
+export const WORD_GROUPING_MAX_WORD_LENGTH = 500
+
 export function parseStoredWordGroupingPuzzles(raw: unknown): WordGroupingPuzzleEntry[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null
   const out: WordGroupingPuzzleEntry[] = []
@@ -129,7 +132,7 @@ export function parseStoredWordGroupingPuzzles(raw: unknown): WordGroupingPuzzle
       for (const w of g.words) {
         if (typeof w !== 'string') return null
         const trimmed = w.trim()
-        if (!trimmed) return null
+        if (!trimmed || trimmed.length > WORD_GROUPING_MAX_WORD_LENGTH) return null
         words.push(trimmed)
         allWords.push(trimmed.toLowerCase())
       }
