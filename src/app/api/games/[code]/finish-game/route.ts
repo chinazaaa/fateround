@@ -155,7 +155,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     if (snapErr) console.error('Failed to save game snapshot:', snapErr.message)
   }
 
-  const { error } = await markGameFinished(admin, gameId, now)
+  // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so the host's finish takes
+  // the same durable lease as every other Word Rush finish (see markGameFinished's `trackBookkeeping`).
+  const { error, won } = await markGameFinished(admin, gameId, now, { trackBookkeeping: isWordRushGame(gameType) })
   if (error) return NextResponse.json({ error: internalErrorMessage('games/code/finish-game', error) }, { status: 500 })
 
   // Host force-ended without a natural winner → tag as an aborted finish so the
@@ -163,7 +165,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   // the host ended AFTER a winner was decided keeps result_reason NULL (natural
   // finish) so those credits still apply. See ABORT_REASONS in
   // src/lib/trophies/award.ts. Best-effort.
-  if (winnerNames.length === 0) {
+  // A tracked finish that lost the flip means another request already finished the game (e.g. a round
+  // finalizer, naturally): it is not ours to label as host-ended.
+  if (winnerNames.length === 0 && won) {
     const { error: reasonError } = await admin
       .from('games')
       .update({ result_reason: 'host_ended' })

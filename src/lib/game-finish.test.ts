@@ -114,6 +114,7 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
   // Captures the games update payload and answers the three lease RPCs.
   function makeTracked(rpcs: Record<string, unknown>, rows: unknown[] = [{ id: 'GAME' }]) {
     const payloads: Array<Record<string, unknown>> = []
+    const inFilters: Array<[string, unknown[]]> = []
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const b: any = {}
     b.update = (v: Record<string, unknown>) => {
@@ -121,6 +122,10 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
       return b
     }
     b.eq = () => b
+    b.in = (col: string, vals: unknown[]) => {
+      inFilters.push([col, vals])
+      return b
+    }
     b.select = () => b
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     b.then = (resolve: any, reject: any) => Promise.resolve({ data: rows, error: null }).then(resolve, reject)
@@ -129,7 +134,7 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
       rpcCalls.push([fn, args])
       return { data: rpcs[fn], error: null }
     })
-    return { supabase: { from: () => b, rpc } as never, payloads, rpcCalls }
+    return { supabase: { from: () => b, rpc } as never, payloads, rpcCalls, inFilters }
   }
 
   it('records the marker in the SAME update that flips the game, then runs the bookkeeping under the lease', async () => {
@@ -149,6 +154,23 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     expect(rpcCalls.map(([fn]) => fn)).toEqual(['claim_finish_bookkeeping', 'complete_finish_bookkeeping'])
     expect(res).toMatchObject({ won: true, bookkeeping: 'done' })
     expect(award).toHaveBeenCalledTimes(1)
+  })
+
+  it('a tracked flip without onlyIfActive is still a compare-and-set (waiting or active), so it cannot overwrite a live marker', async () => {
+    const claimed = {
+      claim_finish_bookkeeping: { status: 'claimed', finished_at: 'x', attempts: 0 },
+      complete_finish_bookkeeping: 'completed',
+    }
+    const won = makeTracked(claimed)
+    const first = await markGameFinished(won.supabase, 'GAME', '2026-01-01T00:00:00.000Z', { trackBookkeeping: true })
+    expect(won.inFilters).toEqual([['status', ['waiting', 'active']]])
+    expect(first.won).toBe(true)
+
+    // The game was already finished (and its marker is owned by a finalizer): the flip matches no row.
+    const lost = makeTracked(claimed, [])
+    const second = await markGameFinished(lost.supabase, 'GAME', '2026-01-01T00:00:00.000Z', { trackBookkeeping: true })
+    expect(second.won).toBe(false)
+    expect(lost.rpcCalls).toEqual([]) // and it neither claims nor re-runs the bookkeeping
   })
 
   it('leaves untracked finishes exactly as they were: no marker, no lease RPCs', async () => {
@@ -219,7 +241,9 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     const supabase = {
       from: () => ({
         select: () => ({
-          not: () => ({ order: () => ({ limit: async () => ({ data: [{ id: 'A' }, { id: 'B' }], error: null }) }) }),
+          not: () => ({
+            is: () => ({ order: () => ({ limit: async () => ({ data: [{ id: 'A' }, { id: 'B' }], error: null }) }) }),
+          }),
         }),
       }),
       rpc: vi.fn(async (fn: string) => {

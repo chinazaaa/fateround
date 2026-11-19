@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 vi.mock('server-only', () => ({}))
 
-import { recoverAllFinishBookkeeping, recoverFinishBookkeeping } from './game-finish'
+import { markGameFinished, recoverAllFinishBookkeeping, recoverFinishBookkeeping } from './game-finish'
 import { normalizeWordRushWord, wordRushIndividualGuessPointsAt } from './word-rush'
 import {
   clearWordRushSessionData,
@@ -180,7 +180,7 @@ describe('individual round finalization is resumable', () => {
         // Mirrors claim/complete/fail_finish_bookkeeping: the durable post-finish marker on the games row.
         if (fn === 'claim_finish_bookkeeping') {
           const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
-          if (!marker) return Promise.resolve({ data: { status: 'none' }, error: null })
+          if (!marker || marker.gave_up_at) return Promise.resolve({ data: { status: 'none' }, error: null })
           const until = marker.lease_until as string | undefined
           if (until && new Date(until).getTime() > Date.now()) {
             return Promise.resolve({ data: { status: 'held' }, error: null })
@@ -207,7 +207,8 @@ describe('individual round finalization is resumable', () => {
           }
           const attempts = ((marker.attempts as number) ?? 0) + 1
           if (attempts >= (args.p_max_attempts as number)) {
-            state.game.finish_bookkeeping = null
+            const { lease_until: _gl, owner: _go, ...kept } = marker
+            state.game.finish_bookkeeping = { ...kept, attempts, gave_up_at: new Date().toISOString() }
             state.events.push('gave_up')
             return Promise.resolve({ data: 'gave_up', error: null })
           }
@@ -265,7 +266,8 @@ describe('individual round finalization is resumable', () => {
               return { data: [{ id: GAME }], error: null }
             }
             if (listMode) {
-              return { data: state.game.finish_bookkeeping ? [{ id: GAME }] : [], error: null }
+              const fb = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
+              return { data: fb && !fb.gave_up_at ? [{ id: GAME }] : [], error: null }
             }
             // recordRoundFacts' read of the finished game: make the trophy snapshot fail.
             if (state.game.status === 'finished' && state.failFactsReads > 0) {
@@ -613,9 +615,15 @@ describe('individual round finalization is resumable', () => {
   it('gives up after the attempt cap so a snapshot that can never succeed does not block Play Again forever', async () => {
     const { client, state } = makeStatefulClient({ failFactsReads: 1000 })
     await processWordRushEndRoundEarly(client, GAME, 'host')
-    for (let i = 0; i < 10 && state.game.finish_bookkeeping; i++) await recoverFinishBookkeeping(client, GAME)
-    expect(state.game.finish_bookkeeping).toBeNull()
+    for (let i = 0; i < 10 && !(state.game.finish_bookkeeping as Record<string, unknown>)?.gave_up_at; i++) {
+      await recoverFinishBookkeeping(client, GAME)
+    }
+    // The unfinished work stays ON RECORD (not dropped), stamped so nothing retries it automatically...
+    expect(state.game.finish_bookkeeping).toMatchObject({ attempts: 5 })
+    expect((state.game.finish_bookkeeping as Record<string, unknown>).gave_up_at).toBeDefined()
     expect(state.events).toContain('gave_up')
+    expect(await recoverAllFinishBookkeeping(client)).toEqual({ recovered: 0, pending: 0, failed: 0 })
+    // ...and a replay is not blocked by it.
     expect(await clearWordRushSessionData(client, GAME)).toEqual({})
   })
 
@@ -654,5 +662,31 @@ describe('individual round finalization is resumable', () => {
     pendingGame(state, { owner: 'dead-runner', lease_until: new Date(Date.now() - 1000).toISOString() })
     expect(await recoverAllFinishBookkeeping(client)).toEqual({ recovered: 1, pending: 0, failed: 0 })
     expect(state.game.finish_bookkeeping).toBeNull()
+  })
+
+  it("an overlapping unguarded tracked finish (admin / host) cannot replace a live finalizer's marker", async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    const liveLease = new Date(Date.now() + 120_000).toISOString()
+    pendingGame(state, { owner: 'finalizer', lease_until: liveLease })
+    const before = JSON.stringify(state.game.finish_bookkeeping)
+    state.events.length = 0
+
+    // adminEndGame read the game while it was active, then the finalizer finished it; now admin's update runs.
+    const res = await markGameFinished(client, GAME, new Date().toISOString(), { trackBookkeeping: true })
+    expect(res.won).toBe(false)
+    expect(JSON.stringify(state.game.finish_bookkeeping)).toBe(before) // owner and lease untouched
+    expect(state.events).not.toContain('claim')
+    expect(state.events).not.toContain('bookkeeping')
+  })
+
+  it('a host/admin finish of a still-active game flips it with the marker and runs the bookkeeping once', async () => {
+    const { client, state } = makeStatefulClient()
+    state.session.round_finalize = null
+    const res = await markGameFinished(client, GAME, new Date().toISOString(), { trackBookkeeping: true })
+    expect(res).toMatchObject({ won: true, bookkeeping: 'done' })
+    expect(state.game.status).toBe('finished')
+    expect(state.game.finish_bookkeeping).toBeNull()
+    expect(state.events.filter((e) => e === 'bookkeeping')).toHaveLength(1)
   })
 })

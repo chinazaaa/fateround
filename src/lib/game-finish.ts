@@ -103,7 +103,10 @@ export async function runFinishSideEffects(
 
 /** A game's post-finish bookkeeping (see `games.finish_bookkeeping`) is leased for this long. */
 export const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
-/** After this many failed attempts the marker is dropped so a step that never succeeds cannot block a replay. */
+/**
+ * After this many failed attempts the marker is stamped `gave_up_at` and kept as a durable record (never retried
+ * automatically), so a step that never succeeds cannot block a replay forever.
+ */
 export const FINISH_BOOKKEEPING_MAX_ATTEMPTS = 5
 
 /**
@@ -120,7 +123,7 @@ export type FinishBookkeepingState = 'none' | 'done' | 'held' | 'retry' | 'error
  * still reading its rows. Whoever calls this — the finishing request, Play Again, the cron sweep — claims
  * the lease first, so exactly one runner executes at a time; the steps are idempotent, so a runner that
  * died is simply taken over once its lease expires. The marker is cleared only when every step succeeded
- * (or after FINISH_BOOKKEEPING_MAX_ATTEMPTS), and only by the runner that still owns the lease.
+ * (or stamped gave_up_at after FINISH_BOOKKEEPING_MAX_ATTEMPTS), and only by the runner that still owns the lease.
  */
 export async function recoverFinishBookkeeping(
   supabase: SupabaseClient,
@@ -158,7 +161,10 @@ export async function recoverFinishBookkeeping(
   })
   if (error) return { state: 'error', error: error.message }
   if (data === 'gave_up') {
-    console.error(`finish bookkeeping for game ${gameId} gave up after ${FINISH_BOOKKEEPING_MAX_ATTEMPTS} attempts`)
+    // The marker stays on the games row stamped gave_up_at: the unfinished work is on record, not lost.
+    console.error(
+      `finish bookkeeping for game ${gameId} gave up after ${FINISH_BOOKKEEPING_MAX_ATTEMPTS} attempts; games.finish_bookkeeping keeps the record`
+    )
     return { state: 'done' }
   }
   return { state: data === 'not_owner' ? 'held' : 'retry' }
@@ -173,6 +179,7 @@ export async function recoverAllFinishBookkeeping(
     .from('games')
     .select('id')
     .not('finish_bookkeeping', 'is', null)
+    .is('finish_bookkeeping->>gave_up_at', null)
     .order('finished_at', { ascending: true })
     .limit(limit)
   if (error || !data) return { recovered: 0, pending: 0, failed: error ? 1 : 0 }
@@ -234,12 +241,20 @@ export async function markGameFinished(
         ...(trackBookkeeping ? { finish_bookkeeping: { finished_at: finishedAt, attempts: 0 } } : {}),
       })
       .eq('id', gameId)
-    result = onlyIfActive ? await update.eq('status', 'active').select('id') : await update
+    // A tracked flip is always a compare-and-set: an unguarded update would overwrite the marker (and
+    // owner) of a finalizer that already finished the game and is mid-bookkeeping, and both would then
+    // run it. It still accepts a waiting game (the admin kill-switch may end one).
+    result = onlyIfActive
+      ? await update.eq('status', 'active').select('id')
+      : trackBookkeeping
+        ? await update.in('status', ['waiting', 'active']).select('id')
+        : await update
   }
 
   // With the guard, only the request that actually flipped the row (non-empty data)
   // won the transition and should award points; losers get an empty set, no error.
-  const won = !(onlyIfActive || roundGuard) || (Array.isArray(result.data) && result.data.length > 0)
+  const won =
+    !(onlyIfActive || roundGuard || trackBookkeeping) || (Array.isArray(result.data) && result.data.length > 0)
 
   let bookkeeping: FinishBookkeepingState | undefined
   if (!result.error && won) {
