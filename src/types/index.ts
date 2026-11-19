@@ -1729,6 +1729,8 @@ export type WordRushDifficulty = 'standard' | 'hard'
  * they have all been applied. Server-side only; clients ignore it.
  */
 export interface WordRushRoundFinalize {
+  /** word_rush_sessions.id of the game the round belonged to (Play Again creates a new id). */
+  session_id: string
   turn_index: number
   round: number
   setter_id: string | null

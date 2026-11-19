@@ -3,7 +3,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 vi.mock('server-only', () => ({}))
 
+import { normalizeWordRushWord, wordRushIndividualGuessPointsAt } from './word-rush'
 import {
+  clearWordRushSessionData,
   processWordRushEndRoundEarly,
   processWordRushExpireTurn,
   processWordRushSubmit,
@@ -113,6 +115,7 @@ describe('individual round finalization is resumable', () => {
   const SETTER = 'setter'
   const lastRound = {
     ...session,
+    id: 'S-old',
     prompt_mode: 'manual',
     prompt_setter_player_id: SETTER,
     total_rounds: 1,
@@ -135,6 +138,10 @@ describe('individual round finalization is resumable', () => {
       failTurnReads?: number
       failGameFinish?: boolean
       session?: Record<string, unknown>
+      /** Answers returned by the n-th read of word_rush_answers (the last entry repeats). */
+      answersByRead?: Array<Array<{ player_id: string; created_at: string; text: string }>>
+      /** Runs right after the setter award lands (simulate a replay while a finalizer is in flight). */
+      afterAward?: (state: { session: Record<string, unknown>; game: Record<string, unknown> }) => void
     } = {}
   ) {
     const state = {
@@ -144,22 +151,41 @@ describe('individual round finalization is resumable', () => {
       answerReads: 0,
       awardOutcomes: [] as string[],
       gameFinishFailed: false,
+      events: [] as string[],
     }
     const client = {
       rpc: (fn: string, args: Record<string, unknown>) => {
+        if (fn === 'word_rush_finish_game_for_session') {
+          if (opts.failGameFinish && !state.gameFinishFailed) {
+            state.gameFinishFailed = true
+            return Promise.resolve({ data: null, error: { message: 'boom' } })
+          }
+          // Mirrors the SQL function: only the session the round belonged to, only while it is finished.
+          const ok =
+            state.game.status === 'active' &&
+            state.session.id === args.p_session_id &&
+            state.session.status === 'finished'
+          if (ok) {
+            state.game.status = 'finished'
+            state.events.push('finish')
+          }
+          return Promise.resolve({ data: ok, error: null })
+        }
         if (fn !== 'word_rush_finalize_award') return Promise.resolve({ data: null, error: null })
-        // Mirrors the SQL function: once per marker, atomically with the `awarded` flag.
+        // Mirrors the SQL function: once per marker of THIS session, atomically with the `awarded` flag.
         const marker = state.session.round_finalize as Record<string, unknown> | null
         let outcome = 'not_pending'
-        if (marker && marker.turn_index === args.p_turn_index) {
+        if (marker && marker.session_id === args.p_session_id && marker.turn_index === args.p_turn_index) {
           if (marker.awarded) outcome = 'already_awarded'
           else {
             if (args.p_player_id && (args.p_delta as number) > 0) state.score += args.p_delta as number
             state.session.round_finalize = { ...marker, awarded: true }
             outcome = 'awarded'
+            state.events.push('award')
           }
         }
         state.awardOutcomes.push(outcome)
+        if (outcome === 'awarded') opts.afterAward?.(state)
         return Promise.resolve({ data: outcome, error: null })
       },
       from: (table: string) => {
@@ -182,12 +208,12 @@ describe('individual round finalization is resumable', () => {
             return true
           })
         const resolve = () => {
+          if (op === 'delete') {
+            state.events.push(`delete:${table}`)
+            return { data: null, error: null }
+          }
           if (table === 'games') {
             if (op === 'update') {
-              if (opts.failGameFinish && !state.gameFinishFailed) {
-                state.gameFinishFailed = true
-                return { data: null, error: { message: 'boom' } }
-              }
               if (!matches(state.game)) return { data: [], error: null }
               Object.assign(state.game, patch)
               return { data: [{ id: GAME }], error: null }
@@ -215,7 +241,9 @@ describe('individual round finalization is resumable', () => {
             if (state.answerReads > 1 && opts.failTurnReads !== undefined && turn === opts.failTurnReads) {
               return { data: null, error: { message: 'boom' } }
             }
-            return { data: [answer], error: null }
+            const byRead = opts.answersByRead
+            const rows = byRead ? byRead[Math.min(state.answerReads - 1, byRead.length - 1)] : [answer]
+            return { data: rows, error: null }
           }
           return { data: null, error: null }
         }
@@ -235,6 +263,10 @@ describe('individual round finalization is resumable', () => {
         q.update = (v: Record<string, unknown>) => {
           op = 'update'
           patch = v
+          return q
+        }
+        q.delete = () => {
+          op = 'delete'
           return q
         }
         q.maybeSingle = () => Promise.resolve(resolve())
@@ -346,5 +378,90 @@ describe('individual round finalization is resumable', () => {
     expect(state.session.round_finalize).toBeNull()
     // Idle on the next tick.
     expect(await resumeAllWordRushFinalizations(client)).toEqual({ resumed: 0, failed: 0 })
+  })
+  it('awards exactly the points of the FINAL answer set and reports its count', async () => {
+    // The pre-claim read sees one correct answer; a second one is admitted before the claim lands.
+    const second = { player_id: 'p2', created_at: new Date(Date.now() - 5_000).toISOString(), text: 'coat' }
+    const { client, state } = makeStatefulClient({
+      session: { total_rounds: 3 },
+      answersByRead: [[answer], [answer, second]],
+    })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+
+    const pointsFor = (a: { created_at: string; text: string }) =>
+      wordRushIndividualGuessPointsAt(
+        lastRound.turn_deadline_at,
+        lastRound.turn_seconds,
+        new Date(a.created_at).getTime(),
+        normalizeWordRushWord(a.text).length
+      )
+    expect(state.score).toBe(pointsFor(answer) + pointsFor(second))
+    expect(state.score).toBeGreaterThan(pointsFor(answer)) // not the earlier, smaller read
+    expect(state.session.status_message).toBe('Round 1 complete — 2 guessed it')
+  })
+
+  it('an in-flight finalizer cannot award or finish a NEW game started by Play Again', async () => {
+    // Play Again replaces the session (new id) and resets the game while the old finalizer is mid-way.
+    const { client, state } = makeStatefulClient({
+      afterAward: (st) => {
+        st.session = { ...lastRound, id: 'S-new', status: 'active', phase: 'playing', round_finalize: null }
+        st.game.status = 'active'
+      },
+    })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+
+    expect(state.game.status).toBe('active') // the stale finish was rejected by the session guard
+    expect(state.events).not.toContain('finish')
+  })
+
+  it('a stale marker for the old session cannot be awarded against the new session', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    const stale = state.session.round_finalize
+    expect(stale).toMatchObject({ session_id: 'S-old', awarded: false })
+
+    // A replay gives the game a new session whose first round also has turn_index 0.
+    state.session = {
+      ...lastRound,
+      id: 'S-new',
+      status: 'active',
+      phase: 'playing',
+      round_finalize: { ...(stale as object), session_id: 'S-new' },
+    }
+    const outcome = await client.rpc('word_rush_finalize_award', {
+      p_game_id: GAME,
+      p_session_id: 'S-old',
+      p_turn_index: 0,
+      p_player_id: SETTER,
+      p_delta: 50,
+    })
+    expect(outcome.data).toBe('not_pending')
+    expect(state.score).toBe(0)
+  })
+
+  it('Play Again finishes owed effects BEFORE it deletes the session and answers', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.session.round_finalize).not.toBeNull()
+    state.events.length = 0
+
+    expect(await clearWordRushSessionData(client, GAME)).toEqual({})
+    expect(state.score).toBeGreaterThan(0)
+    const award = state.events.indexOf('award')
+    const firstDelete = state.events.findIndex((e) => e.startsWith('delete:'))
+    expect(award).toBeGreaterThanOrEqual(0)
+    expect(firstDelete).toBeGreaterThan(award)
+  })
+
+  it('Play Again refuses to reset while the owed effects cannot be completed', async () => {
+    const { client, state } = makeStatefulClient({ failTurnReads: 0 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.session.round_finalize).not.toBeNull()
+    state.events.length = 0
+
+    const res = await clearWordRushSessionData(client, GAME)
+    expect(res.error).toBeDefined()
+    expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([]) // marker and answers kept
+    expect(state.session.round_finalize).not.toBeNull()
   })
 })

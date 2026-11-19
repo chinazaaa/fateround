@@ -131,6 +131,7 @@ async function runRoundFinalization(
   if (!pending.awarded) {
     const { data: outcome, error: awardError } = await supabase.rpc('word_rush_finalize_award', {
       p_game_id: gameId,
+      p_session_id: pending.session_id,
       p_turn_index: pending.turn_index,
       p_player_id: pending.setter_id,
       p_delta: finalTally.points,
@@ -146,6 +147,7 @@ async function runRoundFinalization(
       .from('word_rush_sessions')
       .update({ status_message: `Round ${pending.round} complete — ${finalTally.count} guessed it` })
       .eq('game_id', gameId)
+      .eq('id', pending.session_id)
       .eq('turn_index', pending.turn_index + 1)
       .eq('phase', 'intermission')
     if (messageError) return internalFailure('word-rush:finalize-round:message', messageError)
@@ -153,7 +155,10 @@ async function runRoundFinalization(
 
   // 3. Last round: finish the game. The CAS makes a resumed attempt a no-op if it already landed.
   if (pending.is_last) {
-    const finished = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    // Bound to this session: a finalizer that outlives Play Again must not finish the new game.
+    const finished = await markGameFinished(supabase, gameId, undefined, {
+      roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: pending.session_id } },
+    })
     if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
   }
 
@@ -162,6 +167,7 @@ async function runRoundFinalization(
     .from('word_rush_sessions')
     .update({ round_finalize: null })
     .eq('game_id', gameId)
+    .eq('id', pending.session_id)
     .eq('round_finalize->>turn_index', String(pending.turn_index))
   if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
   return {}
@@ -692,6 +698,7 @@ async function endIndividualRound(
   // What the round's effects need once this row has moved on to the next round. Written in the same
   // UPDATE as the claim so "round closed" and "effects owed" can never be out of step.
   const pending: WordRushRoundFinalize = {
+    session_id: session.id,
     turn_index: session.turn_index,
     round: session.current_round,
     setter_id: setterId,
@@ -1101,6 +1108,12 @@ export async function clearWordRushSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; poolUsage?: Record<string, unknown> }> {
+  // Never reset while a closed round's effects are still owed: deleting the session drops the
+  // marker and the answers the setter's points are computed from, so they could never be awarded.
+  // Finish them first; if that fails, refuse the reset so Play Again can simply be retried.
+  const owed = await resumeWordRushFinalization(supabase, gameId)
+  if (owed.error) return { error: 'The previous game is still being finalized — try again in a moment' }
+
   const { data: session } = await supabase
     .from('word_rush_sessions')
     .select('used_pairs')
