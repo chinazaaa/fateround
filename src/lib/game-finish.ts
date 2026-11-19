@@ -25,6 +25,8 @@ import { recordRoundFacts } from '@/lib/trophies/round-facts'
  */
 export type FinishGameResult = { error: string | null; won: boolean; cleanupError?: string | null }
 
+export type RoundGuard = { rpc: string; params: Record<string, unknown> }
+
 export async function markGameFinished(
   supabase: SupabaseClient,
   gameId: string,
@@ -33,30 +35,52 @@ export async function markGameFinished(
   // sudoku's "first to solve the whole board") should pass `onlyIfActive` so the
   // active→finished transition is a single-winner CAS — otherwise every racer's
   // update succeeds and `awardRoomGamePoints` runs more than once for one game.
+  //
+  // `roundGuard` additionally binds the transition to the round whose end the caller observed.
+  // `onlyIfActive` cannot tell round A from a round B started under the same game id by Play
+  // Again, so a stale finalizer would otherwise finish the new round. It names an RPC that flips
+  // games.status only if that round is still the one in the database, in the same statement
+  // (called with p_game_id, p_finished_at and `params`; returns true when it flipped the row).
   {
     onlyIfActive = false,
+    roundGuard,
     onlySessionStartedAt,
   }: {
     onlyIfActive?: boolean
-    // Bind the finish to the session whose state the caller inspected (requires onlyIfActive).
-    // A stalled request must not finish a NEW session started under the same game id by Play
-    // Again; `null` matches only a row whose session_started_at is still null.
+    roundGuard?: RoundGuard
+    // Bind the finish to the session whose state the caller inspected (requires onlyIfActive,
+    // plain-update path only). A stalled request must not finish a NEW session started under
+    // the same game id by Play Again; `null` matches only a row whose session_started_at is
+    // still null.
     onlySessionStartedAt?: string | null
   } = {}
 ) {
-  const update = supabase.from('games').update({ status: 'finished', finished_at: finishedAt }).eq('id', gameId)
-  let guarded = onlyIfActive ? update.eq('status', 'active') : null
-  if (guarded && onlySessionStartedAt !== undefined) {
-    guarded =
-      onlySessionStartedAt === null
-        ? guarded.is('session_started_at', null)
-        : guarded.eq('session_started_at', onlySessionStartedAt)
+  let result: { data?: unknown; error: { message: string } | null }
+  if (roundGuard) {
+    const rpcResult = await supabase.rpc(roundGuard.rpc, {
+      p_game_id: gameId,
+      p_finished_at: finishedAt,
+      ...roundGuard.params,
+    })
+    result = {
+      error: rpcResult.error,
+      data: rpcResult.error ? null : rpcResult.data === true ? [{ id: gameId }] : [],
+    }
+  } else {
+    const update = supabase.from('games').update({ status: 'finished', finished_at: finishedAt }).eq('id', gameId)
+    let guarded = onlyIfActive ? update.eq('status', 'active') : null
+    if (guarded && onlySessionStartedAt !== undefined) {
+      guarded =
+        onlySessionStartedAt === null
+          ? guarded.is('session_started_at', null)
+          : guarded.eq('session_started_at', onlySessionStartedAt)
+    }
+    result = guarded ? await guarded.select('id') : await update
   }
-  const result = guarded ? await guarded.select('id') : await update
 
   // With the guard, only the request that actually flipped the row (non-empty data)
   // won the transition and should award points; losers get an empty set, no error.
-  const won = !onlyIfActive || (Array.isArray(result.data) && result.data.length > 0)
+  const won = !(onlyIfActive || roundGuard) || (Array.isArray(result.data) && result.data.length > 0)
 
   if (!result.error && won) {
     try {

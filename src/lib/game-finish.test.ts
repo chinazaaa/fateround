@@ -64,6 +64,32 @@ describe('markGameFinished', () => {
     expect(calls.eqs).toContainEqual(['status', 'active'])
   })
 
+  it('with a roundGuard, flips via the RPC and only awards when the round still matched', async () => {
+    const rpc = vi
+      .fn()
+      .mockResolvedValueOnce({ data: true, error: null })
+      .mockResolvedValueOnce({ data: false, error: null })
+    const supabase = { rpc, from: vi.fn() } as never
+    const guard = { rpc: 'rummy_finish_game_for_session', params: { p_session_id: 's1' } }
+
+    const first = await markGameFinished(supabase, 'GAME', '2026-01-01T00:00:00.000Z', {
+      onlyIfActive: true,
+      roundGuard: guard,
+    })
+    expect(first.won).toBe(true)
+    expect(rpc).toHaveBeenCalledWith('rummy_finish_game_for_session', {
+      p_game_id: 'GAME',
+      p_finished_at: '2026-01-01T00:00:00.000Z',
+      p_session_id: 's1',
+    })
+    expect(award).toHaveBeenCalledTimes(1)
+
+    const stale = await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true, roundGuard: guard })
+    expect(stale.won).toBe(false)
+    expect(stale.error).toBeNull()
+    expect(award).toHaveBeenCalledTimes(1)
+  })
+
   it('guards the active→finished transition and awards points for the winner', async () => {
     const { supabase, calls } = makeSupabase([{ id: 'GAME' }])
     const res = await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true })
