@@ -1308,6 +1308,12 @@ export interface MahjongScoreSummary {
   winner_player_ids?: string[]
   honba?: number
   riichi_sticks?: number
+  /**
+   * Set by the hand transition that decides the match. Persisted with the hand so a failed
+   * `games` finalization is retried (and no further hand is dealt) even when the settlement had
+   * no payments to show.
+   */
+  match_finished?: boolean
 }
 
 export interface MahjongDiscard {
