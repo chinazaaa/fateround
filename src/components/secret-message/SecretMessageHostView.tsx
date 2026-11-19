@@ -36,7 +36,12 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
   const sharingLock = useRef(false)
 
   const inboxEnabled = game?.status === 'active'
-  const { messages, removeMessage } = useAnonymousMessages(gameCode, !!inboxEnabled, NO_PLAYERS, { hostToken })
+  const { messages, loading, loadError, reload, removeMessage } = useAnonymousMessages(
+    gameCode,
+    !!inboxEnabled,
+    NO_PLAYERS,
+    { hostToken }
+  )
   useAnonymousMessageTrim(gameCode, game?.status === 'active')
 
   const load = useCallback(async (): Promise<boolean> => {
@@ -208,19 +213,38 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
         </div>
       )}
 
-      {inboxEnabled ? (
-        <AnonymousMessageFeed
-          messages={messages}
-          title="Your inbox"
-          emptyLabel="No messages yet — share your link to start receiving"
-          hideSenderNames
-          canShareAsImage
-          sharingId={sharingId}
-          onShareAsImage={shareMessageAsImage}
-          canRemove
-          removingId={removingId}
-          onRemove={deleteMessage}
-        />
+      {inboxEnabled && loading && loadError ? (
+        <div className="glass-card p-4 space-y-3" role="alert">
+          <p className="text-body font-semibold">Couldn&apos;t load your inbox</p>
+          <p className="text-faint text-xs">Your messages are safe. Check your connection and try again.</p>
+          <button type="button" onClick={() => void reload()} className="btn-primary text-sm py-2 px-4">
+            Retry
+          </button>
+        </div>
+      ) : inboxEnabled && loading ? (
+        <div className="glass-card p-4">
+          <p className="text-faint text-sm">Loading your inbox…</p>
+        </div>
+      ) : inboxEnabled ? (
+        <>
+          {loadError ? (
+            <p className="text-faint text-xs" role="status">
+              Couldn&apos;t refresh — showing the last messages we loaded. Retrying automatically.
+            </p>
+          ) : null}
+          <AnonymousMessageFeed
+            messages={messages}
+            title="Your inbox"
+            emptyLabel="No messages yet — share your link to start receiving"
+            hideSenderNames
+            canShareAsImage
+            sharingId={sharingId}
+            onShareAsImage={shareMessageAsImage}
+            canRemove
+            removingId={removingId}
+            onRemove={deleteMessage}
+          />
+        </>
       ) : null}
 
       <div className="flex flex-col gap-2 pt-2">
