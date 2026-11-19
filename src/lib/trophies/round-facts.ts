@@ -20,18 +20,25 @@ import { resolveFinishers, resolveWinners } from './outcome'
  * rewrites the same row rather than duplicating or failing.
  */
 export async function recordRoundFacts(supabase: SupabaseClient, gameId: string, finishedAt: string): Promise<void> {
-  const { data: game } = await supabase
+  const { data: game, error: gameError } = await supabase
     .from('games')
     .select('game_type, timer_seconds, question_source, theme')
     .eq('id', gameId)
     .maybeSingle()
+  // Thrown (not returned) so a tracked finish can tell a failed snapshot from "nothing to snapshot" and
+  // retry it; every untracked caller already catches and logs, so their behaviour is unchanged.
+  if (gameError) throw new Error(`round_facts: game read failed: ${gameError.message}`)
   if (!game) return
 
   const gameType = game.game_type as GameType
   // Nothing to snapshot for a game with no builder — and no reason to load its players.
   if (!hasGameFacts(gameType)) return
 
-  const { data: players } = await supabase.from('players').select('id, spectator').eq('game_id', gameId)
+  const { data: players, error: playersError } = await supabase
+    .from('players')
+    .select('id, spectator')
+    .eq('game_id', gameId)
+  if (playersError) throw new Error(`round_facts: players read failed: ${playersError.message}`)
   // A player who went out in a shed-your-hand game is flagged spectator but genuinely finished —
   // rescue them via finish_order so the winner's facts are snapshotted. See resolveFinishers.
   const finishers = new Set(await resolveFinishers(supabase, gameId, gameType))
@@ -58,5 +65,8 @@ export async function recordRoundFacts(supabase: SupabaseClient, gameId: string,
     .map(([playerId, values]) => ({ game_id: gameId, player_id: playerId, finished_at: finishedAt, facts: values }))
 
   if (!rows.length) return
-  await supabase.from('round_facts').upsert(rows, { onConflict: 'game_id,player_id,finished_at' })
+  const { error: upsertError } = await supabase
+    .from('round_facts')
+    .upsert(rows, { onConflict: 'game_id,player_id,finished_at' })
+  if (upsertError) throw new Error(`round_facts: upsert failed: ${upsertError.message}`)
 }
