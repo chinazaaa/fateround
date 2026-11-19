@@ -8,7 +8,11 @@ const fetchMock = vi.fn()
 beforeEach(() => {
   vi.useFakeTimers()
   fetchMock.mockReset()
-  fetchMock.mockResolvedValue({ json: async () => ({ success: true, finished: false }) } as Response)
+  fetchMock.mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ success: true, finished: false }),
+  } as Response)
   vi.stubGlobal('fetch', fetchMock)
 })
 afterEach(() => {
@@ -34,7 +38,11 @@ describe('useWordGroupingCompletionNudge', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(onFinished).not.toHaveBeenCalled()
 
-    fetchMock.mockResolvedValue({ json: async () => ({ success: true, finished: true }) } as Response)
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, finished: true }),
+    } as Response)
     await vi.advanceTimersByTimeAsync(6000)
     expect(onFinished).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(30_000)
@@ -47,6 +55,24 @@ describe('useWordGroupingCompletionNudge', () => {
     await vi.advanceTimersByTimeAsync(4100)
     await vi.advanceTimersByTimeAsync(6000)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([400, 404])('stops asking after a permanent %i (asking again cannot change the answer)', async (status) => {
+    fetchMock.mockResolvedValue({ ok: false, status, json: async () => ({ error: 'nope' }) } as Response)
+    renderHook(() => useWordGroupingCompletionNudge('ABCD', true))
+    await vi.advanceTimersByTimeAsync(4100)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([500, 503, 408, 429])('keeps asking through a transient %i', async (status) => {
+    fetchMock.mockResolvedValue({ ok: false, status, json: async () => ({ error: 'try later' }) } as Response)
+    renderHook(() => useWordGroupingCompletionNudge('ABCD', true))
+    await vi.advanceTimersByTimeAsync(4100)
+    await vi.advanceTimersByTimeAsync(6000)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('sends nothing when disabled (puzzle not done, or the game already moved on)', async () => {

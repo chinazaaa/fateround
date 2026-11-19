@@ -523,6 +523,9 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
       // shook the grid and recorded no mistake, so the puzzle became unloseable.
       if (!res.ok) {
         toastError(data.error || 'Could not submit that guess')
+        // A 5xx can come AFTER the guess committed (the last player's finish failed). Pull the committed
+        // submissions so the completion nudge sees this puzzle as done even if its realtime event was missed.
+        if (res.status >= 500) void load()
         return
       }
       if (data.isCorrect && data.group) {

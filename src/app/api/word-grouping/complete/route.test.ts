@@ -4,10 +4,11 @@ import { GAME_CODE, gameRow, jsonRequest, makeSupabaseStub } from '@/test-suppor
 vi.mock('server-only', () => ({}))
 
 let game: Record<string, unknown> | null = null
+let gameError: { message: string } | null = null
 const settle = vi.fn()
 
 vi.mock('@/lib/supabase-admin', () => ({
-  getSupabaseAdmin: () => makeSupabaseStub({ games: () => ({ data: game, error: null }) }),
+  getSupabaseAdmin: () => makeSupabaseStub({ games: () => ({ data: game, error: gameError }) }),
 }))
 vi.mock('@/lib/word-grouping-completion', () => ({
   settleWordGroupingGame: (...args: unknown[]) => settle(...args),
@@ -20,6 +21,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   game = gameRow({ game_type: 'word_grouping', status: 'active' })
+  gameError = null
   settle.mockReset()
   settle.mockResolvedValue({ finished: true })
 })
@@ -52,5 +54,14 @@ describe('POST /api/word-grouping/complete', () => {
   it('answers 500 when settling fails, so the client keeps asking', async () => {
     settle.mockResolvedValue({ finished: false, error: new Error('markGameFinished failed: db down') })
     expect((await post()).status).toBe(500)
+  })
+
+  it('answers 500 (retryable), not a permanent 404, when the game lookup itself fails', async () => {
+    game = null
+    gameError = { message: 'connection reset' }
+    const res = await post()
+    expect(res.status).toBe(500)
+    expect(await res.json()).not.toEqual({ error: 'Game not found' })
+    expect(settle).not.toHaveBeenCalled()
   })
 })

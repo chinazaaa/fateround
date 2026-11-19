@@ -22,7 +22,11 @@ export async function POST(req: NextRequest) {
   const code = data.gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase.from('games').select('game_type').eq('id', code).maybeSingle()
+  const { data: game, error: gameError } = await supabase.from('games').select('game_type').eq('id', code).maybeSingle()
+  // A failed lookup is transient: answer 500 (the client keeps asking), never a permanent 404.
+  if (gameError) {
+    return NextResponse.json({ error: internalErrorMessage('word-grouping/complete', gameError) }, { status: 500 })
+  }
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (!isWordGroupingGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a Word Grouping game' }, { status: 400 })
