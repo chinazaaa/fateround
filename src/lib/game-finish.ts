@@ -46,18 +46,18 @@ export async function runFinishSideEffects(
   // Called before every step. A tracked runner passes its lease heartbeat: returning false means the lease was
   // lost, so the remaining steps must not touch rows the new owner (or a replay) is about to use.
   proceed?: () => Promise<boolean>
-): Promise<{ ok: boolean; lostLease?: boolean }> {
+): Promise<{ ok: boolean; lostLease?: boolean; stepFailed?: boolean }> {
   // `ok` is false when any step threw. Untracked callers ignore it (every step stays best-effort for
   // them); tracked finishes use it to retry instead of declaring the bookkeeping done.
   let ok = true
-  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true, stepFailed: !ok }
   try {
     await awardRoomGamePoints(supabase, gameId)
   } catch {
     // Room stats are best-effort — never block game finish.
     ok = false
   }
-  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true, stepFailed: !ok }
   try {
     // Snapshot trophy facts NOW, while the game's own tables still hold the round. Play-again
     // clears them and Chess's rematch blanks its move list, so deriving these at attribution
@@ -74,7 +74,7 @@ export async function runFinishSideEffects(
     ok = false
     console.error(`recordRoundFacts failed for game ${gameId}`, err)
   }
-  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true, stepFailed: !ok }
   try {
     // Advance a head-to-head bracket match (record winner / rematch a draw).
     // No-op for every other game. Never block game finish, but — unlike room
@@ -86,7 +86,7 @@ export async function runFinishSideEffects(
     ok = false
     console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
   }
-  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true, stepFailed: !ok }
   try {
     // Advance a school (class-ladder) match: climb the winner a class, or finish
     // the tournament if that graduates them. No-op for every other game; core
@@ -96,7 +96,7 @@ export async function runFinishSideEffects(
     ok = false
     console.error(`resolveSchoolMatch failed for game ${gameId}`, err)
   }
-  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true, stepFailed: !ok }
   try {
     // Score a finished Scrabble knockout room and, once the round's last room is
     // in, cut the bottom half of the whole field. No-op for every other game;
@@ -175,13 +175,17 @@ export async function recoverFinishBookkeeping(
   }
 
   let ok = false
+  // A step that already failed before the run was cut short (lost lease / renewal error) is still a failure.
+  let stepFailed = false
   try {
-    ok = (await runFinishSideEffects(supabase, gameId, finishedAt, heartbeat)).ok
+    const result = await runFinishSideEffects(supabase, gameId, finishedAt, heartbeat)
+    ok = result.ok
+    stepFailed = result.stepFailed ?? false
   } catch (err) {
     console.error(`finish bookkeeping threw for game ${gameId}`, err)
   }
   if (lostLease) return { state: 'held' }
-  if (renewalFailed) {
+  if (renewalFailed && !stepFailed) {
     // No bookkeeping step failed: we just could not prove ownership. Hand the lease back WITHOUT counting an
     // attempt, so transient renewal errors can never reach the attempt cap and drop the marker unrun.
     const { error } = await supabase.rpc('release_finish_bookkeeping', { p_game_id: gameId, p_owner: owner })

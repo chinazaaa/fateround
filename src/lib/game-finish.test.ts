@@ -308,6 +308,32 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     expect(calls).not.toContain('complete_finish_bookkeeping')
   })
 
+  it('counts a step that FAILED before a renewal error cut the run short (so the attempt cap is still reachable)', async () => {
+    award.mockRejectedValueOnce(new Error('room points down')) // step 1 fails
+    let renewals = 0
+    const calls: string[] = []
+    const supabase = {
+      rpc: vi.fn(async (fn: string) => {
+        calls.push(fn)
+        if (fn === 'claim_finish_bookkeeping') {
+          return { data: { status: 'claimed', finished_at: '2026-01-01T00:00:00.000Z', attempts: 4 }, error: null }
+        }
+        if (fn === 'renew_finish_bookkeeping') {
+          renewals += 1
+          // Before step 1 the lease renews; before step 2 the renewal errors.
+          return renewals >= 2 ? { data: null, error: { message: 'blip' } } : { data: 'renewed', error: null }
+        }
+        if (fn === 'fail_finish_bookkeeping') return { data: 'gave_up', error: null }
+        return { data: 'released', error: null }
+      }),
+    } as never
+    const res = await recoverFinishBookkeeping(supabase, 'GAME')
+    expect(calls).toContain('fail_finish_bookkeeping') // the failed step counts...
+    expect(calls).not.toContain('release_finish_bookkeeping') // ...it is not released as a renewal-only blip
+    expect(res.state).toBe('done') // and the cap (attempt 5) is reached, so Play Again is not blocked forever
+    expect(recordFacts).not.toHaveBeenCalled() // the run still stopped at the unprovable renewal
+  })
+
   it('stops when the marker is already gone (none): the new owner finished and a replay may reuse the game id', async () => {
     let renewals = 0
     const calls: string[] = []
