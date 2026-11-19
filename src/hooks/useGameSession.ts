@@ -39,6 +39,7 @@ import { useGameChannel } from '@/hooks/useGameChannel'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
+import { createLateVoteTracker, mergeVotesById } from '@/lib/late-votes'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import type { AutoSubmitRefs, AutoSubmitResult } from '@/hooks/useAutoSubmit'
 import type {
@@ -154,8 +155,10 @@ export function useGameSession(deps: GameSessionDeps) {
 
   // ── Refs ─────────────────────────────────────────────────────────────────
   const announcedRoundIdRef = useRef<string | null>(null)
-  // The round whose results are on screen; a vote accepted during the close grace window arrives after it.
-  const finishedRoundIdRef = useRef<string | null>(null)
+  // The round whose results are on screen. A vote accepted during the close grace window is inserted after
+  // the round finished, so its INSERT can race any of the paths that load the results; the tracker folds
+  // such votes back into whichever snapshot loads last.
+  const lateVotesRef = useRef(createLateVoteTracker())
   const suppressRoundSoundRef = useRef(true)
   const roundFormIdRef = useRef<string | null>(null)
   const prevViewRef = useRef<View | null>(null)
@@ -308,6 +311,7 @@ export function useGameSession(deps: GameSessionDeps) {
               .maybeSingle()
 
             if (finishedRound && session) {
+              lateVotesRef.current.begin(finishedRound.id)
               const [{ data: rv }, { data: rc }] = await Promise.all([
                 supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
                 supabase
@@ -317,7 +321,7 @@ export function useGameSession(deps: GameSessionDeps) {
                   .order('created_at'),
               ])
               setLastFinishedRound(finishedRound)
-              setLastRoundVotes(rv || [])
+              setLastRoundVotes(lateVotesRef.current.merge(finishedRound.id, rv || []))
               if (rc?.length) {
                 setAllConfessions((prev) => {
                   const ids = new Set(prev.map((c) => c.id))
@@ -496,21 +500,19 @@ export function useGameSession(deps: GameSessionDeps) {
           }
         }
         if (round.status === 'finished') {
-          finishedRoundIdRef.current = round.id
+          lateVotesRef.current.begin(round.id)
           const [{ data: rv }, { data: rc }] = await Promise.all([
             supabase.from('votes').select(VOTE_SELECT).eq('round_id', round.id),
             supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', round.id).order('created_at'),
           ])
+          const roundVotes = lateVotesRef.current.merge(round.id, rv || [])
           setLastFinishedRound(round)
-          setLastRoundVotes(rv || [])
+          setLastRoundVotes(roundVotes)
           setAllConfessions((prev) => {
             const ids = new Set(prev.map((c) => c.id))
             return [...prev, ...(rc || []).filter((c) => !ids.has(c.id))]
           })
-          setAllVotes((prev) => {
-            const ids = new Set(prev.map((v) => v.id))
-            return [...prev, ...(rv || []).filter((v) => !ids.has(v.id))]
-          })
+          setAllVotes((prev) => mergeVotesById(prev, roundVotes))
           setAllRounds((prev) => {
             const ids = new Set(prev.map((r) => r.id))
             return ids.has(round.id) ? prev.map((r) => (r.id === round.id ? round : r)) : [...prev, round]
@@ -544,8 +546,8 @@ export function useGameSession(deps: GameSessionDeps) {
       onVoteInsert: (vote) => {
         // A vote accepted inside the close grace window lands after the results were loaded:
         // add it to the finished round's results (deduped by id) so it shows without a refresh.
-        if (vote.round_id !== finishedRoundIdRef.current) return
-        const addVote = (prev: Vote[]) => (prev.some((v) => v.id === vote.id) ? prev : [...prev, vote])
+        if (!lateVotesRef.current.add(vote)) return
+        const addVote = (prev: Vote[]) => mergeVotesById(prev, [vote])
         setLastRoundVotes(addVote)
         setAllVotes(addVote)
       },
@@ -703,13 +705,16 @@ export function useGameSession(deps: GameSessionDeps) {
       }
 
       if (finishedRound && myPlayerIdRef.current) {
+        lateVotesRef.current.begin(finishedRound.id)
         const [votesRes, confsRes] = await Promise.all([
           supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
           supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', finishedRound.id).order('created_at'),
         ])
         if (!supabasePollOk(votesRes, confsRes)) return false
+        const roundVotes = lateVotesRef.current.merge(finishedRound.id, votesRes.data || [])
         setLastFinishedRound(finishedRound)
-        setLastRoundVotes(votesRes.data || [])
+        setLastRoundVotes(roundVotes)
+        setAllVotes((prev) => mergeVotesById(prev, roundVotes))
         if (confsRes.data?.length) {
           setAllConfessions((prev) => {
             const ids = new Set(prev.map((c) => c.id))

@@ -51,15 +51,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
 
   const now = new Date().toISOString()
 
-  const { error: endRoundError } = await admin
+  // Compare-and-set on the status: a second end-round (double click, retry) must not rewrite
+  // ended_at, which would reopen the votes close grace window after results were shown.
+  const { data: ended, error: endRoundError } = await admin
     .from('rounds')
     .update({ status: 'finished', ended_at: now })
     .eq('id', activeRound.id)
+    .eq('status', 'active')
+    .select('id')
 
   if (endRoundError)
     return NextResponse.json({ error: internalErrorMessage('games/code/end-round', endRoundError) }, { status: 500 })
 
   const isLastRound = activeRound.round_number >= game.rounds_count
+  if (!ended || ended.length === 0) {
+    return NextResponse.json({
+      finished: true,
+      alreadyEnded: true,
+      isLastRound,
+      roundNumber: activeRound.round_number,
+    })
+  }
   return NextResponse.json({
     finished: true,
     isLastRound,

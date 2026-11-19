@@ -7,6 +7,7 @@
  *   - mahjong_apply_transition   (20261201140000)
  *   - rummy_apply_transition     (20261201150000)
  *   - bingo_claim_win            (20261202700000)
+ *   - submit_vote_atomic         (20261203000000)
  *
  * Each replaced route code that read, decided, then wrote across several requests, and lost races:
  * simultaneous wrong guesses all passed a limit check, two picks clobbered each other's question,
@@ -320,6 +321,121 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
         await service.from('rounds').select('mlt_question').eq('id', roundId).single()
       )
       expect(round.mlt_question).toBeNull()
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
+  describe('submit_vote_atomic', () => {
+    const vote = (
+      gameId: string,
+      roundId: string,
+      playerId: string,
+      choice: 'a' | 'b',
+      opts: { grace?: number | null; now?: Date } = {}
+    ) =>
+      service.rpc('submit_vote_atomic', {
+        p_game_id: gameId,
+        p_round_id: roundId,
+        p_player_id: playerId,
+        p_row: { wyr_choice: choice },
+        p_grace_ms: opts.grace === undefined ? 3000 : opts.grace,
+        p_now: (opts.now ?? new Date()).toISOString(),
+      })
+
+    const stored = async (roundId: string, playerId: string) =>
+      must<{ wyr_choice: string }[]>(
+        'read votes',
+        await service.from('votes').select('wyr_choice').eq('round_id', roundId).eq('player_id', playerId)
+      )
+
+    const finish = (roundId: string, endedAt: Date) =>
+      service
+        .from('rounds')
+        .update({ status: 'finished', ended_at: endedAt.toISOString() })
+        .eq('id', roundId)
+        .eq('status', 'active')
+        .select('id')
+
+    it('lets a player change their vote while the round is active', async () => {
+      const gameId = await makeGame('would_you_rather')
+      const roundId = await makeRound(gameId)
+      const playerId = await makePlayer(gameId, 'voter')
+
+      noErrors([await vote(gameId, roundId, playerId, 'a'), await vote(gameId, roundId, playerId, 'b')])
+      expect(await stored(roundId, playerId)).toEqual([{ wyr_choice: 'b' }])
+    })
+
+    it('refuses a vote on a finished round when the game type has no grace, and keeps the stored vote', async () => {
+      const gameId = await makeGame('who_said_this')
+      const roundId = await makeRound(gameId)
+      const playerId = await makePlayer(gameId, 'voter')
+      await vote(gameId, roundId, playerId, 'a', { grace: null })
+      await finish(roundId, new Date())
+
+      const res = await vote(gameId, roundId, playerId, 'b', { grace: null })
+      noErrors([res])
+      expect(outcomes([res])[0].status).toBe('round_not_active')
+      expect(await stored(roundId, playerId)).toEqual([{ wyr_choice: 'a' }])
+    })
+
+    it('inside the grace window saves a missing vote but never overwrites an accepted one', async () => {
+      const gameId = await makeGame('would_you_rather')
+      const roundId = await makeRound(gameId)
+      const early = await makePlayer(gameId, 'early')
+      const late = await makePlayer(gameId, 'late')
+      await vote(gameId, roundId, early, 'a')
+      await finish(roundId, new Date())
+
+      const results = [await vote(gameId, roundId, early, 'b'), await vote(gameId, roundId, late, 'b')]
+      noErrors(results)
+      expect(outcomes(results).map((o) => o.status)).toEqual(['kept_existing', 'ok'])
+      expect(await stored(roundId, early)).toEqual([{ wyr_choice: 'a' }])
+      expect(await stored(roundId, late)).toEqual([{ wyr_choice: 'b' }])
+    })
+
+    it('refuses a vote once the grace window has passed', async () => {
+      const gameId = await makeGame('would_you_rather')
+      const roundId = await makeRound(gameId)
+      const playerId = await makePlayer(gameId, 'voter')
+      await finish(roundId, new Date())
+
+      const res = await vote(gameId, roundId, playerId, 'a', { now: new Date(Date.now() + 10_000) })
+      noErrors([res])
+      expect(outcomes([res])[0].status).toBe('round_not_active')
+      expect(await stored(roundId, playerId)).toEqual([])
+    })
+
+    it('serialises a resend racing end-round: it replaces the vote only if it beat the close', async () => {
+      await repeatRace(async () => {
+        const gameId = await makeGame('who_said_this')
+        const roundId = await makeRound(gameId)
+        const playerId = await makePlayer(gameId, 'voter')
+        await vote(gameId, roundId, playerId, 'a', { grace: null })
+
+        // No grace: a resend is either fully before the close (replaces) or refused (keeps 'a').
+        const [resend, closed] = await Promise.all([
+          vote(gameId, roundId, playerId, 'b', { grace: null }),
+          finish(roundId, new Date()),
+        ])
+        noErrors([resend])
+        expect(closed.error).toBeNull()
+        const status = outcomes([resend])[0].status
+        expect(['ok', 'round_not_active']).toContain(status)
+        expect(await stored(roundId, playerId)).toEqual([{ wyr_choice: status === 'ok' ? 'b' : 'a' }])
+      })
+    })
+
+    it('cannot be called with the public anon key', async () => {
+      const res = await anon.rpc('submit_vote_atomic', {
+        p_game_id: 'NOPE',
+        p_round_id: '00000000-0000-4000-8000-000000000000',
+        p_player_id: '00000000-0000-4000-8000-000000000000',
+        p_row: {},
+        p_grace_ms: null,
+        p_now: new Date().toISOString(),
+      })
+      expect(res.data).toBeNull()
+      expect(['42501', 'PGRST202']).toContain(res.error?.code)
     })
   })
 
