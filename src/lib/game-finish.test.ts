@@ -133,7 +133,7 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     const rpcCalls: Array<[string, Record<string, unknown>]> = []
     const rpc = vi.fn(async (fn: string, args: Record<string, unknown>) => {
       rpcCalls.push([fn, args])
-      return { data: rpcs[fn], error: null }
+      return { data: fn === 'renew_finish_bookkeeping' ? (rpcs[fn] ?? 'renewed') : rpcs[fn], error: null }
     })
     return { supabase: { from: () => b, rpc } as never, payloads, rpcCalls, inFilters }
   }
@@ -254,6 +254,7 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
       }),
       rpc: vi.fn(async (fn: string) => {
         if (fn === 'claim_finish_bookkeeping') return { data: claims.shift(), error: null }
+        if (fn === 'renew_finish_bookkeeping') return { data: 'renewed', error: null }
         return { data: 'completed', error: null }
       }),
     } as never
@@ -285,17 +286,47 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     expect(calls).not.toContain('fail_finish_bookkeeping')
   })
 
-  it('a failed renewal alone does not abandon the run (only an explicit not_owner does)', async () => {
+  it('fails closed on a renewal error: no further step starts, the lease is handed back for a retry', async () => {
+    const calls: string[] = []
     const supabase = {
       rpc: vi.fn(async (fn: string) => {
+        calls.push(fn)
         if (fn === 'claim_finish_bookkeeping') {
           return { data: { status: 'claimed', finished_at: '2026-01-01T00:00:00.000Z', attempts: 0 }, error: null }
         }
         if (fn === 'renew_finish_bookkeeping') return { data: null, error: { message: 'blip' } }
+        if (fn === 'fail_finish_bookkeeping') return { data: 'retry', error: null }
         return { data: 'completed', error: null }
       }),
     } as never
-    expect((await recoverFinishBookkeeping(supabase, 'GAME')).state).toBe('done')
-    expect(recordFacts).toHaveBeenCalledTimes(1)
+    const res = await recoverFinishBookkeeping(supabase, 'GAME')
+    expect(res.state).toBe('retry')
+    expect(award).not.toHaveBeenCalled() // we could not prove ownership, so not even the first step ran
+    expect(recordFacts).not.toHaveBeenCalled()
+    expect(calls).toContain('fail_finish_bookkeeping')
+    expect(calls).not.toContain('complete_finish_bookkeeping')
+  })
+
+  it('stops when the marker is already gone (none): the new owner finished and a replay may reuse the game id', async () => {
+    let renewals = 0
+    const calls: string[] = []
+    const supabase = {
+      rpc: vi.fn(async (fn: string) => {
+        calls.push(fn)
+        if (fn === 'claim_finish_bookkeeping') {
+          return { data: { status: 'claimed', finished_at: '2026-01-01T00:00:00.000Z', attempts: 0 }, error: null }
+        }
+        if (fn === 'renew_finish_bookkeeping') {
+          renewals += 1
+          return { data: renewals >= 2 ? 'none' : 'renewed', error: null }
+        }
+        return { data: 'completed', error: null }
+      }),
+    } as never
+    expect((await recoverFinishBookkeeping(supabase, 'GAME')).state).toBe('held')
+    expect(award).toHaveBeenCalledTimes(1)
+    expect(recordFacts).not.toHaveBeenCalled()
+    expect(calls).not.toContain('complete_finish_bookkeeping')
+    expect(calls).not.toContain('fail_finish_bookkeeping')
   })
 })

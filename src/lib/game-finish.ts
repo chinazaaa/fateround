@@ -164,9 +164,12 @@ export async function recoverFinishBookkeeping(
       p_lease_seconds: FINISH_BOOKKEEPING_LEASE_SECONDS,
       p_owner: owner,
     })
-    // A failed renewal is not proof of lost ownership; only an explicit not_owner stops the run.
-    if (!error && data === 'not_owner') lostLease = true
-    return !lostLease
+    // Fail closed: only an explicit 'renewed' lets the next step start. 'not_owner' (taken over) and 'none'
+    // (the marker is already gone — the new owner finished and a replay may be reusing this game id) mean the
+    // lease is lost; a renewal error means we cannot prove we still own it, so we stop and retry later instead
+    // of starting a step against rows that may belong to a replay.
+    if (!error && (data === 'not_owner' || data === 'none')) lostLease = true
+    return !error && data === 'renewed'
   }
 
   let ok = false
