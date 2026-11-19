@@ -2,8 +2,8 @@
 -- The route checks clue R1, but by the time the RPC takes the row lock both teams can have
 -- taken another turn and the same team posted clue R2; the locked checks (up, clue exists,
 -- guesses remain) all pass, so the guess spent R2's allowance while being recorded under R1.
--- clue_seq is bumped by a trigger each time a clue is posted (any change to a non-NULL clue, which
--- includes a second post replacing an existing clue), and the RPC
+-- clue_seq is bumped by a trigger each time a clue is posted (any change to the word or the number of
+-- a non-NULL clue, which includes a second post replacing an existing clue), and the RPC
 -- compares the caller's observed value under the lock (STALE_CLUE). p_clue_seq defaults to NULL
 -- (skip the check) so a route deployed before this migration keeps working.
 ALTER TABLE codewords_boards ADD COLUMN IF NOT EXISTS clue_seq integer NOT NULL DEFAULT 0;
@@ -13,7 +13,9 @@ LANGUAGE plpgsql
 SET search_path = public, pg_temp
 AS $$
 BEGIN
-  IF NEW.current_clue_word IS NOT NULL AND NEW.current_clue_word IS DISTINCT FROM OLD.current_clue_word THEN
+  IF NEW.current_clue_word IS NOT NULL
+     AND (NEW.current_clue_word IS DISTINCT FROM OLD.current_clue_word
+          OR NEW.current_clue_number IS DISTINCT FROM OLD.current_clue_number) THEN
     NEW.clue_seq := OLD.clue_seq + 1;
   END IF;
   RETURN NEW;
