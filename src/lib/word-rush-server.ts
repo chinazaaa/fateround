@@ -100,6 +100,9 @@ function tallyIndividualGuesses(
   return { points, count }
 }
 
+/** How long a lost finish CAS defers to the winner's post-finish bookkeeping before taking over. */
+const FINISH_BOOKKEEPING_GRACE_MS = 60_000
+
 /**
  * The effects of a closed individual round: the setter's mirror points, the "N guessed it" message
  * and, on the last round, the game finish. Written to be resumed: the claim that closed the round
@@ -160,6 +163,26 @@ async function runRoundFinalization(
       roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: pending.session_id } },
     })
     if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
+    if (!finished.won) {
+      // Another finalizer flipped the game and may still be running its bookkeeping (room points,
+      // trophy facts) from this session's rows. Clearing the marker here would let Play Again
+      // delete those rows underneath it, so leave the marker for the winner and report in-progress.
+      // A winner that died mid-bookkeeping is given up on after FINISH_BOOKKEEPING_GRACE_MS.
+      const { data: game, error: gameError } = await supabase
+        .from('games')
+        .select('status, finished_at')
+        .eq('id', gameId)
+        .maybeSingle()
+      if (gameError) return internalFailure('word-rush:finalize-round:finish-state', gameError)
+      const finishedAtMs = game?.finished_at ? new Date(game.finished_at).getTime() : NaN
+      if (
+        game?.status === 'finished' &&
+        Number.isFinite(finishedAtMs) &&
+        Date.now() - finishedAtMs < FINISH_BOOKKEEPING_GRACE_MS
+      ) {
+        return { error: 'Game finish is still in progress' }
+      }
+    }
   }
 
   // 4. Everything applied: clear the marker (only for this round).

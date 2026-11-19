@@ -464,4 +464,29 @@ describe('individual round finalization is resumable', () => {
     expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([]) // marker and answers kept
     expect(state.session.round_finalize).not.toBeNull()
   })
+  it('Play Again does NOT delete the rows while the winning finalizer is still in its post-finish bookkeeping', async () => {
+    // Finalizer A won the game flip and is still running room points / trophy facts from these rows.
+    // The resumed finalizer loses the CAS; it must neither clear the marker nor let Play Again reset.
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.session.round_finalize).not.toBeNull()
+    state.game.status = 'finished'
+    state.game.finished_at = new Date().toISOString() // A flipped it just now
+    state.events.length = 0
+
+    const res = await clearWordRushSessionData(client, GAME)
+    expect(res.error).toBeDefined()
+    expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
+    expect(state.session.round_finalize).not.toBeNull()
+  })
+
+  it('takes over once the winner has had its grace period (a winner that died is not waited on forever)', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    state.game.status = 'finished'
+    state.game.finished_at = new Date(Date.now() - 5 * 60_000).toISOString()
+
+    expect(await clearWordRushSessionData(client, GAME)).toEqual({})
+    expect(state.session.round_finalize).toBeNull()
+  })
 })
