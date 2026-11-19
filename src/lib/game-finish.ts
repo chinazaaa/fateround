@@ -112,8 +112,13 @@ export async function runFinishSideEffects(
 /**
  * A game's post-finish bookkeeping (see `games.finish_bookkeeping`) is leased for this long. The runner renews
  * it before every step, so the lease only has to outlive one step: an expired lease means the holder made no
- * progress for this long (a hung call; the Node fetch the Supabase client uses gives up on its own well within it).
- * The platform does NOT enforce a request limit here (self-hosted container), so this is enforced by the runner.
+ * progress for this long.
+ *
+ * KNOWN LIMIT: nothing bounds a single step. The platform enforces no request limit (self-hosted container), the
+ * admin Supabase client sets no fetch timeout, and a step makes several calls, so a step that stalls past the lease
+ * can still be reading rows after another runner takes over and a replay deletes them. The runner stops before its
+ * NEXT step once it loses the lease, but an in-flight step is not fenced: that needs lease-checked writes in the
+ * room-points / round-facts code, which is shared by every game.
  */
 export const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
 /**
