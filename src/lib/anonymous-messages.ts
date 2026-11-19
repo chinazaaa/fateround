@@ -164,32 +164,24 @@ export async function trimAnonymousMessagesIfDue(
       .eq('id', gameId)
       .eq('anonymous_messages_trimmed_at', claimedAt)
 
-  const { data: oldest, error: fetchError } = await supabase
-    .from('anonymous_messages')
-    .select('id')
-    .eq('game_id', gameId)
-    .order('created_at', { ascending: true })
-    .limit(ANONYMOUS_ROOM_TRIM_BATCH)
+  // The threshold is rechecked and the batch deleted in one SQL statement under a row lock, so a
+  // message deleted since the count above (e.g. by the host) cannot cause an over-trim.
+  const { data: deleted, error: trimError } = await supabase.rpc('trim_anonymous_messages', {
+    p_game_id: gameId,
+    p_max: ANONYMOUS_ROOM_MAX_MESSAGES,
+    p_batch: ANONYMOUS_ROOM_TRIM_BATCH,
+  })
 
-  if (fetchError || !oldest?.length) {
+  if (trimError || typeof deleted !== 'number') {
+    await releaseClaim()
+    return { trimmed: 0 }
+  }
+  if (deleted === 0) {
     await releaseClaim()
     return { trimmed: 0 }
   }
 
-  const { error: deleteError } = await supabase
-    .from('anonymous_messages')
-    .delete()
-    .in(
-      'id',
-      oldest.map((row) => row.id)
-    )
-
-  if (deleteError) {
-    await releaseClaim()
-    return { trimmed: 0 }
-  }
-
-  return { trimmed: oldest.length }
+  return { trimmed: deleted }
 }
 
 /** Wipe live session data when an anonymous room ends — messages are not kept. */
