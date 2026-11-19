@@ -6,10 +6,13 @@ vi.mock('@/lib/game-finish', () => ({
   markGameFinished: vi.fn(async () => ({ error: null })),
 }))
 
+import { markGameFinished } from '@/lib/game-finish'
 import {
   processMahjongClaim,
   processMahjongDiscard,
   processMahjongDraw,
+  processMahjongExpireTurn,
+  processMahjongNextHand,
   processMahjongPass,
   processMahjongRiichi,
 } from '@/lib/mahjong'
@@ -188,14 +191,17 @@ const scenarios: Scenario[] = [
     session: makeSession(),
     states: tableWith(['m6', 'm9', 'p2', 'p4', 'p6', 's1', 's3', 's5', 'we', 'we', 'wn', 'wn', 'dr', 'dg']),
     run: (c) => processMahjongDiscard(c, 'MJCAS', 'south-player', 'm6'),
-    // The discard itself, then the next player's auto-draw (nobody can claim).
-    rpcCount: 2,
+    // Nobody can claim: the discard and the next player's draw commit in ONE rpc, so a failed draw
+    // cannot leave a committed 'claim' phase with the discard already removed from the hand.
+    rpcCount: 1,
     expectFirstCall: (call) => {
-      expect(call.args.p_session_patch).toMatchObject({ phase: 'claim', last_action: 'discard' })
-      expect(call.args.p_state_writes).toHaveLength(1)
+      expect(call.args.p_session_patch).toMatchObject({ phase: 'discard', last_action: 'draw' })
+      expect(call.args.p_session_patch.discard_pile).toHaveLength(2)
+      expect(call.args.p_state_writes).toHaveLength(2)
       expect(call.args.p_state_writes[0]?.id).toBe('south-player-state')
       expect(call.args.p_state_writes[0]?.patch.hand).not.toContain('m6')
       expect(call.args.p_state_writes[0]?.patch.discarded).toEqual(['m1', 'm6'])
+      expect(call.args.p_state_writes[1]?.id).toBe('west-player-state')
     },
   },
   {
@@ -293,13 +299,37 @@ describe('Mahjong session compare-and-swap + player state in one transaction', (
     })
   }
 
-  it('discard: a follow-up auto-draw chains on the updated_at returned by the first rpc', async () => {
+  it('discard: a failed rpc commits nothing, so the same discard can simply be retried', async () => {
     const scenario = scenarios[0]!
-    const fake = fakeSupabase(scenario.session, scenario.states, () => true)
-    await scenario.run(fake.client)
-    expect(fake.rpcCalls[1]?.args.p_expected_updated_at).toBe('NEW-VERSION')
-    expect(fake.rpcCalls[1]?.args.p_session_patch).toMatchObject({ phase: 'discard' })
-    expect(fake.rpcCalls[1]?.args.p_state_writes[0]?.id).toBe('west-player-state')
+    const failing = fakeSupabase(scenario.session, scenario.states, () => true, 'boom')
+    expect((await scenario.run(failing.client)).error).toBe('boom')
+    // The session the retry reads is unchanged (nothing was committed), and it succeeds.
+    const retry = fakeSupabase(scenario.session, scenario.states, () => true)
+    expect((await scenario.run(retry.client)).error).toBeUndefined()
+  })
+
+  it('discard: when a claim is possible the discard commits the claim phase on its own', async () => {
+    const states = tableWith(['m6', 'm9', 'p2', 'p4', 'p6', 's1', 's3', 's5', 'we', 'we', 'wn', 'wn', 'dr', 'dg'])
+    // west holds a pair of m6 and can pung the discard.
+    states[2] = makeState('west-player', ['m6', 'm6', 'p1', 'p4', 'p7', 's1', 's4', 's7', 'we', 'wn', 'dr', 'dg', 'ws'])
+    const fake = fakeSupabase(makeSession(), states, () => true)
+    expect((await processMahjongDiscard(fake.client, 'MJCAS', 'south-player', 'm6')).error).toBeUndefined()
+    expect(fake.rpcCalls).toHaveLength(1)
+    expect(fake.rpcCalls[0]?.args.p_session_patch).toMatchObject({ phase: 'claim' })
+  })
+
+  it('expire: a claim phase with no possible claimant still advances to the next draw', async () => {
+    const session = makeSession({
+      phase: 'claim',
+      current_turn_index: 1,
+      last_discard: { tile: 'm6', player_id: 'south-player', discard_index: 0 },
+      discard_pile: [{ tile: 'm6', player_id: 'south-player' }],
+      turn_deadline_at: '2020-01-01T00:00:00.000Z',
+    })
+    const fake = fakeSupabase(session, tableWith([...FILLER]), () => true)
+    expect((await processMahjongExpireTurn(fake.client, 'MJCAS')).error).toBeUndefined()
+    expect(fake.rpcCalls).toHaveLength(1)
+    expect(fake.rpcCalls[0]?.args.p_session_patch).toMatchObject({ phase: 'discard', current_turn_index: 2 })
   })
 
   it('concurrent discards of different tiles by one player: exactly one hand write lands', async () => {
@@ -342,5 +372,182 @@ describe('Mahjong session compare-and-swap + player state in one transaction', (
     expect(winner.rpcCalls[0]?.args.p_state_writes).toEqual([
       { id: 'south-player-state', patch: { temporary_furiten: true } },
     ])
+  })
+})
+
+describe('Mahjong Kong replacement draw source', () => {
+  const DEAD_WALL = ['d0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'd10', 'd11', 'd12', 'd13']
+  const riichi = (overrides: Record<string, unknown> = {}) =>
+    makeSession({
+      ruleset: 'riichi',
+      wall: ['m1', 'm2', 'm3', 'm4'],
+      dead_wall: DEAD_WALL,
+      dora_indicators: ['d4'],
+      ...overrides,
+    })
+  const HAND_13 = ['m1', 'm4', 'm7', 'p1', 'p4', 'p7', 's1', 's4', 's7', 'we', 'wn', 'dr', 'dg']
+
+  function expectDeadWallDraw(call: RpcCall, playerId: string) {
+    const patch = call.args.p_session_patch
+    expect(patch.rinshan_player_id).toBe(playerId)
+    expect(patch.last_action).toBe('kong')
+    expect((patch.dead_wall as string[]).length).toBe(DEAD_WALL.length - 1)
+    expect(patch.wall).toEqual(['m1', 'm2', 'm3', 'm4'])
+    expect(patch.dora_indicators).toEqual(['d4', 'd5'])
+    expect(patch.phase).toBe('discard')
+  }
+
+  it('called Kong (status text "called KONG") draws from the dead wall', async () => {
+    const session = riichi({
+      phase: 'claim',
+      current_turn_index: 0,
+      last_discard: { tile: 'p5', player_id: 'east-player', discard_index: 0 },
+      discard_pile: [{ tile: 'p5', player_id: 'east-player' }],
+    })
+    const states = tableWith(['p5', 'p5', 'p5', ...HAND_13.slice(0, 10)])
+    const fake = fakeSupabase(session, states, () => true)
+    const result = await processMahjongClaim(fake.client, 'MJCAS', 'south-player', 'kong')
+    expect(result.error).toBeUndefined()
+    expect(fake.rpcCalls).toHaveLength(1)
+    expectDeadWallDraw(fake.rpcCalls[0]!, 'south-player')
+    expect(fake.rpcCalls[0]!.args.p_session_patch.status_message).toContain('replacement tile')
+  })
+
+  it('concealed Kong draws from the dead wall', async () => {
+    const session = riichi()
+    const states = tableWith(['m5', 'm5', 'm5', 'm5', 'p1', 'p2', 'p4', 's1', 's3', 's5', 'we', 'wn', 'dr', 'dg'])
+    const fake = fakeSupabase(session, states, () => true)
+    const result = await processMahjongClaim(fake.client, 'MJCAS', 'south-player', 'kong', ['m5'])
+    expect(result.error).toBeUndefined()
+    expect(fake.rpcCalls).toHaveLength(1)
+    expectDeadWallDraw(fake.rpcCalls[0]!, 'south-player')
+  })
+
+  it('added Kong draws from the dead wall', async () => {
+    const session = riichi()
+    const states = tableWith(['m5', 'p1', 'p2', 'p4', 's1', 's3', 's5', 'we', 'wn', 'dr', 'dg', 'ws', 'ww', 'we'])
+    states[1] = {
+      ...states[1]!,
+      melds: [{ type: 'pung', tiles: ['m5', 'm5', 'm5'], from_player_id: 'east-player' }],
+    } as unknown as MahjongPlayerState
+    const fake = fakeSupabase(session, states, () => true)
+    const result = await processMahjongClaim(fake.client, 'MJCAS', 'south-player', 'kong', ['m5'])
+    expect(result.error).toBeUndefined()
+    expect(fake.rpcCalls).toHaveLength(1)
+    expectDeadWallDraw(fake.rpcCalls[0]!, 'south-player')
+  })
+
+  it('a normal discard/draw never touches the dead wall or sets rinshan_player_id', async () => {
+    const session = riichi({ status_message: 'Previous Kong replacement mentioned in text' })
+    const states = tableWith(['m6', 'm9', 'p2', 'p4', 'p6', 's1', 's3', 's5', 'we', 'we', 'wn', 'wn', 'dr', 'dg'])
+    const fake = fakeSupabase(session, states, () => true)
+    expect((await processMahjongDiscard(fake.client, 'MJCAS', 'south-player', 'm6')).error).toBeUndefined()
+    const patch = fake.rpcCalls[0]!.args.p_session_patch
+    expect(patch.rinshan_player_id).toBeNull()
+    expect(patch.last_action).toBe('draw')
+    expect(patch.dead_wall).toEqual(DEAD_WALL)
+    expect(patch.dora_indicators).toEqual(['d4'])
+    expect((patch.wall as string[]).length).toBe(3)
+  })
+
+  it('a pass that ends the claim phase draws from the live wall', async () => {
+    const session = riichi({
+      phase: 'claim',
+      current_turn_index: 0,
+      last_discard: { tile: 'p5', player_id: 'east-player', discard_index: 0 },
+      discard_pile: [{ tile: 'p5', player_id: 'east-player' }],
+    })
+    const states = tableWith(['p5', 'p5', 'p5', ...HAND_13.slice(0, 10)])
+    const fake = fakeSupabase(session, states, () => true)
+    expect((await processMahjongPass(fake.client, 'MJCAS', 'south-player')).error).toBeUndefined()
+    const patch = fake.rpcCalls[0]!.args.p_session_patch
+    expect(patch.rinshan_player_id).toBeNull()
+    expect(patch.dead_wall).toEqual(DEAD_WALL)
+  })
+})
+
+describe('Mahjong hand transitions that must be atomic', () => {
+  it('next hand: the re-deal session patch and all four seats commit in ONE rpc', async () => {
+    const session = makeSession({ phase: 'finished', hand_result: 'exhaustive_draw', wall: [], dead_wall: [] })
+    const fake = fakeSupabase(session, tableWith([...FILLER]), () => true)
+    expect((await processMahjongNextHand(fake.client, 'MJCAS')).error).toBeUndefined()
+    expect(fake.rpcCalls).toHaveLength(1)
+    expect(fake.directWrites).toEqual([])
+    expect(fake.rpcCalls[0]!.args.p_session_patch).toMatchObject({ phase: 'discard' })
+    expect(fake.rpcCalls[0]!.args.p_state_writes).toHaveLength(4)
+  })
+
+  it('next hand: a request that loses the session CAS writes no hands', async () => {
+    const session = makeSession({ phase: 'finished', hand_result: 'exhaustive_draw', wall: [], dead_wall: [] })
+    const fake = fakeSupabase(session, tableWith([...FILLER]), () => false)
+    expect((await processMahjongNextHand(fake.client, 'MJCAS')).error).toBe(CONFLICT)
+    expect(fake.directWrites).toEqual([])
+  })
+
+  it('exhaustive draw: the Wall Watcher credit rides in the hand-finishing rpc', async () => {
+    const session = makeSession({ phase: 'draw', wall: [] })
+    const fake = fakeSupabase(session, tableWith([...FILLER]), () => true)
+    expect((await processMahjongDraw(fake.client, 'MJCAS', 'south-player')).error).toBeUndefined()
+    expect(fake.rpcCalls).toHaveLength(1)
+    expect(fake.directWrites).toEqual([])
+    const writes = fake.rpcCalls[0]!.args.p_state_writes
+    expect(writes).toHaveLength(4)
+    for (const write of writes) expect(write.patch.game_counters).toMatchObject({ mahjong_exhaustive_draws_seen: 1 })
+  })
+
+  it('called Kong that aborts the hand persists the claimed discard', async () => {
+    const session = makeSession({
+      ruleset: 'riichi',
+      phase: 'claim',
+      current_turn_index: 0,
+      dead_wall: ['d0', 'd1', 'd2', 'd3', 'd4', 'd5', 'd6', 'd7', 'd8', 'd9', 'd10', 'd11', 'd12', 'd13'],
+      last_discard: { tile: 'p5', player_id: 'east-player', discard_index: 0 },
+      discard_pile: [{ tile: 'p5', player_id: 'east-player' }],
+    })
+    const kong = (tile: string) => ({ type: 'kong', tiles: [tile, tile, tile, tile], from_player_id: null })
+    const states = tableWith(['p5', 'p5', 'p5', 'm1', 'm4', 'm7', 'p1', 'p4', 'p7', 's1', 's4', 's7', 'we'])
+    states[0] = { ...states[0]!, melds: [kong('m2'), kong('m3')] } as unknown as MahjongPlayerState
+    states[2] = { ...states[2]!, melds: [kong('s2')] } as unknown as MahjongPlayerState
+    const fake = fakeSupabase(session, states, () => true)
+    expect((await processMahjongClaim(fake.client, 'MJCAS', 'south-player', 'kong')).error).toBeUndefined()
+    const patch = fake.rpcCalls[0]!.args.p_session_patch
+    expect(patch).toMatchObject({ phase: 'finished', hand_result: 'abortive_draw' })
+    expect((patch.discard_pile as Array<Record<string, unknown>>)[0]).toMatchObject({
+      claimed_by_player_id: 'south-player',
+    })
+  })
+
+  describe('match finalization happens only after the deciding hand is committed', () => {
+    const finalHand = () =>
+      makeSession({
+        ruleset: 'riichi',
+        phase: 'draw',
+        wall: [],
+        round_wind: 'south',
+        hand_number: 4,
+        scores: { 'east-player': 20000, 'south-player': 40000, 'west-player': 20000, 'north-player': 20000 },
+      })
+
+    it('marks the game finished after a successful commit', async () => {
+      vi.mocked(markGameFinished).mockClear()
+      // Nobody tenpai, so the dealer does not repeat and the leader is over the return score.
+      const noten = ['m1', 'm4', 'm7', 'p1', 'p4', 'p7', 's1', 's4', 's7', 'we', 'wn', 'dr', 'dg']
+      // Discards that rule out Nagashi Mangan (which would make the dealer a winner).
+      const states = PLAYERS.map((id) => makeState(id, [...noten])).map(
+        (row) => ({ ...row, discarded: ['m5'] }) as MahjongPlayerState
+      )
+      const fake = fakeSupabase(finalHand(), states, () => true)
+      expect((await processMahjongDraw(fake.client, 'MJCAS', 'south-player')).error).toBeUndefined()
+      expect(fake.rpcCalls).toHaveLength(1)
+      expect(markGameFinished).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(markGameFinished).mock.calls[0]?.[3]).toEqual({ onlyIfActive: true })
+    })
+
+    it('does not mark the game finished when the session CAS is lost', async () => {
+      vi.mocked(markGameFinished).mockClear()
+      const fake = fakeSupabase(finalHand(), tableWith([...FILLER]), () => false)
+      expect((await processMahjongDraw(fake.client, 'MJCAS', 'south-player')).error).toBe(CONFLICT)
+      expect(markGameFinished).not.toHaveBeenCalled()
+    })
   })
 })
