@@ -5,6 +5,7 @@ import { assertPlayer } from '@/lib/game-admin'
 import { playerIsViewer } from '@/lib/viewers'
 import { isMatchingPairsGame, parseGameType } from '@/lib/game-types'
 import { parseJsonBody } from '@/lib/parse-body'
+import { touchGameActivity } from '@/lib/game-activity'
 import { internalErrorMessage } from '@/lib/api-errors'
 import {
   parseMatchingPairsMetadata,
@@ -92,8 +93,9 @@ export async function POST(req: NextRequest) {
   const currentRoundNumber = game.current_round_number ?? 1
   const totalRounds = game.rounds_count ?? 1
 
-  // Auth.
-  const auth = await assertPlayer(supabase, code, resumeToken)
+  // Auth. Read-only here so the liveness bump below only runs for a real player: a viewer whose
+  // flips are rejected must not keep an abandoned game looking active.
+  const auth = await assertPlayer(supabase, code, resumeToken, { readOnly: true })
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const playerId = auth.player.id
 
@@ -101,6 +103,7 @@ export async function POST(req: NextRequest) {
   if (playerIsViewer(auth.player, game)) {
     return NextResponse.json({ error: 'Viewers cannot submit' }, { status: 403 })
   }
+  touchGameActivity(supabase, code)
 
   const release = await acquireLock(playerId)
   try {

@@ -480,7 +480,8 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
-        spectator: spectatorForActiveJoin(gameRow as Game, true),
+        // An explicit watch-only join stays a spectator even while the room is still in the lobby.
+        spectator: rawJoinAsViewer === true || spectatorForActiveJoin(gameRow as Game, true),
       })
       .select()
       .single()

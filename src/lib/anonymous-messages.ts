@@ -157,12 +157,21 @@ export async function trimAnonymousMessagesIfDue(
   // If anything below fails, hand the window back so a later call can retry — but only while the
   // row still holds OUR claim. If this trim ran past the interval and another caller has since
   // claimed a newer window, restoring the old value would overwrite theirs.
-  const releaseClaim = () =>
-    supabase
-      .from('games')
-      .update({ anonymous_messages_trimmed_at: lastTrimAt })
-      .eq('id', gameId)
-      .eq('anonymous_messages_trimmed_at', claimedAt)
+  // A failed release would leave our claim in place and silence trimming until the interval
+  // lapses, so a transient error is retried before giving up (and logged when it persists).
+  const releaseClaim = async () => {
+    let lastError: unknown = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await supabase
+        .from('games')
+        .update({ anonymous_messages_trimmed_at: lastTrimAt })
+        .eq('id', gameId)
+        .eq('anonymous_messages_trimmed_at', claimedAt)
+      if (!error) return
+      lastError = error
+    }
+    console.error('trimAnonymousMessagesIfDue: could not release the trim claim', gameId, lastError)
+  }
 
   // The threshold is rechecked and the batch deleted in one SQL statement under a row lock, so a
   // message deleted since the count above (e.g. by the host) cannot cause an over-trim.

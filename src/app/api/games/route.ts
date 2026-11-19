@@ -246,6 +246,12 @@ const eliminationConfigSchema = z
     livesLostRule: z.literal('bottom-n').optional(),
   })
   .optional()
+  // Lives mode with no starting lives would skip life initialisation at start, leaving every
+  // player with the column default instead of the host's intended count.
+  .refine((c) => c === undefined || c.mode !== 'lives' || c.startingLives !== undefined, {
+    message: 'startingLives is required for lives mode',
+    path: ['startingLives'],
+  })
 
 const supabase = getSupabaseAnon()
 
@@ -556,6 +562,12 @@ export async function POST(req: NextRequest) {
 
   const elimParsed = eliminationConfigSchema.safeParse((body as Record<string, unknown>).elimination_config)
   let eliminationConfig = elimParsed.success ? (elimParsed.data ?? null) : null
+  if (
+    !elimParsed.success &&
+    elimParsed.error.issues.some((i) => i.path[0] === 'startingLives' && i.code === 'custom')
+  ) {
+    return NextResponse.json({ error: 'startingLives is required for lives mode' }, { status: 400 })
+  }
 
   const game_type = parseGameType(rawGameType)
   if (eliminationConfig && !ELIMINATION_COMPATIBLE_TYPES.includes(game_type as any)) {

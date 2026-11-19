@@ -88,6 +88,14 @@ describe('POST /api/players — anonymous room', () => {
     )
   })
 
+  it('keeps an explicit watch-only join to a waiting room as a spectator', async () => {
+    GAME = { id: 'ABCD', status: 'waiting', game_type: 'anonymous_messages', session_started_at: null }
+    const res = await join({ joinAsViewer: true })
+    expect(res.status).toBe(200)
+    expect(inserts).toHaveLength(1)
+    expect(inserts[0].spectator).toBe(true)
+  })
+
   it('seats a late joiner to an active room as a spectator who cannot chat', async () => {
     const startedAt = new Date(Date.now() - 60_000).toISOString()
     GAME = {
