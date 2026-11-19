@@ -24,7 +24,23 @@ export async function postRaceReportRequest(
         body,
         signal: AbortSignal.timeout(timeoutMs),
       })
-      const parsed = (await res.json().catch(() => null)) as Record<string, unknown> | null
+      // Read the body as text so that a timeout while reading it is a real error here, not a
+      // swallowed parse failure: only malformed JSON may fall back to a null body.
+      let text: string | null = null
+      try {
+        text = await res.text()
+      } catch {
+        // The body never arrived in time. A 2xx already says the server accepted the report, so it
+        // stands; a refusal's body carries the progress the caller needs, so try again for it.
+        if (res.ok) return { ok: true, body: null }
+        continue
+      }
+      let parsed: Record<string, unknown> | null = null
+      try {
+        parsed = JSON.parse(text) as Record<string, unknown> | null
+      } catch {
+        parsed = null
+      }
       if (res.ok) return { ok: true, body: parsed }
       if (res.status < 500) return { ok: false, body: parsed }
     } catch {

@@ -29,6 +29,41 @@ describe('postRaceReportRequest', () => {
     expect(f).toHaveBeenCalledTimes(1)
   })
 
+  /** Headers arrive at once but the body stream never finishes, and errors when the signal aborts. */
+  function stalledBody(status: number, init: RequestInit) {
+    const stream = new ReadableStream({
+      start(controller) {
+        init.signal?.addEventListener('abort', () => controller.error(new Error('body timeout')))
+      },
+    })
+    return new Response(stream, { status })
+  }
+
+  it('keeps a 2xx whose body stalls as accepted, without retrying', async () => {
+    const f = vi.fn(async (_u: string, init: RequestInit) => stalledBody(200, init))
+    vi.stubGlobal('fetch', f)
+    expect(await postRaceReportRequest('/x', {}, 20)).toEqual({ ok: true, body: null })
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a refusal whose body stalls instead of returning it with the progress lost', async () => {
+    let n = 0
+    const f = vi.fn(async (_u: string, init: RequestInit) =>
+      ++n === 1 ? stalledBody(409, init) : new Response(JSON.stringify({ currentLevelIndex: 3 }), { status: 409 })
+    )
+    vi.stubGlobal('fetch', f)
+    expect(await postRaceReportRequest('/x', {}, 20)).toEqual({ ok: false, body: { currentLevelIndex: 3 } })
+    expect(f).toHaveBeenCalledTimes(2)
+  })
+
+  it('tolerates a malformed JSON body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not json', { status: 200 }))
+    )
+    expect(await postRaceReportRequest('/x', {})).toEqual({ ok: true, body: null })
+  })
+
   it('gives up on a request that never settles instead of blocking forever', async () => {
     const f = hangingFetch()
     vi.stubGlobal('fetch', f)
