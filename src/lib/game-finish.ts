@@ -25,6 +25,8 @@ import { recordRoundFacts } from '@/lib/trophies/round-facts'
  */
 export type FinishGameResult = { error: string | null; won: boolean; cleanupError?: string | null }
 
+export type RoundGuard = { rpc: string; params: Record<string, unknown> }
+
 export async function markGameFinished(
   supabase: SupabaseClient,
   gameId: string,
@@ -33,14 +35,33 @@ export async function markGameFinished(
   // sudoku's "first to solve the whole board") should pass `onlyIfActive` so the
   // active→finished transition is a single-winner CAS — otherwise every racer's
   // update succeeds and `awardRoomGamePoints` runs more than once for one game.
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  //
+  // `roundGuard` additionally binds the transition to the round whose end the caller observed.
+  // `onlyIfActive` cannot tell round A from a round B started under the same game id by Play
+  // Again, so a stale finalizer would otherwise finish the new round. It names an RPC that flips
+  // games.status only if that round is still the one in the database, in the same statement
+  // (called with p_game_id, p_finished_at and `params`; returns true when it flipped the row).
+  { onlyIfActive = false, roundGuard }: { onlyIfActive?: boolean; roundGuard?: RoundGuard } = {}
 ) {
-  const update = supabase.from('games').update({ status: 'finished', finished_at: finishedAt }).eq('id', gameId)
-  const result = onlyIfActive ? await update.eq('status', 'active').select('id') : await update
+  let result: { data?: unknown; error: { message: string } | null }
+  if (roundGuard) {
+    const rpcResult = await supabase.rpc(roundGuard.rpc, {
+      p_game_id: gameId,
+      p_finished_at: finishedAt,
+      ...roundGuard.params,
+    })
+    result = {
+      error: rpcResult.error,
+      data: rpcResult.error ? null : rpcResult.data === true ? [{ id: gameId }] : [],
+    }
+  } else {
+    const update = supabase.from('games').update({ status: 'finished', finished_at: finishedAt }).eq('id', gameId)
+    result = onlyIfActive ? await update.eq('status', 'active').select('id') : await update
+  }
 
   // With the guard, only the request that actually flipped the row (non-empty data)
   // won the transition and should award points; losers get an empty set, no error.
-  const won = !onlyIfActive || (Array.isArray(result.data) && result.data.length > 0)
+  const won = !(onlyIfActive || roundGuard) || (Array.isArray(result.data) && result.data.length > 0)
 
   if (!result.error && won) {
     try {
