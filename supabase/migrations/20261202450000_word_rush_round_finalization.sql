@@ -30,6 +30,19 @@ alter table public.games add column if not exists finish_bookkeeping jsonb;
 create index if not exists games_finish_bookkeeping_pending_idx
   on public.games (id) where finish_bookkeeping is not null;
 
+-- Append-only record of finishes whose bookkeeping gave up, one row per game GENERATION (game id +
+-- finished_at: Play Again reuses the game id, finished_at tells the rounds apart). Service role only.
+create table if not exists public.finish_bookkeeping_failures (
+  game_id text not null,
+  finished_at timestamptz not null,
+  attempts integer not null,
+  failed_at timestamptz not null default now(),
+  primary key (game_id, finished_at)
+);
+alter table public.finish_bookkeeping_failures enable row level security;
+revoke all on public.finish_bookkeeping_failures from public, anon, authenticated;
+grant all on public.finish_bookkeeping_failures to service_role;
+
 -- Award the setter's mirror points for the finalizing round exactly once.
 --
 -- Locks the session row, checks the marker is still for p_turn_index and has not already awarded,
@@ -157,8 +170,7 @@ declare
   v_until timestamptz;
 begin
   select g.finish_bookkeeping into v_marker from public.games g where g.id = p_game_id for update;
-  -- A marker that gave up is a durable record of unfinished bookkeeping, not work to run again.
-  if v_marker is null or v_marker->>'gave_up_at' is not null then
+  if v_marker is null then
     return jsonb_build_object('status', 'none');
   end if;
   v_until := nullif(v_marker->>'lease_until', '')::timestamptz;
@@ -202,8 +214,7 @@ end;
 $$;
 
 -- The bookkeeping did not complete: hand the lease back and count the attempt so it is retried. After
--- p_max_attempts the marker is kept but stamped gave_up_at ('gave_up'): a step that can never succeed cannot
--- block a replay forever, yet the unfinished work stays on record instead of vanishing. 'retry', 'gave_up', 'none' or 'not_owner'.
+-- p_max_attempts the failure is recorded in finish_bookkeeping_failures and the marker is dropped ('gave_up'). 'retry', 'gave_up', 'none' or 'not_owner'.
 create or replace function public.fail_finish_bookkeeping(p_game_id text, p_owner uuid, p_max_attempts integer)
 returns text
 language plpgsql
@@ -223,12 +234,14 @@ begin
   end if;
   v_attempts := coalesce((v_marker->>'attempts')::integer, 0) + 1;
   if v_attempts >= greatest(p_max_attempts, 1) then
-    -- Keep the marker as a durable record (gave_up_at) instead of dropping it: the work was NOT done, and
-    -- ops can find these games and re-arm them by removing gave_up_at. Nothing retries it automatically.
-    update public.games
-       set finish_bookkeeping = (v_marker - 'lease_until' - 'owner')
-         || jsonb_build_object('attempts', v_attempts, 'gave_up_at', to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-     where id = p_game_id;
+    -- Record the failure per game generation (game_id + finished_at) in an append-only table that survives
+    -- Play Again and later finishes of the same game id, then drop the marker so a step that can never
+    -- succeed cannot block a replay forever. The record says WHICH finish lost its bookkeeping; it cannot be
+    -- re-run afterwards, because a replay deletes the rows the bookkeeping reads.
+    insert into public.finish_bookkeeping_failures (game_id, finished_at, attempts)
+    values (p_game_id, (v_marker->>'finished_at')::timestamptz, v_attempts)
+    on conflict (game_id, finished_at) do update set attempts = excluded.attempts, failed_at = now();
+    update public.games set finish_bookkeeping = null where id = p_game_id;
     return 'gave_up';
   end if;
   update public.games

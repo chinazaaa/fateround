@@ -104,8 +104,9 @@ export async function runFinishSideEffects(
 /** A game's post-finish bookkeeping (see `games.finish_bookkeeping`) is leased for this long. */
 export const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
 /**
- * After this many failed attempts the marker is stamped `gave_up_at` and kept as a durable record (never retried
- * automatically), so a step that never succeeds cannot block a replay forever.
+ * After this many failed attempts the failure is recorded per game generation in
+ * `finish_bookkeeping_failures` and the marker is dropped, so a step that never succeeds cannot block a
+ * replay forever (the record survives Play Again and later finishes of the same game id).
  */
 export const FINISH_BOOKKEEPING_MAX_ATTEMPTS = 5
 
@@ -123,7 +124,7 @@ export type FinishBookkeepingState = 'none' | 'done' | 'held' | 'retry' | 'error
  * still reading its rows. Whoever calls this — the finishing request, Play Again, the cron sweep — claims
  * the lease first, so exactly one runner executes at a time; the steps are idempotent, so a runner that
  * died is simply taken over once its lease expires. The marker is cleared only when every step succeeded
- * (or stamped gave_up_at after FINISH_BOOKKEEPING_MAX_ATTEMPTS), and only by the runner that still owns the lease.
+ * (or, after FINISH_BOOKKEEPING_MAX_ATTEMPTS, recorded as failed and dropped), and only by the runner that still owns the lease.
  */
 export async function recoverFinishBookkeeping(
   supabase: SupabaseClient,
@@ -161,9 +162,9 @@ export async function recoverFinishBookkeeping(
   })
   if (error) return { state: 'error', error: error.message }
   if (data === 'gave_up') {
-    // The marker stays on the games row stamped gave_up_at: the unfinished work is on record, not lost.
+    // Recorded in finish_bookkeeping_failures (per game generation) by the same statement that drops the marker.
     console.error(
-      `finish bookkeeping for game ${gameId} gave up after ${FINISH_BOOKKEEPING_MAX_ATTEMPTS} attempts; games.finish_bookkeeping keeps the record`
+      `finish bookkeeping for game ${gameId} gave up after ${FINISH_BOOKKEEPING_MAX_ATTEMPTS} attempts; recorded in finish_bookkeeping_failures`
     )
     return { state: 'done' }
   }
@@ -179,7 +180,6 @@ export async function recoverAllFinishBookkeeping(
     .from('games')
     .select('id')
     .not('finish_bookkeeping', 'is', null)
-    .is('finish_bookkeeping->>gave_up_at', null)
     .order('finished_at', { ascending: true })
     .limit(limit)
   if (error || !data) return { recovered: 0, pending: 0, failed: error ? 1 : 0 }

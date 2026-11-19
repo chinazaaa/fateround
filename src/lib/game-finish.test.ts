@@ -241,9 +241,7 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     const supabase = {
       from: () => ({
         select: () => ({
-          not: () => ({
-            is: () => ({ order: () => ({ limit: async () => ({ data: [{ id: 'A' }, { id: 'B' }], error: null }) }) }),
-          }),
+          not: () => ({ order: () => ({ limit: async () => ({ data: [{ id: 'A' }, { id: 'B' }], error: null }) }) }),
         }),
       }),
       rpc: vi.fn(async (fn: string) => {

@@ -156,6 +156,7 @@ describe('individual round finalization is resumable', () => {
       gameFinishFailed: false,
       events: [] as string[],
       failFactsReads: opts.failFactsReads ?? 0,
+      failures: [] as Array<Record<string, unknown>>,
     }
     const client = {
       rpc: (fn: string, args: Record<string, unknown>) => {
@@ -180,7 +181,7 @@ describe('individual round finalization is resumable', () => {
         // Mirrors claim/complete/fail_finish_bookkeeping: the durable post-finish marker on the games row.
         if (fn === 'claim_finish_bookkeeping') {
           const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
-          if (!marker || marker.gave_up_at) return Promise.resolve({ data: { status: 'none' }, error: null })
+          if (!marker) return Promise.resolve({ data: { status: 'none' }, error: null })
           const until = marker.lease_until as string | undefined
           if (until && new Date(until).getTime() > Date.now()) {
             return Promise.resolve({ data: { status: 'held' }, error: null })
@@ -207,8 +208,9 @@ describe('individual round finalization is resumable', () => {
           }
           const attempts = ((marker.attempts as number) ?? 0) + 1
           if (attempts >= (args.p_max_attempts as number)) {
-            const { lease_until: _gl, owner: _go, ...kept } = marker
-            state.game.finish_bookkeeping = { ...kept, attempts, gave_up_at: new Date().toISOString() }
+            // Mirrors the SQL: an append-only per-generation record, then the marker is dropped.
+            state.failures.push({ finished_at: marker.finished_at, attempts })
+            state.game.finish_bookkeeping = null
             state.events.push('gave_up')
             return Promise.resolve({ data: 'gave_up', error: null })
           }
@@ -266,8 +268,7 @@ describe('individual round finalization is resumable', () => {
               return { data: [{ id: GAME }], error: null }
             }
             if (listMode) {
-              const fb = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
-              return { data: fb && !fb.gave_up_at ? [{ id: GAME }] : [], error: null }
+              return { data: state.game.finish_bookkeeping ? [{ id: GAME }] : [], error: null }
             }
             // recordRoundFacts' read of the finished game: make the trophy snapshot fail.
             if (state.game.status === 'finished' && state.failFactsReads > 0) {
@@ -612,19 +613,27 @@ describe('individual round finalization is resumable', () => {
     expect(state.events.indexOf('complete')).toBeLessThan(state.events.findIndex((e) => e.startsWith('delete:')))
   })
 
-  it('gives up after the attempt cap so a snapshot that can never succeed does not block Play Again forever', async () => {
+  it('gives up after the attempt cap without blocking Play Again, and the failure record survives replay and the next finish', async () => {
     const { client, state } = makeStatefulClient({ failFactsReads: 1000 })
     await processWordRushEndRoundEarly(client, GAME, 'host')
-    for (let i = 0; i < 10 && !(state.game.finish_bookkeeping as Record<string, unknown>)?.gave_up_at; i++) {
-      await recoverFinishBookkeeping(client, GAME)
-    }
-    // The unfinished work stays ON RECORD (not dropped), stamped so nothing retries it automatically...
-    expect(state.game.finish_bookkeeping).toMatchObject({ attempts: 5 })
-    expect((state.game.finish_bookkeeping as Record<string, unknown>).gave_up_at).toBeDefined()
+    const firstFinish = (state.game.finish_bookkeeping as Record<string, unknown>).finished_at
+    for (let i = 0; i < 10 && state.game.finish_bookkeeping; i++) await recoverFinishBookkeeping(client, GAME)
+
+    // The marker is dropped (nothing blocks the replay), but WHICH finish lost its bookkeeping is on record.
+    expect(state.game.finish_bookkeeping).toBeNull()
     expect(state.events).toContain('gave_up')
+    expect(state.failures).toEqual([{ finished_at: firstFinish, attempts: 5 }])
     expect(await recoverAllFinishBookkeeping(client)).toEqual({ recovered: 0, pending: 0, failed: 0 })
-    // ...and a replay is not blocked by it.
     expect(await clearWordRushSessionData(client, GAME)).toEqual({})
+
+    // Play Again reuses the game id: the next game's finish writes its own marker and the old record stays.
+    state.failFactsReads = 0
+    state.game.status = 'active'
+    await new Promise((r) => setTimeout(r, 5)) // a later finished_at than the first generation
+    const next = await markGameFinished(client, GAME, new Date().toISOString(), { trackBookkeeping: true })
+    expect(next).toMatchObject({ won: true, bookkeeping: 'done' })
+    expect(state.game.finish_bookkeeping).toBeNull()
+    expect(state.failures).toEqual([{ finished_at: firstFinish, attempts: 5 }]) // survives, per generation
   })
 
   it('a runner that outlived its lease neither clears the marker nor reports success', async () => {
