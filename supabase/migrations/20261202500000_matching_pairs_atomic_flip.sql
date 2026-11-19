@@ -10,24 +10,77 @@
 --    in-memory lock only covers one server instance. A partial unique index makes a second
 --    successful insert for the same pair impossible.
 
--- Remove duplicate successful rows first so the index can be built. The earliest row of each
--- (round_id, player_id, pair_index) is kept; later ones were double-scored pairs. Idempotent: a
--- no-op once the index exists, since no duplicates can exist then.
-delete from public.memory_match_submissions s
-using (
-  select id,
-         row_number() over (
-           partition by round_id, player_id, pair_index
-           order by submitted_at, id
-         ) as rn
-  from public.memory_match_submissions
-  where is_match
-) d
-where s.id = d.id and d.rn > 1;
+-- Remove duplicate successful rows first so the index can be built, then rebuild the running score
+-- of every history that lost a row. The earliest row of each (round_id, player_id, pair_index) is
+-- kept; later ones were double-scored pairs. Everything below is ONE DO block, so it is a single
+-- atomic unit whatever the migration runner does about transactions:
+--   * the table is locked (SHARE ROW EXCLUSIVE: blocks writes, allows reads) before the cleanup and
+--     held through the index build, so a flip cannot slip a new duplicate in between;
+--   * a history that lost a row has its streak_at_time / streak_bonus / points_after replayed over
+--     the retained rows in (submitted_at, id) order, with the same rules as the flip route
+--     (src/app/api/matching-pairs/flip/route.ts): a match advances the streak and earns
+--     MATCHING_PAIRS_POINTS_PER_PAIR (1000) plus MATCHING_PAIRS_STREAK_BONUS (500) when the new
+--     streak is a multiple of 3; a miss resets the streak and costs MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY
+--     (100); points never go below 0. Histories without a deleted row are left untouched.
+-- Idempotent: once the index exists no duplicates can exist, so a rerun deletes and replays nothing.
+do $$
+declare
+  v_hist record;
+  v_row record;
+  v_streak integer;
+  v_bonus integer;
+  v_points integer;
+begin
+  lock table public.memory_match_submissions in share row exclusive mode;
 
-create unique index if not exists uq_memory_match_submissions_matched_pair
-  on public.memory_match_submissions (round_id, player_id, pair_index)
-  where is_match;
+  drop table if exists _mm_dedup_affected;
+  create temp table _mm_dedup_affected on commit drop as
+  with dup as (
+    select id,
+           row_number() over (
+             partition by round_id, player_id, pair_index
+             order by submitted_at, id
+           ) as rn
+    from public.memory_match_submissions
+    where is_match
+  ),
+  removed as (
+    delete from public.memory_match_submissions s
+    using dup d
+    where s.id = d.id and d.rn > 1
+    returning s.round_id, s.player_id
+  )
+  select distinct round_id, player_id from removed;
+
+  for v_hist in select round_id, player_id from _mm_dedup_affected loop
+    v_streak := 0;
+    v_points := 0;
+    for v_row in
+      select id, is_match
+      from public.memory_match_submissions
+      where round_id = v_hist.round_id and player_id = v_hist.player_id
+      order by submitted_at, id
+    loop
+      if v_row.is_match then
+        v_bonus := case when (v_streak + 1) % 3 = 0 then 500 else 0 end;
+        v_streak := v_streak + 1;
+        v_points := greatest(0, v_points + 1000 + v_bonus);
+      else
+        v_bonus := 0;
+        v_streak := 0;
+        v_points := greatest(0, v_points - 100);
+      end if;
+      update public.memory_match_submissions
+         set streak_at_time = v_streak, streak_bonus = v_bonus, points_after = v_points
+       where id = v_row.id;
+    end loop;
+  end loop;
+
+  create unique index if not exists uq_memory_match_submissions_matched_pair
+    on public.memory_match_submissions (round_id, player_id, pair_index)
+    where is_match;
+end;
+$$;
 
 create or replace function public.matching_pairs_record_flip(
   p_game_id text,
