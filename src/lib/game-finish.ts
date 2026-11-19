@@ -42,17 +42,22 @@ export type RoundGuard = { rpc: string; params: Record<string, unknown> }
 export async function runFinishSideEffects(
   supabase: SupabaseClient,
   gameId: string,
-  finishedAt: string
-): Promise<{ ok: boolean }> {
+  finishedAt: string,
+  // Called before every step. A tracked runner passes its lease heartbeat: returning false means the lease was
+  // lost, so the remaining steps must not touch rows the new owner (or a replay) is about to use.
+  proceed?: () => Promise<boolean>
+): Promise<{ ok: boolean; lostLease?: boolean }> {
   // `ok` is false when any step threw. Untracked callers ignore it (every step stays best-effort for
   // them); tracked finishes use it to retry instead of declaring the bookkeeping done.
   let ok = true
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
   try {
     await awardRoomGamePoints(supabase, gameId)
   } catch {
     // Room stats are best-effort — never block game finish.
     ok = false
   }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
   try {
     // Snapshot trophy facts NOW, while the game's own tables still hold the round. Play-again
     // clears them and Chess's rematch blanks its move list, so deriving these at attribution
@@ -69,6 +74,7 @@ export async function runFinishSideEffects(
     ok = false
     console.error(`recordRoundFacts failed for game ${gameId}`, err)
   }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
   try {
     // Advance a head-to-head bracket match (record winner / rematch a draw).
     // No-op for every other game. Never block game finish, but — unlike room
@@ -80,6 +86,7 @@ export async function runFinishSideEffects(
     ok = false
     console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
   }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
   try {
     // Advance a school (class-ladder) match: climb the winner a class, or finish
     // the tournament if that graduates them. No-op for every other game; core
@@ -89,6 +96,7 @@ export async function runFinishSideEffects(
     ok = false
     console.error(`resolveSchoolMatch failed for game ${gameId}`, err)
   }
+  if (proceed && !(await proceed())) return { ok: false, lostLease: true }
   try {
     // Score a finished Scrabble knockout room and, once the round's last room is
     // in, cut the bottom half of the whole field. No-op for every other game;
@@ -101,7 +109,12 @@ export async function runFinishSideEffects(
   return { ok }
 }
 
-/** A game's post-finish bookkeeping (see `games.finish_bookkeeping`) is leased for this long. */
+/**
+ * A game's post-finish bookkeeping (see `games.finish_bookkeeping`) is leased for this long. The runner renews
+ * it before every step, so the lease only has to outlive one step: an expired lease means the holder made no
+ * progress for this long (a hung call; the Node fetch the Supabase client uses gives up on its own well within it).
+ * The platform does NOT enforce a request limit here (self-hosted container), so this is enforced by the runner.
+ */
 export const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
 /**
  * After this many failed attempts the failure is recorded per game generation in
@@ -142,12 +155,27 @@ export async function recoverFinishBookkeeping(
   if (status !== 'claimed') return { state: 'held' }
   const finishedAt = (claim as { finished_at?: string }).finished_at ?? new Date().toISOString()
 
+  // Heartbeat before each step: extends our lease while we are alive, and tells us the moment we are not the
+  // owner any more (a takeover after a long stall) so we stop instead of reading rows a replay may delete.
+  let lostLease = false
+  const heartbeat = async () => {
+    const { data, error } = await supabase.rpc('renew_finish_bookkeeping', {
+      p_game_id: gameId,
+      p_lease_seconds: FINISH_BOOKKEEPING_LEASE_SECONDS,
+      p_owner: owner,
+    })
+    // A failed renewal is not proof of lost ownership; only an explicit not_owner stops the run.
+    if (!error && data === 'not_owner') lostLease = true
+    return !lostLease
+  }
+
   let ok = false
   try {
-    ok = (await runFinishSideEffects(supabase, gameId, finishedAt)).ok
+    ok = (await runFinishSideEffects(supabase, gameId, finishedAt, heartbeat)).ok
   } catch (err) {
     console.error(`finish bookkeeping threw for game ${gameId}`, err)
   }
+  if (lostLease) return { state: 'held' }
 
   if (ok) {
     const { data, error } = await supabase.rpc('complete_finish_bookkeeping', { p_game_id: gameId, p_owner: owner })

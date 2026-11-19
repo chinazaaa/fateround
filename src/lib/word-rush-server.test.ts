@@ -197,6 +197,17 @@ describe('individual round finalization is resumable', () => {
             error: null,
           })
         }
+        if (fn === 'renew_finish_bookkeeping') {
+          const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
+          if (!marker) return Promise.resolve({ data: 'none', error: null })
+          if (marker.owner !== args.p_owner) return Promise.resolve({ data: 'not_owner', error: null })
+          state.game.finish_bookkeeping = {
+            ...marker,
+            lease_until: new Date(Date.now() + (args.p_lease_seconds as number) * 1000).toISOString(),
+          }
+          state.events.push('renew')
+          return Promise.resolve({ data: 'renewed', error: null })
+        }
         if (fn === 'complete_finish_bookkeeping' || fn === 'fail_finish_bookkeeping') {
           const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
           if (!marker) return Promise.resolve({ data: 'none', error: null })
@@ -551,6 +562,8 @@ describe('individual round finalization is resumable', () => {
     expect(state.events.filter((e) => e === 'claim')).toHaveLength(1)
     expect(state.events.filter((e) => e === 'bookkeeping')).toHaveLength(1)
     expect(state.events.filter((e) => e === 'complete')).toHaveLength(1)
+    // The runner renews its lease before every bookkeeping step, so a slow-but-alive runner is never taken over.
+    expect(state.events.filter((e) => e === 'renew')).toHaveLength(5)
     expect(state.events.indexOf('finish')).toBeLessThan(state.events.indexOf('claim'))
     expect(state.game.finish_bookkeeping).toBeNull()
     expect(state.session.round_finalize).toBeNull()

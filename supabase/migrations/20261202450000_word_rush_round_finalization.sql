@@ -191,6 +191,33 @@ begin
 end;
 $$;
 
+-- A live runner extends its own lease before each bookkeeping step, so a slow-but-alive runner is not taken
+-- over, and a runner that already lost the lease learns it ('not_owner') and stops before touching the rows.
+-- 'renewed', 'none' or 'not_owner'.
+create or replace function public.renew_finish_bookkeeping(p_game_id text, p_lease_seconds integer, p_owner uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_marker jsonb;
+begin
+  select g.finish_bookkeeping into v_marker from public.games g where g.id = p_game_id for update;
+  if v_marker is null then
+    return 'none';
+  end if;
+  if v_marker->>'owner' is distinct from p_owner::text then
+    return 'not_owner';
+  end if;
+  update public.games
+     set finish_bookkeeping = v_marker || jsonb_build_object(
+           'lease_until', to_char((now() + make_interval(secs => greatest(p_lease_seconds, 1))) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+   where id = p_game_id;
+  return 'renewed';
+end;
+$$;
+
 -- The bookkeeping ran to completion: clear the marker. 'completed', 'none' or 'not_owner'.
 create or replace function public.complete_finish_bookkeeping(p_game_id text, p_owner uuid)
 returns text
@@ -257,3 +284,5 @@ revoke execute on function public.complete_finish_bookkeeping(text, uuid) from p
 grant execute on function public.complete_finish_bookkeeping(text, uuid) to service_role;
 revoke execute on function public.fail_finish_bookkeeping(text, uuid, integer) from public, anon, authenticated;
 grant execute on function public.fail_finish_bookkeeping(text, uuid, integer) to service_role;
+revoke execute on function public.renew_finish_bookkeeping(text, integer, uuid) from public, anon, authenticated;
+grant execute on function public.renew_finish_bookkeeping(text, integer, uuid) to service_role;

@@ -50,6 +50,7 @@ beforeEach(() => {
   resolveH2H.mockReset()
   resolveSchool.mockReset()
   resolveKnockout.mockReset()
+  recordFacts.mockReset()
 })
 
 describe('markGameFinished', () => {
@@ -151,7 +152,11 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
       finished_at: '2026-01-01T00:00:00.000Z',
       finish_bookkeeping: { finished_at: '2026-01-01T00:00:00.000Z', attempts: 0 },
     })
-    expect(rpcCalls.map(([fn]) => fn)).toEqual(['claim_finish_bookkeeping', 'complete_finish_bookkeeping'])
+    expect(rpcCalls.map(([fn]) => fn).filter((fn) => fn !== 'renew_finish_bookkeeping')).toEqual([
+      'claim_finish_bookkeeping',
+      'complete_finish_bookkeeping',
+    ])
+    expect(rpcCalls.filter(([fn]) => fn === 'renew_finish_bookkeeping')).toHaveLength(5) // before every step
     expect(res).toMatchObject({ won: true, bookkeeping: 'done' })
     expect(award).toHaveBeenCalledTimes(1)
   })
@@ -211,7 +216,10 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     })
     const res = await recoverFinishBookkeeping(supabase, 'GAME')
     expect(res.state).toBe('retry')
-    expect(rpcCalls.map(([fn]) => fn)).toEqual(['claim_finish_bookkeeping', 'fail_finish_bookkeeping'])
+    expect(rpcCalls.map(([fn]) => fn).filter((fn) => fn !== 'renew_finish_bookkeeping')).toEqual([
+      'claim_finish_bookkeeping',
+      'fail_finish_bookkeeping',
+    ])
   })
 
   it('reports done when the attempt cap drops the marker, so a replay is not blocked forever', async () => {
@@ -250,5 +258,44 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
       }),
     } as never
     expect(await recoverAllFinishBookkeeping(supabase)).toEqual({ recovered: 1, pending: 1, failed: 0 })
+  })
+
+  it('renews the lease before every step and STOPS the moment it is no longer the owner', async () => {
+    let renewals = 0
+    const calls: string[] = []
+    const supabase = {
+      rpc: vi.fn(async (fn: string) => {
+        calls.push(fn)
+        if (fn === 'claim_finish_bookkeeping') {
+          return { data: { status: 'claimed', finished_at: '2026-01-01T00:00:00.000Z', attempts: 0 }, error: null }
+        }
+        if (fn === 'renew_finish_bookkeeping') {
+          renewals += 1
+          // Step 1 (room points) ran under our lease; before step 2 another runner has taken over.
+          return { data: renewals >= 2 ? 'not_owner' : 'renewed', error: null }
+        }
+        return { data: 'completed', error: null }
+      }),
+    } as never
+    const res = await recoverFinishBookkeeping(supabase, 'GAME')
+    expect(res.state).toBe('held')
+    expect(award).toHaveBeenCalledTimes(1) // step 1 only
+    expect(recordFacts).not.toHaveBeenCalled() // the rows the new owner / a replay uses are not touched
+    expect(calls).not.toContain('complete_finish_bookkeeping')
+    expect(calls).not.toContain('fail_finish_bookkeeping')
+  })
+
+  it('a failed renewal alone does not abandon the run (only an explicit not_owner does)', async () => {
+    const supabase = {
+      rpc: vi.fn(async (fn: string) => {
+        if (fn === 'claim_finish_bookkeeping') {
+          return { data: { status: 'claimed', finished_at: '2026-01-01T00:00:00.000Z', attempts: 0 }, error: null }
+        }
+        if (fn === 'renew_finish_bookkeeping') return { data: null, error: { message: 'blip' } }
+        return { data: 'completed', error: null }
+      }),
+    } as never
+    expect((await recoverFinishBookkeeping(supabase, 'GAME')).state).toBe('done')
+    expect(recordFacts).toHaveBeenCalledTimes(1)
   })
 })
