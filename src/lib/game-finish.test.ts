@@ -295,7 +295,7 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
           return { data: { status: 'claimed', finished_at: '2026-01-01T00:00:00.000Z', attempts: 0 }, error: null }
         }
         if (fn === 'renew_finish_bookkeeping') return { data: null, error: { message: 'blip' } }
-        if (fn === 'fail_finish_bookkeeping') return { data: 'retry', error: null }
+        if (fn === 'release_finish_bookkeeping') return { data: 'released', error: null }
         return { data: 'completed', error: null }
       }),
     } as never
@@ -303,7 +303,8 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     expect(res.state).toBe('retry')
     expect(award).not.toHaveBeenCalled() // we could not prove ownership, so not even the first step ran
     expect(recordFacts).not.toHaveBeenCalled()
-    expect(calls).toContain('fail_finish_bookkeeping')
+    expect(calls).toContain('release_finish_bookkeeping') // handed back...
+    expect(calls).not.toContain('fail_finish_bookkeeping') // ...WITHOUT counting an attempt
     expect(calls).not.toContain('complete_finish_bookkeeping')
   })
 

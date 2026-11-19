@@ -158,6 +158,7 @@ export async function recoverFinishBookkeeping(
   // Heartbeat before each step: extends our lease while we are alive, and tells us the moment we are not the
   // owner any more (a takeover after a long stall) so we stop instead of reading rows a replay may delete.
   let lostLease = false
+  let renewalFailed = false
   const heartbeat = async () => {
     const { data, error } = await supabase.rpc('renew_finish_bookkeeping', {
       p_game_id: gameId,
@@ -169,6 +170,7 @@ export async function recoverFinishBookkeeping(
     // lease is lost; a renewal error means we cannot prove we still own it, so we stop and retry later instead
     // of starting a step against rows that may belong to a replay.
     if (!error && (data === 'not_owner' || data === 'none')) lostLease = true
+    if (error) renewalFailed = true
     return !error && data === 'renewed'
   }
 
@@ -179,6 +181,12 @@ export async function recoverFinishBookkeeping(
     console.error(`finish bookkeeping threw for game ${gameId}`, err)
   }
   if (lostLease) return { state: 'held' }
+  if (renewalFailed) {
+    // No bookkeeping step failed: we just could not prove ownership. Hand the lease back WITHOUT counting an
+    // attempt, so transient renewal errors can never reach the attempt cap and drop the marker unrun.
+    const { error } = await supabase.rpc('release_finish_bookkeeping', { p_game_id: gameId, p_owner: owner })
+    return error ? { state: 'error', error: error.message } : { state: 'retry' }
+  }
 
   if (ok) {
     const { data, error } = await supabase.rpc('complete_finish_bookkeeping', { p_game_id: gameId, p_owner: owner })

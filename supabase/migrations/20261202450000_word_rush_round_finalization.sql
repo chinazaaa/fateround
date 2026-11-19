@@ -218,6 +218,30 @@ begin
 end;
 $$;
 
+-- Hand the lease back WITHOUT counting an attempt: the runner could not prove it still owned the lease (a
+-- renewal error), so no bookkeeping step ran or failed. Counting it would let a few transient errors reach the
+-- attempt cap and drop the marker before any work was done. 'released', 'none' or 'not_owner'.
+create or replace function public.release_finish_bookkeeping(p_game_id text, p_owner uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_marker jsonb;
+begin
+  select g.finish_bookkeeping into v_marker from public.games g where g.id = p_game_id for update;
+  if v_marker is null then
+    return 'none';
+  end if;
+  if v_marker->>'owner' is distinct from p_owner::text then
+    return 'not_owner';
+  end if;
+  update public.games set finish_bookkeeping = v_marker - 'lease_until' - 'owner' where id = p_game_id;
+  return 'released';
+end;
+$$;
+
 -- The bookkeeping ran to completion: clear the marker. 'completed', 'none' or 'not_owner'.
 create or replace function public.complete_finish_bookkeeping(p_game_id text, p_owner uuid)
 returns text
@@ -286,3 +310,5 @@ revoke execute on function public.fail_finish_bookkeeping(text, uuid, integer) f
 grant execute on function public.fail_finish_bookkeeping(text, uuid, integer) to service_role;
 revoke execute on function public.renew_finish_bookkeeping(text, integer, uuid) from public, anon, authenticated;
 grant execute on function public.renew_finish_bookkeeping(text, integer, uuid) to service_role;
+revoke execute on function public.release_finish_bookkeeping(text, uuid) from public, anon, authenticated;
+grant execute on function public.release_finish_bookkeeping(text, uuid) to service_role;

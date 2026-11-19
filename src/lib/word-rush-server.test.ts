@@ -140,6 +140,8 @@ describe('individual round finalization is resumable', () => {
       failGameFinish?: boolean
       /** Fail this many reads of the finished game by recordRoundFacts (the trophy snapshot). */
       failFactsReads?: number
+      /** Fail this many lease renewals (a transient RPC error). */
+      failRenewals?: number
       session?: Record<string, unknown>
       /** Answers returned by the n-th read of word_rush_answers (the last entry repeats). */
       answersByRead?: Array<Array<{ player_id: string; created_at: string; text: string }>>
@@ -157,6 +159,7 @@ describe('individual round finalization is resumable', () => {
       events: [] as string[],
       failFactsReads: opts.failFactsReads ?? 0,
       failures: [] as Array<Record<string, unknown>>,
+      failRenewals: opts.failRenewals ?? 0,
     }
     const client = {
       rpc: (fn: string, args: Record<string, unknown>) => {
@@ -197,7 +200,20 @@ describe('individual round finalization is resumable', () => {
             error: null,
           })
         }
+        if (fn === 'release_finish_bookkeeping') {
+          const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
+          if (!marker) return Promise.resolve({ data: 'none', error: null })
+          if (marker.owner !== args.p_owner) return Promise.resolve({ data: 'not_owner', error: null })
+          const { lease_until: _rl, owner: _ro, ...rest } = marker // no attempt counted
+          state.game.finish_bookkeeping = rest
+          state.events.push('release')
+          return Promise.resolve({ data: 'released', error: null })
+        }
         if (fn === 'renew_finish_bookkeeping') {
+          if (state.failRenewals > 0) {
+            state.failRenewals -= 1
+            return Promise.resolve({ data: null, error: { message: 'renew blip' } })
+          }
           const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
           if (!marker) return Promise.resolve({ data: 'none', error: null })
           if (marker.owner !== args.p_owner) return Promise.resolve({ data: 'not_owner', error: null })
@@ -647,6 +663,28 @@ describe('individual round finalization is resumable', () => {
     expect(next).toMatchObject({ won: true, bookkeeping: 'done' })
     expect(state.game.finish_bookkeeping).toBeNull()
     expect(state.failures).toEqual([{ finished_at: firstFinish, attempts: 5 }]) // survives, per generation
+  })
+
+  it('renewal errors never consume bookkeeping attempts: no reset while they last, and a later success runs the bookkeeping first', async () => {
+    const { client, state } = makeStatefulClient({ failRenewals: 12 }) // more errors than the attempt cap (5)
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    state.events.length = 0
+    let succeeded = false
+    for (let i = 0; i < 30 && !succeeded; i++) {
+      const res = await clearWordRushSessionData(client, GAME)
+      if (res.error) {
+        // While renewals fail nothing has run, so nothing may be deleted and nothing may be given up on.
+        expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
+        expect(state.events).not.toContain('gave_up')
+      } else {
+        succeeded = true
+      }
+    }
+    expect(succeeded).toBe(true)
+    expect(state.failures).toEqual([]) // never recorded as a failed bookkeeping
+    // The reset only happened after the bookkeeping genuinely ran and completed.
+    expect(state.events.indexOf('bookkeeping')).toBeGreaterThanOrEqual(0)
+    expect(state.events.indexOf('complete')).toBeLessThan(state.events.findIndex((e) => e.startsWith('delete:')))
   })
 
   it('a runner that outlived its lease neither clears the marker nor reports success', async () => {
