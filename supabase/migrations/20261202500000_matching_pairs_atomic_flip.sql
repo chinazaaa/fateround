@@ -21,7 +21,18 @@
 --     (src/app/api/matching-pairs/flip/route.ts): a match advances the streak and earns
 --     MATCHING_PAIRS_POINTS_PER_PAIR (1000) plus MATCHING_PAIRS_STREAK_BONUS (500) when the new
 --     streak is a multiple of 3; a miss resets the streak and costs MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY
---     (100); points never go below 0. Histories without a deleted row are left untouched.
+--     (100); points never go below 0. Histories without a deleted row are left untouched;
+--   * the player's memory_match_progress row is reconciled too. The flip route derives pairs_matched from
+--     a COUNT of is_match rows (duplicates included) and marks a player finished once it reaches the grid
+--     size, so a player who finished by counting a duplicate would otherwise stay finished with a pair
+--     missing and get 409 on every later flip. pairs_matched / wrong_attempts are recounted from the
+--     retained rows; if the player had been marked finished because of the removed row (their stored
+--     pairs_matched exceeds the retained matches) and the round is still active, finished, finish_rank
+--     and finished_at are cleared so they can continue and re-finish normally. Other players' ranks are
+--     left as they are (policy: no re-ranking; the player is ranked again by matching_pairs_finish_player
+--     when they finish). In a round that has already finished only the counters are recounted;
+--   * locks are taken progress-first, then submissions: matching_pairs_record_flip() locks the progress row
+--     and then inserts a submission, so taking them in the same order cannot deadlock with a flip.
 -- Idempotent: once the index exists no duplicates can exist, so a rerun deletes and replays nothing.
 do $$
 declare
@@ -30,7 +41,10 @@ declare
   v_streak integer;
   v_bonus integer;
   v_points integer;
+  v_matches integer;
+  v_wrong integer;
 begin
+  lock table public.memory_match_progress in share row exclusive mode;
   lock table public.memory_match_submissions in share row exclusive mode;
 
   drop table if exists _mm_dedup_affected;
@@ -74,6 +88,28 @@ begin
          set streak_at_time = v_streak, streak_bonus = v_bonus, points_after = v_points
        where id = v_row.id;
     end loop;
+
+    select count(*) filter (where is_match), count(*) filter (where not is_match)
+      into v_matches, v_wrong
+      from public.memory_match_submissions
+     where round_id = v_hist.round_id and player_id = v_hist.player_id;
+
+    -- Every right-hand side below reads the OLD row, so the "was finished because of a removed row"
+    -- test sees the stored pairs_matched, not the recounted one.
+    update public.memory_match_progress p
+       set pairs_matched  = v_matches,
+           wrong_attempts = v_wrong,
+           finished       = case when p.finished and p.pairs_matched > v_matches
+                                      and exists (select 1 from public.rounds r where r.id = p.round_id and r.status = 'active')
+                                 then false else p.finished end,
+           finish_rank    = case when p.finished and p.pairs_matched > v_matches
+                                      and exists (select 1 from public.rounds r where r.id = p.round_id and r.status = 'active')
+                                 then null else p.finish_rank end,
+           finished_at    = case when p.finished and p.pairs_matched > v_matches
+                                      and exists (select 1 from public.rounds r where r.id = p.round_id and r.status = 'active')
+                                 then null else p.finished_at end,
+           updated_at     = now()
+     where p.round_id = v_hist.round_id and p.player_id = v_hist.player_id;
   end loop;
 
   create unique index if not exists uq_memory_match_submissions_matched_pair
