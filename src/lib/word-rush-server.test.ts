@@ -536,10 +536,13 @@ describe('individual round finalization is resumable', () => {
     expect(state.session.round_finalize).toBeNull()
   })
 
-  it('a runner that outlived its lease neither clears nor releases the marker of the runner that took over', async () => {
-    const { client, state } = makeStatefulClient()
-    // Stage: round closed, finalization owed. The runner claims the lease, then — while its bookkeeping is
-    // running (room_games read) — its lease expires and a second runner takes over with its own owner.
+  it('a runner that outlived its lease neither clears the marker nor reports success (so Play Again cannot reset under the new owner)', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 }) // leaves the last round's marker owed
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.session.round_finalize).not.toBeNull()
+
+    // While this runner is in its bookkeeping (room_games read) its lease expires and a second runner
+    // takes over with its own owner id.
     let staged = false
     const realFrom = client.from
     ;(client as { from: unknown }).from = (table: string) => {
@@ -553,8 +556,11 @@ describe('individual round finalization is resumable', () => {
       }
       return realFrom(table)
     }
-    await processWordRushEndRoundEarly(client, GAME, 'host')
+    state.events.length = 0
+    const res = await resumeWordRushFinalization(client, GAME)
     expect(staged).toBe(true)
+    expect(res.error).toBeDefined() // the lost clear is reported, not taken for completion
     expect(state.session.round_finalize).toMatchObject({ bookkeeping_owner: 'someone-else' }) // not wiped
+    expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
   })
 })

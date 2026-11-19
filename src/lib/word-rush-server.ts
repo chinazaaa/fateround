@@ -225,8 +225,13 @@ async function runRoundFinalization(
     .eq('id', pending.session_id)
     .eq('round_finalize->>turn_index', String(pending.turn_index))
   if (leaseOwner) clear = clear.eq('round_finalize->>bookkeeping_owner', leaseOwner)
-  const { error: clearError } = await clear
+  const { data: cleared, error: clearError } = await clear.select('id')
   if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
+  // Matching nothing means another runner owns the lease now (ours expired): report it, so a caller
+  // such as Play Again does not take "no error" for "finalization complete" and reset under it.
+  if (leaseOwner && (!cleared || cleared.length === 0)) {
+    return { error: 'Game finish lease was taken over by another request' }
+  }
   return {}
 }
 
