@@ -58,6 +58,11 @@ describe('maskCodewordsBoardKey', () => {
     expect(maskCodewordsBoardKey(board({ clue_seq: 4, winner: 'red' }))).not.toHaveProperty('clue_seq')
   })
 
+  it('never sends the server-side turn_seq counter to clients, live or finished', () => {
+    expect(maskCodewordsBoardKey(board({ turn_seq: 4 }))).not.toHaveProperty('turn_seq')
+    expect(maskCodewordsBoardKey(board({ turn_seq: 4, winner: 'red' }))).not.toHaveProperty('turn_seq')
+  })
+
   it('keeps clue_seq on the stored board it was given', () => {
     const original = board({ clue_seq: 4 })
     maskCodewordsBoardKey(original)

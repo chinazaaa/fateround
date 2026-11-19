@@ -764,6 +764,7 @@ export function maskCodewordsBoardKey(fullBoard: CodewordsBoard): CodewordsBoard
   // clue_seq is a server-side concurrency counter (see codewords_process_guess); clients never need it.
   const board = { ...fullBoard }
   delete board.clue_seq
+  delete board.turn_seq
   if (board.winner) return board
   const fullKey = (board.key ?? []) as CodewordsBoard['key']
   const key_totals = fullKey.reduce<Record<string, number>>((acc, cell) => {
