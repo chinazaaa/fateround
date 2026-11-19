@@ -77,6 +77,27 @@ async function finishGameIfAllDone(
   }
 }
 
+// A failed finish leaves an all-done game active (an untimed game then waits for the idle
+// reaper), so a transient database error right at completion is retried a few times before the
+// request gives up. Safe to repeat: the finish is a single-winner onlyIfActive compare-and-swap.
+const FINISH_ATTEMPTS = 3
+const FINISH_RETRY_DELAY_MS = 150
+
+async function finishGameWithRetry(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  code: string,
+  roundId: string,
+  sessionStartedAt: string | null
+): Promise<Error | null> {
+  let finishError: Error | null = null
+  for (let attempt = 0; attempt < FINISH_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, FINISH_RETRY_DELAY_MS * attempt))
+    finishError = await finishGameIfAllDone(supabase, code, roundId, sessionStartedAt)
+    if (!finishError) return null
+  }
+  return finishError
+}
+
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, submitSchema)
   if (bodyError) return bodyError
@@ -166,7 +187,7 @@ export async function POST(req: NextRequest) {
     // it, so re-run the completion check (no guess is stored here). It is a no-op when the game
     // is already finished (onlyIfActive) or other players are still playing.
     if (isPlayerDone(outcome.correct_count, outcome.mistake_count)) {
-      const finishError = await finishGameIfAllDone(supabase, code, round.id, game.session_started_at)
+      const finishError = await finishGameWithRetry(supabase, code, round.id, game.session_started_at)
       if (finishError) {
         return NextResponse.json({ error: internalErrorMessage('word-grouping/submit', finishError) }, { status: 500 })
       }
@@ -184,9 +205,10 @@ export async function POST(req: NextRequest) {
   const newCorrectCount = outcome.correct_count ?? 0
   const newMistakes = outcome.mistake_count ?? 0
   if (isPlayerDone(newCorrectCount, newMistakes)) {
-    const finishError = await finishGameIfAllDone(supabase, code, round.id, game.session_started_at)
-    // The guess is already committed; surface a failed finish so the client retries, and the
-    // retry (out_of_guesses / already_solved above) re-runs the completion check.
+    const finishError = await finishGameWithRetry(supabase, code, round.id, game.session_started_at)
+    // The guess is already committed. A finish that still fails after the in-request retries is
+    // surfaced as a 500; a repeat request (out_of_guesses / already_solved above) re-runs the
+    // completion check, and the idle reaper is the backstop for an untimed game.
     if (finishError) {
       return NextResponse.json({ error: internalErrorMessage('word-grouping/submit', finishError) }, { status: 500 })
     }

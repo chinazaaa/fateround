@@ -181,10 +181,23 @@ describe('POST /api/word-grouping/submit', () => {
   it('returns 500 when the final guess committed but finishing the game failed', async () => {
     rpcResult = ok(0, WORD_GROUPING_MAX_MISTAKES)
     allSubs = Array.from({ length: WORD_GROUPING_MAX_MISTAKES }, () => ({ player_id: 'p1', is_correct: false }))
-    markGameFinished.mockResolvedValueOnce({ error: 'db down', won: false })
+    // Fails on every attempt (error result, then a throw): the request gives up after the retries.
+    for (let i = 0; i < 3; i += 1) markGameFinished.mockResolvedValueOnce({ error: 'db down', won: false })
     expect((await send(wrong)).status).toBe(500)
-    markGameFinished.mockRejectedValueOnce(new Error('thrown'))
+    expect(markGameFinished).toHaveBeenCalledTimes(3)
+    markGameFinished.mockClear()
+    for (let i = 0; i < 3; i += 1) markGameFinished.mockRejectedValueOnce(new Error('thrown'))
     expect((await send(wrong)).status).toBe(500)
+    expect(markGameFinished).toHaveBeenCalledTimes(3)
+  })
+
+  it('retries a transient finish failure within the request and succeeds', async () => {
+    rpcResult = ok(0, WORD_GROUPING_MAX_MISTAKES)
+    allSubs = Array.from({ length: WORD_GROUPING_MAX_MISTAKES }, () => ({ player_id: 'p1', is_correct: false }))
+    markGameFinished.mockResolvedValueOnce({ error: 'blip', won: false })
+    markGameFinished.mockRejectedValueOnce(new Error('blip again'))
+    expect((await send(wrong)).status).toBe(200)
+    expect(markGameFinished).toHaveBeenCalledTimes(3)
   })
 
   it('retries the finish on a repeat request when the player is already out of guesses', async () => {
