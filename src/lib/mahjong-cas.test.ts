@@ -689,3 +689,25 @@ describe('Mahjong load order', () => {
     expect(fake.reads.indexOf('games')).toBeLessThan(fake.reads.indexOf('mahjong_sessions'))
   })
 })
+
+describe('Mahjong wall draw on the final discard', () => {
+  it('stores the final discard as the last discard, together with the pile', async () => {
+    // The wall is empty and nobody can claim, so the discard is never committed as a claim phase first:
+    // the finishing write is the only place the new last_discard can be stored.
+    const session = makeSession({
+      wall: [],
+      last_discard: { tile: 'm9', player_id: 'east-player', discard_index: 0 },
+    })
+    const states = tableWith(['m6', 'm9', 'p2', 'p4', 'p6', 's1', 's3', 's5', 'we', 'we', 'wn', 'wn', 'dr', 'dg'])
+    const fake = fakeSupabase(session, states, () => true)
+    expect((await processMahjongDiscard(fake.client, 'MJCAS', 'south-player', 'm6')).error).toBeUndefined()
+    const patch = fake.rpcCalls[0]?.args.p_session_patch as {
+      phase: string
+      discard_pile: Array<{ tile: string }>
+      last_discard: { tile: string; player_id: string; discard_index: number }
+    }
+    expect(patch.phase).toBe('finished')
+    expect(patch.discard_pile.at(-1)?.tile).toBe('m6')
+    expect(patch.last_discard).toEqual({ tile: 'm6', player_id: 'south-player', discard_index: 1 })
+  })
+})

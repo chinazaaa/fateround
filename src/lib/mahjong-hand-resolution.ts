@@ -524,8 +524,10 @@ export async function finishWallDraw(
         } satisfies MahjongScoreSummary)
   const wallDrawPatch: Partial<MahjongSession> = {
     phase: 'finished',
-    // Persist the pile as received: a called Kong that empties the wall has already marked its discard claimed.
-    ...(session ? { discard_pile: session.discard_pile } : {}),
+    // Persist the pile (and its last discard) as received: a called Kong that empties the wall has already
+    // marked its discard claimed, and a final discard that nobody can claim is not committed anywhere else
+    // before the hand ends, so the stored last discard would otherwise still be the one before it.
+    ...(session ? { discard_pile: session.discard_pile, last_discard: session.last_discard } : {}),
     hand_result: nagashiSummary ? 'win' : 'exhaustive_draw',
     status_message: nagashiSummary
       ? `Nagashi Mangan — ${winnerIds.length} player${winnerIds.length === 1 ? '' : 's'}`
