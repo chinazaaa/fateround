@@ -266,8 +266,18 @@ export async function markGameFinished(
   {
     onlyIfActive = false,
     roundGuard,
+    onlySessionStartedAt,
     trackBookkeeping = false,
-  }: { onlyIfActive?: boolean; roundGuard?: RoundGuard; trackBookkeeping?: boolean } = {}
+  }: {
+    onlyIfActive?: boolean
+    roundGuard?: RoundGuard
+    // Bind the finish to the session whose state the caller inspected (requires onlyIfActive,
+    // plain-update path only). A stalled request must not finish a NEW session started under
+    // the same game id by Play Again; `null` matches only a row whose session_started_at is
+    // still null.
+    onlySessionStartedAt?: string | null
+    trackBookkeeping?: boolean
+  } = {}
 ) {
   let result: { data?: unknown; error: { message: string } | null }
   if (roundGuard) {
@@ -289,11 +299,18 @@ export async function markGameFinished(
         ...(trackBookkeeping ? { finish_bookkeeping: { finished_at: finishedAt, attempts: 0 } } : {}),
       })
       .eq('id', gameId)
+    let guarded = onlyIfActive ? update.eq('status', 'active') : null
+    if (guarded && onlySessionStartedAt !== undefined) {
+      guarded =
+        onlySessionStartedAt === null
+          ? guarded.is('session_started_at', null)
+          : guarded.eq('session_started_at', onlySessionStartedAt)
+    }
     // A tracked flip is always a compare-and-set: an unguarded update would overwrite the marker (and
     // owner) of a finalizer that already finished the game and is mid-bookkeeping, and both would then
     // run it. It still accepts a waiting game (the admin kill-switch may end one).
-    result = onlyIfActive
-      ? await update.eq('status', 'active').select('id')
+    result = guarded
+      ? await guarded.select('id')
       : trackBookkeeping
         ? await update.in('status', ['waiting', 'active']).select('id')
         : await update
