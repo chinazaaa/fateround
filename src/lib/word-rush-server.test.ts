@@ -3,7 +3,13 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 vi.mock('server-only', () => ({}))
 
-import { processWordRushEndRoundEarly, processWordRushExpireTurn, processWordRushSubmit } from './word-rush-server'
+import {
+  processWordRushEndRoundEarly,
+  processWordRushExpireTurn,
+  processWordRushSubmit,
+  resumeAllWordRushFinalizations,
+  resumeWordRushFinalization,
+} from './word-rush-server'
 
 const GAME = 'GAME1'
 const session = {
@@ -194,6 +200,9 @@ describe('individual round finalization is resumable', () => {
               Object.assign(state.session, patch)
               return { data: [{ id: 'S1' }], error: null }
             }
+            if (listMode) {
+              return { data: state.session.round_finalize ? [{ ...state.session }] : [], error: null }
+            }
             return { data: { ...state.session }, error: null }
           }
           if (table === 'word_rush_answers') {
@@ -217,7 +226,12 @@ describe('individual round finalization is resumable', () => {
             return q
           }
         }
-        for (const m of ['select', 'not', 'order', 'limit']) q[m] = () => q
+        let listMode = false
+        for (const m of ['select', 'not', 'order']) q[m] = () => q
+        q.limit = () => {
+          listMode = true
+          return q
+        }
         q.update = (v: Record<string, unknown>) => {
           op = 'update'
           patch = v
@@ -292,5 +306,45 @@ describe('individual round finalization is resumable', () => {
     await processWordRushEndRoundEarly(client, GAME, 'host')
     expect(state.session.round_finalize).toEqual(marker)
     expect(state.session.phase).toBe('playing')
+  })
+  it('resumes through the dedicated entry point even after the session AND the game are finished', async () => {
+    // The normal client path after the last round: the session is finished (so no timer runs) and
+    // the game-finish already landed, but clearing the marker did not.
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.session.round_finalize).not.toBeNull()
+    state.game.status = 'finished'
+
+    expect(await resumeWordRushFinalization(client, GAME)).toEqual({ resumed: true })
+    expect(state.score).toBeGreaterThan(0)
+    expect(state.session.round_finalize).toBeNull()
+
+    // Nothing owed any more: a second call is a no-op and does not award again.
+    const awarded = state.score
+    expect(await resumeWordRushFinalization(client, GAME)).toEqual({ resumed: false })
+    expect(state.score).toBe(awarded)
+  })
+
+  it('reports an error and keeps the marker when the resume itself fails', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 3 })
+    await processWordRushEndRoundEarly(client, GAME, 'host') // final read #1 fails
+    const res = await resumeWordRushFinalization(client, GAME) // read #2 fails
+    expect(res.resumed).toBe(false)
+    expect(res.error).toBeDefined()
+    expect(state.session.round_finalize).not.toBeNull()
+    expect(state.score).toBe(0)
+  })
+
+  it('the server sweep finishes every pending game without any client', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.game.status).toBe('active')
+
+    expect(await resumeAllWordRushFinalizations(client)).toEqual({ resumed: 1, failed: 0 })
+    expect(state.score).toBeGreaterThan(0)
+    expect(state.game.status).toBe('finished')
+    expect(state.session.round_finalize).toBeNull()
+    // Idle on the next tick.
+    expect(await resumeAllWordRushFinalizations(client)).toEqual({ resumed: 0, failed: 0 })
   })
 })

@@ -739,6 +739,58 @@ async function endIndividualRound(
   return {}
 }
 
+/**
+ * Resume the effects of a round that was closed but not finalized, for one game. Safe to call at any
+ * time and from anyone: it only completes work the marker says is owed, every step is idempotent, and
+ * it does nothing when no marker is set. Unlike loadSession's silent resume this reports the outcome,
+ * and it does not look at games.status (the marker can outlive the game finish if clearing it failed).
+ */
+export async function resumeWordRushFinalization(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ resumed: boolean; error?: string; internal?: boolean }> {
+  const { data, error } = await supabase
+    .from('word_rush_sessions')
+    .select('round_finalize')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (error) return { resumed: false, ...internalFailure('word-rush:resume-finalization:load', error) }
+  const pending = (data as { round_finalize?: WordRushRoundFinalize | null } | null)?.round_finalize
+  if (!pending) return { resumed: false }
+  const result = await runRoundFinalization(supabase, gameId, pending)
+  if (result.error) return { resumed: false, ...result }
+  return { resumed: true }
+}
+
+/**
+ * Server-side backstop: resume every game's pending finalization, with no client involved. Needed
+ * because after the last round the session is `finished`, so the clients' timers stop and nothing
+ * else would load the session again. Bounded per call; the next tick takes the rest.
+ */
+export async function resumeAllWordRushFinalizations(
+  supabase: SupabaseClient,
+  limit = 20
+): Promise<{ resumed: number; failed: number }> {
+  const { data, error } = await supabase
+    .from('word_rush_sessions')
+    .select('game_id, round_finalize')
+    .not('round_finalize', 'is', null)
+    .limit(limit)
+  if (error) {
+    internalFailure('word-rush:resume-all-finalizations', error)
+    return { resumed: 0, failed: 1 }
+  }
+  let resumed = 0
+  let failed = 0
+  for (const row of (data ?? []) as Array<{ game_id: string; round_finalize: WordRushRoundFinalize | null }>) {
+    if (!row.round_finalize) continue
+    const result = await runRoundFinalization(supabase, row.game_id, row.round_finalize)
+    if (result.error) failed += 1
+    else resumed += 1
+  }
+  return { resumed, failed }
+}
+
 async function finishWordRushGame(
   supabase: SupabaseClient,
   gameId: string,
