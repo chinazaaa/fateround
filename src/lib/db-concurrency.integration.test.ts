@@ -6,6 +6,7 @@
  *   - pick_a_number_submit       (20261201130000)
  *   - mahjong_apply_transition   (20261201140000)
  *   - rummy_apply_transition     (20261201150000)
+ *   - bingo_claim_win            (20261202700000)
  *
  * Each replaced route code that read, decided, then wrote across several requests, and lost races:
  * simultaneous wrong guesses all passed a limit check, two picks clobbered each other's question,
@@ -468,6 +469,78 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
   })
 
   // -------------------------------------------------------------------------------------------
+  describe('bingo_claim_win', () => {
+    const FAKE_PLAYER = '00000000-0000-4000-8000-000000000000'
+
+    const claim = (gameId: string, playerId: string) =>
+      service.rpc('bingo_claim_win', {
+        p_game_id: gameId,
+        p_player_id: playerId,
+        p_pattern: 'line',
+        p_finished_at: new Date().toISOString(),
+      })
+
+    async function readGameStatus(gameId: string): Promise<string> {
+      return must<{ status: string }>(
+        'read game',
+        await service.from('games').select('status').eq('id', gameId).single()
+      ).status
+    }
+    async function readClaims(gameId: string): Promise<{ player_id: string; status: string }[]> {
+      return must<{ player_id: string; status: string }[]>(
+        'read claims',
+        await service.from('bingo_claims').select('player_id, status').eq('game_id', gameId)
+      )
+    }
+
+    it('admits exactly one of many simultaneous claims and finishes the game with it', async () => {
+      await repeatRace(async () => {
+        const gameId = await makeGame('bingo')
+        const players = await Promise.all(Array.from({ length: 8 }, (_, i) => makePlayer(gameId, `P${i}`)))
+
+        const results = await inParallel(players.length, (i) => claim(gameId, players[i]))
+
+        noErrors(results)
+        const list = outcomes(results)
+        expect(count(list, 'won')).toBe(1)
+        // Everyone else is told someone already won, or that the round is no longer active.
+        expect(count(list, 'already_won') + count(list, 'game_not_active')).toBe(players.length - 1)
+        expect(await readGameStatus(gameId)).toBe('finished')
+        const claims = await readClaims(gameId)
+        expect(claims).toHaveLength(1)
+        expect(claims[0].status).toBe('approved')
+      })
+    })
+
+    it('leaves the game active and writes no claim when the claim insert fails, and a retry then succeeds', async () => {
+      const gameId = await makeGame('bingo')
+      const player = await makePlayer(gameId, 'Winner')
+
+      // The status flip succeeds first; the claim insert then fails on the player foreign key. The
+      // old route had already committed the flip (or the claim) by the time its second write failed.
+      const failed = await claim(gameId, FAKE_PLAYER)
+      expect(failed.error).not.toBeNull()
+      expect(await readGameStatus(gameId)).toBe('active')
+      expect(await readClaims(gameId)).toEqual([])
+
+      const retry = await claim(gameId, player)
+      expect(retry.error).toBeNull()
+      expect((retry.data as Outcome).status).toBe('won')
+      expect(await readGameStatus(gameId)).toBe('finished')
+      expect(await readClaims(gameId)).toEqual([{ player_id: player, status: 'approved' }])
+    })
+
+    it('refuses once the game has finished, and records nothing', async () => {
+      const gameId = await makeGame('bingo', 'finished')
+      const player = await makePlayer(gameId, 'Late')
+      const res = await claim(gameId, player)
+      expect(res.error).toBeNull()
+      expect((res.data as Outcome).status).toBe('game_not_active')
+      expect(await readClaims(gameId)).toEqual([])
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
   describe('execute privileges', () => {
     // These are SECURITY DEFINER and write hidden game state. If a later migration re-grants
     // EXECUTE to PUBLIC, the public anon key could call them straight from a browser.
@@ -502,6 +575,15 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
       [
         'rummy_apply_transition',
         { p_game_id: 'NOPE', p_expected_updated_at: new Date().toISOString(), p_session_patch: {}, p_hand_writes: [] },
+      ],
+      [
+        'bingo_claim_win',
+        {
+          p_game_id: 'NOPE',
+          p_player_id: '00000000-0000-4000-8000-000000000000',
+          p_pattern: 'line',
+          p_finished_at: new Date().toISOString(),
+        },
       ],
     ]
 

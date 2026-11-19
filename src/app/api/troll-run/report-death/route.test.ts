@@ -32,12 +32,17 @@ vi.mock('@/lib/troll-run-guard', () => ({
 
 import { POST } from './route'
 
-function send(levelId: string) {
+function send(levelId: string, round?: number) {
   return POST(
     new NextRequest('https://x.test/api/troll-run/report-death', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ gameId: 'ABCD', resumeToken: 'TOKEN-1234', levelId }),
+      body: JSON.stringify({
+        gameId: 'ABCD',
+        resumeToken: 'TOKEN-1234',
+        levelId,
+        ...(round === undefined ? {} : { round }),
+      }),
     })
   )
 }
@@ -57,6 +62,18 @@ describe('POST /api/troll-run/report-death', () => {
   it('rejects a level that is not in the round', async () => {
     const res = await send('bogus-level-not-in-round')
     expect(res.status).toBe(400)
+    expect(eventInsert).not.toHaveBeenCalled()
+  })
+
+  it('records a death stamped with the live round', async () => {
+    const res = await send('l1', 1)
+    expect(res.status).toBe(200)
+    expect(eventInsert).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops a death raised in an earlier round instead of counting it against this one', async () => {
+    const res = await send('l1', 2)
+    expect(await res.json()).toMatchObject({ ok: true, ignored: true, stale: true })
     expect(eventInsert).not.toHaveBeenCalled()
   })
 

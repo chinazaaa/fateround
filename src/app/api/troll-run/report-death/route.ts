@@ -10,6 +10,8 @@ const reportDeathSchema = z.object({
   resumeToken: z.string().min(4),
   levelId: z.string().min(1).max(80),
   levelName: z.string().min(1).max(80).optional(),
+  /** Round the client raised the death in; a death queued across a round change must not count. */
+  round: z.number().int().positive().optional(),
 })
 
 /**
@@ -24,13 +26,17 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, reportDeathSchema)
   if (bodyError) return bodyError
 
-  const { gameId, resumeToken, levelId, levelName } = body
+  const { gameId, resumeToken, levelId, levelName, round } = body
   const supabase = getSupabaseAdmin()
 
   const guard = await assertTrollRunRacingPlayer(supabase, gameId, resumeToken)
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
   const { session, state } = guard
 
+  // A report that sat in the client's queue past a round change belongs to a round that is over.
+  if (round !== undefined && round !== session.current_round) {
+    return NextResponse.json({ ok: true, ignored: true, stale: true, deaths: state.deaths })
+  }
   if (!session.level_order.includes(levelId)) {
     return NextResponse.json({ error: 'That level is not in this round' }, { status: 400 })
   }
