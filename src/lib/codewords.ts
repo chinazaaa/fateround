@@ -288,12 +288,17 @@ export function buildRandomizedRoles(playerIds: string[], roles: CodewordsLobbyR
   ]
 }
 
+/** Postgres unique violation on the one-spymaster-per-team partial index. */
+export function isSpymasterSeatConflict(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '23505'
+}
+
 export async function persistRandomizedRoles(
   supabase: SupabaseClient,
   gameId: string,
   playerIds: string[],
   roles: CodewordsLobbyRole[]
-): Promise<{ roles: CodewordsLobbyRole[]; error: string | null }> {
+): Promise<{ roles: CodewordsLobbyRole[]; error: string | null; conflict?: boolean }> {
   const nextRoles = buildRandomizedRoles(playerIds, roles)
   for (const role of nextRoles) {
     const { error } = await supabase
@@ -302,7 +307,15 @@ export async function persistRandomizedRoles(
         { game_id: gameId, player_id: role.player_id, team: role.team, role: role.role },
         { onConflict: 'game_id,player_id' }
       )
-    if (error) return { roles: nextRoles, error: internalErrorMessage('codewords', error) }
+    if (error) {
+      // The host changed a spymaster after the roles were read, so restoring the old one hit the
+      // one-spymaster-per-team index. That is a lost race, not a server fault: callers ask the
+      // host to retry with the roles as they stand now.
+      if (isSpymasterSeatConflict(error)) {
+        return { roles: nextRoles, error: 'Team roles changed while shuffling — try again', conflict: true }
+      }
+      return { roles: nextRoles, error: internalErrorMessage('codewords', error) }
+    }
   }
   const assigned = new Set(nextRoles.map((r) => r.player_id))
   for (const playerId of playerIds) {
@@ -708,6 +721,9 @@ export async function reconcileCodewordsTeamAfterRemoval(
       .update({ role: 'spymaster' })
       .eq('game_id', code)
       .eq('player_id', promoted.player_id)
+    // A concurrent removal (or the host) already filled the seat and the unique index rejected
+    // this promotion: the team has its spymaster, which is the state we wanted.
+    if (promoteError && isSpymasterSeatConflict(promoteError)) return { error: null, outcome: noop }
     if (promoteError) return { error: internalErrorMessage('codewords', promoteError), outcome: noop }
     return { error: null, outcome: { ended: false, promotedPlayerId: promoted.player_id } }
   }

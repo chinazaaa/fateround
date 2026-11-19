@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
 import { syncTrollRunGameState } from '@/lib/troll-run-advance'
+import { calculateTrollRunDnfScore } from '@/lib/troll-run'
 
 const SESSION_ROW = {
   id: 'session-1',
@@ -115,5 +116,55 @@ describe('syncTrollRunGameState — round scoring writes', () => {
       /left 1 of 2 players unwritten/
     )
     expect(writesFor(mock.scoreWrites, 'state-2')).toBe(2)
+  })
+})
+
+describe('syncTrollRunGameState — death totals come from the event log', () => {
+  it('scores a runner by their logged deaths when the stored total is stale', async () => {
+    const roundScores: Record<string, unknown> = {}
+    const supabase = {
+      from(table: string) {
+        let isUpdate = false
+        let patch: Record<string, unknown> = {}
+        let stateId = ''
+        const chain: Record<string, unknown> = {
+          select: () => chain,
+          update: (p: Record<string, unknown>) => {
+            isUpdate = true
+            patch = p
+            return chain
+          },
+          eq: (column: string, value: unknown) => {
+            if (column === 'id') stateId = String(value)
+            return chain
+          },
+          maybeSingle: () => new Promise((resolve) => (chain.then as (r: (v: unknown) => void) => void)(resolve)),
+          then: (resolve: (value: unknown) => unknown) => {
+            if (table === 'troll_run_sessions')
+              return resolve(
+                isUpdate ? { data: [{ id: 'session-1' }], error: null } : { data: SESSION_ROW, error: null }
+              )
+            if (table === 'troll_run_player_states') {
+              if (!isUpdate) return resolve({ data: PLAYER_STATES, error: null })
+              if ('round_score' in patch) roundScores[stateId] = patch.round_score
+              return resolve({ data: [{ id: stateId }], error: null })
+            }
+            if (table === 'troll_run_events') {
+              // Player 2's row says 3 deaths (a failed total write left it stale in the other
+              // direction too); the log holds 1. Player 1 has no logged deaths at all.
+              return resolve({ data: [{ player_id: 'player-2' }], error: null })
+            }
+            return resolve({ data: null, error: null })
+          },
+        }
+        return chain
+      },
+    } as unknown as SupabaseClient
+
+    await syncTrollRunGameState(supabase, 'GAME', { forceNextRound: false })
+
+    // Player 2 is unfinished (DNF): 2 levels cleared, scored with 1 death (the log), not 3 (the row).
+    expect(roundScores['state-2']).toBe(calculateTrollRunDnfScore(2, 1))
+    expect(roundScores['state-2']).not.toBe(calculateTrollRunDnfScore(2, 3))
   })
 })

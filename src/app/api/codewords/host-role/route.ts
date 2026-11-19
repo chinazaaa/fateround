@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
 import {
   codewordsAllowsPlayerChanges,
+  isSpymasterSeatConflict,
   reconcileCodewordsTeamAfterRemoval,
   removeCodewordsPlayerRole,
 } from '@/lib/codewords'
@@ -80,7 +81,17 @@ export async function POST(req: NextRequest) {
     .select()
     .single()
 
-  if (error) return NextResponse.json({ error: internalErrorMessage('codewords/host-role', error) }, { status: 500 })
+  if (error) {
+    // Two host requests can both see an empty spymaster seat and skip the demotion; the partial
+    // unique index rejects the second upsert. Same answer as a sequential refusal, not a 500.
+    if (role === 'spymaster' && isSpymasterSeatConflict(error)) {
+      return NextResponse.json(
+        { error: `${team === 'red' ? 'Red' : 'Blue'} team already has a spymaster` },
+        { status: 400 }
+      )
+    }
+    return NextResponse.json({ error: internalErrorMessage('codewords/host-role', error) }, { status: 500 })
+  }
   return NextResponse.json({ success: true, role: roleRow })
 }
 

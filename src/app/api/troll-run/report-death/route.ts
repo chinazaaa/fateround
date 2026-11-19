@@ -45,14 +45,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: true, deaths: state.deaths })
   }
 
-  const { error: eventError } = await supabase.from('troll_run_events').insert({
-    game_id: gameId,
-    player_id: state.player_id,
-    round: session.current_round,
-    level_id: levelId,
-    level_name: levelName ?? levelId,
-    event_type: 'death',
-  })
+  const { data: inserted, error: eventError } = await supabase
+    .from('troll_run_events')
+    .insert({
+      game_id: gameId,
+      player_id: state.player_id,
+      round: session.current_round,
+      level_id: levelId,
+      level_name: levelName ?? levelId,
+      event_type: 'death',
+    })
+    .select('id')
+    .single()
 
   if (eventError) {
     return NextResponse.json({ error: internalErrorMessage('troll_run:report-death', eventError) }, { status: 500 })
@@ -68,13 +72,23 @@ export async function POST(req: NextRequest) {
 
   const deaths = count ?? state.deaths + 1
 
-  const { error: updateError } = await supabase
+  // The runner may have cleared the final level between the guard's read and this write. The
+  // total is therefore only written while the runner is still unfinished (the same write that
+  // would otherwise match on the row id alone); if it no longer matches, the death arrived after
+  // the finish, so its event is withdrawn and the report is acknowledged as ignored.
+  const { data: updated, error: updateError } = await supabase
     .from('troll_run_player_states')
     .update({ deaths, updated_at: new Date().toISOString() })
     .eq('id', state.id)
+    .lt('current_level_index', session.level_order.length)
+    .select('id')
 
   if (updateError) {
     return NextResponse.json({ error: internalErrorMessage('troll_run:report-death', updateError) }, { status: 500 })
+  }
+  if (!updated || updated.length === 0) {
+    if (inserted?.id) await supabase.from('troll_run_events').delete().eq('id', inserted.id)
+    return NextResponse.json({ ok: true, ignored: true, deaths: state.deaths })
   }
 
   return NextResponse.json({ ok: true, deaths })

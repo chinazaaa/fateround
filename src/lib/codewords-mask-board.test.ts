@@ -12,7 +12,8 @@ function board(over: Partial<CodewordsBoard> = {}): CodewordsBoard {
     id: 'board-1',
     game_id: 'ABCD',
     words: fullKey.map((_, i) => `w${i}`),
-    key: fullKey,
+    // A fresh copy per board, so an in-place edit by the helper cannot also change `fullKey`.
+    key: [...fullKey],
     starting_team: 'red',
     revealed_indices: [],
     current_turn: 'red',
@@ -44,7 +45,9 @@ describe('maskCodewordsBoardKey', () => {
 
   it('does not mutate the stored board', () => {
     const original = board()
+    const before = [...original.key]
     maskCodewordsBoardKey(original)
+    expect(original.key).toEqual(before)
     expect(original.key).toEqual(fullKey)
   })
 

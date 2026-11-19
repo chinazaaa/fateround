@@ -41,6 +41,42 @@ async function readRoundStates(
 }
 
 /**
+ * The event log is the source of truth for deaths: the per-player total is re-derived from it on
+ * every report, but that total write can fail after the event is stored (and a report that loses
+ * a race with the final clear is rolled back from both). Scoring therefore recounts the round's
+ * death events and uses that count, so a stale row total cannot change a placement or a penalty.
+ * If the log cannot be read, the stored totals are used as they are.
+ */
+async function reconcileDeathTotals(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: number,
+  states: TrollRunPlayerState[]
+): Promise<TrollRunPlayerState[]> {
+  if (states.length === 0) return states
+  const { data, error } = await supabase
+    .from('troll_run_events')
+    .select('player_id')
+    .eq('game_id', gameId)
+    .eq('round', round)
+    .eq('event_type', 'death')
+  if (error || !Array.isArray(data)) return states
+
+  const counts = new Map<string, number>()
+  for (const row of data as Array<{ player_id: string }>) {
+    counts.set(row.player_id, (counts.get(row.player_id) ?? 0) + 1)
+  }
+  const reconciled = states.map((state) => ({ ...state, deaths: counts.get(state.player_id) ?? 0 }))
+  // Best-effort repair of the stored totals so the scoreboard shows the same number the score used.
+  await Promise.all(
+    reconciled
+      .filter((state, index) => state.deaths !== states[index].deaths)
+      .map((state) => supabase.from('troll_run_player_states').update({ deaths: state.deaths }).eq('id', state.id))
+  )
+  return reconciled
+}
+
+/**
  * Drives the Troll Run phase machine. Every player's client nudges this on its own timer,
  * so each transition is a compare-and-set against the phase (and round) that was read:
  * exactly one caller wins the flip and does the work behind it, and the rest get
@@ -118,7 +154,12 @@ export async function syncTrollRunGameState(
 
     // Re-read after the claim so a finish that landed while the decision was being made is
     // still counted. Anything arriving later is rejected by the finish route's phase check.
-    const finalStates = await readRoundStates(supabase, gameId, session.current_round)
+    const finalStates = await reconcileDeathTotals(
+      supabase,
+      gameId,
+      session.current_round,
+      await readRoundStates(supabase, gameId, session.current_round)
+    )
     const parSeconds = trollRunRoundParSeconds(session.current_world, session.level_order)
 
     const roundScores = buildTrollRunRoundScores(finalStates, parSeconds)

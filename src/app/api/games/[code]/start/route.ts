@@ -610,13 +610,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const randomizeTeams = game.codewords_randomize_teams === true
 
     if (randomizeTeams && teamsNeedRandomization(playerIds, roles)) {
-      const { roles: shuffled, error: shuffleError } = await persistRandomizedRoles(
-        getSupabaseAdmin(),
-        code.toUpperCase(),
-        playerIds,
-        roles
-      )
-      if (shuffleError) return NextResponse.json({ error: shuffleError }, { status: 500 })
+      const {
+        roles: shuffled,
+        error: shuffleError,
+        conflict: shuffleConflict,
+      } = await persistRandomizedRoles(getSupabaseAdmin(), code.toUpperCase(), playerIds, roles)
+      if (shuffleError) return NextResponse.json({ error: shuffleError }, { status: shuffleConflict ? 409 : 500 })
       roles = shuffled
     }
 

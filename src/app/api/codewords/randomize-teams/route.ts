@@ -54,8 +54,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { roles: nextRoles, error } = await persistRandomizedRoles(supabase, code, playerIds, roles)
-  if (error) return NextResponse.json({ error }, { status: 500 })
+  const { roles: nextRoles, error, conflict } = await persistRandomizedRoles(supabase, code, playerIds, roles)
+  if (error) return NextResponse.json({ error }, { status: conflict ? 409 : 500 })
 
   const ready = lobbyReady(nextRoles)
   if (!ready.ok) {

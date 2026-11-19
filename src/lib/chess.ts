@@ -210,7 +210,7 @@ async function loadSession(
  * only the first wins — the loser gets 0 rows and bails before finalizing. This
  * stops a stale timeout from overwriting a real (even checkmating) move, and
  * keeps two requests from both calling markGameFinished. Returns true if this
- * write won. The caller supplies the full patch (including turn_deadline_at).
+ * write won (`error` is set only for a database failure). The caller supplies the full patch (including turn_deadline_at).
  */
 /** Returned when a concurrent request already advanced the turn (same wording as Rummy/Checkers). */
 const LOST_RACE_MESSAGE = 'Another action already updated this turn — try again'
@@ -220,8 +220,8 @@ async function persistSession(
   gameId: string,
   patch: Partial<ChessSession>,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('chess_sessions')
     .update({
       ...patch,
@@ -230,7 +230,10 @@ async function persistSession(
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: reporting it as "another action already updated this
+  // turn" would send the player into a retry loop for a move that never conflicted.
+  if (error) return { won: false, error: internalErrorMessage('chess', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 function describeDrawReason(reason: string): string {
@@ -368,7 +371,7 @@ export async function processChessMove(
   // CAS and report it as an error — the winner finalizes, so a played move is never
   // double-finished or overwritten by a stale timeout, and the caller isn't told
   // its (unapplied) move succeeded.
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -390,7 +393,7 @@ export async function processChessMove(
     },
     session.updated_at
   )
-  if (!won) return { error: LOST_RACE_MESSAGE }
+  if (!persisted.won) return { error: persisted.error ?? LOST_RACE_MESSAGE }
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -417,7 +420,7 @@ export async function processChessExpireTurn(supabase: SupabaseClient, gameId: s
   // Claim from the exact state we read. If the player actually moved in time, that
   // move already advanced updated_at and we lose the CAS here — bail without error
   // so the real move stands instead of being recorded as a timeout loss.
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -434,7 +437,7 @@ export async function processChessExpireTurn(supabase: SupabaseClient, gameId: s
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await markGameFinished(supabase, gameId)
   return {}
@@ -463,7 +466,7 @@ export async function processChessResign(
   // Claim from the exact state we read. If a concurrent move/expire-turn already
   // finished the game, we lose the CAS and return an error so we don't
   // double-finish or overwrite the real result.
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -476,7 +479,7 @@ export async function processChessResign(
     },
     session.updated_at
   )
-  if (!won) return { error: LOST_RACE_MESSAGE }
+  if (!persisted.won) return { error: persisted.error ?? LOST_RACE_MESSAGE }
 
   await markGameFinished(supabase, gameId)
   return {}

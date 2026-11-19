@@ -1012,16 +1012,19 @@ function foldWhotChooseStats(prev: WhotRoundStats, hasShape: boolean): WhotRound
  * Optimistic-concurrency session write. The update only lands if the row still
  * carries the `expectedUpdatedAt` we read, so when two requests race (e.g. every
  * client driving the turn timer) only the first wins — the loser gets 0 rows and
- * the caller aborts before mutating hands. Returns true if this write won.
+ * the caller aborts before mutating hands. Returns `won: true` if this write won; `error` is set
+ * only for a database failure, which must not be mistaken for a lost race.
  */
+const WHOT_LOST_RACE_MESSAGE = 'Another action already updated this turn — try again'
+
 async function persistSession(
   supabase: SupabaseClient,
   gameId: string,
   patch: Partial<WhotSession>,
   timerSeconds: number,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('whot_sessions')
     .update({
       ...patch,
@@ -1031,7 +1034,8 @@ async function persistSession(
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  if (error) return { won: false, error: internalErrorMessage('whot', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 export async function processWhotPlay(
@@ -1148,8 +1152,9 @@ export async function processWhotPlay(
 
   // Claim the turn. If another request already moved the game from this exact
   // state we lose the CAS and bail — no hands touched.
-  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!won) return {}
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  if (persisted.error) return { error: persisted.error }
+  if (!persisted.won) return {}
 
   // We hold the claim — now safe to write hands and finalize. Fold this play's trophy counters
   // forward into the same atomic hand write (pre-write `session` reads the pick stack this 2/5
@@ -1242,14 +1247,16 @@ export async function processWhotDraw(
     const deckExhausted = drawPile.length === 0 && (!canReshuffle || discardPile.length === 0)
     if (deckExhausted || !anyPlayerCanPlay(hands, session, rules)) {
       const reason = deckExhausted ? 'Deck ran out —' : 'Nobody can play —'
-      await finishWhotByLowestHand(supabase, gameId, session, hands, playerNames, reason)
-      return {}
+      // Report success only when this request's finish landed; a concurrent action that changed
+      // the session version first is a lost race, like the draw branch below.
+      const finished = await finishWhotByLowestHand(supabase, gameId, session, hands, playerNames, reason)
+      return finished ? {} : { error: WHOT_LOST_RACE_MESSAGE }
     }
 
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
 
-    await persistSession(
+    const passed = await persistSession(
       supabase,
       gameId,
       {
@@ -1263,7 +1270,8 @@ export async function processWhotDraw(
       timerSeconds,
       session.updated_at
     )
-    return {}
+    if (passed.error) return { error: passed.error }
+    return passed.won ? {} : { error: WHOT_LOST_RACE_MESSAGE }
   }
 
   const newHand = [...hand, ...drawn]
@@ -1280,7 +1288,7 @@ export async function processWhotDraw(
         : `${playerName(playerNames, playerId)} drew 1 card`
 
   // Claim the turn before crediting the cards, so a lost race never grows a hand.
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1295,7 +1303,8 @@ export async function processWhotDraw(
     timerSeconds,
     session.updated_at
   )
-  if (!won) return { error: 'Another action already updated this turn — try again' }
+  if (persisted.error) return { error: persisted.error }
+  if (!persisted.won) return { error: WHOT_LOST_RACE_MESSAGE }
 
   // Fold this draw's trophy counters forward. A draw under an active Pick 2/3 is a penalty the
   // player was made to take (`penaltyActive`), distinct from a voluntary single draw.
@@ -1357,7 +1366,7 @@ export async function processWhotChoose(
   if (stacks.pickTwo > 0) status = `${status} · Pick 2 active (${stacks.pickTwo} cards to draw)`
   else if (stacks.pickFive > 0) status = `${status} · Pick 3 active (${stacks.pickFive} cards to draw)`
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1374,7 +1383,8 @@ export async function processWhotChoose(
   )
   // Naming a shape after a WHOT is the "Shape Shifter" event. Stats-only write (the choose
   // changes no cards) folded once we hold the claim, so a lost race never double-counts.
-  if (won && hasShape) {
+  if (persisted.error) return { error: persisted.error }
+  if (persisted.won && hasShape) {
     const nextStats = foldWhotChooseStats(currentWhotStats(hands, playerId), hasShape)
     await supabase
       .from('whot_player_hands')
@@ -1422,7 +1432,7 @@ export async function processWhotExpireTurn(
     }
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-    await persistSession(
+    const skippedTurn = await persistSession(
       supabase,
       gameId,
       {
@@ -1433,7 +1443,7 @@ export async function processWhotExpireTurn(
       timerSeconds,
       session.updated_at
     )
-    return {}
+    return skippedTurn.error ? { error: skippedTurn.error } : {}
   }
 
   if (session.phase === 'choose_whot') {
@@ -1446,7 +1456,11 @@ export async function processWhotExpireTurn(
     return processWhotPlay(supabase, gameId, currentId, card.id)
   }
 
-  return processWhotDraw(supabase, gameId, currentId)
+  const drawn = await processWhotDraw(supabase, gameId, currentId)
+  // Two expiry requests racing for one turn: the loser's claim fails, which is a normal outcome
+  // for a timer poke (the winner already advanced the turn), not an error worth surfacing.
+  if (drawn.error === WHOT_LOST_RACE_MESSAGE) return { skipped: true }
+  return drawn
 }
 
 export async function finishExpiredWhotGame(
