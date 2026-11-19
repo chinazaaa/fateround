@@ -563,4 +563,28 @@ describe('individual round finalization is resumable', () => {
     expect(state.session.round_finalize).toMatchObject({ bookkeeping_owner: 'someone-else' }) // not wiped
     expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
   })
+
+  it('Play Again aborts when the finalization it resumes loses its lease to another runner mid-way', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    let staged = false
+    const realFrom = client.from
+    ;(client as { from: unknown }).from = (table: string) => {
+      if (table === 'room_games' && !staged) {
+        staged = true
+        state.session.round_finalize = {
+          ...(state.session.round_finalize as Record<string, unknown>),
+          bookkeeping_owner: 'someone-else',
+          bookkeeping_lease_until: new Date(Date.now() + 120_000).toISOString(),
+        }
+      }
+      return realFrom(table)
+    }
+    state.events.length = 0
+    const res = await clearWordRushSessionData(client, GAME)
+    expect(staged).toBe(true)
+    expect(res.error).toBeDefined()
+    expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
+    expect(state.session.round_finalize).toMatchObject({ bookkeeping_owner: 'someone-else' })
+  })
 })

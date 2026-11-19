@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { closeIdleActiveGames, isIdleReaperDisabled, resolveIdleMinutes } from '@/lib/idle-reaper'
 import { resumeAllWordRushFinalizations } from '@/lib/word-rush-server'
 
+// Bounded well below FINISH_BOOKKEEPING_LEASE_SECONDS (word-rush-server): the bookkeeping lease assumes a
+// request cannot outlive it, so an expired lease means its holder is dead.
+export const maxDuration = 60
+
 /**
  * Cron tick — close `status='active'` games whose `last_activity_at` hasn't
  * moved in 30 minutes (IDLE_REAPER_MINUTES to tune). Bounded batch (20 per

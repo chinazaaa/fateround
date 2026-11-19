@@ -5,6 +5,10 @@ import { wordRushGameSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 
+// Bounded well below FINISH_BOOKKEEPING_LEASE_SECONDS (word-rush-server): the bookkeeping lease assumes a
+// request cannot outlive it, so an expired lease means its holder is dead.
+export const maxDuration = 60
+
 /**
  * Resume the effects (setter's mirror points, the round message, the last-round game finish) of an
  * individual round that was closed but not finalized. A client calls this when the session still
