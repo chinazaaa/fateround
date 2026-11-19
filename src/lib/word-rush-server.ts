@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
-import { markGameFinished } from '@/lib/game-finish'
+import { markGameFinished, runFinishSideEffects } from '@/lib/game-finish'
 import {
   pickRandomLetterPair,
   pairSupportsMinLengthForLetters,
@@ -100,8 +100,11 @@ function tallyIndividualGuesses(
   return { points, count }
 }
 
-/** How long a lost finish CAS defers to the winner's post-finish bookkeeping before taking over. */
-const FINISH_BOOKKEEPING_GRACE_MS = 60_000
+/**
+ * Lease on the post-finish bookkeeping. Longer than any request can run, so an expired lease means
+ * the holder is dead and another finalizer may take the (idempotent) bookkeeping over.
+ */
+const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
 
 /**
  * The effects of a closed individual round: the setter's mirror points, the "N guessed it" message
@@ -156,31 +159,52 @@ async function runRoundFinalization(
     if (messageError) return internalFailure('word-rush:finalize-round:message', messageError)
   }
 
-  // 3. Last round: finish the game. The CAS makes a resumed attempt a no-op if it already landed.
+  // 3. Last round: finish the game, then its bookkeeping. The bookkeeping reads this session's rows
+  // and Play Again deletes them once the marker is gone, so exactly one runner at a time holds a
+  // durable lease on it and the marker is cleared only by a runner that completed it. A runner that
+  // died mid-way is taken over once its lease expires; every step is idempotent.
   if (pending.is_last) {
+    const { data: claim, error: claimError } = await supabase.rpc('word_rush_claim_finish_bookkeeping', {
+      p_game_id: gameId,
+      p_session_id: pending.session_id,
+      p_turn_index: pending.turn_index,
+      p_lease_seconds: FINISH_BOOKKEEPING_LEASE_SECONDS,
+    })
+    if (claimError) return internalFailure('word-rush:finalize-round:claim-bookkeeping', claimError)
+    if (claim === 'not_pending') return {}
+    if (claim === 'held') return { error: 'Game finish is still in progress' }
+
     // Bound to this session: a finalizer that outlives Play Again must not finish the new game.
     const finished = await markGameFinished(supabase, gameId, undefined, {
       roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: pending.session_id } },
     })
-    if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
+    // A failure from here on hands the lease back so the next attempt is not locked out for 5 minutes.
+    const release = () =>
+      supabase.rpc('word_rush_claim_finish_bookkeeping', {
+        p_game_id: gameId,
+        p_session_id: pending.session_id,
+        p_turn_index: pending.turn_index,
+        p_lease_seconds: 0,
+      })
+    if (finished.error) {
+      await release()
+      return internalFailure('word-rush:finalize-round:finish', finished.error)
+    }
     if (!finished.won) {
-      // Another finalizer flipped the game and may still be running its bookkeeping (room points,
-      // trophy facts) from this session's rows. Clearing the marker here would let Play Again
-      // delete those rows underneath it, so leave the marker for the winner and report in-progress.
-      // A winner that died mid-bookkeeping is given up on after FINISH_BOOKKEEPING_GRACE_MS.
+      // The flip already happened (an earlier attempt, possibly one that died before its
+      // bookkeeping). We hold the lease, so run the bookkeeping here — but only for a game that
+      // really finished; a replayed game that is active again has nothing to book.
       const { data: game, error: gameError } = await supabase
         .from('games')
         .select('status, finished_at')
         .eq('id', gameId)
         .maybeSingle()
-      if (gameError) return internalFailure('word-rush:finalize-round:finish-state', gameError)
-      const finishedAtMs = game?.finished_at ? new Date(game.finished_at).getTime() : NaN
-      if (
-        game?.status === 'finished' &&
-        Number.isFinite(finishedAtMs) &&
-        Date.now() - finishedAtMs < FINISH_BOOKKEEPING_GRACE_MS
-      ) {
-        return { error: 'Game finish is still in progress' }
+      if (gameError) {
+        await release()
+        return internalFailure('word-rush:finalize-round:finish-state', gameError)
+      }
+      if (game?.status === 'finished' && game.finished_at) {
+        await runFinishSideEffects(supabase, gameId, game.finished_at as string)
       }
     }
   }

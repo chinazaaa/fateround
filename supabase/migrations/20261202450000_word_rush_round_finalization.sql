@@ -121,3 +121,58 @@ $$;
 
 revoke execute on function public.word_rush_finish_game_for_session(text, timestamptz, uuid) from public, anon, authenticated;
 grant execute on function public.word_rush_finish_game_for_session(text, timestamptz, uuid) to service_role;
+
+-- Serialises the game-finish bookkeeping (room points, trophy snapshot) for one round.
+--
+-- Play Again deletes the session and answers those steps read, so a finalizer must never clear the
+-- marker (which lets the reset proceed) while another one is still running them, and a runner that
+-- died mid-way must be recoverable. A runner claims a lease stored in the marker: 'claimed' lets it
+-- run the (idempotent) bookkeeping, 'held' means a live runner owns it, 'not_pending' means the
+-- marker is gone or belongs to another round/session. The lease outlives the platform's request
+-- limit, so an expired lease means its holder is dead and takeover is safe.
+create or replace function public.word_rush_claim_finish_bookkeeping(
+  p_game_id text,
+  p_session_id uuid,
+  p_turn_index integer,
+  p_lease_seconds integer
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_marker jsonb;
+  v_until timestamptz;
+begin
+  select s.round_finalize into v_marker
+    from public.word_rush_sessions s
+   where s.game_id = p_game_id and s.id = p_session_id
+     for update;
+  if v_marker is null or (v_marker->>'turn_index')::integer is distinct from p_turn_index then
+    return 'not_pending';
+  end if;
+  -- p_lease_seconds <= 0 releases the caller's lease (a runner that failed before it could finish).
+  if p_lease_seconds <= 0 then
+    update public.word_rush_sessions
+       set round_finalize = v_marker - 'bookkeeping_lease_until'
+     where game_id = p_game_id and id = p_session_id;
+    return 'released';
+  end if;
+  v_until := nullif(v_marker->>'bookkeeping_lease_until', '')::timestamptz;
+  if v_until is not null and v_until > now() then
+    return 'held';
+  end if;
+  update public.word_rush_sessions
+     set round_finalize = jsonb_set(
+           v_marker,
+           '{bookkeeping_lease_until}',
+           to_jsonb(to_char((now() + make_interval(secs => greatest(p_lease_seconds, 1))) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+         )
+   where game_id = p_game_id and id = p_session_id;
+  return 'claimed';
+end;
+$$;
+
+revoke execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer) from public, anon, authenticated;
+grant execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer) to service_role;

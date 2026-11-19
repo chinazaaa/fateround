@@ -27,6 +27,61 @@ export type FinishGameResult = { error: string | null; won: boolean; cleanupErro
 
 export type RoundGuard = { rpc: string; params: Record<string, unknown> }
 
+/**
+ * The post-finish bookkeeping: room points, trophy snapshot and tournament advancement. Every step
+ * is idempotent (points are stamped, round facts upsert on (game, player, finished_at), bracket
+ * resolution is repeatable), so a caller that owns recovery may safely run it again for a game that
+ * is already finished. Normally only the request that won the active→finished transition runs it.
+ */
+export async function runFinishSideEffects(supabase: SupabaseClient, gameId: string, finishedAt: string) {
+  try {
+    await awardRoomGamePoints(supabase, gameId)
+  } catch {
+    // Room stats are best-effort — never block game finish.
+  }
+  try {
+    // Snapshot trophy facts NOW, while the game's own tables still hold the round. Play-again
+    // clears them and Chess's rematch blanks its move list, so deriving these at attribution
+    // time — after the client mounts the finished screen — loses them to whoever replays
+    // first. Best-effort: on failure the award pass falls back to deriving live, which is
+    // exactly the old behaviour.
+    await recordRoundFacts(supabase, gameId, finishedAt)
+  } catch (err) {
+    // Never block game finish for a trophy snapshot — but do NOT swallow the failure silently.
+    // The snapshot is the durable copy of a round's facts; if it keeps failing, play-again can
+    // delete the live state before attribution and the fallback has nothing to reconstruct
+    // from. Logging it means a persistent problem is visible rather than an invisible slow
+    // leak of trophies.
+    console.error(`recordRoundFacts failed for game ${gameId}`, err)
+  }
+  try {
+    // Advance a head-to-head bracket match (record winner / rematch a draw).
+    // No-op for every other game. Never block game finish, but — unlike room
+    // points — this is core tournament state, so surface a failure rather than
+    // swallow it: a stuck match needs attention (host can re-trigger by ending
+    // the game again, and resolution is idempotent).
+    await resolveHeadToHeadMatch(supabase, gameId)
+  } catch (err) {
+    console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
+  }
+  try {
+    // Advance a school (class-ladder) match: climb the winner a class, or finish
+    // the tournament if that graduates them. No-op for every other game; core
+    // tournament state, so surface a failure rather than swallow it.
+    await resolveSchoolMatch(supabase, gameId)
+  } catch (err) {
+    console.error(`resolveSchoolMatch failed for game ${gameId}`, err)
+  }
+  try {
+    // Score a finished Scrabble knockout room and, once the round's last room is
+    // in, cut the bottom half of the whole field. No-op for every other game;
+    // core tournament state, so surface a failure rather than swallow it.
+    await resolveKnockoutGroupRoom(supabase, gameId)
+  } catch (err) {
+    console.error(`resolveKnockoutGroupRoom failed for game ${gameId}`, err)
+  }
+}
+
 export async function markGameFinished(
   supabase: SupabaseClient,
   gameId: string,
@@ -64,52 +119,7 @@ export async function markGameFinished(
   const won = !(onlyIfActive || roundGuard) || (Array.isArray(result.data) && result.data.length > 0)
 
   if (!result.error && won) {
-    try {
-      await awardRoomGamePoints(supabase, gameId)
-    } catch {
-      // Room stats are best-effort — never block game finish.
-    }
-    try {
-      // Snapshot trophy facts NOW, while the game's own tables still hold the round. Play-again
-      // clears them and Chess's rematch blanks its move list, so deriving these at attribution
-      // time — after the client mounts the finished screen — loses them to whoever replays
-      // first. Best-effort: on failure the award pass falls back to deriving live, which is
-      // exactly the old behaviour.
-      await recordRoundFacts(supabase, gameId, finishedAt)
-    } catch (err) {
-      // Never block game finish for a trophy snapshot — but do NOT swallow the failure silently.
-      // The snapshot is the durable copy of a round's facts; if it keeps failing, play-again can
-      // delete the live state before attribution and the fallback has nothing to reconstruct
-      // from. Logging it means a persistent problem is visible rather than an invisible slow
-      // leak of trophies.
-      console.error(`recordRoundFacts failed for game ${gameId}`, err)
-    }
-    try {
-      // Advance a head-to-head bracket match (record winner / rematch a draw).
-      // No-op for every other game. Never block game finish, but — unlike room
-      // points — this is core tournament state, so surface a failure rather than
-      // swallow it: a stuck match needs attention (host can re-trigger by ending
-      // the game again, and resolution is idempotent).
-      await resolveHeadToHeadMatch(supabase, gameId)
-    } catch (err) {
-      console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
-    }
-    try {
-      // Advance a school (class-ladder) match: climb the winner a class, or finish
-      // the tournament if that graduates them. No-op for every other game; core
-      // tournament state, so surface a failure rather than swallow it.
-      await resolveSchoolMatch(supabase, gameId)
-    } catch (err) {
-      console.error(`resolveSchoolMatch failed for game ${gameId}`, err)
-    }
-    try {
-      // Score a finished Scrabble knockout room and, once the round's last room is
-      // in, cut the bottom half of the whole field. No-op for every other game;
-      // core tournament state, so surface a failure rather than swallow it.
-      await resolveKnockoutGroupRoom(supabase, gameId)
-    } catch (err) {
-      console.error(`resolveKnockoutGroupRoom failed for game ${gameId}`, err)
-    }
+    await runFinishSideEffects(supabase, gameId, finishedAt)
   }
 
   // Surfaced so callers can tell a real finish from a lost CAS: `error` is null in
