@@ -427,15 +427,18 @@ export function TrollRunPlayerView({
   // Reports go out strictly in the order the engine raised them. A death on the last level is
   // followed at once by that level's clear; sent in parallel, the clear can advance the server's
   // level index first and the death is then dropped as "runner already finished".
-  const raceReportQueueRef = useRef(createSerialQueue())
+  const [raceReportQueue] = useState(createSerialQueue)
   // A death waits in the queue behind earlier reports, so it can be sent after the round has moved
   // on. It is stamped with the round it was raised in and the server drops it if that is no longer
   // the live round, rather than counting it against the next one.
   const currentRoundRef = useRef(session?.current_round)
-  currentRoundRef.current = session?.current_round
+  const liveRound = session?.current_round
+  useEffect(() => {
+    currentRoundRef.current = liveRound
+  }, [liveRound])
   const enqueueRaceReport = useCallback(
-    (path: string, payload: Record<string, unknown>) => raceReportQueueRef.current(() => postRaceReport(path, payload)),
-    [postRaceReport]
+    (path: string, payload: Record<string, unknown>) => raceReportQueue(() => postRaceReport(path, payload)),
+    [raceReportQueue, postRaceReport]
   )
 
   const handleDeath = useCallback(
