@@ -5,11 +5,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 import { markGameFinished } from '@/lib/game-finish'
-import {
-  WORD_GROUPING_MAX_MISTAKES,
-  WORD_GROUPING_MAX_WORD_LENGTH,
-  WORD_GROUPING_TOTAL_GROUPS,
-} from '@/lib/word-grouping'
+import { finishWordGroupingIfAllDone, isWordGroupingPlayerDone } from '@/lib/word-grouping-completion'
+import { WORD_GROUPING_MAX_MISTAKES, WORD_GROUPING_MAX_WORD_LENGTH } from '@/lib/word-grouping'
 
 const submitSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
@@ -30,7 +27,7 @@ function wordGroupingSessionExpired(sessionStartedAt: string | null, durationSec
 }
 
 function isPlayerDone(correctCount: number | undefined, mistakeCount: number | undefined): boolean {
-  return (correctCount ?? 0) >= WORD_GROUPING_TOTAL_GROUPS || (mistakeCount ?? 0) >= WORD_GROUPING_MAX_MISTAKES
+  return isWordGroupingPlayerDone(correctCount, mistakeCount)
 }
 
 /** Finishes the game if every non-spectator is done. Returns an error when completion failed. */
@@ -40,41 +37,7 @@ async function finishGameIfAllDone(
   roundId: string,
   sessionStartedAt: string | null
 ): Promise<Error | null> {
-  try {
-    const { data: allPlayers, error: playersError } = await supabase
-      .from('players')
-      .select('id')
-      .eq('game_id', code)
-      .eq('spectator', false)
-    if (playersError) return new Error(`players read failed: ${playersError.message}`)
-    if (!allPlayers) return null
-
-    const { data: allSubs, error: subsError } = await supabase
-      .from('word_grouping_submissions')
-      .select('player_id, is_correct')
-      .eq('round_id', roundId)
-    if (subsError) return new Error(`submissions read failed: ${subsError.message}`)
-
-    const allDone = allPlayers.every((p) => {
-      const playerSubs = allSubs?.filter((s) => s.player_id === p.id) ?? []
-      const pCorrect = playerSubs.filter((s) => s.is_correct).length
-      const pMistakes = playerSubs.filter((s) => !s.is_correct).length
-      return isPlayerDone(pCorrect, pMistakes)
-    })
-    if (!allDone) return null
-
-    // Two players can independently observe "allDone" on their final submits — same race as the
-    // timer path. onlyIfActive lets only the CAS winner run the finish side-effects.
-    const result = await markGameFinished(supabase, code, new Date().toISOString(), {
-      onlyIfActive: true,
-      // Only finish the session whose submissions were just checked; a replay under the same
-      // game id gets a new session_started_at and must not be finished by this stale check.
-      onlySessionStartedAt: sessionStartedAt,
-    })
-    return result.error ? new Error(`markGameFinished failed: ${result.error}`) : null
-  } catch (err) {
-    return err instanceof Error ? err : new Error(String(err))
-  }
+  return (await finishWordGroupingIfAllDone(supabase, code, roundId, sessionStartedAt)).error
 }
 
 // A failed finish leaves an all-done game active (an untimed game then waits for the idle
@@ -207,8 +170,8 @@ export async function POST(req: NextRequest) {
   if (isPlayerDone(newCorrectCount, newMistakes)) {
     const finishError = await finishGameWithRetry(supabase, code, round.id, game.session_started_at)
     // The guess is already committed. A finish that still fails after the in-request retries is
-    // surfaced as a 500; a repeat request (out_of_guesses / already_solved above) re-runs the
-    // completion check, and the idle reaper is the backstop for an untimed game.
+    // surfaced as a 500; it is then recovered independently of any further submission by the
+    // client nudge (/api/word-grouping/complete) and the server sweep on the reap-idle tick.
     if (finishError) {
       return NextResponse.json({ error: internalErrorMessage('word-grouping/submit', finishError) }, { status: 500 })
     }

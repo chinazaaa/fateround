@@ -10,6 +10,7 @@ import { ShareResultsCaptureHeader } from '@/components/ShareResultsCaptureHeade
 import { PLAYER_SELECT, WORD_GROUPING_SUBMISSION_SELECT } from '@/lib/supabase-selects'
 import { clearPlayerSession } from '@/lib/utils'
 import { formatMinutesSeconds } from '@/lib/timer-format'
+import { useWordGroupingCompletionNudge } from '@/hooks/useWordGroupingCompletionNudge'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
 import { useRoomMemberAutoJoin, useRoomMemberJoin, useRoomMemberNamePrefill } from '@/hooks/useRoomMemberJoin'
@@ -474,6 +475,10 @@ export function WordGroupingPlayerView({ gameCode, embedded = false }: { gameCod
       }
     }
   }, [timeRemaining, screen, gameCode, load])
+
+  // If the finish that should have ended the game after the last player's final guess failed, nothing
+  // else would retry it (see the hook): nudge the server until the game finishes.
+  useWordGroupingCompletionNudge(gameCode, screen === 'playing' && isMyPuzzleDone, load)
 
   // Hold the board for a beat when the game ends mid-play. Without this the standings
   // replace the grid the instant the last player finishes, so you never see the fourth
