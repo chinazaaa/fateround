@@ -17,6 +17,11 @@ vi.mock('@/lib/idle-reaper', async (importOriginal) => {
   }
 })
 
+const settleAllWordGroupingGames = vi.fn()
+vi.mock('@/lib/word-grouping-completion', () => ({
+  settleAllWordGroupingGames: (...a: unknown[]) => settleAllWordGroupingGames(...a),
+}))
+
 const resumeAllWordRushFinalizations = vi.fn()
 vi.mock('@/lib/word-rush-server', () => ({
   resumeAllWordRushFinalizations: (...a: unknown[]) => resumeAllWordRushFinalizations(...a),
@@ -44,6 +49,8 @@ describe('POST /api/cron/reap-idle', () => {
   beforeEach(() => {
     closeIdleActiveGames.mockReset()
     closeIdleActiveGames.mockResolvedValue({ closed: 2, failed: 1, errors: ['abc: boom'] })
+    settleAllWordGroupingGames.mockReset()
+    settleAllWordGroupingGames.mockResolvedValue({ finished: 0, failed: 0 })
     resumeAllWordRushFinalizations.mockReset()
     resumeAllWordRushFinalizations.mockResolvedValue({ resumed: 0, failed: 0 })
     recoverAllFinishBookkeeping.mockReset()
@@ -67,10 +74,35 @@ describe('POST /api/cron/reap-idle', () => {
       closed: 2,
       failed: 1,
       errors: ['abc: boom'],
+      word_grouping_finished: 0,
       word_rush_finalized: 0,
       finish_bookkeeping_recovered: 0,
     })
     expect(closeIdleActiveGames).toHaveBeenCalledExactlyOnceWith(adminClient, 30)
+  })
+
+  it('settles stranded all-done Word Grouping games BEFORE closing idle ones, so they end normally', async () => {
+    const order: string[] = []
+    settleAllWordGroupingGames.mockImplementation(async () => {
+      order.push('settle')
+      return { finished: 2, failed: 0 }
+    })
+    closeIdleActiveGames.mockImplementation(async () => {
+      order.push('close')
+      return { closed: 0, failed: 0, errors: [] }
+    })
+    const res = await post({ authorization: 'Bearer sekrit' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ word_grouping_finished: 2 })
+    expect(order).toEqual(['settle', 'close'])
+  })
+
+  it('never lets a failing Word Grouping sweep stop the idle sweep', async () => {
+    settleAllWordGroupingGames.mockRejectedValue(new Error('boom'))
+    const res = await post({ authorization: 'Bearer sekrit' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, closed: 2, word_grouping_finished: 0 })
+    expect(closeIdleActiveGames).toHaveBeenCalledTimes(1)
   })
 
   it('recovers finished games whose post-finish bookkeeping is still owed, and reports how many', async () => {
@@ -110,6 +142,7 @@ describe('POST /api/cron/reap-idle', () => {
       expect(res.status).toBe(401)
     }
     expect(closeIdleActiveGames).not.toHaveBeenCalled()
+    expect(settleAllWordGroupingGames).not.toHaveBeenCalled()
     expect(resumeAllWordRushFinalizations).not.toHaveBeenCalled()
   })
 

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { pickWordGroupingPuzzle, wordGroupingPuzzleKey, type WordGroupingPuzzleEntry } from './word-grouping'
+import {
+  pickWordGroupingPuzzle,
+  parseStoredWordGroupingPuzzles,
+  WORD_GROUPING_MAX_WORD_LENGTH,
+  wordGroupingPuzzleKey,
+  type WordGroupingPuzzleEntry,
+} from './word-grouping'
 
 const P = (id: string): WordGroupingPuzzleEntry => ({
   groups: [
@@ -93,5 +99,23 @@ describe('pickWordGroupingPuzzle — replay variety', () => {
       ],
     }
     expect(wordGroupingPuzzleKey(withPipe)).not.toBe(wordGroupingPuzzleKey(splitPipe))
+  })
+})
+
+describe('parseStoredWordGroupingPuzzles tile length', () => {
+  const build = (firstWord: string) => [
+    {
+      groups: [0, 1, 2, 3].map((g) => ({
+        category: `c${g}`,
+        difficulty: g + 1,
+        words: [0, 1, 2, 3].map((w) => (g === 0 && w === 0 ? firstWord : `w${g}${w}`)),
+      })),
+    },
+  ]
+  it('accepts a tile exactly at the limit', () => {
+    expect(parseStoredWordGroupingPuzzles(build('x'.repeat(WORD_GROUPING_MAX_WORD_LENGTH)))).not.toBeNull()
+  })
+  it('rejects a tile over the limit', () => {
+    expect(parseStoredWordGroupingPuzzles(build('x'.repeat(WORD_GROUPING_MAX_WORD_LENGTH + 1)))).toBeNull()
   })
 })

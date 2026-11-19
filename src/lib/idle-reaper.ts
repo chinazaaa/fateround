@@ -2,7 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { adminEndGame, type AdminGameToEnd } from '@/lib/admin-end-game'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { isProdDeployment } from '@/lib/app-env'
-import { MESSAGE_INBOX_GAME_TYPES, isMessageInboxGame } from '@/lib/game-types'
+import { MESSAGE_INBOX_GAME_TYPES, isMessageInboxGame, isWordGroupingGame } from '@/lib/game-types'
+import { settleWordGroupingGame } from '@/lib/word-grouping-completion'
 
 /**
  * Idle-active-game reaper.
@@ -131,6 +132,25 @@ export async function closeIdleActiveGames(
   const cleanupErrors: string[] = []
 
   for (const game of games) {
+    // A Word Grouping game whose players are ALL done can still be active when the finish that
+    // should have ended it failed after the last guess was committed (an untimed game has no other
+    // way to end). Closing it here would stamp `idle_timeout` over a game that actually completed,
+    // so settle it through the normal completion path first — for every candidate, whatever
+    // sweeps ran before, and in the in-process reaper too. If that check itself fails the game is
+    // skipped, not closed: a game that may be complete must not be ended as idle on a read error.
+    if (isWordGroupingGame(game.game_type)) {
+      const settled = await settleWordGroupingGame(supabase, game.id)
+      if (settled.error) {
+        failed += 1
+        if (errors.length < 5) errors.push(`${game.id}: completion check failed: ${settled.error.message}`)
+        continue
+      }
+      if (settled.finished) {
+        // Finished through its normal completion path with its real result: not ours to close.
+        raced += 1
+        continue
+      }
+    }
     // CAS the active→finished flip. This route has no in-flight guard, so an ops
     // curl overlapping a timer fire (or a manual `systemctl start` during a slow
     // sweep) can select the same batch twice; without the guard both runs award
