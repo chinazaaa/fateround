@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 vi.mock('server-only', () => ({}))
 
-import { processWordRushSubmit } from './word-rush-server'
+import { processWordRushEndRoundEarly, processWordRushSubmit } from './word-rush-server'
 
 const GAME = 'GAME1'
 const session = {
@@ -100,5 +100,84 @@ describe('processWordRushSubmit individual duplicates', () => {
     expect(result.correct).toBeUndefined()
     expect(result.points).toBeUndefined()
     expect(result.internal).toBe(true)
+  })
+})
+
+describe('processWordRushEndRoundEarly — post-claim finalization', () => {
+  const SETTER = 'setter'
+  const lastRoundSession = {
+    ...session,
+    prompt_mode: 'manual',
+    prompt_setter_player_id: SETTER,
+    total_rounds: 1,
+    roster: [SETTER, 'p1'],
+    phase: 'playing',
+  }
+  const answers = [{ player_id: 'p1', created_at: new Date(Date.now() - 10_000).toISOString(), text: 'cat' }]
+
+  /** Records every effect, and fails the final answers re-read `finalReadFailures` times. */
+  function makeEndClient(finalReadFailures: number) {
+    const calls = { answerReads: 0, scoreRpcs: [] as Array<Record<string, unknown>>, gameUpdates: 0 }
+    const client = {
+      rpc: (fn: string, args: Record<string, unknown>) => {
+        if (fn === 'word_rush_add_score') calls.scoreRpcs.push(args)
+        return Promise.resolve({ data: null, error: null })
+      },
+      from: (table: string) => {
+        const q: Record<string, unknown> = {}
+        let op = 'select'
+        const result = () => {
+          if (table === 'games') {
+            if (op === 'update') {
+              calls.gameUpdates++
+              return { data: [{ id: GAME }], error: null }
+            }
+            return { data: { host_token: 'host', status: 'active' }, error: null }
+          }
+          if (table === 'word_rush_sessions') {
+            if (op === 'update') return { data: [{ id: 'S1' }], error: null }
+            return { data: lastRoundSession, error: null }
+          }
+          if (table === 'word_rush_answers') {
+            calls.answerReads++
+            // read 1 is the initial tally; reads 2.. are the post-claim re-read
+            if (calls.answerReads > 1 && calls.answerReads - 1 <= finalReadFailures) {
+              return { data: null, error: { message: 'boom' } }
+            }
+            return { data: answers, error: null }
+          }
+          return { data: null, error: null }
+        }
+        for (const m of ['select', 'eq', 'neq', 'not', 'order', 'in', 'is']) q[m] = () => q
+        q.update = () => {
+          op = 'update'
+          return q
+        }
+        q.maybeSingle = () => Promise.resolve(result())
+        q.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+          Promise.resolve(result()).then(res, rej)
+        return q
+      },
+    }
+    return { client: client as unknown as SupabaseClient, calls }
+  }
+
+  it('still awards the setter mirror points when the re-read succeeds on a retry', async () => {
+    const { client, calls } = makeEndClient(1)
+    const res = await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(res).toEqual({})
+    expect(calls.answerReads).toBe(3)
+    expect(calls.scoreRpcs).toHaveLength(1)
+    expect(calls.scoreRpcs[0]).toMatchObject({ p_player_id: SETTER })
+    expect(calls.gameUpdates).toBeGreaterThan(0)
+  })
+
+  it('does not lose the mirror points or the game finish when every re-read fails', async () => {
+    const { client, calls } = makeEndClient(99)
+    const res = await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(res).toEqual({})
+    expect(calls.scoreRpcs).toHaveLength(1)
+    expect(calls.scoreRpcs[0]).toMatchObject({ p_player_id: SETTER })
+    expect(calls.gameUpdates).toBeGreaterThan(0)
   })
 })

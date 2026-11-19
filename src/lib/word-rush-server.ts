@@ -52,6 +52,9 @@ function deadline(secondsFromNow: number): string {
   return new Date(Date.now() + secondsFromNow * 1000).toISOString()
 }
 
+const FINAL_GUESSES_ATTEMPTS = 3
+const FINAL_GUESSES_RETRY_DELAY_MS = 100
+
 async function loadSession(
   supabase: SupabaseClient,
   gameId: string
@@ -623,13 +626,33 @@ async function endIndividualRound(
   // Answer admission checks the phase under a row lock, so once the claim above has landed no
   // new answer can be admitted. Re-read to include one admitted between the first read and the
   // claim; otherwise its points would be missing from the setter's mirror score and the message.
-  const { data: finalGuesses, error: finalError } = await supabase
-    .from('word_rush_answers')
-    .select('player_id, created_at, text')
-    .eq('game_id', gameId)
-    .eq('turn_index', session.turn_index)
-    .eq('correct', true)
-  if (finalError) return internalFailure('word-rush:end-individual-round:final-guesses', finalError)
+  //
+  // The claim has already committed, so a retry of the whole request cannot resume from here (the
+  // phase no longer matches). A failed re-read therefore must not return early: that would drop
+  // the setter's mirror points and, on the last round, never finish the game. Retry the read a few
+  // times, and if it still fails fall back to the first read — at worst it omits an answer
+  // admitted in the instant between the two reads, which is far better than losing every effect.
+  let finalGuesses = correctGuesses
+  let finalError: { message: string } | null = null
+  let reread = false
+  for (let attempt = 0; attempt < FINAL_GUESSES_ATTEMPTS && !reread; attempt++) {
+    const res = await supabase
+      .from('word_rush_answers')
+      .select('player_id, created_at, text')
+      .eq('game_id', gameId)
+      .eq('turn_index', session.turn_index)
+      .eq('correct', true)
+    if (res.error) {
+      finalError = res.error
+      if (attempt < FINAL_GUESSES_ATTEMPTS - 1) await new Promise((r) => setTimeout(r, FINAL_GUESSES_RETRY_DELAY_MS))
+    } else {
+      finalGuesses = res.data
+      reread = true
+    }
+  }
+  if (!reread) {
+    console.error('word-rush:end-individual-round:final-guesses failed; using the first tally', finalError)
+  }
   const finalTally = tally(finalGuesses)
   const mirrorPoints = finalTally.points
   if (finalTally.count !== guessedCount && !isLastRound) {
