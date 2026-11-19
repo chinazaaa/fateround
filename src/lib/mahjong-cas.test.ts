@@ -21,6 +21,7 @@ const PLAYERS = ['east-player', 'south-player', 'west-player', 'north-player']
 const SEATS = ['east', 'south', 'west', 'north'] as const
 const NOW = '2026-01-01T00:00:00.000Z'
 const CONFLICT = 'Mahjong table changed; please retry'
+const GENERATION = '2026-01-01T00:00:00.000Z'
 
 function makeSession(overrides: Record<string, unknown> = {}): MahjongSession {
   return {
@@ -166,7 +167,11 @@ function fakeSupabase(
       }
       if (table === 'games') {
         return {
-          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { timer_seconds: 0 }, error: null }) }) }),
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { timer_seconds: 0, session_started_at: GENERATION }, error: null }),
+            }),
+          }),
         }
       }
       throw new Error(`unexpected table ${table}`)
@@ -528,26 +533,139 @@ describe('Mahjong hand transitions that must be atomic', () => {
         scores: { 'east-player': 20000, 'south-player': 40000, 'west-player': 20000, 'north-player': 20000 },
       })
 
+    // Nobody tenpai, so the dealer does not repeat and the leader is over the return score.
+    const NOTEN = ['m1', 'm4', 'm7', 'p1', 'p4', 'p7', 's1', 's4', 's7', 'we', 'wn', 'dr', 'dg']
+    // Discards that rule out Nagashi Mangan (which would make the dealer a winner).
+    const decidingTable = (hands: Record<string, string[]> = {}) =>
+      PLAYERS.map((id) => ({ ...makeState(id, [...(hands[id] ?? NOTEN)]), discarded: ['m5'] }) as MahjongPlayerState)
+
     it('marks the game finished after a successful commit', async () => {
       vi.mocked(markGameFinished).mockClear()
-      // Nobody tenpai, so the dealer does not repeat and the leader is over the return score.
-      const noten = ['m1', 'm4', 'm7', 'p1', 'p4', 'p7', 's1', 's4', 's7', 'we', 'wn', 'dr', 'dg']
-      // Discards that rule out Nagashi Mangan (which would make the dealer a winner).
-      const states = PLAYERS.map((id) => makeState(id, [...noten])).map(
-        (row) => ({ ...row, discarded: ['m5'] }) as MahjongPlayerState
-      )
+      const states = decidingTable()
       const fake = fakeSupabase(finalHand(), states, () => true)
       expect((await processMahjongDraw(fake.client, 'MJCAS', 'south-player')).error).toBeUndefined()
       expect(fake.rpcCalls).toHaveLength(1)
       expect(markGameFinished).toHaveBeenCalledTimes(1)
-      expect(vi.mocked(markGameFinished).mock.calls[0]?.[3]).toEqual({ onlyIfActive: true })
+      // Bound to the `games` generation the request loaded, so a stalled finalizer cannot finish a replay.
+      expect(vi.mocked(markGameFinished).mock.calls[0]?.[3]).toEqual({
+        onlyIfActive: true,
+        onlySessionStartedAt: GENERATION,
+      })
     })
 
     it('does not mark the game finished when the session CAS is lost', async () => {
       vi.mocked(markGameFinished).mockClear()
-      const fake = fakeSupabase(finalHand(), tableWith([...FILLER]), () => false)
+      // The very table that finishes the match in the test above, so a finalizer that ran before the
+      // CAS would be caught here (the control above proves this fixture does reach finalization).
+      const fake = fakeSupabase(finalHand(), decidingTable(), () => false)
       expect((await processMahjongDraw(fake.client, 'MJCAS', 'south-player')).error).toBe(CONFLICT)
       expect(markGameFinished).not.toHaveBeenCalled()
     })
+
+    it('persists the match-ending decision on the hand, even with nothing to settle', async () => {
+      const fake = fakeSupabase(finalHand(), decidingTable(), () => true)
+      await processMahjongDraw(fake.client, 'MJCAS', 'south-player')
+      expect(fake.rpcCalls[0]?.args.p_session_patch.score_summary).toMatchObject({ match_finished: true })
+    })
+
+    it('keeps the decision for a draw whose summary carries no settlement line, and retries the finish', async () => {
+      vi.mocked(markGameFinished).mockClear()
+      // Dealer noten, everyone else tenpai: a bailout summary exists, so no marker-only summary.
+      const table = decidingTable({
+        'south-player': [...FILLER],
+        'west-player': [...FILLER],
+        'north-player': [...FILLER],
+      })
+      const first = fakeSupabase(finalHand(), table, () => true)
+      await processMahjongDraw(first.client, 'MJCAS', 'south-player')
+      const summary = first.rpcCalls[0]?.args.p_session_patch.score_summary as {
+        match_finished?: boolean
+        lines: Array<{ label: string }>
+      }
+      expect(summary.lines.some((line) => line.label === 'Final match settlement')).toBe(false)
+      expect(summary.match_finished).toBe(true)
+
+      // The finish failed after that commit: the retry finishes the game and deals nothing.
+      vi.mocked(markGameFinished).mockClear()
+      const committed = makeSession({
+        ...finalHand(),
+        phase: 'finished',
+        hand_result: 'exhaustive_draw',
+        score_summary: summary,
+      })
+      const retry = fakeSupabase(committed, table, () => true)
+      expect((await processMahjongNextHand(retry.client, 'MJCAS')).error).toBe('The match is finished')
+      expect(markGameFinished).toHaveBeenCalledTimes(1)
+      expect(vi.mocked(markGameFinished).mock.calls[0]?.[3]).toEqual({
+        onlyIfActive: true,
+        onlySessionStartedAt: GENERATION,
+      })
+      expect(retry.rpcCalls).toEqual([])
+    })
+
+    it('a hand that does not end the match carries no decision and still deals the next hand', async () => {
+      vi.mocked(markGameFinished).mockClear()
+      const mid = makeSession({ phase: 'finished', hand_result: 'exhaustive_draw', score_summary: null })
+      const fake = fakeSupabase(mid, tableWith([...FILLER]), () => true)
+      await processMahjongNextHand(fake.client, 'MJCAS')
+      expect(markGameFinished).not.toHaveBeenCalled()
+      expect(fake.rpcCalls).toHaveLength(1)
+    })
+  })
+})
+
+describe('Mahjong win counters commit with the finished session', () => {
+  it('a self-draw win writes the winner counters in the SAME rpc as the finished session', async () => {
+    const hand = ['m1', 'm1', 'm1', 'm2', 'm2', 'm2', 'p3', 'p3', 'p3', 's4', 's4', 's4', 'we', 'we']
+    const fake = fakeSupabase(makeSession({ phase: 'discard', current_turn_index: 1 }), tableWith(hand), () => true)
+    expect((await processMahjongClaim(fake.client, 'MJCAS', 'south-player', 'mahjong')).error).toBeUndefined()
+    // One transaction: no request can observe the finished hand before its counters exist.
+    expect(fake.rpcCalls).toHaveLength(1)
+    expect(fake.directWrites).toEqual([])
+    expect(fake.rpcCalls[0]?.args.p_session_patch).toMatchObject({ phase: 'finished', hand_result: 'win' })
+    expect(fake.rpcCalls[0]?.args.p_state_writes).toEqual([
+      {
+        id: 'south-player-state',
+        patch: { game_counters: expect.objectContaining({ mahjong_hands_won: 1, mahjong_win_streak: 1 }) },
+      },
+    ])
+  })
+
+  it('a win that loses the session CAS records nothing', async () => {
+    const hand = ['m1', 'm1', 'm1', 'm2', 'm2', 'm2', 'p3', 'p3', 'p3', 's4', 's4', 's4', 'we', 'we']
+    const fake = fakeSupabase(makeSession({ phase: 'discard', current_turn_index: 1 }), tableWith(hand), () => false)
+    expect((await processMahjongClaim(fake.client, 'MJCAS', 'south-player', 'mahjong')).error).toBe(CONFLICT)
+    expect(fake.directWrites).toEqual([])
+  })
+})
+
+describe('Mahjong expired claim with a pending abortive draw', () => {
+  const claimAfterFourWinds = () =>
+    makeSession({
+      ruleset: 'riichi',
+      rule_options: { abortiveDraws: true },
+      phase: 'claim',
+      current_turn_index: 3,
+      last_discard: { tile: 'we', player_id: 'north-player', discard_index: 3 },
+      discard_pile: PLAYERS.map((player_id) => ({ tile: 'we', player_id })),
+      turn_deadline_at: '2020-01-01T00:00:00.000Z',
+    })
+  const fourWindsTable = () =>
+    PLAYERS.map((id) => ({ ...makeState(id, [...FILLER]), discarded: ['we'] }) as MahjongPlayerState)
+
+  it('finishes the abortive draw instead of drawing for the next player', async () => {
+    const fake = fakeSupabase(claimAfterFourWinds(), fourWindsTable(), () => true)
+    expect((await processMahjongExpireTurn(fake.client, 'MJCAS')).error).toBeUndefined()
+    // No hand writes ride along, so the draw is a plain session write — and no draw for the next player.
+    expect(fake.rpcCalls).toEqual([])
+    expect(fake.directWrites).toHaveLength(1)
+    expect(fake.directWrites[0]).toMatch(/^mahjong_sessions:.*hand_result/)
+  })
+
+  it('still advances a claim phase that has no abortive draw pending', async () => {
+    const states = PLAYERS.map((id) => ({ ...makeState(id, [...FILLER]), discarded: ['m6'] }) as MahjongPlayerState)
+    const fake = fakeSupabase(claimAfterFourWinds(), states, () => true)
+    expect((await processMahjongExpireTurn(fake.client, 'MJCAS')).error).toBeUndefined()
+    expect(fake.rpcCalls[0]?.args.p_session_patch).toMatchObject({ phase: 'discard' })
   })
 })

@@ -66,6 +66,9 @@ import {
   mahjongGameCounters,
   finalizeMahjongMatch,
   finalizeMahjongMatchAfterWrite,
+  mahjongMatchFinishPending,
+  withGameGeneration,
+  withMatchFinished,
   settleMahjongMatch,
   riichiAbortiveDrawReason,
 } from '@/lib/mahjong-hand-resolution'
@@ -167,7 +170,7 @@ async function loadMahjong(
   const [statesRes, playersRes, gameRes] = await Promise.all([
     supabase.from('mahjong_player_state').select('*').eq('game_id', gameId).order('player_order'),
     supabase.from('players').select('id, name').eq('game_id', gameId),
-    supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle(),
+    supabase.from('games').select('timer_seconds, session_started_at').eq('id', gameId).maybeSingle(),
   ])
 
   if (sessionRes.error)
@@ -178,8 +181,11 @@ async function loadMahjong(
     return { session: null, states: [], players: [], timerSeconds: 0, error: playersRes.error.message }
   if (gameRes.error) return { session: null, states: [], players: [], timerSeconds: 0, error: gameRes.error.message }
 
+  // Remember which `games` generation this table was loaded under, so a finalizer that stalls past a
+  // Play Again cannot finish the replayed match (see finalizeMahjongMatch).
+  const loaded = sessionRes.data as MahjongSession | null
   return {
-    session: sessionRes.data as MahjongSession | null,
+    session: loaded ? withGameGeneration(loaded, (gameRes.data?.session_started_at as string | null) ?? null) : null,
     states: (statesRes.data as MahjongPlayerState[]) ?? [],
     players: playersRes.data ?? [],
     timerSeconds: gameRes.data?.timer_seconds ?? 0,
@@ -509,8 +515,8 @@ export async function processMahjongNextHand(supabase: SupabaseClient, gameId: s
   if (session.phase !== 'finished') return { error: 'Current hand is not finished' }
   // The deciding hand of a match is committed before `games` is marked finished. If that finalization
   // failed, this retries it (single-winner, idempotent) instead of dealing another hand.
-  if (session.score_summary?.lines?.some((line) => line.label === 'Final match settlement')) {
-    const finish = await finalizeMahjongMatch(supabase, gameId)
+  if (mahjongMatchFinishPending(session)) {
+    const finish = await finalizeMahjongMatch(supabase, gameId, session)
     return { error: finish.error ?? 'The match is finished' }
   }
   if (states.length !== MAHJONG_MIN_PLAYERS || session.turn_order.length !== MAHJONG_MIN_PLAYERS) {
@@ -659,13 +665,13 @@ export async function processMahjongPenalty(
       winner_player_ids: [],
       winning_tile: null,
       win_type: null,
-      score_summary: scoreSummary,
+      score_summary: withMatchFinished(scoreSummary, session, matchFinish),
       scores: matchFinish.scores,
       turn_deadline_at: null,
     },
     session.updated_at
   )
-  return finalizeMahjongMatchAfterWrite(supabase, gameId, sessionWrite, matchFinish)
+  return finalizeMahjongMatchAfterWrite(supabase, gameId, sessionWrite, matchFinish, session)
 }
 
 export async function processMahjongDraw(
@@ -1208,6 +1214,11 @@ export async function processMahjongExpireTurn(supabase: SupabaseClient, gameId:
   if (session.phase === 'claim') {
     // A claim phase nobody can claim (e.g. left behind by an interrupted discard) must still advance.
     if (!session.last_discard) return {}
+    // A discard that completes an abortive draw commits before the draw itself is written. If that
+    // write failed, the table is still here, and drawing for the next player would carry on a hand
+    // that is already over: finish the draw instead.
+    const abortReason = riichiAbortiveDrawReason(session, states)
+    if (abortReason) return finishAbortiveDraw(supabase, gameId, abortReason, session, states)
     const nextIndex = nextTurnIndexAfter(session, session.last_discard.player_id)
     const nextPlayerId = session.turn_order[nextIndex] ?? null
     return autoDrawForPlayer(
