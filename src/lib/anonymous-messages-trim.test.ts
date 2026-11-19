@@ -17,35 +17,25 @@ function makeFake({
   messageCount = ANONYMOUS_ROOM_MAX_MESSAGES + 50,
   deleteFails = false,
   onDelete,
-}: { messageCount?: number; deleteFails?: boolean; onDelete?: (game: GameRow) => void } = {}) {
+  rpcDeleted,
+}: { messageCount?: number; deleteFails?: boolean; rpcDeleted?: number; onDelete?: (game: GameRow) => void } = {}) {
   const game: GameRow = { anonymous_messages_trimmed_at: null }
-  const state = { deletes: 0 }
+  const state = { deletes: 0, rpcCalls: [] as { fn: string; args: unknown }[] }
 
   const client = {
+    rpc: async (fn: string, args: unknown) => {
+      state.rpcCalls.push({ fn, args })
+      state.deletes += 1
+      onDelete?.(game)
+      return deleteFails
+        ? { data: null, error: { message: 'boom' } }
+        : { data: rpcDeleted ?? ANONYMOUS_ROOM_TRIM_BATCH, error: null }
+    },
     from(table: string) {
       if (table === 'anonymous_messages') {
         return {
-          select: (_cols: string, opts?: { head?: boolean }) => {
-            if (opts?.head) {
-              return { eq: async () => ({ count: messageCount, error: null }) }
-            }
-            return {
-              eq: () => ({
-                order: () => ({
-                  limit: async () => ({
-                    data: Array.from({ length: ANONYMOUS_ROOM_TRIM_BATCH }, (_, i) => ({ id: `m${i}` })),
-                    error: null,
-                  }),
-                }),
-              }),
-            }
-          },
-          delete: () => ({
-            in: async () => {
-              state.deletes += 1
-              onDelete?.(game)
-              return { error: deleteFails ? { message: 'boom' } : null }
-            },
+          select: (_cols: string, _opts?: { head?: boolean }) => ({
+            eq: async () => ({ count: messageCount, error: null }),
           }),
         }
       }
@@ -97,6 +87,12 @@ describe('trimAnonymousMessagesIfDue', () => {
     const result = await trimAnonymousMessagesIfDue(client, 'ABC123')
     expect(result.trimmed).toBe(ANONYMOUS_ROOM_TRIM_BATCH)
     expect(state.deletes).toBe(1)
+    expect(state.rpcCalls).toEqual([
+      {
+        fn: 'trim_anonymous_messages',
+        args: { p_game_id: 'ABC123', p_max: ANONYMOUS_ROOM_MAX_MESSAGES, p_batch: ANONYMOUS_ROOM_TRIM_BATCH },
+      },
+    ])
     expect(game.anonymous_messages_trimmed_at).not.toBeNull()
   })
 
@@ -112,6 +108,13 @@ describe('trimAnonymousMessagesIfDue', () => {
     const results = await Promise.all([1, 2, 3, 4].map(() => trimAnonymousMessagesIfDue(client, 'ABC123')))
     expect(results.filter((r) => r.trimmed > 0)).toHaveLength(1)
     expect(state.deletes).toBe(1)
+  })
+
+  it('releases the claim when the SQL recheck finds the board is no longer over the cap', async () => {
+    const { client, game } = makeFake({ rpcDeleted: 0 })
+    const result = await trimAnonymousMessagesIfDue(client, 'ABC123')
+    expect(result.trimmed).toBe(0)
+    expect(game.anonymous_messages_trimmed_at).toBeNull()
   })
 
   it('hands the window back when the delete fails so a later call can retry', async () => {

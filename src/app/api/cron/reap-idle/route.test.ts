@@ -17,6 +17,16 @@ vi.mock('@/lib/idle-reaper', async (importOriginal) => {
   }
 })
 
+const resumeAllWordRushFinalizations = vi.fn()
+vi.mock('@/lib/word-rush-server', () => ({
+  resumeAllWordRushFinalizations: (...a: unknown[]) => resumeAllWordRushFinalizations(...a),
+}))
+
+const recoverAllFinishBookkeeping = vi.fn()
+vi.mock('@/lib/game-finish', () => ({
+  recoverAllFinishBookkeeping: (...a: unknown[]) => recoverAllFinishBookkeeping(...a),
+}))
+
 import { POST } from './route'
 
 /**
@@ -34,6 +44,10 @@ describe('POST /api/cron/reap-idle', () => {
   beforeEach(() => {
     closeIdleActiveGames.mockReset()
     closeIdleActiveGames.mockResolvedValue({ closed: 2, failed: 1, errors: ['abc: boom'] })
+    resumeAllWordRushFinalizations.mockReset()
+    resumeAllWordRushFinalizations.mockResolvedValue({ resumed: 0, failed: 0 })
+    recoverAllFinishBookkeeping.mockReset()
+    recoverAllFinishBookkeeping.mockResolvedValue({ recovered: 0, pending: 0, failed: 0 })
     process.env.CRON_SECRET = 'sekrit'
     delete process.env.IDLE_REAPER_DISABLED
   })
@@ -53,8 +67,40 @@ describe('POST /api/cron/reap-idle', () => {
       closed: 2,
       failed: 1,
       errors: ['abc: boom'],
+      word_rush_finalized: 0,
+      finish_bookkeeping_recovered: 0,
     })
     expect(closeIdleActiveGames).toHaveBeenCalledExactlyOnceWith(adminClient, 30)
+  })
+
+  it('recovers finished games whose post-finish bookkeeping is still owed, and reports how many', async () => {
+    recoverAllFinishBookkeeping.mockResolvedValue({ recovered: 2, pending: 1, failed: 0 })
+    const res = await post({ authorization: 'Bearer sekrit' })
+    expect(await res.json()).toMatchObject({ closed: 2, finish_bookkeeping_recovered: 2 })
+    expect(recoverAllFinishBookkeeping).toHaveBeenCalledExactlyOnceWith(adminClient)
+  })
+
+  it('a failing bookkeeping sweep never turns the idle sweep into an error', async () => {
+    recoverAllFinishBookkeeping.mockRejectedValue(new Error('db down'))
+    const res = await post({ authorization: 'Bearer sekrit' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, closed: 2, finish_bookkeeping_recovered: 0 })
+  })
+
+  it('also resumes Word Rush rounds that were closed but never finalized, and reports how many', async () => {
+    // After the last round the session is finished, so no client timer would ever complete these.
+    resumeAllWordRushFinalizations.mockResolvedValue({ resumed: 3, failed: 0 })
+    const res = await post({ authorization: 'Bearer sekrit' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ closed: 2, word_rush_finalized: 3 })
+    expect(resumeAllWordRushFinalizations).toHaveBeenCalledExactlyOnceWith(adminClient)
+  })
+
+  it('never lets a failing Word Rush sweep turn the idle sweep into an error', async () => {
+    resumeAllWordRushFinalizations.mockRejectedValue(new Error('boom'))
+    const res = await post({ authorization: 'Bearer sekrit' })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ ok: true, closed: 2, word_rush_finalized: 0 })
   })
 
   it('rejects a missing or wrong bearer without touching the database', async () => {
@@ -64,6 +110,7 @@ describe('POST /api/cron/reap-idle', () => {
       expect(res.status).toBe(401)
     }
     expect(closeIdleActiveGames).not.toHaveBeenCalled()
+    expect(resumeAllWordRushFinalizations).not.toHaveBeenCalled()
   })
 
   it('closes rather than opens when CRON_SECRET is unset', async () => {
