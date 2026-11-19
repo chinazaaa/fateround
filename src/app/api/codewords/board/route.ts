@@ -53,8 +53,15 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseAdmin()
 
-    const { data: board } = await supabase.from('codewords_boards').select('*').eq('game_id', gameCode).maybeSingle()
-    if (!board) return NextResponse.json({ board: null })
+    const { data: fullBoard } = await supabase
+      .from('codewords_boards')
+      .select('*')
+      .eq('game_id', gameCode)
+      .maybeSingle()
+    if (!fullBoard) return NextResponse.json({ board: null })
+    // clue_seq is a server-side concurrency counter (see codewords_process_guess); clients never need it,
+    // and the row is spread below so a column added later reaches operatives by default.
+    const { clue_seq: _clueSeq, ...board } = fullBoard as typeof fullBoard & { clue_seq?: number }
 
     const { data: game } = await supabase.from('games').select('status, host_token').eq('id', gameCode).maybeSingle()
 
