@@ -44,6 +44,8 @@ import { markPlayerReady } from '@/lib/player-ready'
 import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
+import { createSerialQueue } from '@/lib/serial-queue'
+import { postRaceReportRequest } from '@/lib/troll-run-report'
 
 type Screen =
   | 'loading'
@@ -417,48 +419,57 @@ export function TrollRunPlayerView({
       payload: Record<string, unknown>
     ): Promise<{ ok: boolean; body: Record<string, unknown> | null }> => {
       if (!effectiveMyResumeToken) return { ok: false, body: null }
-      const body = JSON.stringify({ gameId: gameCode, resumeToken: effectiveMyResumeToken, ...payload })
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
-          const parsed = (await res.json().catch(() => null)) as Record<string, unknown> | null
-          if (res.ok) return { ok: true, body: parsed }
-          if (res.status < 500) return { ok: false, body: parsed }
-        } catch {
-          // Network blip — worth exactly one more try.
-        }
-      }
-      return { ok: false, body: null }
+      return postRaceReportRequest(path, { gameId: gameCode, resumeToken: effectiveMyResumeToken, ...payload })
     },
     [gameCode, effectiveMyResumeToken]
+  )
+
+  // Reports go out strictly in the order the engine raised them. A death on the last level is
+  // followed at once by that level's clear; sent in parallel, the clear can advance the server's
+  // level index first and the death is then dropped as "runner already finished".
+  const [raceReportQueue] = useState(createSerialQueue)
+  // A death waits in the queue behind earlier reports, so it can be sent after the round has moved
+  // on. It is stamped with the round it was raised in and the server drops it if that is no longer
+  // the live round, rather than counting it against the next one.
+  const currentRoundRef = useRef(session?.current_round)
+  const liveRound = session?.current_round
+  useEffect(() => {
+    currentRoundRef.current = liveRound
+  }, [liveRound])
+  const enqueueRaceReport = useCallback(
+    (path: string, payload: Record<string, unknown>) => raceReportQueue(() => postRaceReport(path, payload)),
+    [raceReportQueue, postRaceReport]
   )
 
   const handleDeath = useCallback(
     (levelId: string, levelName: string) => {
       vibrate([40, 60, 40])
-      void postRaceReport('/api/troll-run/report-death', { levelId, levelName })
+      void enqueueRaceReport('/api/troll-run/report-death', {
+        levelId,
+        levelName,
+        round: currentRoundRef.current,
+      })
     },
-    [postRaceReport]
+    [enqueueRaceReport]
   )
 
   const handleLevelClear = useCallback(
     (levelId: string, levelName: string, timeMs: number) => {
       vibrate([50, 50, 100])
-      void postRaceReport('/api/troll-run/report-clear', {
+      void enqueueRaceReport('/api/troll-run/report-clear', {
         levelId,
         levelName,
         timeMs: Math.max(0, Math.round(timeMs)),
       })
     },
-    [postRaceReport]
+    [enqueueRaceReport]
   )
 
   const handleAllLevelsCleared = useCallback(() => {
     vibrate([100, 50, 100, 50, 200])
     // Nothing about the result is sent: the server accepts the claim only if its own progress row
     // shows every level cleared, and reads the finishing time off the shared round clock.
-    void postRaceReport('/api/troll-run/report-round-finish', {}).then((outcome) => {
+    void enqueueRaceReport('/api/troll-run/report-round-finish', {}).then((outcome) => {
       if (outcome.ok) return
 
       // Refused because the server still holds levels this runner has played, so a clear report
@@ -469,7 +480,7 @@ export function TrollRunPlayerView({
         engineRef.current?.start(resumeIndex)
       }
     })
-  }, [postRaceReport, roundLevels.length])
+  }, [enqueueRaceReport, roundLevels.length])
 
   const handleEndGameEarly = useCallback(async () => {
     await onEndGameEarly?.()

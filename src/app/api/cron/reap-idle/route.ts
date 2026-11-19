@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { closeIdleActiveGames, isIdleReaperDisabled, resolveIdleMinutes } from '@/lib/idle-reaper'
 import { recoverAllFinishBookkeeping } from '@/lib/game-finish'
+import { settleAllWordGroupingGames } from '@/lib/word-grouping-completion'
 import { resumeAllWordRushFinalizations } from '@/lib/word-rush-server'
 
 /**
@@ -25,7 +26,11 @@ import { resumeAllWordRushFinalizations } from '@/lib/word-rush-server'
  * that guarded the old in-process reaper, so ops can still stop a bad sweep
  * without a deploy.
  *
- * The same tick also resumes Word Rush rounds that were closed but never finalized (see
+ * The same tick first settles Word Grouping games whose players are all done but whose finish
+ * failed (see settleAllWordGroupingGames), so an untimed game ends through the normal completion
+ * path with its real result instead of being closed here as `idle_timeout`.
+ *
+ * It also resumes Word Rush rounds that were closed but never finalized (see
  * resumeAllWordRushFinalizations): after the last round the session is finished, so no client timer
  * runs and nothing else would complete the setter's points or the game finish.
  *
@@ -51,6 +56,19 @@ export async function POST(req: NextRequest) {
 
   const minutes = resolveIdleMinutes()
   try {
+    // Before closing idle games: a stranded all-done game must finish normally, not as idle_timeout.
+    // A failure here must never turn the idle sweep itself into an error.
+    let wordGrouping = { finished: 0, failed: 0 }
+    try {
+      wordGrouping = await settleAllWordGroupingGames(getSupabaseAdmin())
+      if (wordGrouping.finished > 0 || wordGrouping.failed > 0) {
+        console.warn(
+          `[idle-reaper] word-grouping completions finished=${wordGrouping.finished} failed=${wordGrouping.failed}`
+        )
+      }
+    } catch (err) {
+      console.error('[idle-reaper] word-grouping completion sweep failed', err)
+    }
     const result = await closeIdleActiveGames(getSupabaseAdmin(), minutes)
     // A failure here must never turn the idle sweep's own result into an error.
     let wordRush = { resumed: 0, failed: 0 }
@@ -85,6 +103,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       threshold_minutes: minutes,
       ...result,
+      word_grouping_finished: wordGrouping.finished,
       word_rush_finalized: wordRush.resumed,
       finish_bookkeeping_recovered: bookkeeping.recovered,
     })

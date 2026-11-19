@@ -6,6 +6,10 @@ vi.mock('@/lib/admin-end-game', () => ({
   adminEndGame: (...args: unknown[]) => adminEndGame(...args),
 }))
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => ({}) }))
+const settleWordGroupingGame = vi.fn()
+vi.mock('@/lib/word-grouping-completion', () => ({
+  settleWordGroupingGame: (...args: unknown[]) => settleWordGroupingGame(...args),
+}))
 
 import { closeIdleActiveGames, isIdleReaperDisabled, resolveIdleMinutes } from './idle-reaper'
 
@@ -78,6 +82,11 @@ function mockSupabase(
 }
 
 const game = (id: string, game_type = 'trivia'): Row => ({ id, status: 'active', game_type })
+
+beforeEach(() => {
+  settleWordGroupingGame.mockReset()
+  settleWordGroupingGame.mockResolvedValue({ finished: false })
+})
 
 describe('closeIdleActiveGames — selection predicate', () => {
   beforeEach(() => {
@@ -374,5 +383,66 @@ describe('isIdleReaperDisabled', () => {
       process.env.IDLE_REAPER_DISABLED = value
       expect(isIdleReaperDisabled(), value).toBe(false)
     }
+  })
+})
+
+describe('closeIdleActiveGames — Word Grouping games that already completed', () => {
+  beforeEach(() => {
+    adminEndGame.mockReset()
+    adminEndGame.mockResolvedValue({ error: null, won: true })
+  })
+
+  it('settles a Word Grouping game through its normal finish instead of closing it as idle', async () => {
+    settleWordGroupingGame.mockResolvedValue({ finished: true })
+    const { supabase, recorded } = mockSupabase([game('WG01', 'word_grouping')])
+    const result = await closeIdleActiveGames(supabase, 30)
+    expect(settleWordGroupingGame).toHaveBeenCalledWith(supabase, 'WG01')
+    expect(adminEndGame).not.toHaveBeenCalled()
+    expect(recorded.reasonUpdates).toEqual([]) // no idle_timeout stamped over the real result
+    expect(result).toMatchObject({ closed: 0, failed: 0, raced: 1 })
+  })
+
+  it('closes a Word Grouping game that is genuinely still unfinished and idle', async () => {
+    const { supabase, recorded } = mockSupabase([game('WG01', 'word_grouping')])
+    const result = await closeIdleActiveGames(supabase, 30)
+    expect(adminEndGame).toHaveBeenCalledTimes(1)
+    expect(recorded.reasonUpdates.map((u) => u.id)).toEqual(['WG01'])
+    expect(result).toMatchObject({ closed: 1, failed: 0, raced: 0 })
+  })
+
+  it('SKIPS a game whose completion check failed (never ends it as idle) and keeps processing the rest', async () => {
+    settleWordGroupingGame.mockImplementation(async (_c: unknown, id: string) =>
+      id === 'WG01' ? { finished: false, error: new Error('players read failed: boom') } : { finished: false }
+    )
+    const { supabase, recorded } = mockSupabase([
+      game('WG01', 'word_grouping'),
+      game('TRIV', 'trivia'),
+      game('WG02', 'word_grouping'),
+    ])
+    const result = await closeIdleActiveGames(supabase, 30)
+    expect(recorded.reasonUpdates.map((u) => u.id)).toEqual(['TRIV', 'WG02'])
+    expect(adminEndGame).toHaveBeenCalledTimes(2)
+    expect(result.failed).toBe(1)
+    expect(result.closed).toBe(2)
+    expect(result.errors).toEqual(['WG01: completion check failed: players read failed: boom'])
+  })
+
+  it('checks EVERY Word Grouping candidate in the batch, not just the first few', async () => {
+    // The reaper's own batch is 20: each of them is checked before it can be closed, regardless of
+    // how many games any earlier sweep looked at.
+    const rows = Array.from({ length: 20 }, (_, i) => game(`WG${String(i).padStart(2, '0')}`, 'word_grouping'))
+    settleWordGroupingGame.mockResolvedValue({ finished: true })
+    const { supabase } = mockSupabase(rows)
+    const result = await closeIdleActiveGames(supabase, 30)
+    expect(settleWordGroupingGame).toHaveBeenCalledTimes(20)
+    expect(adminEndGame).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ closed: 0, raced: 20 })
+  })
+
+  it('never runs the completion check for other game types', async () => {
+    const { supabase } = mockSupabase([game('TRIV', 'trivia'), game('CHES', 'chess')])
+    await closeIdleActiveGames(supabase, 30)
+    expect(settleWordGroupingGame).not.toHaveBeenCalled()
+    expect(adminEndGame).toHaveBeenCalledTimes(2)
   })
 })

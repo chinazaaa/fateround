@@ -3,7 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { bingoClaimSchema } from '@/lib/validation'
 import { parseGameType, isBingoGame } from '@/lib/game-types'
 import { hasBingoWin } from '@/lib/bingo'
-import { markGameFinished } from '@/lib/game-finish'
+import { runFinishSideEffects } from '@/lib/game-finish'
 import { playerIsViewer } from '@/lib/viewers'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
@@ -60,25 +60,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No valid bingo line yet' }, { status: 400 })
   }
 
-  const { data: claim, error: claimError } = await supabase
-    .from('bingo_claims')
-    .insert({
-      game_id: code,
-      player_id: playerId,
-      pattern: 'line',
-      status: 'approved',
-    })
-    .select()
-    .single()
-
-  // The partial unique index on approved claims makes a concurrent winner lose this insert.
-  if (claimError?.code === '23505') {
-    return NextResponse.json({ error: 'Someone already won this round' }, { status: 400 })
-  }
+  // Claim admission and the active -> finished flip commit together in one database function, so a
+  // failure can never leave an approved claim on a round that is still active (which would block
+  // every retry). The unique index on approved claims still guarantees a single winner.
+  const finishedAt = new Date().toISOString()
+  const { data: outcome, error: claimError } = await supabase.rpc('bingo_claim_win', {
+    p_game_id: code,
+    p_player_id: playerId,
+    p_pattern: 'line',
+    p_finished_at: finishedAt,
+  })
   if (claimError) return NextResponse.json({ error: internalErrorMessage('bingo/claim', claimError) }, { status: 500 })
 
-  const { error: gameError } = await markGameFinished(supabase, code)
-  if (gameError) return NextResponse.json({ error: internalErrorMessage('bingo/claim', gameError) }, { status: 500 })
+  const result = outcome as { status: string; claim?: unknown } | null
+  if (result?.status === 'already_won') {
+    return NextResponse.json({ error: 'Someone already won this round' }, { status: 400 })
+  }
+  if (result?.status === 'game_not_active') {
+    return NextResponse.json({ error: 'Game not active' }, { status: 400 })
+  }
+  if (result?.status !== 'won') {
+    return NextResponse.json(
+      { error: internalErrorMessage('bingo/claim', new Error('unexpected result')) },
+      { status: 500 }
+    )
+  }
 
-  return NextResponse.json({ success: true, claim })
+  // Only the request that committed the transition runs the finish bookkeeping.
+  await runFinishSideEffects(supabase, code, finishedAt)
+
+  return NextResponse.json({ success: true, claim: result.claim })
 }

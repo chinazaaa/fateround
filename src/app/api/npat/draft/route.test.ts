@@ -12,9 +12,8 @@ const ROUND = {
 }
 
 let player: Record<string, unknown> = {}
-let existingAnswer: Record<string, unknown> | null = null
-let lookupError: { message: string } | null = null
-const upsert = vi.fn()
+let rpcResult: { data: unknown; error: { message: string } | null } = { data: { status: 'saved' }, error: null }
+const rpc = vi.fn()
 
 function makeClient() {
   return {
@@ -23,15 +22,15 @@ function makeClient() {
         select: () => chain,
         eq: () => chain,
         maybeSingle: async () => ({
-          data: table === 'games' ? GAME : table === 'rounds' ? ROUND : existingAnswer,
-          error: table === 'npat_answers' ? lookupError : null,
+          data: table === 'games' ? GAME : table === 'rounds' ? ROUND : null,
+          error: null,
         }),
-        upsert: async (row: unknown) => {
-          upsert(row)
-          return { error: null }
-        },
       }
       return chain
+    },
+    rpc: async (fn: string, args: unknown) => {
+      rpc(fn, args)
+      return rpcResult
     },
   }
 }
@@ -62,35 +61,33 @@ function send() {
 
 describe('POST /api/npat/draft', () => {
   beforeEach(() => {
-    upsert.mockClear()
-    existingAnswer = null
-    lookupError = null
+    rpc.mockClear()
+    rpcResult = { data: { status: 'saved' }, error: null }
     player = { id: 'p-1', spectator: false, is_eliminated: false, joined_at: '2025-12-31T00:00:00.000Z' }
   })
 
-  it('saves a draft', async () => {
+  it('saves a draft (not a submission) through the guarded database function', async () => {
     expect((await send()).status).toBe(200)
-    expect(upsert).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc.mock.calls[0][0]).toBe('npat_save_answer')
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_player_id: 'p-1', p_submit: false })
   })
 
   it('rejects a viewer', async () => {
     player = { ...player, id: 'p-2', spectator: true }
     expect((await send()).status).toBe(403)
-    expect(upsert).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('no-ops after submit', async () => {
-    existingAnswer = { submitted_at: '2026-01-01T00:01:00.000Z' }
-    expect((await send()).status).toBe(200)
-    expect(upsert).not.toHaveBeenCalled()
+  it('draft arriving after a submit committed (OD-1): leaves the submitted row alone and reports success', async () => {
+    rpcResult = { data: { status: 'already_submitted' }, error: null }
+    const res = await send()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true })
   })
 
-  it('fails with a 500, without writing, when the submitted-answer lookup errors', async () => {
-    // A failed lookup returns no data, so `existing` is null and, without the guard, the upsert would
-    // overwrite an answer that was already submitted.
-    lookupError = { message: 'lookup failed' }
-    existingAnswer = null
+  it('fails with a 500 when the write errors', async () => {
+    rpcResult = { data: null, error: { message: 'write failed' } }
     expect((await send()).status).toBe(500)
-    expect(upsert).not.toHaveBeenCalled()
   })
 })
