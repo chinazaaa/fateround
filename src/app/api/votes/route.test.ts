@@ -12,6 +12,7 @@ let animeMetadata: unknown = null
 let rpcResult: { data: unknown; error: { message: string } | null } = { data: { status: 'ok' }, error: null }
 const rpcCalls: { fn: string; args: unknown }[] = []
 const upserts: unknown[] = []
+const upsertOptions: ({ onConflict?: string; ignoreDuplicates?: boolean } | undefined)[] = []
 const roundUpdates: unknown[] = []
 
 function makeClient() {
@@ -32,8 +33,9 @@ function makeClient() {
           roundUpdates.push(v)
           return chain
         },
-        upsert: (row: unknown) => {
+        upsert: (row: unknown, options?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
           upserts.push(row)
+          upsertOptions.push(options)
           return Promise.resolve({ error: null })
         },
         maybeSingle: async () => {
@@ -67,6 +69,7 @@ function send(extra: Record<string, unknown>) {
 
 beforeEach(() => {
   upserts.length = 0
+  upsertOptions.length = 0
   roundUpdates.length = 0
   rpcCalls.length = 0
   rpcResult = { data: { status: 'ok', picked_number: 2 }, error: null }
@@ -113,6 +116,28 @@ describe('POST /api/votes status checks', () => {
       round.ended_at = '2026-01-01T00:00:29.000Z'
       expect((await send({ wyrChoice: 'a' })).status).toBe(200)
       expect(upserts).toHaveLength(1)
+    })
+
+    it('only inserts a missing vote during the grace (never overwrites an accepted one)', async () => {
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      await send({ wyrChoice: 'a' })
+      expect(upsertOptions[0]).toMatchObject({ onConflict: 'player_id,round_id', ignoreDuplicates: true })
+    })
+
+    it('still lets a vote on an active round replace the earlier vote', async () => {
+      round.status = 'active'
+      await send({ wyrChoice: 'a' })
+      expect(upsertOptions[0]?.ignoreDuplicates).toBeFalsy()
+    })
+
+    it('gives Who Said This no grace (the answer is already revealed)', async () => {
+      game = { game_type: 'who_said_this', status: 'active', timer_seconds: 30, custom_questions: null }
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      round.quote_text = 'a quote'
+      round.participant_ids = ['p1', 'p2']
+      const res = await send({ targetParticipantId: 'p1' })
+      expect(res.status).toBe(400)
+      expect(upserts).toHaveLength(0)
     })
 
     it('rejects a vote long after the round closed', async () => {
