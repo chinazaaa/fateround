@@ -45,14 +45,19 @@ export async function runFinishSideEffects(
   finishedAt: string,
   // Called before every step. A tracked runner passes its lease heartbeat: returning false means the lease was
   // lost, so the remaining steps must not touch rows the new owner (or a replay) is about to use.
-  proceed?: () => Promise<boolean>
-): Promise<{ ok: boolean; lostLease?: boolean; stepFailed?: boolean }> {
+  proceed?: () => Promise<boolean>,
+  // The lease token (`games.finish_bookkeeping.owner`). When given, the shared writers (room points, round facts)
+  // write through lease-fenced RPCs, so a step that stalls past its lease cannot write after a takeover.
+  leaseOwner?: string
+): Promise<{ ok: boolean; lostLease?: boolean; stepFailed?: boolean; fenced?: boolean }> {
   // `ok` is false when any step threw. Untracked callers ignore it (every step stays best-effort for
   // them); tracked finishes use it to retry instead of declaring the bookkeeping done.
   let ok = true
   if (proceed && !(await proceed())) return { ok: false, lostLease: true, stepFailed: !ok }
   try {
-    await awardRoomGamePoints(supabase, gameId)
+    if ((await awardRoomGamePoints(supabase, gameId, leaseOwner)) === 'lost_lease') {
+      return { ok: false, lostLease: true, stepFailed: !ok, fenced: true }
+    }
   } catch {
     // Room stats are best-effort — never block game finish.
     ok = false
@@ -64,7 +69,9 @@ export async function runFinishSideEffects(
     // time — after the client mounts the finished screen — loses them to whoever replays
     // first. Best-effort: on failure the award pass falls back to deriving live, which is
     // exactly the old behaviour.
-    await recordRoundFacts(supabase, gameId, finishedAt)
+    if ((await recordRoundFacts(supabase, gameId, finishedAt, leaseOwner)) === 'lost_lease') {
+      return { ok: false, lostLease: true, stepFailed: !ok, fenced: true }
+    }
   } catch (err) {
     // Never block game finish for a trophy snapshot — but do NOT swallow the failure silently.
     // The snapshot is the durable copy of a round's facts; if it keeps failing, play-again can
@@ -114,11 +121,15 @@ export async function runFinishSideEffects(
  * it before every step, so the lease only has to outlive one step: an expired lease means the holder made no
  * progress for this long.
  *
- * KNOWN LIMIT: nothing bounds a single step. The platform enforces no request limit (self-hosted container), the
- * admin Supabase client sets no fetch timeout, and a step makes several calls, so a step that stalls past the lease
- * can still be reading rows after another runner takes over and a replay deletes them. The runner stops before its
- * NEXT step once it loses the lease, but an in-flight step is not fenced: that needs lease-checked writes in the
- * room-points / round-facts code, which is shared by every game.
+ * FENCED WRITES. Nothing bounds a single step (the platform enforces no request limit, the admin Supabase client sets
+ * no fetch timeout), so a step can stall past the lease, be taken over and replayed, and then wake up holding stale
+ * reads. The lease owner is a fresh uuid per claim, so it is a fencing token, and the two writers shared by every
+ * game check it atomically: `award_room_game_points_fenced` (room points) and `upsert_round_facts_fenced` (trophy
+ * round facts) lock the games row, require `finish_bookkeeping->>'owner'` to still be the caller, and write in the
+ * same transaction (claim/renew/complete/fail lock the same row, so the check and the write cannot interleave with a
+ * takeover). A stalled step's late write is rejected and the runner reports the lease as lost. The tournament steps
+ * (head-to-head, school, knockout) are NOT lease-fenced: they are guarded by their own compare-and-set on the
+ * bracket rows and are repeatable, but a stalled one can still act after a takeover.
  */
 export const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
 /**
@@ -183,7 +194,10 @@ export async function recoverFinishBookkeeping(
   // A step that already failed before the run was cut short (lost lease / renewal error) is still a failure.
   let stepFailed = false
   try {
-    const result = await runFinishSideEffects(supabase, gameId, finishedAt, heartbeat)
+    const result = await runFinishSideEffects(supabase, gameId, finishedAt, heartbeat, owner)
+    // A fenced writer rejected the write: another runner owns the lease now (a step stalled past it).
+
+    if (result.fenced) lostLease = true
     ok = result.ok
     stepFailed = result.stepFailed ?? false
   } catch (err) {
