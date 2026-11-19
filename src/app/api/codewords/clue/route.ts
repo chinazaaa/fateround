@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { codewordsClueSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { effectiveTurnPhase, guessPhaseUpdate } from '@/lib/codewords'
+import { effectiveTurnPhase, guessPhaseUpdate, omitCodewordsServerCounters } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { CodewordsBoard } from '@/types'
@@ -90,5 +90,5 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/clue', error) }, { status: 500 })
   if (!updated) return NextResponse.json({ error: 'A clue was already given this turn' }, { status: 409 })
-  return NextResponse.json({ success: true, board: updated })
+  return NextResponse.json({ success: true, board: omitCodewordsServerCounters(updated) })
 }

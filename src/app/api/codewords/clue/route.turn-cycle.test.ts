@@ -25,6 +25,7 @@ type Board = {
   guesses_remaining: number | null
   operative_timer_seconds: number
   winner: string | null
+  clue_seq?: number
   turn_seq?: number
 }
 
@@ -104,6 +105,7 @@ beforeEach(() => {
     guesses_remaining: null,
     operative_timer_seconds: 60,
     winner: null,
+    clue_seq: 4,
     turn_seq: 0,
   }
 })
@@ -136,6 +138,15 @@ describe('POST /api/codewords/clue — request held across a full turn cycle', (
     const res = await post()
     expect(res.status).toBe(200)
     expect(board.current_clue_word).toBe('fruit')
+  })
+
+  it('does not send the server-side counters back with the posted clue', async () => {
+    const res = await post()
+    expect(res.status).toBe(200)
+    const { board: sent } = await res.json()
+    expect(sent.current_clue_word).toBe('fruit') // the rest of the row still reaches the spymaster
+    expect(sent).not.toHaveProperty('clue_seq')
+    expect(sent).not.toHaveProperty('turn_seq')
   })
 
   it('accepts a fresh request made after the cycle completed', async () => {

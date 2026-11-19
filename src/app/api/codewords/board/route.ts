@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeResumeToken } from '@/lib/utils'
 import { secretMatches } from '@/lib/secret-compare'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { omitCodewordsServerCounters } from '@/lib/codewords'
 
 /**
  * The Codewords board, with the key card attached only for callers entitled to see it.
@@ -59,10 +60,9 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameCode)
       .maybeSingle()
     if (!fullBoard) return NextResponse.json({ board: null })
-    // clue_seq is a server-side concurrency counter (see codewords_process_guess); clients never need it,
-    // and the row is spread below so a column added later reaches operatives by default.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructured only to drop it
-    const { clue_seq: _clueSeq, ...board } = fullBoard as typeof fullBoard & { clue_seq?: number }
+    // clue_seq / turn_seq are server-side concurrency counters; clients never need them, and the row is
+    // spread below so a column added later reaches operatives by default.
+    const board = omitCodewordsServerCounters(fullBoard)
 
     const { data: game } = await supabase.from('games').select('status, host_token').eq('id', gameCode).maybeSingle()
 
