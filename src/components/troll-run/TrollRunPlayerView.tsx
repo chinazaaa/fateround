@@ -45,6 +45,7 @@ import { GameRulesLink } from '@/components/ui/GameRulesLink'
 import { LeaderboardJoinNote } from '@/components/game-lobby/LeaderboardJoinNote'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import { createSerialQueue } from '@/lib/serial-queue'
+import { postRaceReportRequest } from '@/lib/troll-run-report'
 
 type Screen =
   | 'loading'
@@ -418,19 +419,7 @@ export function TrollRunPlayerView({
       payload: Record<string, unknown>
     ): Promise<{ ok: boolean; body: Record<string, unknown> | null }> => {
       if (!effectiveMyResumeToken) return { ok: false, body: null }
-      const body = JSON.stringify({ gameId: gameCode, resumeToken: effectiveMyResumeToken, ...payload })
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
-          const parsed = (await res.json().catch(() => null)) as Record<string, unknown> | null
-          if (res.ok) return { ok: true, body: parsed }
-          if (res.status < 500) return { ok: false, body: parsed }
-        } catch {
-          // Network blip — worth exactly one more try.
-        }
-      }
-      return { ok: false, body: null }
+      return postRaceReportRequest(path, { gameId: gameCode, resumeToken: effectiveMyResumeToken, ...payload })
     },
     [gameCode, effectiveMyResumeToken]
   )
@@ -439,6 +428,11 @@ export function TrollRunPlayerView({
   // followed at once by that level's clear; sent in parallel, the clear can advance the server's
   // level index first and the death is then dropped as "runner already finished".
   const raceReportQueueRef = useRef(createSerialQueue())
+  // A death waits in the queue behind earlier reports, so it can be sent after the round has moved
+  // on. It is stamped with the round it was raised in and the server drops it if that is no longer
+  // the live round, rather than counting it against the next one.
+  const currentRoundRef = useRef(session?.current_round)
+  currentRoundRef.current = session?.current_round
   const enqueueRaceReport = useCallback(
     (path: string, payload: Record<string, unknown>) => raceReportQueueRef.current(() => postRaceReport(path, payload)),
     [postRaceReport]
@@ -447,7 +441,11 @@ export function TrollRunPlayerView({
   const handleDeath = useCallback(
     (levelId: string, levelName: string) => {
       vibrate([40, 60, 40])
-      void enqueueRaceReport('/api/troll-run/report-death', { levelId, levelName })
+      void enqueueRaceReport('/api/troll-run/report-death', {
+        levelId,
+        levelName,
+        round: currentRoundRef.current,
+      })
     },
     [enqueueRaceReport]
   )
