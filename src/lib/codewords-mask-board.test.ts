@@ -48,8 +48,19 @@ describe('maskCodewordsBoardKey', () => {
     expect(original.key).toEqual(fullKey)
   })
 
-  it('returns the board unchanged once there is a winner, because the key is no longer secret', () => {
+  it('returns the full key once there is a winner, because the key is no longer secret', () => {
     const finished = board({ winner: 'red' })
-    expect(maskCodewordsBoardKey(finished)).toBe(finished)
+    expect(maskCodewordsBoardKey(finished)).toEqual(finished)
+  })
+
+  it('never sends the server-side clue_seq counter to clients, live or finished', () => {
+    expect(maskCodewordsBoardKey(board({ clue_seq: 4 }))).not.toHaveProperty('clue_seq')
+    expect(maskCodewordsBoardKey(board({ clue_seq: 4, winner: 'red' }))).not.toHaveProperty('clue_seq')
+  })
+
+  it('keeps clue_seq on the stored board it was given', () => {
+    const original = board({ clue_seq: 4 })
+    maskCodewordsBoardKey(original)
+    expect(original.clue_seq).toBe(4)
   })
 })
