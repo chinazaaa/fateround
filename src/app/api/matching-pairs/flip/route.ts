@@ -52,6 +52,9 @@ const DEADLINE_GRACE_SECONDS = 2
  */
 const MIN_MS_PER_ATTEMPT = 300
 
+/** Re-read and re-score this many times when the history changes under a flip before giving up. */
+const MAX_RECORD_ATTEMPTS = 3
+
 const playerLocks = new Map<string, Promise<void>>()
 
 async function acquireLock(playerId: string) {
@@ -163,91 +166,100 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'You have already finished this game' }, { status: 409 })
     }
 
-    // Compute current streak from previous submissions.
-    const { data: prevSubs } = await supabase
-      .from('memory_match_submissions')
-      .select('is_match, streak_at_time')
-      .eq('round_id', round.id)
-      .eq('player_id', playerId)
-      .order('submitted_at', { ascending: true })
-
-    // Cannot match more pairs than the grid holds.
-    const priorMatches = (prevSubs ?? []).filter((s) => (s as { is_match: boolean }).is_match).length
-    if (isMatch && priorMatches >= gridSizePairs) {
-      return NextResponse.json({ error: 'All pairs already matched' }, { status: 409 })
-    }
-
-    // Plausibility floor (see MIN_MS_PER_ATTEMPT).
-    if (roundAnchor) {
-      const elapsedMs = Date.now() - new Date(roundAnchor).getTime()
-      if (elapsedMs < ((prevSubs ?? []).length + 1) * MIN_MS_PER_ATTEMPT) {
-        return NextResponse.json({ error: 'Flipping too fast' }, { status: 429 })
+    // Score the flip from the player's history and record it, conditional on that history still being the
+    // one the score was computed from. The history can change between the read and the insert (another
+    // instance appends a flip for this player, or a data cleanup deletes and rescores rows); the function
+    // then answers `stale` without inserting and we re-read and recompute, so a stored score never rests on
+    // a superseded history.
+    let scored: { pointsDelta: number; pointsAfter: number; streakBonus: number; newStreak: number } | null = null
+    for (let attempt = 0; attempt < MAX_RECORD_ATTEMPTS && !scored; attempt++) {
+      // Compute current streak and total points from previous submissions.
+      const { data: prevSubs, error: prevError } = await supabase
+        .from('memory_match_submissions')
+        .select('id, is_match, points_after')
+        .eq('round_id', round.id)
+        .eq('player_id', playerId)
+        .order('submitted_at', { ascending: true })
+        .order('id', { ascending: true })
+      if (prevError) {
+        return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', prevError) }, { status: 500 })
       }
-    }
+      const history = (prevSubs ?? []) as Array<{ id: string; is_match: boolean; points_after: number }>
 
-    // Reconstruct current_streak from the last run of consecutive matches.
-    let currentStreak = 0
-    if (prevSubs && prevSubs.length > 0) {
-      // Walk backwards: find the longest trailing run of is_match=true
-      for (let i = prevSubs.length - 1; i >= 0; i--) {
-        const s = prevSubs[i] as { is_match: boolean }
-        if (s.is_match) {
-          currentStreak++
-        } else {
-          break
+      // Cannot match more pairs than the grid holds.
+      const priorMatches = history.filter((s) => s.is_match).length
+      if (isMatch && priorMatches >= gridSizePairs) {
+        return NextResponse.json({ error: 'All pairs already matched' }, { status: 409 })
+      }
+
+      // Plausibility floor (see MIN_MS_PER_ATTEMPT).
+      if (roundAnchor) {
+        const elapsedMs = Date.now() - new Date(roundAnchor).getTime()
+        if (elapsedMs < (history.length + 1) * MIN_MS_PER_ATTEMPT) {
+          return NextResponse.json({ error: 'Flipping too fast' }, { status: 429 })
         }
       }
-    }
 
-    // Compute what happens with this flip.
-    const streakBonus = isMatch ? computeStreakBonus(currentStreak) : 0
-    const newStreak = isMatch ? currentStreak + 1 : 0
+      // Reconstruct current_streak from the last run of consecutive matches.
+      let currentStreak = 0
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (!history[i].is_match) break
+        currentStreak++
+      }
 
-    // Current total points (from last submission if any).
-    const { data: lastSub } = await supabase
-      .from('memory_match_submissions')
-      .select('points_after')
-      .eq('round_id', round.id)
-      .eq('player_id', playerId)
-      .order('submitted_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      // Compute what happens with this flip.
+      const streakBonus = isMatch ? computeStreakBonus(currentStreak) : 0
+      const newStreak = isMatch ? currentStreak + 1 : 0
 
-    const prevPoints = (lastSub as { points_after: number } | null)?.points_after ?? 0
-    const matchPoints = isMatch ? MATCHING_PAIRS_POINTS_PER_PAIR + streakBonus : 0
-    const penaltyPoints = !isMatch ? MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY : 0
-    const pointsDelta = matchPoints - penaltyPoints
-    const pointsAfter = Math.max(0, prevPoints + pointsDelta)
+      // Current total points (from the last submission if any).
+      const lastSub = history.length > 0 ? history[history.length - 1] : null
+      const prevPoints = lastSub?.points_after ?? 0
+      const matchPoints = isMatch ? MATCHING_PAIRS_POINTS_PER_PAIR + streakBonus : 0
+      const penaltyPoints = !isMatch ? MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY : 0
+      const pointsDelta = matchPoints - penaltyPoints
+      const pointsAfter = Math.max(0, prevPoints + pointsDelta)
 
-    // Record the flip atomically: the function re-checks the round (and the player's progress row)
-    // is still open under a row lock, so a flip racing the expiry route cannot land after close,
-    // and the partial unique index on matched pairs rejects a duplicate from another instance.
-    const { data: recordData, error: subError } = await supabase.rpc('matching_pairs_record_flip', {
-      p_game_id: code,
-      p_round_id: round.id,
-      p_player_id: playerId,
-      p_pair_index: pairIndex,
-      p_is_match: isMatch,
-      p_streak_at_time: newStreak,
-      p_streak_bonus: streakBonus,
-      p_points_after: pointsAfter,
-    })
-    if (subError) {
-      return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', subError) }, { status: 500 })
+      // Record the flip atomically: the function re-checks the round (and the player's progress row)
+      // is still open under a row lock, so a flip racing the expiry route cannot land after close,
+      // the partial unique index on matched pairs rejects a duplicate from another instance, and the
+      // history fingerprint (row count + latest row id) rejects a score computed from a stale history.
+      const { data: recordData, error: subError } = await supabase.rpc('matching_pairs_record_flip_checked', {
+        p_game_id: code,
+        p_round_id: round.id,
+        p_player_id: playerId,
+        p_pair_index: pairIndex,
+        p_is_match: isMatch,
+        p_streak_at_time: newStreak,
+        p_streak_bonus: streakBonus,
+        p_points_after: pointsAfter,
+        p_expected_count: history.length,
+        p_expected_last_id: lastSub?.id ?? null,
+      })
+      if (subError) {
+        return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', subError) }, { status: 500 })
+      }
+      const recordStatus = (recordData as { status?: string } | null)?.status
+      if (recordStatus === 'round_not_active') {
+        return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+      }
+      if (recordStatus === 'already_matched') {
+        return NextResponse.json({ error: 'This pair was already matched' }, { status: 409 })
+      }
+      if (recordStatus === 'stale') continue
+      if (recordStatus !== 'ok') {
+        return NextResponse.json(
+          {
+            error: internalErrorMessage('matching-pairs/flip', new Error(`unexpected status ${String(recordStatus)}`)),
+          },
+          { status: 500 }
+        )
+      }
+      scored = { pointsDelta, pointsAfter, streakBonus, newStreak }
     }
-    const recordStatus = (recordData as { status?: string } | null)?.status
-    if (recordStatus === 'round_not_active') {
-      return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+    if (!scored) {
+      return NextResponse.json({ error: 'The round changed while recording this flip, try again' }, { status: 409 })
     }
-    if (recordStatus === 'already_matched') {
-      return NextResponse.json({ error: 'This pair was already matched' }, { status: 409 })
-    }
-    if (recordStatus !== 'ok') {
-      return NextResponse.json(
-        { error: internalErrorMessage('matching-pairs/flip', new Error(`unexpected status ${String(recordStatus)}`)) },
-        { status: 500 }
-      )
-    }
+    const { pointsDelta, pointsAfter, streakBonus, newStreak } = scored
 
     // Count matches and wrong attempts from memory_match_submissions to be 100% accurate and race-free.
     const { data: allRoundSubs, error: countError } = await supabase
