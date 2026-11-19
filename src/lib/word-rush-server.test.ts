@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 vi.mock('server-only', () => ({}))
 
-import { processWordRushEndRoundEarly, processWordRushSubmit } from './word-rush-server'
+import { processWordRushEndRoundEarly, processWordRushExpireTurn, processWordRushSubmit } from './word-rush-server'
 
 const GAME = 'GAME1'
 const session = {
@@ -103,81 +103,194 @@ describe('processWordRushSubmit individual duplicates', () => {
   })
 })
 
-describe('processWordRushEndRoundEarly — post-claim finalization', () => {
+describe('individual round finalization is resumable', () => {
   const SETTER = 'setter'
-  const lastRoundSession = {
+  const lastRound = {
     ...session,
     prompt_mode: 'manual',
     prompt_setter_player_id: SETTER,
     total_rounds: 1,
     roster: [SETTER, 'p1'],
     phase: 'playing',
+    round_finalize: null as Record<string, unknown> | null,
   }
-  const answers = [{ player_id: 'p1', created_at: new Date(Date.now() - 10_000).toISOString(), text: 'cat' }]
+  const answer = { player_id: 'p1', created_at: new Date(Date.now() - 10_000).toISOString(), text: 'cat' }
 
-  /** Records every effect, and fails the final answers re-read `finalReadFailures` times. */
-  function makeEndClient(finalReadFailures: number) {
-    const calls = { answerReads: 0, scoreRpcs: [] as Array<Record<string, unknown>>, gameUpdates: 0 }
+  /**
+   * Stateful fake of the few tables the round-end path touches. It evaluates the filters the code
+   * chains (eq / neq / in / is, including the `round_finalize->>turn_index` JSON path), so the
+   * session claim, the marker and the compare-and-set updates behave like the database.
+   * `failAnswerReads` fails that many answers reads AFTER the first (pre-claim) one;
+   * `failGameFinish` fails the first games update (the game-finish CAS).
+   */
+  function makeStatefulClient(
+    opts: {
+      failAnswerReads?: number
+      failTurnReads?: number
+      failGameFinish?: boolean
+      session?: Record<string, unknown>
+    } = {}
+  ) {
+    const state = {
+      session: { ...lastRound, ...opts.session } as Record<string, unknown>,
+      game: { id: GAME, host_token: 'host', status: 'active' } as Record<string, unknown>,
+      score: 0,
+      answerReads: 0,
+      awardOutcomes: [] as string[],
+      gameFinishFailed: false,
+    }
     const client = {
       rpc: (fn: string, args: Record<string, unknown>) => {
-        if (fn === 'word_rush_add_score') calls.scoreRpcs.push(args)
-        return Promise.resolve({ data: null, error: null })
+        if (fn !== 'word_rush_finalize_award') return Promise.resolve({ data: null, error: null })
+        // Mirrors the SQL function: once per marker, atomically with the `awarded` flag.
+        const marker = state.session.round_finalize as Record<string, unknown> | null
+        let outcome = 'not_pending'
+        if (marker && marker.turn_index === args.p_turn_index) {
+          if (marker.awarded) outcome = 'already_awarded'
+          else {
+            if (args.p_player_id && (args.p_delta as number) > 0) state.score += args.p_delta as number
+            state.session.round_finalize = { ...marker, awarded: true }
+            outcome = 'awarded'
+          }
+        }
+        state.awardOutcomes.push(outcome)
+        return Promise.resolve({ data: outcome, error: null })
       },
       from: (table: string) => {
-        const q: Record<string, unknown> = {}
+        const filters: Array<{ method: string; col: string; val: unknown }> = []
         let op = 'select'
-        const result = () => {
+        let patch: Record<string, unknown> = {}
+        const read = (row: Record<string, unknown>, col: string) => {
+          const [base, key] = col.split('->>')
+          if (key === undefined) return row[base]
+          const json = row[base] as Record<string, unknown> | null
+          return json == null ? undefined : String(json[key])
+        }
+        const matches = (row: Record<string, unknown>) =>
+          filters.every((f) => {
+            const v = read(row, f.col)
+            if (f.method === 'eq') return v === f.val
+            if (f.method === 'neq') return v !== f.val
+            if (f.method === 'in') return (f.val as unknown[]).includes(v)
+            if (f.method === 'is') return (v ?? null) === f.val
+            return true
+          })
+        const resolve = () => {
           if (table === 'games') {
             if (op === 'update') {
-              calls.gameUpdates++
+              if (opts.failGameFinish && !state.gameFinishFailed) {
+                state.gameFinishFailed = true
+                return { data: null, error: { message: 'boom' } }
+              }
+              if (!matches(state.game)) return { data: [], error: null }
+              Object.assign(state.game, patch)
               return { data: [{ id: GAME }], error: null }
             }
-            return { data: { host_token: 'host', status: 'active' }, error: null }
+            return { data: state.game, error: null }
           }
           if (table === 'word_rush_sessions') {
-            if (op === 'update') return { data: [{ id: 'S1' }], error: null }
-            return { data: lastRoundSession, error: null }
+            if (op === 'update') {
+              if (!matches(state.session)) return { data: [], error: null }
+              Object.assign(state.session, patch)
+              return { data: [{ id: 'S1' }], error: null }
+            }
+            return { data: { ...state.session }, error: null }
           }
           if (table === 'word_rush_answers') {
-            calls.answerReads++
-            // read 1 is the initial tally; reads 2.. are the post-claim re-read
-            if (calls.answerReads > 1 && calls.answerReads - 1 <= finalReadFailures) {
+            state.answerReads += 1
+            const turn = filters.find((f) => f.method === 'eq' && f.col === 'turn_index')?.val
+            if (state.answerReads > 1 && state.answerReads - 1 <= (opts.failAnswerReads ?? 0)) {
               return { data: null, error: { message: 'boom' } }
             }
-            return { data: answers, error: null }
+            // Every read of this round's answers fails after the first (pre-claim) one.
+            if (state.answerReads > 1 && opts.failTurnReads !== undefined && turn === opts.failTurnReads) {
+              return { data: null, error: { message: 'boom' } }
+            }
+            return { data: [answer], error: null }
           }
           return { data: null, error: null }
         }
-        for (const m of ['select', 'eq', 'neq', 'not', 'order', 'in', 'is']) q[m] = () => q
-        q.update = () => {
+        const q: Record<string, unknown> = {}
+        for (const m of ['eq', 'neq', 'in', 'is'] as const) {
+          q[m] = (col: string, val: unknown) => {
+            filters.push({ method: m, col, val })
+            return q
+          }
+        }
+        for (const m of ['select', 'not', 'order', 'limit']) q[m] = () => q
+        q.update = (v: Record<string, unknown>) => {
           op = 'update'
+          patch = v
           return q
         }
-        q.maybeSingle = () => Promise.resolve(result())
+        q.maybeSingle = () => Promise.resolve(resolve())
         q.then = (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
-          Promise.resolve(result()).then(res, rej)
+          Promise.resolve(resolve()).then(res, rej)
         return q
       },
     }
-    return { client: client as unknown as SupabaseClient, calls }
+    return { client: client as unknown as SupabaseClient, state }
   }
 
-  it('still awards the setter mirror points when the re-read succeeds on a retry', async () => {
-    const { client, calls } = makeEndClient(1)
-    const res = await processWordRushEndRoundEarly(client, GAME, 'host')
-    expect(res).toEqual({})
-    expect(calls.answerReads).toBe(3)
-    expect(calls.scoreRpcs).toHaveLength(1)
-    expect(calls.scoreRpcs[0]).toMatchObject({ p_player_id: SETTER })
-    expect(calls.gameUpdates).toBeGreaterThan(0)
+  it('applies the points and the game finish in the same request when nothing fails', async () => {
+    const { client, state } = makeStatefulClient()
+    expect(await processWordRushEndRoundEarly(client, GAME, 'host')).toEqual({})
+    expect(state.score).toBeGreaterThan(0)
+    expect(state.game.status).toBe('finished')
+    expect(state.session.round_finalize).toBeNull()
   })
 
-  it('does not lose the mirror points or the game finish when every re-read fails', async () => {
-    const { client, calls } = makeEndClient(99)
-    const res = await processWordRushEndRoundEarly(client, GAME, 'host')
-    expect(res).toEqual({})
-    expect(calls.scoreRpcs).toHaveLength(1)
-    expect(calls.scoreRpcs[0]).toMatchObject({ p_player_id: SETTER })
-    expect(calls.gameUpdates).toBeGreaterThan(0)
+  it('records what is owed in the same claim, so a failed final read loses nothing', async () => {
+    const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
+    // The round still ends for the caller...
+    expect(await processWordRushEndRoundEarly(client, GAME, 'host')).toEqual({})
+    expect(state.session.phase).toBe('finished')
+    // ...and the owed effects are durable, not applied yet.
+    expect(state.session.round_finalize).toMatchObject({
+      turn_index: 0,
+      setter_id: SETTER,
+      is_last: true,
+      awarded: false,
+    })
+    expect(state.score).toBe(0)
+    expect(state.game.status).toBe('active')
+
+    // Any later request that loads the session resumes the finalization from the marker.
+    await processWordRushExpireTurn(client, GAME)
+    expect(state.score).toBeGreaterThan(0)
+    expect(state.game.status).toBe('finished')
+    expect(state.session.round_finalize).toBeNull()
+  })
+
+  it('never awards the setter twice when a resumed finalization is retried', async () => {
+    // The game-finish step fails after the points were awarded: the marker must remember that.
+    const { client, state } = makeStatefulClient({ failGameFinish: true })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    const awarded = state.score
+    expect(awarded).toBeGreaterThan(0)
+    expect(state.game.status).toBe('active')
+    expect(state.session.round_finalize).toMatchObject({ awarded: true })
+
+    await processWordRushExpireTurn(client, GAME)
+    await processWordRushExpireTurn(client, GAME)
+    expect(state.score).toBe(awarded)
+    expect(state.game.status).toBe('finished')
+    expect(state.session.round_finalize).toBeNull()
+  })
+
+  it('does not close another round over effects that are still owed', async () => {
+    // A three-round game whose first round's finalization keeps failing.
+    const { client, state } = makeStatefulClient({ failTurnReads: 0, session: { total_rounds: 3 } })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    const marker = state.session.round_finalize
+    expect(marker).toMatchObject({ turn_index: 0, is_last: false })
+    expect(state.session.turn_index).toBe(1)
+
+    // Round 2 ends while round 1's effects are still owed: the claim filter requires
+    // round_finalize IS NULL, so it must neither close round 2 nor replace round 1's marker.
+    state.session.phase = 'playing'
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.session.round_finalize).toEqual(marker)
+    expect(state.session.phase).toBe('playing')
   })
 })
