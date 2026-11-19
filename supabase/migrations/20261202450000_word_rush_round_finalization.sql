@@ -134,7 +134,8 @@ create or replace function public.word_rush_claim_finish_bookkeeping(
   p_game_id text,
   p_session_id uuid,
   p_turn_index integer,
-  p_lease_seconds integer
+  p_lease_seconds integer,
+  p_owner uuid
 )
 returns text
 language plpgsql
@@ -153,9 +154,14 @@ begin
     return 'not_pending';
   end if;
   -- p_lease_seconds <= 0 releases the caller's lease (a runner that failed before it could finish).
+  -- Only the current owner may release: a runner that outlived its lease must not free the
+  -- lease of the runner that took over.
   if p_lease_seconds <= 0 then
+    if v_marker->>'bookkeeping_owner' is distinct from p_owner::text then
+      return 'not_owner';
+    end if;
     update public.word_rush_sessions
-       set round_finalize = v_marker - 'bookkeeping_lease_until'
+       set round_finalize = v_marker - 'bookkeeping_lease_until' - 'bookkeeping_owner'
      where game_id = p_game_id and id = p_session_id;
     return 'released';
   end if;
@@ -168,11 +174,11 @@ begin
            v_marker,
            '{bookkeeping_lease_until}',
            to_jsonb(to_char((now() + make_interval(secs => greatest(p_lease_seconds, 1))) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-         )
+         ) || jsonb_build_object('bookkeeping_owner', p_owner::text)
    where game_id = p_game_id and id = p_session_id;
   return 'claimed';
 end;
 $$;
 
-revoke execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer) from public, anon, authenticated;
-grant execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer) to service_role;
+revoke execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer, uuid) from public, anon, authenticated;
+grant execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer, uuid) to service_role;

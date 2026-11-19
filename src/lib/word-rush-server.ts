@@ -163,12 +163,17 @@ async function runRoundFinalization(
   // and Play Again deletes them once the marker is gone, so exactly one runner at a time holds a
   // durable lease on it and the marker is cleared only by a runner that completed it. A runner that
   // died mid-way is taken over once its lease expires; every step is idempotent.
+  let leaseOwner: string | null = null
   if (pending.is_last) {
+    // Identifies this runner: release and clear only act on a lease it still owns.
+    const owner = crypto.randomUUID()
+    leaseOwner = owner
     const { data: claim, error: claimError } = await supabase.rpc('word_rush_claim_finish_bookkeeping', {
       p_game_id: gameId,
       p_session_id: pending.session_id,
       p_turn_index: pending.turn_index,
       p_lease_seconds: FINISH_BOOKKEEPING_LEASE_SECONDS,
+      p_owner: owner,
     })
     if (claimError) return internalFailure('word-rush:finalize-round:claim-bookkeeping', claimError)
     if (claim === 'not_pending') return {}
@@ -185,6 +190,7 @@ async function runRoundFinalization(
         p_session_id: pending.session_id,
         p_turn_index: pending.turn_index,
         p_lease_seconds: 0,
+        p_owner: owner,
       })
     if (finished.error) {
       await release()
@@ -210,12 +216,16 @@ async function runRoundFinalization(
   }
 
   // 4. Everything applied: clear the marker (only for this round).
-  const { error: clearError } = await supabase
+  // A last-round runner clears only while it still owns the lease: one that outlived its lease must
+  // not wipe the marker the runner that took over is still working under.
+  let clear = supabase
     .from('word_rush_sessions')
     .update({ round_finalize: null })
     .eq('game_id', gameId)
     .eq('id', pending.session_id)
     .eq('round_finalize->>turn_index', String(pending.turn_index))
+  if (leaseOwner) clear = clear.eq('round_finalize->>bookkeeping_owner', leaseOwner)
+  const { error: clearError } = await clear
   if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
   return {}
 }

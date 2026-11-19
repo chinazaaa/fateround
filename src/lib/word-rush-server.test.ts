@@ -179,7 +179,8 @@ describe('individual round finalization is resumable', () => {
             return Promise.resolve({ data: 'not_pending', error: null })
           }
           if ((args.p_lease_seconds as number) <= 0) {
-            const { bookkeeping_lease_until: _released, ...rest } = marker
+            if (marker.bookkeeping_owner !== args.p_owner) return Promise.resolve({ data: 'not_owner', error: null })
+            const { bookkeeping_lease_until: _released, bookkeeping_owner: _o, ...rest } = marker
             state.session.round_finalize = rest
             state.events.push('release')
             return Promise.resolve({ data: 'released', error: null })
@@ -189,6 +190,7 @@ describe('individual round finalization is resumable', () => {
           state.session.round_finalize = {
             ...marker,
             bookkeeping_lease_until: new Date(Date.now() + (args.p_lease_seconds as number) * 1000).toISOString(),
+            bookkeeping_owner: args.p_owner,
           }
           state.events.push('claim')
           return Promise.resolve({ data: 'claimed', error: null })
@@ -532,5 +534,27 @@ describe('individual round finalization is resumable', () => {
     expect(state.events.filter((e) => e === 'bookkeeping')).toHaveLength(1)
     expect(state.events.indexOf('finish')).toBeLessThan(state.events.indexOf('bookkeeping'))
     expect(state.session.round_finalize).toBeNull()
+  })
+
+  it('a runner that outlived its lease neither clears nor releases the marker of the runner that took over', async () => {
+    const { client, state } = makeStatefulClient()
+    // Stage: round closed, finalization owed. The runner claims the lease, then — while its bookkeeping is
+    // running (room_games read) — its lease expires and a second runner takes over with its own owner.
+    let staged = false
+    const realFrom = client.from
+    ;(client as { from: unknown }).from = (table: string) => {
+      if (table === 'room_games' && !staged) {
+        staged = true
+        state.session.round_finalize = {
+          ...(state.session.round_finalize as Record<string, unknown>),
+          bookkeeping_owner: 'someone-else',
+          bookkeeping_lease_until: new Date(Date.now() + 120_000).toISOString(),
+        }
+      }
+      return realFrom(table)
+    }
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(staged).toBe(true)
+    expect(state.session.round_finalize).toMatchObject({ bookkeeping_owner: 'someone-else' }) // not wiped
   })
 })
