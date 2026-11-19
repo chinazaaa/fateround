@@ -44,26 +44,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
   }
 
-  const { data: existing, error: lookupError } = await supabase
-    .from('npat_answers')
-    .select('submitted_at')
-    .eq('round_id', roundId)
-    .eq('player_id', auth.player.id)
-    .maybeSingle()
-  // A failed lookup must stop here: with `existing` null the upsert below would overwrite an
-  // answer that was already submitted.
-  if (lookupError) return NextResponse.json({ error: internalErrorMessage('npat/draft', lookupError) }, { status: 500 })
-
-  if (existing?.submitted_at) return NextResponse.json({ success: true })
-
-  const payload = {
-    game_id: code,
-    round_id: roundId,
-    player_id: auth.player.id,
-    ...trimmed,
-  }
-
-  const { error } = await supabase.from('npat_answers').upsert(payload, { onConflict: 'player_id,round_id' })
+  // A draft only lands on an unsubmitted row: the check is inside the database write, so a draft
+  // racing a submit cannot overwrite the submitted answers.
+  const { error } = await supabase.rpc('npat_save_answer', {
+    p_game_id: code,
+    p_round_id: roundId,
+    p_player_id: auth.player.id,
+    p_name: trimmed.name,
+    p_animal: trimmed.animal,
+    p_place: trimmed.place,
+    p_thing: trimmed.thing,
+    p_food: trimmed.food,
+    p_submit: false,
+    p_now: new Date().toISOString(),
+  })
   if (error) return NextResponse.json({ error: internalErrorMessage('npat/draft', error) }, { status: 500 })
 
   return NextResponse.json({ success: true })
