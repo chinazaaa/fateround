@@ -30,6 +30,18 @@ import { parsePickANumberPool, pickANumberQuestionAt } from '@/lib/pick-a-number
 import type { PairFlag, WyrChoice } from '@/types'
 import { parseJsonBody } from '@/lib/parse-body'
 
+/**
+ * At round expiry the player's timer auto-vote and the host's end-round request race. A vote that
+ * lands just after the host closed the round is still the player's valid timer choice, so accept it
+ * within this latency grace (mirrors the Trivia answer route). Later votes stay rejected.
+ *
+ * Two limits keep the grace from being abused: it never applies to Who Said This (the answer is
+ * revealed the moment the round finishes and the vote is scored, so a late vote could be informed),
+ * and during the grace a vote is only inserted when the player has none yet, so a retry cannot
+ * overwrite an accepted vote.
+ */
+const VOTE_CLOSE_GRACE_MS = 3000
+
 function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
   if (!raw || typeof raw !== 'object') return null
   const out: Record<string, PairFlag> = {}
@@ -70,7 +82,7 @@ export async function POST(req: NextRequest) {
     // Scope the round to the authorized game so a known roundId from another game is rejected.
     supabase
       .from('rounds')
-      .select('status, participant_ids, submitter_player_id, quote_text, started_at, quote_submitted_at')
+      .select('status, participant_ids, submitter_player_id, quote_text, started_at, quote_submitted_at, ended_at')
       .eq('id', roundId)
       .eq('game_id', gameId.toUpperCase())
       .maybeSingle(),
@@ -89,7 +101,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Viewers cannot vote' }, { status: 403 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
-  if (round.status !== 'active') return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+  let closedRoundGrace = false
+  if (round.status !== 'active') {
+    const endedAtMs = round.ended_at ? Date.parse(round.ended_at) : NaN
+    const withinGrace =
+      round.status === 'finished' &&
+      !isWhoSaidThis(parseGameType(game.game_type)) &&
+      Number.isFinite(endedAtMs) &&
+      Date.now() - endedAtMs <= VOTE_CLOSE_GRACE_MS
+    if (!withinGrace) return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+    closedRoundGrace = true
+  }
 
   const gameType = parseGameType(game.game_type)
   const roundIds = round.participant_ids as string[]
@@ -494,7 +516,9 @@ export async function POST(req: NextRequest) {
       game_id: gameId,
       ...row,
     },
-    { onConflict: 'player_id,round_id' }
+    // After the round closed, only a missing vote may be saved (ON CONFLICT DO NOTHING, atomic):
+    // a resend must not replace the vote that was accepted while the round was open.
+    { onConflict: 'player_id,round_id', ignoreDuplicates: closedRoundGrace }
   )
 
   if (error) {

@@ -154,6 +154,8 @@ export function useGameSession(deps: GameSessionDeps) {
 
   // ── Refs ─────────────────────────────────────────────────────────────────
   const announcedRoundIdRef = useRef<string | null>(null)
+  // The round whose results are on screen; a vote accepted during the close grace window arrives after it.
+  const finishedRoundIdRef = useRef<string | null>(null)
   const suppressRoundSoundRef = useRef(true)
   const roundFormIdRef = useRef<string | null>(null)
   const prevViewRef = useRef<View | null>(null)
@@ -494,6 +496,7 @@ export function useGameSession(deps: GameSessionDeps) {
           }
         }
         if (round.status === 'finished') {
+          finishedRoundIdRef.current = round.id
           const [{ data: rv }, { data: rc }] = await Promise.all([
             supabase.from('votes').select(VOTE_SELECT).eq('round_id', round.id),
             supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', round.id).order('created_at'),
@@ -537,6 +540,14 @@ export function useGameSession(deps: GameSessionDeps) {
           resetJoinStateRef.current()
           setView('join')
         }
+      },
+      onVoteInsert: (vote) => {
+        // A vote accepted inside the close grace window lands after the results were loaded:
+        // add it to the finished round's results (deduped by id) so it shows without a refresh.
+        if (vote.round_id !== finishedRoundIdRef.current) return
+        const addVote = (prev: Vote[]) => (prev.some((v) => v.id === vote.id) ? prev : [...prev, vote])
+        setLastRoundVotes(addVote)
+        setAllVotes(addVote)
       },
       onConfessionInsert: () => {
         // Trigger re-render for live confessions in round results

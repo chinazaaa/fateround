@@ -12,6 +12,7 @@ let animeMetadata: unknown = null
 let rpcResult: { data: unknown; error: { message: string } | null } = { data: { status: 'ok' }, error: null }
 const rpcCalls: { fn: string; args: unknown }[] = []
 const upserts: unknown[] = []
+const upsertOptions: ({ onConflict?: string; ignoreDuplicates?: boolean } | undefined)[] = []
 const roundUpdates: unknown[] = []
 
 function makeClient() {
@@ -32,8 +33,9 @@ function makeClient() {
           roundUpdates.push(v)
           return chain
         },
-        upsert: (row: unknown) => {
+        upsert: (row: unknown, options?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
           upserts.push(row)
+          upsertOptions.push(options)
           return Promise.resolve({ error: null })
         },
         maybeSingle: async () => {
@@ -53,6 +55,7 @@ vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => makeClient() })
 vi.mock('@/lib/game-admin', () => ({ assertPlayer: async () => ({ player: PLAYER }) }))
 
 import { POST } from './route'
+import { buildRoundsFromDeck } from '@/lib/who-said-this'
 
 function send(extra: Record<string, unknown>) {
   return POST(
@@ -66,6 +69,7 @@ function send(extra: Record<string, unknown>) {
 
 beforeEach(() => {
   upserts.length = 0
+  upsertOptions.length = 0
   roundUpdates.length = 0
   rpcCalls.length = 0
   rpcResult = { data: { status: 'ok', picked_number: 2 }, error: null }
@@ -98,6 +102,60 @@ describe('POST /api/votes status checks', () => {
     const res = await send({ wyrChoice: 'a' })
     expect(res.status).toBe(400)
     expect(upserts).toHaveLength(0)
+  })
+
+  describe('close grace window', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-01-01T00:00:30.000Z'))
+      round.status = 'finished'
+    })
+    afterEach(() => vi.useRealTimers())
+
+    it('accepts a timer vote that lands just after the host closed the round', async () => {
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      expect((await send({ wyrChoice: 'a' })).status).toBe(200)
+      expect(upserts).toHaveLength(1)
+    })
+
+    it('only inserts a missing vote during the grace (never overwrites an accepted one)', async () => {
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      await send({ wyrChoice: 'a' })
+      expect(upsertOptions[0]).toMatchObject({ onConflict: 'player_id,round_id', ignoreDuplicates: true })
+    })
+
+    it('still lets a vote on an active round replace the earlier vote', async () => {
+      round.status = 'active'
+      await send({ wyrChoice: 'a' })
+      expect(upsertOptions[0]?.ignoreDuplicates).toBeFalsy()
+    })
+
+    it('gives Who Said This no grace (the answer is already revealed)', async () => {
+      game = { game_type: 'who_said_this', status: 'active', timer_seconds: 30, custom_questions: null }
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      round.quote_text = 'a quote'
+      round.participant_ids = ['p1', 'p2']
+      const res = await send({ targetParticipantId: 'p1' })
+      expect(res.status).toBe(400)
+      expect(upserts).toHaveLength(0)
+    })
+
+    it('rejects a vote long after the round closed', async () => {
+      round.ended_at = '2026-01-01T00:00:20.000Z'
+      expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+      expect(upserts).toHaveLength(0)
+    })
+
+    it('rejects a vote on a finished round with no ended_at', async () => {
+      round.ended_at = null
+      expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+    })
+
+    it('never accepts a vote on a pending round', async () => {
+      round.status = 'pending'
+      round.ended_at = '2026-01-01T00:00:29.000Z'
+      expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+    })
   })
 
   it.each(['waiting', 'finished'])('rejects a vote when the game is %s', async (status) => {
@@ -205,6 +263,20 @@ describe('POST /api/votes Who Said This', () => {
     round.submitter_player_id = PLAYER.id
     expect((await send({ targetParticipantId: 'a' })).status).toBe(400)
     animeMetadata = { choices: ['x', 'y'], correct_character: 'x' }
+    expect((await send({ animeChoice: 'x' })).status).toBe(400)
+    expect(upserts).toHaveLength(0)
+  })
+
+  it('rejects the lobby author on a round built by the player-authored start path', async () => {
+    const [built] = buildRoundsFromDeck({
+      gameId: 'ABCD',
+      participantIds: ['a', 'b'],
+      deck: [{ quote: 'q', options: ['x', 'y'], correctIndex: 0, playerId: PLAYER.id }],
+      startIndex: 0,
+      now: '2026-01-01T00:00:00.000Z',
+    })
+    round.submitter_player_id = built.submitter_player_id
+    animeMetadata = built.anime_metadata
     expect((await send({ animeChoice: 'x' })).status).toBe(400)
     expect(upserts).toHaveLength(0)
   })
