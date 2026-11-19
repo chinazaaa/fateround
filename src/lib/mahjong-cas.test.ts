@@ -107,6 +107,8 @@ type Fake = {
   rpcCalls: RpcCall[]
   /** Any write that bypassed the transactional RPC (direct table updates). */
   directWrites: string[]
+  /** Tables in the order the loader read them. */
+  reads: string[]
 }
 
 /**
@@ -123,6 +125,7 @@ function fakeSupabase(
 ): Fake {
   const rpcCalls: RpcCall[] = []
   const directWrites: string[] = []
+  const reads: string[] = []
   const client = {
     rpc: async (fn: string, args: RpcCall['args']) => {
       rpcCalls.push({ fn, args })
@@ -133,7 +136,10 @@ function fakeSupabase(
     from(table: string) {
       if (table === 'mahjong_sessions') {
         return {
-          select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: session, error: null }) }) }),
+          select: () => {
+            reads.push(table)
+            return { eq: () => ({ maybeSingle: async () => ({ data: session, error: null }) }) }
+          },
           update: (patch: Record<string, unknown>) => {
             let expected = ''
             const chain = {
@@ -167,17 +173,20 @@ function fakeSupabase(
       }
       if (table === 'games') {
         return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({ data: { timer_seconds: 0, session_started_at: GENERATION }, error: null }),
-            }),
-          }),
+          select: () => {
+            reads.push(table)
+            return {
+              eq: () => ({
+                maybeSingle: async () => ({ data: { timer_seconds: 0, session_started_at: GENERATION }, error: null }),
+              }),
+            }
+          },
         }
       }
       throw new Error(`unexpected table ${table}`)
     },
   } as unknown as SupabaseClient
-  return { client, rpcCalls, directWrites }
+  return { client, rpcCalls, directWrites, reads }
 }
 
 type Scenario = {
@@ -667,5 +676,16 @@ describe('Mahjong expired claim with a pending abortive draw', () => {
     const fake = fakeSupabase(claimAfterFourWinds(), states, () => true)
     expect((await processMahjongExpireTurn(fake.client, 'MJCAS')).error).toBeUndefined()
     expect(fake.rpcCalls[0]?.args.p_session_patch).toMatchObject({ phase: 'discard' })
+  })
+})
+
+describe('Mahjong load order', () => {
+  it('reads the games generation before the session, so a replay cannot slip between the two', async () => {
+    const fake = fakeSupabase(makeSession({ phase: 'finished' }), tableWith([...FILLER]), () => true)
+    await processMahjongNextHand(fake.client, 'MJCAS')
+    // Generation first: a stale session can never be paired with a newer generation (Play Again
+    // reuses the games row), which would let a finalizer finish the replayed match.
+    expect(fake.reads.indexOf('games')).toBeGreaterThanOrEqual(0)
+    expect(fake.reads.indexOf('games')).toBeLessThan(fake.reads.indexOf('mahjong_sessions'))
   })
 })
