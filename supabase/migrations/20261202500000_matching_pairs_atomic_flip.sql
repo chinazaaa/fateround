@@ -26,11 +26,16 @@
 --     a COUNT of is_match rows (duplicates included) and marks a player finished once it reaches the grid
 --     size, so a player who finished by counting a duplicate would otherwise stay finished with a pair
 --     missing and get 409 on every later flip. pairs_matched / wrong_attempts are recounted from the
---     retained rows; if the player had been marked finished because of the removed row (their stored
---     pairs_matched exceeds the retained matches) and the round is still active, finished, finish_rank
---     and finished_at are cleared so they can continue and re-finish normally. Other players' ranks are
---     left as they are (policy: no re-ranking; the player is ranked again by matching_pairs_finish_player
---     when they finish). In a round that has already finished only the counters are recounted;
+--     retained rows; a player marked finished whose RETAINED matches are fewer than the round's grid size
+--     (rounds.memory_match_metadata->>'gridSizePairs', the same value the route uses) did not actually
+--     complete the grid, so if the round is still active finished, finish_rank and finished_at are cleared
+--     and they can continue and re-finish normally. The decision is made from the retained matches vs the
+--     grid size, NOT from the stored pairs_matched: a stale progress update could make that value
+--     misleading, and a history with a duplicate that still covers every grid pair is a completed grid and
+--     must stay finished. If the grid size is unknown the finish state is left alone. Other players' ranks
+--     are left as they are (policy: no re-ranking; the player is ranked again by
+--     matching_pairs_finish_player when they finish). In a round that has already finished only the
+--     counters are recounted;
 --   * locks are taken progress-first, then submissions: matching_pairs_record_flip() locks the progress row
 --     and then inserts a submission, so taking them in the same order cannot deadlock with a flip.
 -- Idempotent: once the index exists no duplicates can exist, so a rerun deletes and replays nothing.
@@ -43,6 +48,8 @@ declare
   v_points integer;
   v_matches integer;
   v_wrong integer;
+  v_grid integer;
+  v_reopen boolean;
 begin
   lock table public.memory_match_progress in share row exclusive mode;
   lock table public.memory_match_submissions in share row exclusive mode;
@@ -94,20 +101,19 @@ begin
       from public.memory_match_submissions
      where round_id = v_hist.round_id and player_id = v_hist.player_id;
 
-    -- Every right-hand side below reads the OLD row, so the "was finished because of a removed row"
-    -- test sees the stored pairs_matched, not the recounted one.
+    select (r.memory_match_metadata ->> 'gridSizePairs')::integer
+      into v_grid
+      from public.rounds r
+     where r.id = v_hist.round_id and r.status = 'active';
+    -- v_grid is null when the round is not active (or has no metadata): then the finish state is kept.
+    v_reopen := v_grid is not null and v_matches < v_grid;
+
     update public.memory_match_progress p
        set pairs_matched  = v_matches,
            wrong_attempts = v_wrong,
-           finished       = case when p.finished and p.pairs_matched > v_matches
-                                      and exists (select 1 from public.rounds r where r.id = p.round_id and r.status = 'active')
-                                 then false else p.finished end,
-           finish_rank    = case when p.finished and p.pairs_matched > v_matches
-                                      and exists (select 1 from public.rounds r where r.id = p.round_id and r.status = 'active')
-                                 then null else p.finish_rank end,
-           finished_at    = case when p.finished and p.pairs_matched > v_matches
-                                      and exists (select 1 from public.rounds r where r.id = p.round_id and r.status = 'active')
-                                 then null else p.finished_at end,
+           finished       = case when p.finished and v_reopen then false else p.finished end,
+           finish_rank    = case when p.finished and v_reopen then null  else p.finish_rank end,
+           finished_at    = case when p.finished and v_reopen then null  else p.finished_at end,
            updated_at     = now()
      where p.round_id = v_hist.round_id and p.player_id = v_hist.player_id;
   end loop;
