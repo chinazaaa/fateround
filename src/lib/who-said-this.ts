@@ -149,6 +149,8 @@ export interface WstDeckEntry {
   quote: string
   options: string[]
   correctIndex: number
+  /** The player who wrote the question (lobby submissions); omitted/null for host decks. */
+  playerId?: string | null
 }
 
 export interface WstDeckRoundInput {
@@ -176,7 +178,7 @@ export function buildRoundsFromDeck({ gameId, participantIds, deck, startIndex, 
       game_id: gameId,
       round_number: roundNumber,
       participant_ids: participantIds,
-      submitter_player_id: null,
+      submitter_player_id: entry.playerId ?? null,
       quote_text: entry.quote,
       quote_author_participant_id: null,
       quote_submitted_at: isFirst ? now : null,
