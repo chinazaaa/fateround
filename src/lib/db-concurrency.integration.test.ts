@@ -7,7 +7,7 @@
  *   - mahjong_apply_transition   (20261201140000)
  *   - rummy_apply_transition     (20261201150000)
  *   - bingo_claim_win            (20261202700000)
- *   - submit_vote_atomic         (20261203000000)
+ *   - submit_vote_atomic         (20261203100000)
  *
  * Each replaced route code that read, decided, then wrote across several requests, and lost races:
  * simultaneous wrong guesses all passed a limit check, two picks clobbered each other's question,
