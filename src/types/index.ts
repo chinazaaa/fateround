@@ -231,6 +231,8 @@ export interface CodewordsBoard {
   guesses_remaining: number | null
   current_clue_word: string | null
   current_clue_number: number | null
+  /** Bumped each time a clue is posted; lets a guess be bound to the clue it observed. */
+  clue_seq?: number
   winner: CodewordsTeam | null
   assassin_team: CodewordsTeam | null
   spymaster_timer_seconds: number

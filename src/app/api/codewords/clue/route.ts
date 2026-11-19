@@ -74,9 +74,17 @@ export async function POST(req: NextRequest) {
       ...guessPhaseUpdate(typedBoard.operative_timer_seconds ?? 60),
     })
     .eq('id', typedBoard.id)
+    // Compare-and-swap on the state the checks above relied on: two clue requests can both read an
+    // empty clue, and the later one would otherwise overwrite the first clue and reset the guess
+    // allowance after operatives have already spent guesses on it (clue_seq cannot tell an identical
+    // repost apart). Only the request that finds the board still waiting for a clue wins.
+    .is('current_clue_word', null)
+    .is('winner', null)
+    .eq('current_turn', typedBoard.current_turn)
     .select()
-    .single()
+    .maybeSingle()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/clue', error) }, { status: 500 })
+  if (!updated) return NextResponse.json({ error: 'A clue was already given this turn' }, { status: 409 })
   return NextResponse.json({ success: true, board: updated })
 }

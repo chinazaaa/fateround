@@ -52,9 +52,6 @@ const DEADLINE_GRACE_SECONDS = 2
  */
 const MIN_MS_PER_ATTEMPT = 300
 
-/** Postgres unique_violation. */
-const PG_UNIQUE_VIOLATION = '23505'
-
 const playerLocks = new Map<string, Promise<void>>()
 
 async function acquireLock(playerId: string) {
@@ -222,24 +219,34 @@ export async function POST(req: NextRequest) {
     const pointsDelta = matchPoints - penaltyPoints
     const pointsAfter = Math.max(0, prevPoints + pointsDelta)
 
-    // Insert submission row.
-    const { error: subError } = await supabase.from('memory_match_submissions').insert({
-      game_id: code,
-      round_id: round.id,
-      player_id: playerId,
-      pair_index: pairIndex,
-      is_match: isMatch,
-      streak_at_time: newStreak,
-      streak_bonus: streakBonus,
-      points_after: pointsAfter,
+    // Record the flip atomically: the function re-checks the round (and the player's progress row)
+    // is still open under a row lock, so a flip racing the expiry route cannot land after close,
+    // and the partial unique index on matched pairs rejects a duplicate from another instance.
+    const { data: recordData, error: subError } = await supabase.rpc('matching_pairs_record_flip', {
+      p_game_id: code,
+      p_round_id: round.id,
+      p_player_id: playerId,
+      p_pair_index: pairIndex,
+      p_is_match: isMatch,
+      p_streak_at_time: newStreak,
+      p_streak_bonus: streakBonus,
+      p_points_after: pointsAfter,
     })
     if (subError) {
-      // A concurrent duplicate (e.g. a second instance past the in-memory lock) hit a
-      // unique index: a client error, not a server fault.
-      if ((subError as { code?: string }).code === PG_UNIQUE_VIOLATION) {
-        return NextResponse.json({ error: 'This pair was already matched' }, { status: 400 })
-      }
       return NextResponse.json({ error: internalErrorMessage('matching-pairs/flip', subError) }, { status: 500 })
+    }
+    const recordStatus = (recordData as { status?: string } | null)?.status
+    if (recordStatus === 'round_not_active') {
+      return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+    }
+    if (recordStatus === 'already_matched') {
+      return NextResponse.json({ error: 'This pair was already matched' }, { status: 409 })
+    }
+    if (recordStatus !== 'ok') {
+      return NextResponse.json(
+        { error: internalErrorMessage('matching-pairs/flip', new Error(`unexpected status ${String(recordStatus)}`)) },
+        { status: 500 }
+      )
     }
 
     // Count matches and wrong attempts from memory_match_submissions to be 100% accurate and race-free.
