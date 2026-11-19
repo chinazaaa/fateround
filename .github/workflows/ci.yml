@@ -1409,6 +1409,15 @@ jobs:
           DB_CONCURRENCY_REQUIRED: '1'
         run: pnpm vitest run src/lib/db-concurrency.integration.test.ts
 
+      # Applies the Matching Pairs duplicate-cleanup migration to seeded histories and asserts the
+      # result (score replay, progress reconciliation, grid-size rule, idempotence). It runs in a
+      # transaction that is rolled back, so it leaves the database as it found it. The path inside
+      # the script is relative, so this must run from the repository root (the default).
+      - name: Matching Pairs duplicate cleanup migration
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/matching-pairs-dedupe.sql
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

@@ -70,6 +70,16 @@ describe('buildRoundsFromDeck', () => {
     expect(rounds.every((r) => r.status === 'pending')).toBe(true)
   })
 
+  it('carries the lobby author id into submitter_player_id and keeps it null for host decks', () => {
+    const deck: WstDeckEntry[] = [
+      { quote: 'mine', options: ['A', 'B'], correctIndex: 0, playerId: 'author-1' },
+      { quote: 'host', options: ['A', 'B'], correctIndex: 1 },
+    ]
+    const rounds = buildRoundsFromDeck({ gameId: 'G', participantIds: [], deck, startIndex: 0, now: 'n' })
+    expect(rounds.find((r) => r.quote_text === 'mine')!.submitter_player_id).toBe('author-1')
+    expect(rounds.find((r) => r.quote_text === 'host')!.submitter_player_id).toBeNull()
+  })
+
   it('falls back to the first option if correctIndex is out of range', () => {
     const bad: WstDeckEntry[] = [{ quote: 'q', options: ['A', 'B'], correctIndex: 9 }]
     const [round] = buildRoundsFromDeck({ gameId: 'G', participantIds: [], deck: bad, startIndex: 0, now: 'n' })
