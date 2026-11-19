@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
-import { markGameFinished, runFinishSideEffects } from '@/lib/game-finish'
+import { markGameFinished, recoverFinishBookkeeping } from '@/lib/game-finish'
 import {
   pickRandomLetterPair,
   pairSupportsMinLengthForLetters,
@@ -101,12 +101,6 @@ function tallyIndividualGuesses(
 }
 
 /**
- * Lease on the post-finish bookkeeping. Longer than any request can run, so an expired lease means
- * the holder is dead and another finalizer may take the (idempotent) bookkeeping over.
- */
-const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
-
-/**
  * The effects of a closed individual round: the setter's mirror points, the "N guessed it" message
  * and, on the last round, the game finish. Written to be resumed: the claim that closed the round
  * stored `round_finalize` in the same UPDATE, every step here is idempotent, and the marker is only
@@ -159,79 +153,31 @@ async function runRoundFinalization(
     if (messageError) return internalFailure('word-rush:finalize-round:message', messageError)
   }
 
-  // 3. Last round: finish the game, then its bookkeeping. The bookkeeping reads this session's rows
-  // and Play Again deletes them once the marker is gone, so exactly one runner at a time holds a
-  // durable lease on it and the marker is cleared only by a runner that completed it. A runner that
-  // died mid-way is taken over once its lease expires; every step is idempotent.
-  let leaseOwner: string | null = null
+  // 3. Last round: finish the game, then its post-finish bookkeeping (room points, trophy snapshot).
+  // That bookkeeping reads this session's rows and Play Again deletes them, so the flip records a
+  // durable `games.finish_bookkeeping` marker in the same statement and the bookkeeping runs under a
+  // lease (see recoverFinishBookkeeping); every other way this game can finish (admin, idle reaper)
+  // does the same. A resumed attempt that lost the flip recovers whatever its predecessor left owed.
   if (pending.is_last) {
-    // Identifies this runner: release and clear only act on a lease it still owns.
-    const owner = crypto.randomUUID()
-    leaseOwner = owner
-    const { data: claim, error: claimError } = await supabase.rpc('word_rush_claim_finish_bookkeeping', {
-      p_game_id: gameId,
-      p_session_id: pending.session_id,
-      p_turn_index: pending.turn_index,
-      p_lease_seconds: FINISH_BOOKKEEPING_LEASE_SECONDS,
-      p_owner: owner,
-    })
-    if (claimError) return internalFailure('word-rush:finalize-round:claim-bookkeeping', claimError)
-    if (claim === 'not_pending') return {}
-    if (claim === 'held') return { error: 'Game finish is still in progress' }
-
     // Bound to this session: a finalizer that outlives Play Again must not finish the new game.
     const finished = await markGameFinished(supabase, gameId, undefined, {
       roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: pending.session_id } },
+      trackBookkeeping: true,
     })
-    // A failure from here on hands the lease back so the next attempt is not locked out for 5 minutes.
-    const release = () =>
-      supabase.rpc('word_rush_claim_finish_bookkeeping', {
-        p_game_id: gameId,
-        p_session_id: pending.session_id,
-        p_turn_index: pending.turn_index,
-        p_lease_seconds: 0,
-        p_owner: owner,
-      })
-    if (finished.error) {
-      await release()
-      return internalFailure('word-rush:finalize-round:finish', finished.error)
-    }
-    if (!finished.won) {
-      // The flip already happened (an earlier attempt, possibly one that died before its
-      // bookkeeping). We hold the lease, so run the bookkeeping here — but only for a game that
-      // really finished; a replayed game that is active again has nothing to book.
-      const { data: game, error: gameError } = await supabase
-        .from('games')
-        .select('status, finished_at')
-        .eq('id', gameId)
-        .maybeSingle()
-      if (gameError) {
-        await release()
-        return internalFailure('word-rush:finalize-round:finish-state', gameError)
-      }
-      if (game?.status === 'finished' && game.finished_at) {
-        await runFinishSideEffects(supabase, gameId, game.finished_at as string)
-      }
-    }
+    if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
+    const bookkeeping = finished.won ? finished.bookkeeping : (await recoverFinishBookkeeping(supabase, gameId)).state
+    // Only a runner that saw the bookkeeping through may clear the marker (which lets Play Again reset).
+    if (bookkeeping !== 'none' && bookkeeping !== 'done') return { error: 'Game finish is still in progress' }
   }
 
   // 4. Everything applied: clear the marker (only for this round).
-  // A last-round runner clears only while it still owns the lease: one that outlived its lease must
-  // not wipe the marker the runner that took over is still working under.
-  let clear = supabase
+  const { error: clearError } = await supabase
     .from('word_rush_sessions')
     .update({ round_finalize: null })
     .eq('game_id', gameId)
     .eq('id', pending.session_id)
     .eq('round_finalize->>turn_index', String(pending.turn_index))
-  if (leaseOwner) clear = clear.eq('round_finalize->>bookkeeping_owner', leaseOwner)
-  const { data: cleared, error: clearError } = await clear.select('id')
   if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
-  // Matching nothing means another runner owns the lease now (ours expired): report it, so a caller
-  // such as Play Again does not take "no error" for "finalization complete" and reset under it.
-  if (leaseOwner && (!cleared || cleared.length === 0)) {
-    return { error: 'Game finish lease was taken over by another request' }
-  }
   return {}
 }
 
@@ -881,7 +827,7 @@ async function finishWordRushGame(
     .select('id')
   if (error) return internalFailure('word-rush:finish', error)
   if (!claimed?.length) return {}
-  await markGameFinished(supabase, gameId)
+  await markGameFinished(supabase, gameId, undefined, { trackBookkeeping: true })
   return {}
 }
 
@@ -1175,6 +1121,13 @@ export async function clearWordRushSessionData(
   // Finish them first; if that fails, refuse the reset so Play Again can simply be retried.
   const owed = await resumeWordRushFinalization(supabase, gameId)
   if (owed.error) return { error: 'The previous game is still being finalized — try again in a moment' }
+  // ...nor while the finished game's own bookkeeping (room points, trophy snapshot) is still reading
+  // these rows, whichever path finished it. Recover it here; if it is still owed or held by a live
+  // runner, refuse the reset so Play Again can simply be retried.
+  const bookkeeping = await recoverFinishBookkeeping(supabase, gameId)
+  if (bookkeeping.state !== 'none' && bookkeeping.state !== 'done') {
+    return { error: 'The previous game is still being finalized — try again in a moment' }
+  }
 
   const { data: session } = await supabase
     .from('word_rush_sessions')

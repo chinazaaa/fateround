@@ -20,6 +20,16 @@
 -- cannot tell two games apart, both start at turn 0).
 alter table public.word_rush_sessions add column if not exists round_finalize jsonb;
 
+-- Durable "post-finish bookkeeping is still owed" marker on the game itself (room points, trophy
+-- snapshot, tournament advancement). Set in the SAME statement that flips the game to finished, by
+-- every finish path that opts in (the Word Rush round finalizer, the admin kill-switch, the idle
+-- reaper), and cleared only when that bookkeeping completed. Play Again deletes the rows the
+-- bookkeeping reads, so it refuses to reset while this is set and instead recovers it.
+--   { "finished_at": timestamptz, "attempts": n, "lease_until"?: timestamptz, "owner"?: uuid }
+alter table public.games add column if not exists finish_bookkeeping jsonb;
+create index if not exists games_finish_bookkeeping_pending_idx
+  on public.games (id) where finish_bookkeeping is not null;
+
 -- Award the setter's mirror points for the finalizing round exactly once.
 --
 -- Locks the session row, checks the marker is still for p_turn_index and has not already awarded,
@@ -107,7 +117,8 @@ begin
   end if;
 
   update public.games g
-     set status = 'finished', finished_at = p_finished_at
+     set status = 'finished', finished_at = p_finished_at,
+         finish_bookkeeping = jsonb_build_object('finished_at', p_finished_at, 'attempts', 0)
    where g.id = p_game_id
      and g.status = 'active'
      and exists (
@@ -122,22 +133,21 @@ $$;
 revoke execute on function public.word_rush_finish_game_for_session(text, timestamptz, uuid) from public, anon, authenticated;
 grant execute on function public.word_rush_finish_game_for_session(text, timestamptz, uuid) to service_role;
 
--- Serialises the game-finish bookkeeping (room points, trophy snapshot) for one round.
+-- Claim the right to run a game's owed post-finish bookkeeping.
 --
--- Play Again deletes the session and answers those steps read, so a finalizer must never clear the
--- marker (which lets the reset proceed) while another one is still running them, and a runner that
--- died mid-way must be recoverable. A runner claims a lease stored in the marker: 'claimed' lets it
--- run the (idempotent) bookkeeping, 'held' means a live runner owns it, 'not_pending' means the
--- marker is gone or belongs to another round/session. The lease outlives the platform's request
--- limit, so an expired lease means its holder is dead and takeover is safe.
-create or replace function public.word_rush_claim_finish_bookkeeping(
+-- One runner at a time holds a lease stored in the marker. Returns jsonb:
+--   {"status":"none"}                                  nothing is owed
+--   {"status":"held"}                                  a live runner owns it: do not run, do not reset
+--   {"status":"claimed","finished_at":...,"attempts":n}  the caller owns it and must complete or fail it
+-- The lease is meant to outlive any request, so an expired one means its holder is dead and the
+-- (idempotent) bookkeeping may be taken over. Complete/fail below act only for the current owner, so a
+-- runner that outlived its lease can neither clear nor release the lease of the runner that took over.
+create or replace function public.claim_finish_bookkeeping(
   p_game_id text,
-  p_session_id uuid,
-  p_turn_index integer,
   p_lease_seconds integer,
   p_owner uuid
 )
-returns text
+returns jsonb
 language plpgsql
 security definer
 set search_path = public, pg_temp
@@ -146,39 +156,85 @@ declare
   v_marker jsonb;
   v_until timestamptz;
 begin
-  select s.round_finalize into v_marker
-    from public.word_rush_sessions s
-   where s.game_id = p_game_id and s.id = p_session_id
-     for update;
-  if v_marker is null or (v_marker->>'turn_index')::integer is distinct from p_turn_index then
-    return 'not_pending';
+  select g.finish_bookkeeping into v_marker from public.games g where g.id = p_game_id for update;
+  if v_marker is null then
+    return jsonb_build_object('status', 'none');
   end if;
-  -- p_lease_seconds <= 0 releases the caller's lease (a runner that failed before it could finish).
-  -- Only the current owner may release: a runner that outlived its lease must not free the
-  -- lease of the runner that took over.
-  if p_lease_seconds <= 0 then
-    if v_marker->>'bookkeeping_owner' is distinct from p_owner::text then
-      return 'not_owner';
-    end if;
-    update public.word_rush_sessions
-       set round_finalize = v_marker - 'bookkeeping_lease_until' - 'bookkeeping_owner'
-     where game_id = p_game_id and id = p_session_id;
-    return 'released';
-  end if;
-  v_until := nullif(v_marker->>'bookkeeping_lease_until', '')::timestamptz;
+  v_until := nullif(v_marker->>'lease_until', '')::timestamptz;
   if v_until is not null and v_until > now() then
-    return 'held';
+    return jsonb_build_object('status', 'held');
   end if;
-  update public.word_rush_sessions
-     set round_finalize = jsonb_set(
-           v_marker,
-           '{bookkeeping_lease_until}',
-           to_jsonb(to_char((now() + make_interval(secs => greatest(p_lease_seconds, 1))) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-         ) || jsonb_build_object('bookkeeping_owner', p_owner::text)
-   where game_id = p_game_id and id = p_session_id;
-  return 'claimed';
+  update public.games
+     set finish_bookkeeping = v_marker
+       || jsonb_build_object(
+            'lease_until', to_char((now() + make_interval(secs => greatest(p_lease_seconds, 1))) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+            'owner', p_owner::text)
+   where id = p_game_id;
+  return jsonb_build_object(
+    'status', 'claimed',
+    'finished_at', v_marker->>'finished_at',
+    'attempts', coalesce((v_marker->>'attempts')::integer, 0)
+  );
 end;
 $$;
 
-revoke execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer, uuid) from public, anon, authenticated;
-grant execute on function public.word_rush_claim_finish_bookkeeping(text, uuid, integer, integer, uuid) to service_role;
+-- The bookkeeping ran to completion: clear the marker. 'completed', 'none' or 'not_owner'.
+create or replace function public.complete_finish_bookkeeping(p_game_id text, p_owner uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_marker jsonb;
+begin
+  select g.finish_bookkeeping into v_marker from public.games g where g.id = p_game_id for update;
+  if v_marker is null then
+    return 'none';
+  end if;
+  if v_marker->>'owner' is distinct from p_owner::text then
+    return 'not_owner';
+  end if;
+  update public.games set finish_bookkeeping = null where id = p_game_id;
+  return 'completed';
+end;
+$$;
+
+-- The bookkeeping did not complete: hand the lease back and count the attempt so it is retried. After
+-- p_max_attempts the marker is dropped ('gave_up') so a bookkeeping step that can never succeed cannot
+-- block a replay forever. 'retry', 'gave_up', 'none' or 'not_owner'.
+create or replace function public.fail_finish_bookkeeping(p_game_id text, p_owner uuid, p_max_attempts integer)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_marker jsonb;
+  v_attempts integer;
+begin
+  select g.finish_bookkeeping into v_marker from public.games g where g.id = p_game_id for update;
+  if v_marker is null then
+    return 'none';
+  end if;
+  if v_marker->>'owner' is distinct from p_owner::text then
+    return 'not_owner';
+  end if;
+  v_attempts := coalesce((v_marker->>'attempts')::integer, 0) + 1;
+  if v_attempts >= greatest(p_max_attempts, 1) then
+    update public.games set finish_bookkeeping = null where id = p_game_id;
+    return 'gave_up';
+  end if;
+  update public.games
+     set finish_bookkeeping = (v_marker - 'lease_until' - 'owner') || jsonb_build_object('attempts', v_attempts)
+   where id = p_game_id;
+  return 'retry';
+end;
+$$;
+
+revoke execute on function public.claim_finish_bookkeeping(text, integer, uuid) from public, anon, authenticated;
+grant execute on function public.claim_finish_bookkeeping(text, integer, uuid) to service_role;
+revoke execute on function public.complete_finish_bookkeeping(text, uuid) from public, anon, authenticated;
+grant execute on function public.complete_finish_bookkeeping(text, uuid) to service_role;
+revoke execute on function public.fail_finish_bookkeeping(text, uuid, integer) from public, anon, authenticated;
+grant execute on function public.fail_finish_bookkeeping(text, uuid, integer) to service_role;

@@ -23,7 +23,13 @@ import { recordRoundFacts } from '@/lib/trophies/round-facts'
  * Completion status lives in `error`/`won`; cleanup status lives here, and is
  * meant to be surfaced (logged / reported), not to gate the finish.
  */
-export type FinishGameResult = { error: string | null; won: boolean; cleanupError?: string | null }
+export type FinishGameResult = {
+  error: string | null
+  won: boolean
+  cleanupError?: string | null
+  /** Only for `trackBookkeeping` finishes that won the flip: how the post-finish bookkeeping ended. */
+  bookkeeping?: FinishBookkeepingState
+}
 
 export type RoundGuard = { rpc: string; params: Record<string, unknown> }
 
@@ -33,11 +39,19 @@ export type RoundGuard = { rpc: string; params: Record<string, unknown> }
  * resolution is repeatable), so a caller that owns recovery may safely run it again for a game that
  * is already finished. Normally only the request that won the active→finished transition runs it.
  */
-export async function runFinishSideEffects(supabase: SupabaseClient, gameId: string, finishedAt: string) {
+export async function runFinishSideEffects(
+  supabase: SupabaseClient,
+  gameId: string,
+  finishedAt: string
+): Promise<{ ok: boolean }> {
+  // `ok` is false when any step threw. Untracked callers ignore it (every step stays best-effort for
+  // them); tracked finishes use it to retry instead of declaring the bookkeeping done.
+  let ok = true
   try {
     await awardRoomGamePoints(supabase, gameId)
   } catch {
     // Room stats are best-effort — never block game finish.
+    ok = false
   }
   try {
     // Snapshot trophy facts NOW, while the game's own tables still hold the round. Play-again
@@ -52,6 +66,7 @@ export async function runFinishSideEffects(supabase: SupabaseClient, gameId: str
     // delete the live state before attribution and the fallback has nothing to reconstruct
     // from. Logging it means a persistent problem is visible rather than an invisible slow
     // leak of trophies.
+    ok = false
     console.error(`recordRoundFacts failed for game ${gameId}`, err)
   }
   try {
@@ -62,6 +77,7 @@ export async function runFinishSideEffects(supabase: SupabaseClient, gameId: str
     // the game again, and resolution is idempotent).
     await resolveHeadToHeadMatch(supabase, gameId)
   } catch (err) {
+    ok = false
     console.error(`resolveHeadToHeadMatch failed for game ${gameId}`, err)
   }
   try {
@@ -70,6 +86,7 @@ export async function runFinishSideEffects(supabase: SupabaseClient, gameId: str
     // tournament state, so surface a failure rather than swallow it.
     await resolveSchoolMatch(supabase, gameId)
   } catch (err) {
+    ok = false
     console.error(`resolveSchoolMatch failed for game ${gameId}`, err)
   }
   try {
@@ -78,8 +95,97 @@ export async function runFinishSideEffects(supabase: SupabaseClient, gameId: str
     // core tournament state, so surface a failure rather than swallow it.
     await resolveKnockoutGroupRoom(supabase, gameId)
   } catch (err) {
+    ok = false
     console.error(`resolveKnockoutGroupRoom failed for game ${gameId}`, err)
   }
+  return { ok }
+}
+
+/** A game's post-finish bookkeeping (see `games.finish_bookkeeping`) is leased for this long. */
+export const FINISH_BOOKKEEPING_LEASE_SECONDS = 300
+/** After this many failed attempts the marker is dropped so a step that never succeeds cannot block a replay. */
+export const FINISH_BOOKKEEPING_MAX_ATTEMPTS = 5
+
+/**
+ * `none`/`done`: nothing is owed any more (safe to delete the game's source rows).
+ * `held`: a live runner owns it. `retry`: it failed and stays owed. `error`: the state could not be read or written.
+ */
+export type FinishBookkeepingState = 'none' | 'done' | 'held' | 'retry' | 'error'
+
+/**
+ * Run a game's owed post-finish bookkeeping under the durable lease in `games.finish_bookkeeping`.
+ *
+ * The finish that flipped the game set the marker in the same statement, so "finished" and "bookkeeping
+ * owed" can never be out of step, and anything that resets the game (Play Again) can tell a runner is
+ * still reading its rows. Whoever calls this — the finishing request, Play Again, the cron sweep — claims
+ * the lease first, so exactly one runner executes at a time; the steps are idempotent, so a runner that
+ * died is simply taken over once its lease expires. The marker is cleared only when every step succeeded
+ * (or after FINISH_BOOKKEEPING_MAX_ATTEMPTS), and only by the runner that still owns the lease.
+ */
+export async function recoverFinishBookkeeping(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ state: FinishBookkeepingState; error?: string }> {
+  const owner = crypto.randomUUID()
+  const { data: claim, error: claimError } = await supabase.rpc('claim_finish_bookkeeping', {
+    p_game_id: gameId,
+    p_lease_seconds: FINISH_BOOKKEEPING_LEASE_SECONDS,
+    p_owner: owner,
+  })
+  if (claimError) return { state: 'error', error: claimError.message }
+  const status = (claim as { status?: string } | null)?.status
+  if (status === 'none') return { state: 'none' }
+  if (status !== 'claimed') return { state: 'held' }
+  const finishedAt = (claim as { finished_at?: string }).finished_at ?? new Date().toISOString()
+
+  let ok = false
+  try {
+    ok = (await runFinishSideEffects(supabase, gameId, finishedAt)).ok
+  } catch (err) {
+    console.error(`finish bookkeeping threw for game ${gameId}`, err)
+  }
+
+  if (ok) {
+    const { data, error } = await supabase.rpc('complete_finish_bookkeeping', { p_game_id: gameId, p_owner: owner })
+    if (error) return { state: 'error', error: error.message }
+    // not_owner: our lease expired and another runner took over — it is theirs to complete.
+    return { state: data === 'not_owner' ? 'held' : 'done' }
+  }
+  const { data, error } = await supabase.rpc('fail_finish_bookkeeping', {
+    p_game_id: gameId,
+    p_owner: owner,
+    p_max_attempts: FINISH_BOOKKEEPING_MAX_ATTEMPTS,
+  })
+  if (error) return { state: 'error', error: error.message }
+  if (data === 'gave_up') {
+    console.error(`finish bookkeeping for game ${gameId} gave up after ${FINISH_BOOKKEEPING_MAX_ATTEMPTS} attempts`)
+    return { state: 'done' }
+  }
+  return { state: data === 'not_owner' ? 'held' : 'retry' }
+}
+
+/** Run the sweep over games whose bookkeeping is still owed (the cron tick). */
+export async function recoverAllFinishBookkeeping(
+  supabase: SupabaseClient,
+  limit = 20
+): Promise<{ recovered: number; pending: number; failed: number }> {
+  const { data, error } = await supabase
+    .from('games')
+    .select('id')
+    .not('finish_bookkeeping', 'is', null)
+    .order('finished_at', { ascending: true })
+    .limit(limit)
+  if (error || !data) return { recovered: 0, pending: 0, failed: error ? 1 : 0 }
+  let recovered = 0
+  let pending = 0
+  let failed = 0
+  for (const row of data as Array<{ id: string }>) {
+    const res = await recoverFinishBookkeeping(supabase, row.id)
+    if (res.state === 'done' || res.state === 'none') recovered += 1
+    else if (res.state === 'error') failed += 1
+    else pending += 1
+  }
+  return { recovered, pending, failed }
 }
 
 export async function markGameFinished(
@@ -96,7 +202,17 @@ export async function markGameFinished(
   // Again, so a stale finalizer would otherwise finish the new round. It names an RPC that flips
   // games.status only if that round is still the one in the database, in the same statement
   // (called with p_game_id, p_finished_at and `params`; returns true when it flipped the row).
-  { onlyIfActive = false, roundGuard }: { onlyIfActive?: boolean; roundGuard?: RoundGuard } = {}
+  //
+  // `trackBookkeeping` makes the post-finish bookkeeping durable and recoverable: the same statement that
+  // flips the game also records `games.finish_bookkeeping`, the bookkeeping then runs under a lease, and
+  // the marker is cleared only once every step succeeded (see recoverFinishBookkeeping). Pass it for games
+  // whose per-game rows are deleted by a replay while that bookkeeping may still be reading them (Word
+  // Rush). With `roundGuard` the named RPC must set the marker itself.
+  {
+    onlyIfActive = false,
+    roundGuard,
+    trackBookkeeping = false,
+  }: { onlyIfActive?: boolean; roundGuard?: RoundGuard; trackBookkeeping?: boolean } = {}
 ) {
   let result: { data?: unknown; error: { message: string } | null }
   if (roundGuard) {
@@ -110,7 +226,14 @@ export async function markGameFinished(
       data: rpcResult.error ? null : rpcResult.data === true ? [{ id: gameId }] : [],
     }
   } else {
-    const update = supabase.from('games').update({ status: 'finished', finished_at: finishedAt }).eq('id', gameId)
+    const update = supabase
+      .from('games')
+      .update({
+        status: 'finished',
+        finished_at: finishedAt,
+        ...(trackBookkeeping ? { finish_bookkeeping: { finished_at: finishedAt, attempts: 0 } } : {}),
+      })
+      .eq('id', gameId)
     result = onlyIfActive ? await update.eq('status', 'active').select('id') : await update
   }
 
@@ -118,13 +241,15 @@ export async function markGameFinished(
   // won the transition and should award points; losers get an empty set, no error.
   const won = !(onlyIfActive || roundGuard) || (Array.isArray(result.data) && result.data.length > 0)
 
+  let bookkeeping: FinishBookkeepingState | undefined
   if (!result.error && won) {
-    await runFinishSideEffects(supabase, gameId, finishedAt)
+    if (trackBookkeeping) bookkeeping = (await recoverFinishBookkeeping(supabase, gameId)).state
+    else await runFinishSideEffects(supabase, gameId, finishedAt)
   }
 
   // Surfaced so callers can tell a real finish from a lost CAS: `error` is null in
   // both cases, so without this a racer that changed nothing looks like a success and
   // gets counted/stamped as if it had finished the game. Always true when `onlyIfActive`
   // is not set, which keeps every unguarded caller's behaviour unchanged.
-  return { ...result, won }
+  return { ...result, won, ...(bookkeeping ? { bookkeeping } : {}) }
 }

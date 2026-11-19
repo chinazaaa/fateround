@@ -499,7 +499,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   return NextResponse.json({ success: true, game: updated })
 }
 
-// Bounded well below FINISH_BOOKKEEPING_LEASE_SECONDS (word-rush-server): the bookkeeping lease assumes a
+// Bounded well below FINISH_BOOKKEEPING_LEASE_SECONDS (game-finish): the bookkeeping lease assumes a
 // request cannot outlive it, so an expired lease means its holder is dead.
 export const maxDuration = 60
 export const POST = withGameNotification('lobby_reopened', handlePost)

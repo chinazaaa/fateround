@@ -5,7 +5,7 @@ import { wordRushGameSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
 
-// Bounded well below FINISH_BOOKKEEPING_LEASE_SECONDS (word-rush-server): the bookkeeping lease assumes a
+// Bounded well below FINISH_BOOKKEEPING_LEASE_SECONDS (game-finish): the bookkeeping lease assumes a
 // request cannot outlive it, so an expired lease means its holder is dead.
 export const maxDuration = 60
 

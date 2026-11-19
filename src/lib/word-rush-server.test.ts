@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 vi.mock('server-only', () => ({}))
 
+import { recoverAllFinishBookkeeping, recoverFinishBookkeeping } from './game-finish'
 import { normalizeWordRushWord, wordRushIndividualGuessPointsAt } from './word-rush'
 import {
   clearWordRushSessionData,
@@ -137,6 +138,8 @@ describe('individual round finalization is resumable', () => {
       failAnswerReads?: number
       failTurnReads?: number
       failGameFinish?: boolean
+      /** Fail this many reads of the finished game by recordRoundFacts (the trophy snapshot). */
+      failFactsReads?: number
       session?: Record<string, unknown>
       /** Answers returned by the n-th read of word_rush_answers (the last entry repeats). */
       answersByRead?: Array<Array<{ player_id: string; created_at: string; text: string }>>
@@ -152,6 +155,7 @@ describe('individual round finalization is resumable', () => {
       awardOutcomes: [] as string[],
       gameFinishFailed: false,
       events: [] as string[],
+      failFactsReads: opts.failFactsReads ?? 0,
     }
     const client = {
       rpc: (fn: string, args: Record<string, unknown>) => {
@@ -168,32 +172,49 @@ describe('individual round finalization is resumable', () => {
           if (ok) {
             state.game.status = 'finished'
             state.game.finished_at = new Date().toISOString()
+            state.game.finish_bookkeeping = { finished_at: state.game.finished_at, attempts: 0 }
             state.events.push('finish')
           }
           return Promise.resolve({ data: ok, error: null })
         }
-        if (fn === 'word_rush_claim_finish_bookkeeping') {
-          // Mirrors the SQL function: a lease stored in this round's marker.
-          const marker = state.session.round_finalize as Record<string, unknown> | null
-          if (!marker || state.session.id !== args.p_session_id || marker.turn_index !== args.p_turn_index) {
-            return Promise.resolve({ data: 'not_pending', error: null })
+        // Mirrors claim/complete/fail_finish_bookkeeping: the durable post-finish marker on the games row.
+        if (fn === 'claim_finish_bookkeeping') {
+          const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
+          if (!marker) return Promise.resolve({ data: { status: 'none' }, error: null })
+          const until = marker.lease_until as string | undefined
+          if (until && new Date(until).getTime() > Date.now()) {
+            return Promise.resolve({ data: { status: 'held' }, error: null })
           }
-          if ((args.p_lease_seconds as number) <= 0) {
-            if (marker.bookkeeping_owner !== args.p_owner) return Promise.resolve({ data: 'not_owner', error: null })
-            const { bookkeeping_lease_until: _released, bookkeeping_owner: _o, ...rest } = marker
-            state.session.round_finalize = rest
-            state.events.push('release')
-            return Promise.resolve({ data: 'released', error: null })
-          }
-          const until = marker.bookkeeping_lease_until as string | undefined
-          if (until && new Date(until).getTime() > Date.now()) return Promise.resolve({ data: 'held', error: null })
-          state.session.round_finalize = {
+          state.game.finish_bookkeeping = {
             ...marker,
-            bookkeeping_lease_until: new Date(Date.now() + (args.p_lease_seconds as number) * 1000).toISOString(),
-            bookkeeping_owner: args.p_owner,
+            lease_until: new Date(Date.now() + (args.p_lease_seconds as number) * 1000).toISOString(),
+            owner: args.p_owner,
           }
           state.events.push('claim')
-          return Promise.resolve({ data: 'claimed', error: null })
+          return Promise.resolve({
+            data: { status: 'claimed', finished_at: marker.finished_at, attempts: marker.attempts ?? 0 },
+            error: null,
+          })
+        }
+        if (fn === 'complete_finish_bookkeeping' || fn === 'fail_finish_bookkeeping') {
+          const marker = state.game.finish_bookkeeping as Record<string, unknown> | null | undefined
+          if (!marker) return Promise.resolve({ data: 'none', error: null })
+          if (marker.owner !== args.p_owner) return Promise.resolve({ data: 'not_owner', error: null })
+          if (fn === 'complete_finish_bookkeeping') {
+            state.game.finish_bookkeeping = null
+            state.events.push('complete')
+            return Promise.resolve({ data: 'completed', error: null })
+          }
+          const attempts = ((marker.attempts as number) ?? 0) + 1
+          if (attempts >= (args.p_max_attempts as number)) {
+            state.game.finish_bookkeeping = null
+            state.events.push('gave_up')
+            return Promise.resolve({ data: 'gave_up', error: null })
+          }
+          const { lease_until: _l, owner: _o, ...rest } = marker
+          state.game.finish_bookkeeping = { ...rest, attempts }
+          state.events.push('fail')
+          return Promise.resolve({ data: 'retry', error: null })
         }
         if (fn !== 'word_rush_finalize_award') return Promise.resolve({ data: null, error: null })
         // Mirrors the SQL function: once per marker of THIS session, atomically with the `awarded` flag.
@@ -242,6 +263,14 @@ describe('individual round finalization is resumable', () => {
               if (!matches(state.game)) return { data: [], error: null }
               Object.assign(state.game, patch)
               return { data: [{ id: GAME }], error: null }
+            }
+            if (listMode) {
+              return { data: state.game.finish_bookkeeping ? [{ id: GAME }] : [], error: null }
+            }
+            // recordRoundFacts' read of the finished game: make the trophy snapshot fail.
+            if (state.game.status === 'finished' && state.failFactsReads > 0) {
+              state.failFactsReads -= 1
+              return { data: null, error: { message: 'snapshot read failed' } }
             }
             return { data: state.game, error: null }
           }
@@ -489,17 +518,45 @@ describe('individual round finalization is resumable', () => {
     expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([]) // marker and answers kept
     expect(state.session.round_finalize).not.toBeNull()
   })
+  const stageTakeoverDuringBookkeeping = (client: SupabaseClient, state: { game: Record<string, unknown> }) => {
+    // While this runner is in its bookkeeping (room_games read) its lease expires and a second runner takes
+    // over the game's marker with its own owner id.
+    let staged = false
+    const realFrom = client.from.bind(client)
+    ;(client as { from: unknown }).from = (table: string) => {
+      if (table === 'room_games' && !staged) {
+        staged = true
+        state.game.finish_bookkeeping = {
+          ...(state.game.finish_bookkeeping as Record<string, unknown>),
+          owner: 'someone-else',
+          lease_until: new Date(Date.now() + 120_000).toISOString(),
+        }
+      }
+      return realFrom(table)
+    }
+    return () => staged
+  }
+  const pendingGame = (state: { game: Record<string, unknown> }, extra: Record<string, unknown>) => {
+    state.game.status = 'finished'
+    state.game.finished_at = new Date(Date.now() - 10 * 60_000).toISOString()
+    state.game.finish_bookkeeping = { finished_at: state.game.finished_at, attempts: 0, ...extra }
+  }
+
+  it('the winning finalizer flips the game with the durable marker, runs the bookkeeping once, and clears it', async () => {
+    const { client, state } = makeStatefulClient()
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    expect(state.events.filter((e) => e === 'claim')).toHaveLength(1)
+    expect(state.events.filter((e) => e === 'bookkeeping')).toHaveLength(1)
+    expect(state.events.filter((e) => e === 'complete')).toHaveLength(1)
+    expect(state.events.indexOf('finish')).toBeLessThan(state.events.indexOf('claim'))
+    expect(state.game.finish_bookkeeping).toBeNull()
+    expect(state.session.round_finalize).toBeNull()
+  })
+
   it('Play Again does NOT delete the rows while a live runner holds the bookkeeping lease', async () => {
-    // Finalizer A flipped the game and is still in its post-finish bookkeeping (lease held). Neither a
-    // resumed finalizer nor Play Again may clear the marker or delete the rows it reads.
     const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
     await processWordRushEndRoundEarly(client, GAME, 'host')
-    state.game.status = 'finished'
-    state.game.finished_at = new Date(Date.now() - 5 * 60_000).toISOString() // even long after the flip
-    state.session.round_finalize = {
-      ...(state.session.round_finalize as Record<string, unknown>),
-      bookkeeping_lease_until: new Date(Date.now() + 120_000).toISOString(),
-    }
+    pendingGame(state, { owner: 'live-runner', lease_until: new Date(Date.now() + 120_000).toISOString() })
     state.events.length = 0
 
     const res = await clearWordRushSessionData(client, GAME)
@@ -509,15 +566,10 @@ describe('individual round finalization is resumable', () => {
     expect(state.session.round_finalize).not.toBeNull()
   })
 
-  it('a runner that died mid-bookkeeping is recovered: its lease expires, the bookkeeping is re-run, THEN the marker clears and Play Again may reset', async () => {
+  it('a runner that died mid-bookkeeping is recovered: lease expires, bookkeeping re-runs, THEN Play Again resets', async () => {
     const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
     await processWordRushEndRoundEarly(client, GAME, 'host')
-    state.game.status = 'finished' // the dead winner flipped it
-    state.game.finished_at = new Date(Date.now() - 10 * 60_000).toISOString()
-    state.session.round_finalize = {
-      ...(state.session.round_finalize as Record<string, unknown>),
-      bookkeeping_lease_until: new Date(Date.now() - 1000).toISOString(),
-    }
+    pendingGame(state, { owner: 'dead-runner', lease_until: new Date(Date.now() - 1000).toISOString() })
     state.events.length = 0
 
     expect(await clearWordRushSessionData(client, GAME)).toEqual({})
@@ -525,66 +577,82 @@ describe('individual round finalization is resumable', () => {
     const firstDelete = state.events.findIndex((e) => e.startsWith('delete:'))
     expect(bookkeeping).toBeGreaterThanOrEqual(0)
     expect(firstDelete).toBeGreaterThan(bookkeeping)
+    expect(state.game.finish_bookkeeping).toBeNull()
   })
 
-  it('the winning finalizer claims the lease, finishes the game and runs the bookkeeping exactly once', async () => {
+  it('covers a finish that never went through the round finalizer (admin / idle reaper): Play Again recovers it too', async () => {
+    // No round_finalize marker at all — the game was finished by adminEndGame, which still recorded the marker.
     const { client, state } = makeStatefulClient()
-    await processWordRushEndRoundEarly(client, GAME, 'host')
-    expect(state.events.filter((e) => e === 'claim')).toHaveLength(1)
-    expect(state.events.filter((e) => e === 'bookkeeping')).toHaveLength(1)
-    expect(state.events.indexOf('finish')).toBeLessThan(state.events.indexOf('bookkeeping'))
-    expect(state.session.round_finalize).toBeNull()
-  })
-
-  it('a runner that outlived its lease neither clears the marker nor reports success (so Play Again cannot reset under the new owner)', async () => {
-    const { client, state } = makeStatefulClient({ failAnswerReads: 1 }) // leaves the last round's marker owed
-    await processWordRushEndRoundEarly(client, GAME, 'host')
-    expect(state.session.round_finalize).not.toBeNull()
-
-    // While this runner is in its bookkeeping (room_games read) its lease expires and a second runner
-    // takes over with its own owner id.
-    let staged = false
-    const realFrom = client.from
-    ;(client as { from: unknown }).from = (table: string) => {
-      if (table === 'room_games' && !staged) {
-        staged = true
-        state.session.round_finalize = {
-          ...(state.session.round_finalize as Record<string, unknown>),
-          bookkeeping_owner: 'someone-else',
-          bookkeeping_lease_until: new Date(Date.now() + 120_000).toISOString(),
-        }
-      }
-      return realFrom(table)
-    }
+    state.session.round_finalize = null
+    pendingGame(state, { owner: 'idle-reaper', lease_until: new Date(Date.now() + 120_000).toISOString() })
     state.events.length = 0
-    const res = await resumeWordRushFinalization(client, GAME)
-    expect(staged).toBe(true)
-    expect(res.error).toBeDefined() // the lost clear is reported, not taken for completion
-    expect(state.session.round_finalize).toMatchObject({ bookkeeping_owner: 'someone-else' }) // not wiped
+    expect((await clearWordRushSessionData(client, GAME)).error).toBeDefined() // reaper still running
     expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
+
+    pendingGame(state, { owner: 'idle-reaper', lease_until: new Date(Date.now() - 1000).toISOString() }) // it died
+    expect(await clearWordRushSessionData(client, GAME)).toEqual({})
+    expect(state.events.indexOf('bookkeeping')).toBeLessThan(state.events.findIndex((e) => e.startsWith('delete:')))
   })
 
-  it('Play Again aborts when the finalization it resumes loses its lease to another runner mid-way', async () => {
+  it('a failed trophy snapshot is retried, not declared done: the marker stays and Play Again refuses until it succeeds', async () => {
+    const { client, state } = makeStatefulClient({ failFactsReads: 1 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    // The snapshot failed: the game is finished but its bookkeeping is still owed, and so is the round marker.
+    expect(state.game.status).toBe('finished')
+    expect(state.game.finish_bookkeeping).toMatchObject({ attempts: 1 })
+    expect(state.session.round_finalize).not.toBeNull()
+    state.events.length = 0
+
+    // The next attempt (the finalize endpoint / cron / Play Again) succeeds and only then clears everything.
+    expect(await clearWordRushSessionData(client, GAME)).toEqual({})
+    expect(state.game.finish_bookkeeping).toBeNull()
+    expect(state.session.round_finalize).toBeNull()
+    expect(state.events.indexOf('complete')).toBeLessThan(state.events.findIndex((e) => e.startsWith('delete:')))
+  })
+
+  it('gives up after the attempt cap so a snapshot that can never succeed does not block Play Again forever', async () => {
+    const { client, state } = makeStatefulClient({ failFactsReads: 1000 })
+    await processWordRushEndRoundEarly(client, GAME, 'host')
+    for (let i = 0; i < 10 && state.game.finish_bookkeeping; i++) await recoverFinishBookkeeping(client, GAME)
+    expect(state.game.finish_bookkeeping).toBeNull()
+    expect(state.events).toContain('gave_up')
+    expect(await clearWordRushSessionData(client, GAME)).toEqual({})
+  })
+
+  it('a runner that outlived its lease neither clears the marker nor reports success', async () => {
     const { client, state } = makeStatefulClient({ failAnswerReads: 1 })
     await processWordRushEndRoundEarly(client, GAME, 'host')
-    let staged = false
-    const realFrom = client.from
-    ;(client as { from: unknown }).from = (table: string) => {
-      if (table === 'room_games' && !staged) {
-        staged = true
-        state.session.round_finalize = {
-          ...(state.session.round_finalize as Record<string, unknown>),
-          bookkeeping_owner: 'someone-else',
-          bookkeeping_lease_until: new Date(Date.now() + 120_000).toISOString(),
-        }
-      }
-      return realFrom(table)
-    }
+    pendingGame(state, {}) // owed, no live lease: the resume below will claim it
+    const staged = stageTakeoverDuringBookkeeping(client, state)
     state.events.length = 0
+
+    const res = await resumeWordRushFinalization(client, GAME)
+    expect(staged()).toBe(true)
+    expect(res.error).toBeDefined() // its complete found another owner: not taken for completion
+    expect(state.game.finish_bookkeeping).toMatchObject({ owner: 'someone-else' }) // not wiped
+    expect(state.session.round_finalize).not.toBeNull()
+    expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
+  })
+
+  it('Play Again aborts when the bookkeeping it recovers loses its lease to another runner mid-way', async () => {
+    const { client, state } = makeStatefulClient()
+    state.session.round_finalize = null
+    pendingGame(state, {})
+    const staged = stageTakeoverDuringBookkeeping(client, state)
+    state.events.length = 0
+
     const res = await clearWordRushSessionData(client, GAME)
-    expect(staged).toBe(true)
+    expect(staged()).toBe(true)
     expect(res.error).toBeDefined()
     expect(state.events.filter((e) => e.startsWith('delete:'))).toEqual([])
-    expect(state.session.round_finalize).toMatchObject({ bookkeeping_owner: 'someone-else' })
+    expect(state.game.finish_bookkeeping).toMatchObject({ owner: 'someone-else' })
+  })
+
+  it('the cron sweep recovers owed bookkeeping for finished games with no client involved', async () => {
+    const { client, state } = makeStatefulClient()
+    state.session.round_finalize = null
+    pendingGame(state, { owner: 'dead-runner', lease_until: new Date(Date.now() - 1000).toISOString() })
+    expect(await recoverAllFinishBookkeeping(client)).toEqual({ recovered: 1, pending: 0, failed: 0 })
+    expect(state.game.finish_bookkeeping).toBeNull()
   })
 })
