@@ -1000,13 +1000,18 @@ describe('createFlipResyncTracker', () => {
     expect(resync).toHaveBeenCalledTimes(2)
   })
 
-  it('forgets a settled failure, so later successes do not resync again', () => {
+  it('forgets a settled failure, so later successes do not resync again', async () => {
     const resync = vi.fn()
     const t = createFlipResyncTracker(resync)
     t.begin()
     t.end(true)
+    // Let the first resync finish before the next flip starts, so only a leaked failure could trigger another.
+    await Promise.resolve()
+    await Promise.resolve()
     t.begin()
     t.end(false)
+    await Promise.resolve()
+    await Promise.resolve()
     expect(resync).toHaveBeenCalledTimes(1)
   })
 })

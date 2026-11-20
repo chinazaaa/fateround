@@ -212,7 +212,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           // A failed read is not an empty history: treating it as one would reset the matched cards, streak
           // and points. Leave everything as it is; the next load will reconcile.
           if (!supabasePollOk(subRes, progRes)) {
-            return { hasBoard: boardRef.current !== null, ownFinished: finishedRef.current, roundFinished: false }
+            // Only for the round the board on screen was built for: another round's board must not stay up under
+            // this round's metadata, so for a new round clear it and report no board until a read succeeds.
+            const sameRoundBoard = boardRoundIdRef.current === roundData.id && boardRef.current !== null
+            if (!sameRoundBoard) setBoard(null)
+            return {
+              hasBoard: sameRoundBoard,
+              ownFinished: sameRoundBoard && finishedRef.current,
+              roundFinished: false,
+            }
           }
           const subData = subRes.data
           const progData = progRes.data

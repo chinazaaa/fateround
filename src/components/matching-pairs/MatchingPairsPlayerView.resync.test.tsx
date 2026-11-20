@@ -54,6 +54,7 @@ const ROUND = {
 const db = vi.hoisted(() => ({
   subs: [] as unknown[],
   failReads: false,
+  roundId: 'r1',
   reads: 0,
   /** Holds the next submissions read open (once), so a read can be in flight across other events. */
   readGate: null as null | Promise<void>,
@@ -103,7 +104,7 @@ vi.mock('@/lib/supabase', () => {
   }
 })
 function ROUND_ROW() {
-  return ROUND
+  return { ...ROUND, id: db.roundId }
 }
 
 vi.mock('@/hooks/useGameViewBootstrap', async () => {
@@ -211,6 +212,7 @@ async function mount() {
 beforeEach(() => {
   db.subs = []
   db.failReads = false
+  db.roundId = 'r1'
   db.reads = 0
   db.readGate = null
   boot.loadCalls = 0
@@ -293,6 +295,20 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     // Only the two reads this test made itself: nothing re-armed a read.
     expect(db.reads - readsBefore).toBe(2)
     expect(boot.loadCalls).toBe(loadsBefore)
+  })
+
+  it("does not keep the previous round's board up when the read fails for a new round", async () => {
+    await mount()
+    expect(cards()).toHaveLength(6)
+
+    db.roundId = 'r2' // a new round started, and this load's reads fail
+    db.failReads = true
+    let state: unknown
+    await act(async () => {
+      state = await boot.opts!.afterResolve(GAME, 'p1', {})
+    })
+    expect((state as { hasBoard: boolean }).hasBoard).toBe(false)
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /card/i })).toHaveLength(0))
   })
 
   // Cards 0,1 are pair 0 (stored as matched, streak 1, 100 points); a miss is cards 2 (pair 1) and 4 (pair 2).
