@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyPlayerChange, createLoadRecovery, createRosterReadGuard } from './player-realtime'
+import {
+  applyPlayerChange,
+  createLoadRecovery,
+  createNewestCallTracker,
+  createRosterReadGuard,
+} from './player-realtime'
 
 type P = { id: string; name: string; spectator: boolean }
 const a: P = { id: 'a', name: 'A', spectator: false }
@@ -174,5 +179,36 @@ describe('createLoadRecovery', () => {
     resolve(false)
     await vi.advanceTimersByTimeAsync(60_000)
     expect(load).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('createNewestCallTracker', () => {
+  it('reports only the latest call as current', () => {
+    const tracker = createNewestCallTracker()
+    const first = tracker.begin()
+    expect(first()).toBe(false)
+    const second = tracker.begin()
+    expect(first()).toBe(true)
+    expect(second()).toBe(false)
+  })
+
+  it('lets an older load that finishes last be discarded (out-of-order completion)', async () => {
+    const tracker = createNewestCallTracker()
+    const writes: string[] = []
+    const resolvers: Array<() => void> = []
+    const load = async (label: string) => {
+      const superseded = tracker.begin()
+      await new Promise<void>((r) => resolvers.push(r))
+      if (superseded()) return true
+      writes.push(label)
+      return true
+    }
+    const older = load('older')
+    const newer = load('newer')
+    resolvers[1]() // newer finishes first
+    await newer
+    resolvers[0]() // older finishes last
+    await older
+    expect(writes).toEqual(['newer'])
   })
 })

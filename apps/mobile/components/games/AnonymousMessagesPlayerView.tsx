@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createLoadRecovery, createRosterReadGuard } from '@fateround/shared/player-realtime'
+import { createLoadRecovery, createNewestCallTracker, createRosterReadGuard } from '@fateround/shared/player-realtime'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
 import { useOnAppResume } from '@/hooks/useAppActive'
@@ -133,7 +133,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return true
   }, [code])
 
+  // Newest-load token: overlapping loads (initial, game-row event, SUBSCRIBED, app resume) can finish
+  // out of order, and an older one must not overwrite state a newer one already wrote.
+  const [loadTracker] = useState(createNewestCallTracker)
+
   const load = useCallback(async () => {
+    // A superseded load reports success: the newer load owns the result (and its own retry).
+    const superseded = loadTracker.begin()
     const supabase = getSupabase()
     const snapshot = await rosterGuard.read(async () => {
       const [g, p] = await Promise.all([
@@ -142,6 +148,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       ])
       return g.error || p.error ? null : { gameRes: g, playersRes: p }
     })
+    if (superseded()) return true
     if (!snapshot) return false
     const { gameRes, playersRes } = snapshot
     if (!gameRes.data) {
@@ -154,6 +161,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     playersRef.current = playerRows
     setPlayers(playerRows)
     const session = await getPlayerSession(code)
+    if (superseded()) return true
     const playerId = session?.playerId ?? null
     if (session) setMyPlayerId(session.playerId)
     else setMyPlayerId(null)
@@ -165,11 +173,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         .eq('game_id', code)
         .eq('player_id', playerId)
         .maybeSingle()
+      if (superseded()) return true
       setBanUntil((banRes.data as { banned_until?: string } | null)?.banned_until ?? null)
     }
+    if (superseded()) return true
     await loadMessages()
     return true
-  }, [code, loadMessages, rosterGuard, syncScreen])
+  }, [code, loadMessages, loadTracker, rosterGuard, syncScreen])
 
   // First load, with bounded retry: a failed read must not strand the loading screen (this view has
   // no fallback poll).
@@ -179,8 +189,20 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return recovery.stop
   }, [load])
 
+  // Event-driven reloads (game row, roster, resubscribe, foreground) retry a bounded number of times
+  // when the read fails: this view has no fallback poll, so a single failed reload after the host
+  // ends the session would otherwise leave the player on a stale screen.
+  const reloadRecovery = useRef<ReturnType<typeof createLoadRecovery> | null>(null)
+  const reload = useCallback(() => {
+    reloadRecovery.current?.stop()
+    const recovery = createLoadRecovery(load)
+    reloadRecovery.current = recovery
+    recovery.start()
+  }, [load])
+  useEffect(() => () => reloadRecovery.current?.stop(), [])
+
   // Backgrounded apps lose their sockets and timers; reconcile on return to the foreground.
-  useOnAppResume(() => void load())
+  useOnAppResume(reload)
 
   useEffect(() => {
     const id = setInterval(() => setTimerTick((t) => t + 1), 1000)
@@ -198,19 +220,19 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${code}` }, () => {
         // An in-flight read that started before this event is now stale; the guard re-fetches it.
         rosterGuard.noteEvent()
-        void load()
+        reload()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `id=eq.${code}` }, () => {
-        void load()
+        reload()
       })
       .subscribe((status) => {
         // (Re)connected: events sent while the socket was down are gone, so resync.
-        if (status === 'SUBSCRIBED') void load()
+        if (status === 'SUBSCRIBED') reload()
       })
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [code, load, rosterGuard])
+  }, [code, reload, rosterGuard])
 
   useEffect(() => {
     if (screen !== 'active') return

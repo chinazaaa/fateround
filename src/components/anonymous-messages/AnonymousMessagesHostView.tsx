@@ -52,6 +52,8 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // The game row is gone (deleted): distinct from the initial `game === null` loading state.
+  const [roomDeleted, setRoomDeleted] = useState(false)
   // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
   const [rosterGuard] = useState(createRosterReadGuard)
   const [starting, setStarting] = useState(false)
@@ -91,7 +93,12 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
     })
     if (!snapshot) return false
-    if (snapshot.gameRes.data) setGame(snapshot.gameRes.data)
+    if (snapshot.gameRes.data) {
+      setGame(snapshot.gameRes.data)
+      setRoomDeleted(false)
+    } else {
+      setRoomDeleted(true)
+    }
     setPlayers(snapshot.plrsRes.data ?? [])
     return true
   }, [gameCode, rosterGuard])
@@ -262,6 +269,19 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     } finally {
       setMutingPlayerId(null)
     }
+  }
+
+  if (roomDeleted) {
+    return (
+      <div className="page-wrap flex min-h-screen items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md space-y-5 text-center">
+          <p className="font-bold text-xl">This room no longer exists</p>
+          <a href="/" className="btn-primary block w-full">
+            Back home
+          </a>
+        </div>
+      </div>
+    )
   }
 
   if (!game) {
