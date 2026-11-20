@@ -223,6 +223,7 @@ export function useGameSession(deps: GameSessionDeps) {
   // ── Initial load effect ─────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
+      const loadTicket = lateVotesRef.current.ticket()
       try {
         const { data: gameData } = await supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle()
         if (!gameData) {
@@ -311,7 +312,8 @@ export function useGameSession(deps: GameSessionDeps) {
               .maybeSingle()
 
             if (finishedRound && session) {
-              lateVotesRef.current.begin(finishedRound.id)
+              // A loader that started after this one owns the results now: do not clear its tracking state.
+              if (!lateVotesRef.current.begin(finishedRound.id, loadTicket)) return
               const [{ data: rv }, { data: rc }] = await Promise.all([
                 supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
                 supabase
@@ -482,6 +484,7 @@ export function useGameSession(deps: GameSessionDeps) {
         }
       },
       onRoundUpdate: async (round) => {
+        const ticket = lateVotesRef.current.ticket()
         if (round.status === 'active') {
           const priorId = roundFormIdRef.current
           applyActiveRound(round, { switchView: priorId !== round.id })
@@ -500,7 +503,8 @@ export function useGameSession(deps: GameSessionDeps) {
           }
         }
         if (round.status === 'finished') {
-          lateVotesRef.current.begin(round.id)
+          // A loader that started after this one owns the results now: do not clear its tracking state.
+          if (!lateVotesRef.current.begin(round.id, ticket)) return
           const [{ data: rv }, { data: rc }] = await Promise.all([
             supabase.from('votes').select(VOTE_SELECT).eq('round_id', round.id),
             supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', round.id).order('created_at'),
@@ -662,6 +666,7 @@ export function useGameSession(deps: GameSessionDeps) {
   // ── Polling: active round / round results ───────────────────────────────
   usePolling(
     async () => {
+      const ticket = lateVotesRef.current.ticket()
       const [gameRes, activeRoundRes, finishedRoundRes] = await Promise.all([
         supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
         supabase.from('rounds').select(ROUND_SELECT).eq('game_id', gameCode).eq('status', 'active').maybeSingle(),
@@ -705,7 +710,8 @@ export function useGameSession(deps: GameSessionDeps) {
       }
 
       if (finishedRound && myPlayerIdRef.current) {
-        lateVotesRef.current.begin(finishedRound.id)
+        // A loader that started after this one owns the results now: do not clear its tracking state.
+        if (!lateVotesRef.current.begin(finishedRound.id, ticket)) return true
         const [votesRes, confsRes] = await Promise.all([
           supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
           supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', finishedRound.id).order('created_at'),

@@ -20,13 +20,31 @@ export function mergeVotesById(base: Vote[], extra: Vote[]): Vote[] {
 export function createLateVoteTracker() {
   let roundId: string | null = null
   let late = new Map<string, Vote>()
+  let lastTicket = 0
+  let ownerTicket = 0
 
   return {
-    /** Start tracking `id`. Call BEFORE fetching that round's results. Re-calling for the same round is a no-op. */
-    begin(id: string) {
-      if (roundId === id) return
+    /**
+     * A loader takes a ticket when it STARTS (before any await). Tickets order loaders by start time, so a loader
+     * that started earlier but finishes later can be told apart from the newer one that owns the tracking state.
+     */
+    ticket: () => ++lastTicket,
+    /**
+     * Start tracking `id` for the loader holding `ticket`. Call BEFORE fetching that round's results. Re-calling for
+     * the tracked round is always true and changes nothing (repeated loads of one round, in any order). Switching to
+     * a different round is refused (false) when a loader that started later already owns the tracking state: the
+     * caller is stale and must not apply its results, or it would clear the newer round's late votes.
+     */
+    begin(id: string, ticket: number): boolean {
+      if (roundId === id) {
+        ownerTicket = Math.max(ownerTicket, ticket)
+        return true
+      }
+      if (ticket < ownerTicket) return false
+      ownerTicket = ticket
       roundId = id
       late = new Map()
+      return true
     },
     /** The round being tracked, or null. */
     current: () => roundId,
