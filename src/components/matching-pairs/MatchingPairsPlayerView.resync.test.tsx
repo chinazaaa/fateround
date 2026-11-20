@@ -9,6 +9,7 @@
  * so the view's real snapshot-application code is what is exercised.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY } from '@/lib/memory-match'
 import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react'
 
 type Sub = {
@@ -38,14 +39,15 @@ const ROUND = {
   status: 'active',
   started_at: '2026-01-01T00:00:00Z',
   memory_match_metadata: {
-    gridSizePairs: 2,
+    gridSizePairs: 3,
     seed: 1,
     pairs: [
       { icon: 'A', color: '#111', pairIndex: 0 },
       { icon: 'B', color: '#222', pairIndex: 1 },
+      { icon: 'C', color: '#333', pairIndex: 2 },
     ],
-    // cards 0,1 = pair 0; cards 2,3 = pair 1
-    playerBoards: [{ playerId: 'p1', cardOrder: [0, 0, 1, 1] }],
+    // cards 0,1 = pair 0; cards 2,3 = pair 1; cards 4,5 = pair 2
+    playerBoards: [{ playerId: 'p1', cardOrder: [0, 0, 1, 1, 2, 2] }],
   },
 }
 
@@ -53,6 +55,8 @@ const db = vi.hoisted(() => ({
   subs: [] as unknown[],
   failReads: false,
   reads: 0,
+  /** Holds the next submissions read open (once), so a read can be in flight across other events. */
+  readGate: null as null | Promise<void>,
 }))
 const boot = vi.hoisted(() => ({
   opts: null as null | {
@@ -78,7 +82,13 @@ vi.mock('@/lib/supabase', () => {
     const q: Record<string, unknown> = {}
     for (const m of ['select', 'eq', 'order']) q[m] = () => q
     q.maybeSingle = async () => result(table)
-    q.then = (resolve: (v: unknown) => unknown) => Promise.resolve(result(table)).then(resolve)
+    q.then = (resolve: (v: unknown) => unknown) => {
+      // One-shot: only the next submissions query is held, not the follow-up refreshes after a flip.
+      const gate = table === 'memory_match_submissions' ? db.readGate : null
+      if (gate) db.readGate = null
+      const snapshot = result(table) // the data is read when the query starts, as a real request would
+      return (gate ?? Promise.resolve()).then(() => snapshot).then(resolve)
+    }
     return q
   }
   return {
@@ -190,17 +200,19 @@ const sub = (pair: number, isMatch: boolean, streak: number, points: number, n: 
 const cards = () => screen.getAllByRole('button').filter((b) => /card/i.test(b.getAttribute('aria-label') ?? ''))
 const hiddenCount = () => cards().filter((b) => b.getAttribute('aria-label') === 'Hidden card').length
 const scoreValue = () => screen.getByText('Score').nextElementSibling!.textContent
+const streakValue = () => screen.getByText('Streak').nextElementSibling!.textContent
 
 async function mount() {
   render(<MatchingPairsPlayerView gameCode="ABCD" />)
   // The first load builds the board from the (empty) stored history.
-  await waitFor(() => expect(cards()).toHaveLength(4))
+  await waitFor(() => expect(cards()).toHaveLength(6))
 }
 
 beforeEach(() => {
   db.subs = []
   db.failReads = false
   db.reads = 0
+  db.readGate = null
   boot.loadCalls = 0
   boot.gate = null
   fetchMock = vi.fn()
@@ -225,7 +237,8 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
 
     // Nothing was stored, so the resync shows the empty board and no points again.
     await waitFor(() => expect(scoreValue()).toBe('0'))
-    expect(hiddenCount()).toBe(4)
+    expect(streakValue()).toBe('0🔥')
+    expect(hiddenCount()).toBe(6)
     expect(boot.loadCalls).toBe(loadsBefore + 1)
   })
 
@@ -245,7 +258,7 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
       await boot.opts!.afterResolve(GAME, 'p1', {})
     })
     expect(scoreValue()).toBe('100')
-    expect(hiddenCount()).toBe(2)
+    expect(hiddenCount()).toBe(4)
   })
 
   it('keeps the optimistic board while a flip is in flight, then reads again once it has settled', async () => {
@@ -260,7 +273,7 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
       await boot.opts!.afterResolve(GAME, 'p1', {})
     })
     expect(scoreValue()).not.toBe('0')
-    expect(hiddenCount()).toBe(2)
+    expect(hiddenCount()).toBe(4)
 
     answer(refused())
     await waitFor(() => expect(scoreValue()).toBe('0'))
@@ -282,24 +295,65 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     expect(boot.loadCalls).toBe(loadsBefore)
   })
 
+  // Cards 0,1 are pair 0 (stored as matched, streak 1, 100 points); a miss is cards 2 (pair 1) and 4 (pair 2).
+  const storedMatch = () => [sub(0, true, 1, 100, 1)]
+
   it('after a refused miss, reconciles streak and points once the pair has flipped back', async () => {
     fetchMock.mockResolvedValue(refused())
-    db.subs = [sub(0, false, 0, 300, 1)] // an earlier stored miss: 300 points, no streak
+    db.subs = storedMatch()
     await mount()
-    expect(scoreValue()).toBe('300')
+    expect(scoreValue()).toBe('100')
+    expect(streakValue()).toBe('1🔥')
     const loadsBefore = boot.loadCalls
 
-    fireEvent.click(cards()[0])
-    fireEvent.click(cards()[2]) // pair 0 vs pair 1: a miss, penalty applied optimistically
-    expect(scoreValue()).not.toBe('300')
+    fireEvent.click(cards()[2])
+    fireEvent.click(cards()[4]) // a miss: streak reset and penalty applied optimistically
+    expect(streakValue()).toBe('0🔥')
     // The refusal resyncs while the pair is still flipping back (board locked): that snapshot is deferred, and
     // the idle board after the flip-back reads again exactly once.
     await waitFor(() => expect(hiddenCount()).toBe(4), { timeout: 3000 })
     await waitFor(() => expect(boot.loadCalls).toBeGreaterThan(loadsBefore))
-    await new Promise((r) => setTimeout(r, 300))
+    await waitFor(() => expect(scoreValue()).toBe('100'))
+    expect(streakValue()).toBe('1🔥')
     const settled = boot.loadCalls
     await new Promise((r) => setTimeout(r, 300))
     expect(boot.loadCalls).toBe(settled) // no repeated reads
-    expect(scoreValue()).toBe('300') // the refused miss's penalty is gone
+  })
+
+  it('a read that started before an accepted flip is not applied over it, and is read again', async () => {
+    // The read's snapshot (taken when it starts) lacks the miss that is stored afterwards. It finishes only once
+    // the board is idle again; applying it would put the pre-miss streak and points back.
+    const PEN = MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY
+    let releaseRead: () => void = () => {}
+    db.subs = storedMatch()
+    fetchMock.mockImplementation(async () => {
+      db.subs = [...storedMatch(), sub(1, false, 0, 100 - PEN, 2)]
+      return { ok: true, json: async () => ({ currentStreak: 0, pointsAfter: 100 - PEN, finished: false }) }
+    })
+    await mount()
+
+    db.readGate = new Promise<void>((r) => {
+      releaseRead = r
+    })
+    const readsBefore = db.reads
+    let inFlightRead: Promise<unknown> = Promise.resolve()
+    act(() => {
+      inFlightRead = boot.opts!.afterResolve(GAME, 'p1', {})
+    })
+    // Wait until the submissions query has started, so its snapshot predates the miss.
+    await waitFor(() => expect(db.reads).toBe(readsBefore + 1))
+    fireEvent.click(cards()[2])
+    fireEvent.click(cards()[4]) // the miss, stored by the (accepted) request
+    await waitFor(() => expect(hiddenCount()).toBe(4), { timeout: 3000 }) // flipped back: the board is idle
+    db.readGate = null
+    await act(async () => {
+      releaseRead()
+      await inFlightRead
+    })
+    await waitFor(() => expect(streakValue()).toBe('0🔥'))
+    expect(scoreValue()).toBe(String(100 - PEN))
+    const settled = boot.loadCalls
+    await new Promise((r) => setTimeout(r, 300))
+    expect(boot.loadCalls).toBe(settled)
   })
 })
