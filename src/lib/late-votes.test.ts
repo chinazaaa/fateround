@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Vote } from '@/types'
-import { createLateVoteTracker, mergeVotesById } from './late-votes'
+import { createLateVoteTracker, loadFinishedRoundResults, mergeVotesById } from './late-votes'
 
 const vote = (id: string, roundId = 'r1'): Vote => ({ id, round_id: roundId }) as unknown as Vote
 
@@ -62,18 +62,18 @@ describe('createLateVoteTracker', () => {
     const t = createLateVoteTracker()
     t.begin('r1', t.ticket())
     t.add(vote('late'))
-    expect(t.begin('r1', t.ticket())).toBe(true)
+    expect(t.begin('r1', t.ticket())).not.toBeNull()
     expect(t.merge('r1', [vote('a')]).map((v) => v.id)).toEqual(['a', 'late'])
   })
 
-  describe('loaders that finish out of order', () => {
+  describe('loaders that start out of order', () => {
     it('refuses a loader that started earlier but reaches begin() after a newer loader took over', () => {
       const t = createLateVoteTracker()
       const olderPoll = t.ticket() // started while r1 was the finished round
       const realtime = t.ticket() // r2 finished and began loading its results
-      expect(t.begin('r2', realtime)).toBe(true)
+      expect(t.begin('r2', realtime)).not.toBeNull()
       // the older poll's response arrives late: it must not take the tracker back to r1
-      expect(t.begin('r1', olderPoll)).toBe(false)
+      expect(t.begin('r1', olderPoll)).toBeNull()
       expect(t.current()).toBe('r2')
     })
 
@@ -92,7 +92,7 @@ describe('createLateVoteTracker', () => {
       const t = createLateVoteTracker()
       t.begin('r2', t.ticket())
       t.add(vote('late', 'r2'))
-      expect(t.begin('r1', t.ticket())).toBe(true)
+      expect(t.begin('r1', t.ticket())).not.toBeNull()
       expect(t.current()).toBe('r1')
       expect(t.merge('r1', [vote('a')]).map((v) => v.id)).toEqual(['a'])
     })
@@ -104,7 +104,7 @@ describe('createLateVoteTracker', () => {
       t.begin('r1', second)
       t.add(vote('late'))
       // the first loader finishes after the second began: same round, so it is not stale and nothing is cleared
-      expect(t.begin('r1', first)).toBe(true)
+      expect(t.begin('r1', first)).not.toBeNull()
       expect(t.merge('r1', [vote('a')]).map((v) => v.id)).toEqual(['a', 'late'])
     })
 
@@ -115,7 +115,119 @@ describe('createLateVoteTracker', () => {
       const newest = t.ticket()
       t.begin('r2', mid)
       t.begin('r2', newest)
-      expect(t.begin('r1', stale)).toBe(false)
+      expect(t.begin('r1', stale)).toBeNull()
     })
+  })
+
+  describe('owns', () => {
+    it('is true for repeated loads of one round and false once the tracked round was switched', () => {
+      const t = createLateVoteTracker()
+      const a = t.begin('r1', t.ticket())!
+      const b = t.begin('r1', t.ticket())! // another load of the same round
+      expect(t.owns(a)).toBe(true)
+      expect(t.owns(b)).toBe(true)
+      t.begin('r2', t.ticket())
+      expect(t.owns(a)).toBe(false)
+      expect(t.owns(b)).toBe(false)
+    })
+
+    it('treats a switch away and back to the same round as a new ownership period', () => {
+      const t = createLateVoteTracker()
+      const first = t.begin('r1', t.ticket())!
+      t.begin('r2', t.ticket())
+      t.begin('r1', t.ticket()) // back to r1
+      expect(t.owns(first)).toBe(false)
+    })
+  })
+})
+
+/** A fetch whose completion the test controls, to interleave loaders. */
+function deferred<T>() {
+  let resolve!: (v: T) => void
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
+describe('loadFinishedRoundResults (loaders finishing out of order)', () => {
+  type Res = { votes: Vote[]; tag: string }
+
+  function setup() {
+    const tracker = createLateVoteTracker()
+    const applied: { roundId: string; tag: string; ids: string[] }[] = []
+    const load = (roundId: string, ticket: number, fetchResults: () => Promise<Res | null>) =>
+      loadFinishedRoundResults(tracker, roundId, ticket, fetchResults, (r) =>
+        applied.push({ roundId, tag: r.tag, ids: r.votes.map((v) => v.id) })
+      )
+    return { tracker, applied, load }
+  }
+
+  it('applies nothing for an older loader that passed begin() but finishes after a newer round applied its results', async () => {
+    const { tracker, applied, load } = setup()
+    const r1Fetch = deferred<Res>()
+    const olderTicket = tracker.ticket()
+    const older = load('r1', olderTicket, () => r1Fetch.promise) // r1 loader: passed begin(), awaiting its votes
+
+    const newerTicket = tracker.ticket()
+    const newer = await load('r2', newerTicket, async () => ({ votes: [vote('b', 'r2')], tag: 'r2' }))
+    expect(newer).toBe('applied')
+
+    r1Fetch.resolve({ votes: [vote('a')], tag: 'r1' }) // the r1 fetch completes last
+    expect(await older).toBe('stale')
+    expect(applied.map((a) => a.tag)).toEqual(['r2']) // r1's older results were never applied over r2's
+  })
+
+  it('applies nothing for an old loader of a round that was switched away from and back to', async () => {
+    const { tracker, applied, load } = setup()
+    const slow = deferred<Res>()
+    const old = load('r1', tracker.ticket(), () => slow.promise)
+    await load('r2', tracker.ticket(), async () => ({ votes: [], tag: 'r2' }))
+    await load('r1', tracker.ticket(), async () => ({ votes: [vote('fresh')], tag: 'r1-new' }))
+    slow.resolve({ votes: [vote('stale')], tag: 'r1-old' })
+    expect(await old).toBe('stale')
+    expect(applied.map((a) => a.tag)).toEqual(['r2', 'r1-new'])
+  })
+
+  it('merges a late INSERT that arrives while the fetch is in flight into what is applied', async () => {
+    const { tracker, applied, load } = setup()
+    const f = deferred<Res>()
+    const p = load('r1', tracker.ticket(), () => f.promise)
+    tracker.add(vote('late')) // lands mid-fetch, after the snapshot was read
+    f.resolve({ votes: [vote('a')], tag: 'r1' })
+    expect(await p).toBe('applied')
+    expect(applied[0].ids).toEqual(['a', 'late'])
+  })
+
+  it('lets two overlapping loads of the same round both apply, in whatever order they finish', async () => {
+    const { tracker, applied, load } = setup()
+    const f1 = deferred<Res>()
+    const f2 = deferred<Res>()
+    const p1 = load('r1', tracker.ticket(), () => f1.promise)
+    const p2 = load('r1', tracker.ticket(), () => f2.promise)
+    f2.resolve({ votes: [vote('a')], tag: 'second' })
+    f1.resolve({ votes: [vote('a')], tag: 'first' })
+    expect([await p1, await p2]).toEqual(['applied', 'applied'])
+    expect(applied.map((a) => a.tag)).toEqual(['second', 'first'])
+  })
+
+  it('reports a failed fetch without applying anything', async () => {
+    const { tracker, applied, load } = setup()
+    expect(await load('r1', tracker.ticket(), async () => null)).toBe('failed')
+    expect(applied).toEqual([])
+  })
+
+  it('does not run the fetch at all for a loader refused at begin()', async () => {
+    const { tracker, load } = setup()
+    const stale = tracker.ticket()
+    await load('r2', tracker.ticket(), async () => ({ votes: [], tag: 'r2' }))
+    let fetched = false
+    expect(
+      await load('r1', stale, async () => {
+        fetched = true
+        return { votes: [], tag: 'r1' }
+      })
+    ).toBe('stale')
+    expect(fetched).toBe(false)
   })
 })

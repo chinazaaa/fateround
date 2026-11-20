@@ -39,7 +39,7 @@ import { useGameChannel } from '@/hooks/useGameChannel'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useRoundTimer } from '@/hooks/useRoundTimer'
-import { createLateVoteTracker, mergeVotesById } from '@/lib/late-votes'
+import { createLateVoteTracker, loadFinishedRoundResults, mergeVotesById } from '@/lib/late-votes'
 import { useTimerTickSound } from '@/hooks/useTimerTickSound'
 import type { AutoSubmitRefs, AutoSubmitResult } from '@/hooks/useAutoSubmit'
 import type {
@@ -312,25 +312,35 @@ export function useGameSession(deps: GameSessionDeps) {
               .maybeSingle()
 
             if (finishedRound && session) {
-              // A loader that started after this one owns the results now: do not clear its tracking state.
-              if (!lateVotesRef.current.begin(finishedRound.id, loadTicket)) return
-              const [{ data: rv }, { data: rc }] = await Promise.all([
-                supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
-                supabase
-                  .from('confessions')
-                  .select(CONFESSION_SELECT)
-                  .eq('round_id', finishedRound.id)
-                  .order('created_at'),
-              ])
-              setLastFinishedRound(finishedRound)
-              setLastRoundVotes(lateVotesRef.current.merge(finishedRound.id, rv || []))
-              if (rc?.length) {
-                setAllConfessions((prev) => {
-                  const ids = new Set(prev.map((c) => c.id))
-                  return [...prev, ...rc.filter((c) => !ids.has(c.id))]
-                })
-              }
-              setView('round_results')
+              const outcome = await loadFinishedRoundResults(
+                lateVotesRef.current,
+                finishedRound.id,
+                loadTicket,
+                async () => {
+                  const [{ data: rv }, { data: rc }] = await Promise.all([
+                    supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
+                    supabase
+                      .from('confessions')
+                      .select(CONFESSION_SELECT)
+                      .eq('round_id', finishedRound.id)
+                      .order('created_at'),
+                  ])
+                  return { votes: rv || [], confessions: rc || [] }
+                },
+                ({ votes, confessions }) => {
+                  setLastFinishedRound(finishedRound)
+                  setLastRoundVotes(votes)
+                  if (confessions.length) {
+                    setAllConfessions((prev) => {
+                      const ids = new Set(prev.map((c) => c.id))
+                      return [...prev, ...confessions.filter((c) => !ids.has(c.id))]
+                    })
+                  }
+                  setView('round_results')
+                }
+              )
+              // A loader that started later (or a newer round) owns the results now: apply nothing.
+              if (outcome === 'stale') return
             } else {
               setView(session ? 'waiting' : preJoinView(gameData, false))
             }
@@ -503,25 +513,32 @@ export function useGameSession(deps: GameSessionDeps) {
           }
         }
         if (round.status === 'finished') {
-          // A loader that started after this one owns the results now: do not clear its tracking state.
-          if (!lateVotesRef.current.begin(round.id, ticket)) return
-          const [{ data: rv }, { data: rc }] = await Promise.all([
-            supabase.from('votes').select(VOTE_SELECT).eq('round_id', round.id),
-            supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', round.id).order('created_at'),
-          ])
-          const roundVotes = lateVotesRef.current.merge(round.id, rv || [])
-          setLastFinishedRound(round)
-          setLastRoundVotes(roundVotes)
-          setAllConfessions((prev) => {
-            const ids = new Set(prev.map((c) => c.id))
-            return [...prev, ...(rc || []).filter((c) => !ids.has(c.id))]
-          })
-          setAllVotes((prev) => mergeVotesById(prev, roundVotes))
-          setAllRounds((prev) => {
-            const ids = new Set(prev.map((r) => r.id))
-            return ids.has(round.id) ? prev.map((r) => (r.id === round.id ? round : r)) : [...prev, round]
-          })
-          setView('round_results')
+          await loadFinishedRoundResults(
+            lateVotesRef.current,
+            round.id,
+            ticket,
+            async () => {
+              const [{ data: rv }, { data: rc }] = await Promise.all([
+                supabase.from('votes').select(VOTE_SELECT).eq('round_id', round.id),
+                supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', round.id).order('created_at'),
+              ])
+              return { votes: rv || [], confessions: rc || [] }
+            },
+            ({ votes, confessions }) => {
+              setLastFinishedRound(round)
+              setLastRoundVotes(votes)
+              setAllConfessions((prev) => {
+                const ids = new Set(prev.map((c) => c.id))
+                return [...prev, ...confessions.filter((c) => !ids.has(c.id))]
+              })
+              setAllVotes((prev) => mergeVotesById(prev, votes))
+              setAllRounds((prev) => {
+                const ids = new Set(prev.map((r) => r.id))
+                return ids.has(round.id) ? prev.map((r) => (r.id === round.id ? round : r)) : [...prev, round]
+              })
+              setView('round_results')
+            }
+          )
         }
       },
       onPlayerUpdate: (p) => {
@@ -710,24 +727,36 @@ export function useGameSession(deps: GameSessionDeps) {
       }
 
       if (finishedRound && myPlayerIdRef.current) {
-        // A loader that started after this one owns the results now: do not clear its tracking state.
-        if (!lateVotesRef.current.begin(finishedRound.id, ticket)) return true
-        const [votesRes, confsRes] = await Promise.all([
-          supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
-          supabase.from('confessions').select(CONFESSION_SELECT).eq('round_id', finishedRound.id).order('created_at'),
-        ])
-        if (!supabasePollOk(votesRes, confsRes)) return false
-        const roundVotes = lateVotesRef.current.merge(finishedRound.id, votesRes.data || [])
-        setLastFinishedRound(finishedRound)
-        setLastRoundVotes(roundVotes)
-        setAllVotes((prev) => mergeVotesById(prev, roundVotes))
-        if (confsRes.data?.length) {
-          setAllConfessions((prev) => {
-            const ids = new Set(prev.map((c) => c.id))
-            return [...prev, ...confsRes.data!.filter((c) => !ids.has(c.id))]
-          })
-        }
-        setView('round_results')
+        const outcome = await loadFinishedRoundResults(
+          lateVotesRef.current,
+          finishedRound.id,
+          ticket,
+          async () => {
+            const [votesRes, confsRes] = await Promise.all([
+              supabase.from('votes').select(VOTE_SELECT).eq('round_id', finishedRound.id),
+              supabase
+                .from('confessions')
+                .select(CONFESSION_SELECT)
+                .eq('round_id', finishedRound.id)
+                .order('created_at'),
+            ])
+            if (!supabasePollOk(votesRes, confsRes)) return null
+            return { votes: votesRes.data || [], confessions: confsRes.data || [] }
+          },
+          ({ votes, confessions }) => {
+            setLastFinishedRound(finishedRound)
+            setLastRoundVotes(votes)
+            setAllVotes((prev) => mergeVotesById(prev, votes))
+            if (confessions.length) {
+              setAllConfessions((prev) => {
+                const ids = new Set(prev.map((c) => c.id))
+                return [...prev, ...confessions.filter((c) => !ids.has(c.id))]
+              })
+            }
+            setView('round_results')
+          }
+        )
+        if (outcome === 'failed') return false
       }
       return true
     },

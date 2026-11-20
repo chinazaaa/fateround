@@ -17,11 +17,15 @@ export function mergeVotesById(base: Vote[], extra: Vote[]): Vote[] {
  * path that loads a snapshot (realtime round update, bootstrap, polling) can fold them back in with
  * `merge`, whatever order the events and fetches finish in.
  */
+export type LateVoteTracker = ReturnType<typeof createLateVoteTracker>
+
 export function createLateVoteTracker() {
   let roundId: string | null = null
   let late = new Map<string, Vote>()
   let lastTicket = 0
   let ownerTicket = 0
+  // Counts switches of the tracked round, including a switch away and back to the same round.
+  let epoch = 0
 
   return {
     /**
@@ -30,22 +34,26 @@ export function createLateVoteTracker() {
      */
     ticket: () => ++lastTicket,
     /**
-     * Start tracking `id` for the loader holding `ticket`. Call BEFORE fetching that round's results. Re-calling for
-     * the tracked round is always true and changes nothing (repeated loads of one round, in any order). Switching to
-     * a different round is refused (false) when a loader that started later already owns the tracking state: the
-     * caller is stale and must not apply its results, or it would clear the newer round's late votes.
+     * Start tracking `id` for the loader holding `ticket`. Call BEFORE fetching that round's results. Returns a
+     * token for `owns`, or null when the caller is stale and must not apply anything: switching to a different
+     * round is refused when a loader that started later already owns the tracking state, because it would clear
+     * the newer round's late votes. Re-calling for the tracked round is always allowed and changes nothing
+     * (repeated loads of one round, in any order); a loader that started later can take over, including for an
+     * older round id (a replayed game).
      */
-    begin(id: string, ticket: number): boolean {
+    begin(id: string, ticket: number): number | null {
       if (roundId === id) {
         ownerTicket = Math.max(ownerTicket, ticket)
-        return true
+        return epoch
       }
-      if (ticket < ownerTicket) return false
+      if (ticket < ownerTicket) return null
       ownerTicket = ticket
       roundId = id
       late = new Map()
-      return true
+      return ++epoch
     },
+    /** True while the tracked round has not been switched since `begin` returned `token` (re-check after awaits). */
+    owns: (token: number) => token === epoch,
     /** The round being tracked, or null. */
     current: () => roundId,
     /** Record a vote INSERT. Returns true when it belongs to the tracked round (and should be displayed). */
@@ -60,4 +68,30 @@ export function createLateVoteTracker() {
       return mergeVotesById(snapshot, [...late.values()])
     },
   }
+}
+
+/**
+ * The one sequence every finished-round loader (bootstrap, realtime round update, polling) must follow, so that
+ * loaders finishing out of order cannot overwrite each other: take ownership of the tracker BEFORE fetching, and
+ * check it again AFTER the fetch and before applying anything.
+ *
+ *   - 'stale'   a loader that started later owns the tracker (before the fetch), or the tracked round was switched
+ *               while this fetch was in flight (after it): nothing was applied.
+ *   - 'failed'  `fetchResults` returned null (the fetch failed): nothing was applied.
+ *   - 'applied' `apply` ran with the votes merged with the late votes the snapshot may predate.
+ */
+export async function loadFinishedRoundResults<T extends { votes: Vote[] }>(
+  tracker: LateVoteTracker,
+  roundId: string,
+  ticket: number,
+  fetchResults: () => Promise<T | null>,
+  apply: (results: T) => void
+): Promise<'applied' | 'stale' | 'failed'> {
+  const token = tracker.begin(roundId, ticket)
+  if (token === null) return 'stale'
+  const results = await fetchResults()
+  if (!tracker.owns(token)) return 'stale'
+  if (results === null) return 'failed'
+  apply({ ...results, votes: tracker.merge(roundId, results.votes) })
+  return 'applied'
 }
