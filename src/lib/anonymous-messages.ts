@@ -63,7 +63,10 @@ export function formatBanCountdown(secondsLeft: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-/** Players who join after the session starts may watch but not post. */
+// The web app does not wire the `@fateround/shared` alias, so these two stay a copy of
+// packages/shared/src/anonymous-messages.ts (used by both mobile helpers). The parity test in
+// anonymous-messages-chat.test.ts fails if the copies drift.
+/** Players who join after the session starts, or explicitly as watch-only viewers, may not post. */
 export function anonymousPlayerCanChat(
   player: Pick<Player, 'joined_at' | 'spectator'>,
   game: Pick<Game, 'status' | 'session_started_at'>
@@ -83,14 +86,12 @@ export function countAnonymousRoomPresence(
   if (game.status !== 'active' && game.status !== 'waiting') {
     return { total: players.length, participants: players.length, viewers: 0 }
   }
-
   let participants = 0
   let viewers = 0
   for (const player of players) {
     if (anonymousPlayerCanChat(player, game)) participants++
     else viewers++
   }
-
   return { total: players.length, participants, viewers }
 }
 
