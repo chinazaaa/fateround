@@ -50,13 +50,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No active clue to end' }, { status: 400 })
   }
 
-  const { data: updated, error } = await supabase
+  // Compare-and-swap on the clue the operative acted on. The board id alone also matches a LATER
+  // turn: if this handler read red's clue, red's last guess then ended the turn, and blue posted a
+  // new clue before this write, an id-only update would wipe blue's clue and its guess allowance.
+  // Requiring the observed team, an active clue (and its revision) and no winner makes the stale
+  // request a no-op.
+  let update = supabase
     .from('codewords_boards')
     .update(cluePhaseUpdate(otherTeam(role.team), typedBoard.spymaster_timer_seconds ?? 60))
     .eq('id', typedBoard.id)
-    .select()
-    .single()
+    .eq('current_turn', role.team)
+    .is('winner', null)
+    .not('current_clue_word', 'is', null)
+  if (typeof typedBoard.clue_seq === 'number') update = update.eq('clue_seq', typedBoard.clue_seq)
+  const { data: updated, error } = await update.select().maybeSingle()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/end-turn', error) }, { status: 500 })
+  if (!updated) return NextResponse.json({ error: 'The turn already changed — refresh and try again' }, { status: 409 })
   return NextResponse.json({ success: true, board: maskCodewordsBoardKey(updated as CodewordsBoard) })
 }

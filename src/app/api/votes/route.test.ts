@@ -12,12 +12,20 @@ let animeMetadata: unknown = null
 let rpcResult: { data: unknown; error: { message: string } | null } = { data: { status: 'ok' }, error: null }
 const rpcCalls: { fn: string; args: unknown }[] = []
 const upserts: unknown[] = []
-const upsertOptions: ({ onConflict?: string; ignoreDuplicates?: boolean } | undefined)[] = []
+const voteCalls: Record<string, unknown>[] = []
+let voteResult: { data: unknown; error: { message: string } | null } = { data: { status: 'ok' }, error: null }
 const roundUpdates: unknown[] = []
 
 function makeClient() {
   return {
     rpc: async (fn: string, args: unknown) => {
+      if (fn === 'submit_vote_atomic') {
+        const a = args as Record<string, unknown>
+        voteCalls.push(a)
+        // Only a successful save counts as a stored row.
+        if ((voteResult.data as { status?: string } | null)?.status === 'ok') upserts.push(a.p_row)
+        return voteResult
+      }
       rpcCalls.push({ fn, args })
       return rpcResult
     },
@@ -32,11 +40,6 @@ function makeClient() {
           updating = true
           roundUpdates.push(v)
           return chain
-        },
-        upsert: (row: unknown, options?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
-          upserts.push(row)
-          upsertOptions.push(options)
-          return Promise.resolve({ error: null })
         },
         maybeSingle: async () => {
           if (table === 'games') return { data: game, error: null }
@@ -69,7 +72,8 @@ function send(extra: Record<string, unknown>) {
 
 beforeEach(() => {
   upserts.length = 0
-  upsertOptions.length = 0
+  voteCalls.length = 0
+  voteResult = { data: { status: 'ok' }, error: null }
   roundUpdates.length = 0
   rpcCalls.length = 0
   rpcResult = { data: { status: 'ok', picked_number: 2 }, error: null }
@@ -118,26 +122,21 @@ describe('POST /api/votes status checks', () => {
       expect(upserts).toHaveLength(1)
     })
 
-    it('only inserts a missing vote during the grace (never overwrites an accepted one)', async () => {
+    it('hands the close decision to the atomic function with the grace window', async () => {
       round.ended_at = '2026-01-01T00:00:29.000Z'
       await send({ wyrChoice: 'a' })
-      expect(upsertOptions[0]).toMatchObject({ onConflict: 'player_id,round_id', ignoreDuplicates: true })
+      expect(voteCalls[0]).toMatchObject({
+        p_round_id: ROUND_ID,
+        p_player_id: PLAYER.id,
+        p_grace_ms: 3000,
+        p_now: '2026-01-01T00:00:30.000Z',
+      })
     })
 
-    it('still lets a vote on an active round replace the earlier vote', async () => {
-      round.status = 'active'
-      await send({ wyrChoice: 'a' })
-      expect(upsertOptions[0]?.ignoreDuplicates).toBeFalsy()
-    })
-
-    it('gives Who Said This no grace (the answer is already revealed)', async () => {
-      game = { game_type: 'who_said_this', status: 'active', timer_seconds: 30, custom_questions: null }
+    it('reports success when the function kept the vote that was already accepted', async () => {
       round.ended_at = '2026-01-01T00:00:29.000Z'
-      round.quote_text = 'a quote'
-      round.participant_ids = ['p1', 'p2']
-      const res = await send({ targetParticipantId: 'p1' })
-      expect(res.status).toBe(400)
-      expect(upserts).toHaveLength(0)
+      voteResult = { data: { status: 'kept_existing', closed: true }, error: null }
+      expect((await send({ wyrChoice: 'a' })).status).toBe(200)
     })
 
     it('rejects a vote long after the round closed', async () => {
@@ -155,6 +154,47 @@ describe('POST /api/votes status checks', () => {
       round.status = 'pending'
       round.ended_at = '2026-01-01T00:00:29.000Z'
       expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+    })
+  })
+
+  describe('round closing between the status read and the write (end-round race)', () => {
+    // The route read the round as active; end-round commits before the vote is written. The
+    // database function re-checks under a row lock and says so.
+    it('rejects with 400 when the function finds the round already ended', async () => {
+      voteResult = { data: { status: 'round_not_active' }, error: null }
+      const res = await send({ wyrChoice: 'a' })
+      expect(res.status).toBe(400)
+      await expect(res.json()).resolves.toEqual({ error: 'Round is not active' })
+    })
+
+    it('rejects with 400 when the function finds the game finished', async () => {
+      voteResult = { data: { status: 'game_not_active' }, error: null }
+      expect((await send({ wyrChoice: 'a' })).status).toBe(400)
+    })
+
+    it('returns 404 when the function cannot find the round', async () => {
+      voteResult = { data: { status: 'round_not_found' }, error: null }
+      expect((await send({ wyrChoice: 'a' })).status).toBe(404)
+    })
+
+    it('returns 500 on an rpc error or an unknown result, never a false success', async () => {
+      voteResult = { data: null, error: { message: 'boom' } }
+      expect((await send({ wyrChoice: 'a' })).status).toBe(500)
+      voteResult = { data: { status: 'something_else' }, error: null }
+      expect((await send({ wyrChoice: 'a' })).status).toBe(500)
+    })
+
+    it('gives Who Said This no grace even when the round is active at read time', async () => {
+      game = { game_type: 'who_said_this', status: 'active', timer_seconds: 30, custom_questions: null }
+      round.quote_text = 'a quote'
+      round.participant_ids = ['p1', 'p2']
+      await send({ targetParticipantId: 'p1' })
+      expect(voteCalls[0]).toMatchObject({ p_grace_ms: null })
+    })
+
+    it('does not write the vote with a plain table upsert any more', async () => {
+      await send({ wyrChoice: 'a' })
+      expect(voteCalls).toHaveLength(1)
     })
   })
 

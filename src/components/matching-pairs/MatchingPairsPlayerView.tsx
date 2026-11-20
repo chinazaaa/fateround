@@ -41,6 +41,7 @@ import {
   MATCHING_PAIRS_STREAK_BONUS,
   MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
   matchingPairsGridLayout,
+  createFlipResyncTracker,
   MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsMetadata,
   type MatchingPairsSubmission,
@@ -51,6 +52,7 @@ import {
 import { ReplayReadyRing } from '@/components/ReplayReadyRing'
 import { ROUND_SELECT, MEMORY_MATCH_SUBMISSION_SELECT, MEMORY_MATCH_PROGRESS_SELECT } from '@/lib/supabase-selects'
 import { useGameViewBootstrap } from '@/hooks/useGameViewBootstrap'
+import { supabasePollOk } from '@/hooks/usePolling'
 import { useGameRosterPoll } from '@/hooks/useGameRosterPoll'
 import { useLobbyOpenNotification } from '@/hooks/useLobbyOpenNotification'
 import { useLateJoinContext } from '@/hooks/useLateJoinContext'
@@ -148,12 +150,25 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
 
+  // A flip the server refused (409 stale / already matched, 400 round closed, 5xx) leaves the optimistic
+  // cards, streak and points ahead of what was stored. Once every in-flight flip has settled after a failure,
+  // reload the round from the server so the board shows the stored state, not only an error toast. A snapshot
+  // that could predate a flip (one is in flight, or started after the read began) does not overwrite the
+  // optimistic board; it asks for a fresh read instead (see afterResolve).
+  const loadRef = useRef<() => Promise<unknown>>(async () => {})
+  // What the screen currently shows, for a load that must leave it alone (see afterResolve).
+  const boardRef = useRef<LocalBoard | null>(null)
+  const finishedRef = useRef(false)
+  const boardRoundIdRef = useRef<string | null>(null)
+  const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
+
   const loadGameState = useCallback(async (): Promise<{ state: MatchingPairsGameState; ok: boolean }> => {
     return { state: { hasBoard: false, ownFinished: false, roundFinished: false }, ok: true }
   }, [])
 
   const afterResolve = useCallback(
     async (gameData: Game, playerId: string | null): Promise<MatchingPairsGameState> => {
+      const flipEpochAtStart = flipTracker.epoch()
       if (!playerId) {
         setRoundId(null)
         setRoundStartedAt(null)
@@ -186,7 +201,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           setRoundId(roundData.id as string)
           setRoundStartedAt(roundData.started_at as string)
 
-          const [{ data: subData }, { data: progData }] = await Promise.all([
+          const [subRes, progRes] = await Promise.all([
             supabase
               .from('memory_match_submissions')
               .select(MEMORY_MATCH_SUBMISSION_SELECT)
@@ -194,6 +209,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               .order('submitted_at', { ascending: true }),
             supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('game_id', gameCode),
           ])
+          // A failed read is not an empty history: treating it as one would reset the matched cards, streak
+          // and points. Leave everything as it is; the next load will reconcile.
+          if (!supabasePollOk(subRes, progRes)) {
+            // Only for the round the board on screen was built for: another round's board must not stay up under
+            // this round's metadata, so for a new round clear it and report no board until a read succeeds.
+            const sameRoundBoard = boardRoundIdRef.current === roundData.id && boardRef.current !== null
+            if (!sameRoundBoard) setBoard(null)
+            return {
+              hasBoard: sameRoundBoard,
+              ownFinished: sameRoundBoard && finishedRef.current,
+              roundFinished: false,
+            }
+          }
+          const subData = subRes.data
+          const progData = progRes.data
 
           const allSubs = (subData ?? []) as MatchingPairsSubmission[]
           // Board reconstruction uses current round's submissions only.
@@ -213,6 +243,32 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 boardState.cardStates[i] = 'matched'
               }
             }
+            // A flip is in flight, or started after this read began: this snapshot may lack it, and applying it
+            // would hide a match the player already sees (or let a pending flip-back timer fire over the
+            // rebuilt board). Keep the optimistic state and read again once nothing is in flight.
+            // A card the player has selected but not yet paired (or a pair still flipping back) is local-only
+            // too: the snapshot cannot contain it, so it must not replace the board either.
+            // Only for the round the board on screen was built for: a new round must replace it.
+            const sameRound = boardRoundIdRef.current === roundData.id
+            const selecting = sameRound && (boardRef.current?.firstFlipped != null || boardRef.current?.locked === true)
+            const snapshotMayBeStale =
+              sameRound && (selecting || flipTracker.inFlight() || flipTracker.epoch() !== flipEpochAtStart)
+            if (snapshotMayBeStale) {
+              // Mid-selection there may be no flip to wait for, so do not read again in a loop: the next flip
+              // to settle will. Otherwise read again as soon as nothing is in flight.
+              if (selecting) flipTracker.markDirty()
+              else flipTracker.requestResync()
+              const myProgressNow = ((progData ?? []) as MatchingPairsProgress[]).find(
+                (p) => p.round_id === roundData.id && p.player_id === playerId
+              )
+              return { hasBoard: true, ownFinished: myProgressNow?.finished === true, roundFinished: false }
+            }
+            // The board is rebuilt from the server: a flip-back timer from before it must not fire over it.
+            if (flipTimeoutRef.current) {
+              clearTimeout(flipTimeoutRef.current)
+              flipTimeoutRef.current = null
+            }
+            boardRoundIdRef.current = roundData.id as string
             setBoard(boardState)
 
             // Start memorization phase for fresh rounds (no submissions yet)
@@ -282,7 +338,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         return { hasBoard: false, ownFinished: false, roundFinished: false }
       }
     },
-    [gameCode]
+    [gameCode, flipTracker]
   )
 
   const computeScreen = useCallback(
@@ -469,6 +525,17 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Flip handler ───────────────────────────────────────────────────────────
 
+  loadRef.current = load
+  boardRef.current = board
+  finishedRef.current = finished
+
+  // A snapshot skipped while a card was selected or a pair was flipping back is read once the board is idle
+  // again. Done in an effect so `boardRef` already reflects the rendered board: flushing from the flip-back
+  // timer itself could run before that render, and a read finishing in between would defer again for good.
+  useEffect(() => {
+    if (board && !board.locked && board.firstFlipped === null) flipTracker.flushDeferred()
+  }, [board, flipTracker])
+
   const handleCardFlip = useCallback(
     async (cardIndex: number) => {
       if (!board || !meta || !myPlayerId || !myResumeToken || !roundId) return
@@ -530,6 +597,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         }
 
         // Submit to server (fire-and-forget for responsiveness; UI is optimistic).
+        flipTracker.begin()
+        let flipFailed = false
         void fetch('/api/matching-pairs/flip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -539,35 +608,41 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             pairIndex,
             isMatch: true,
           }),
-        }).then(async (res) => {
-          if (!res.ok) {
-            const d = await res.json()
-            toastError(d.error ?? 'Submit error')
-          } else {
-            const d = await res.json()
-            if (d.finishRank) setFinishRank(d.finishRank)
-            if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
-            if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
-            // Bug #2 fix: call load() after a finishing flip so computeScreen
-            // transitions to 'waiting_for_others' immediately. Without this,
-            // setFinished(true) updates local state but screen stays on 'playing'
-            // because computeScreen only reads state.ownFinished (set inside load).
-            if (d.finished || justFinished) {
-              setFinished(true)
-              void load()
-            } else {
-              // Non-finishing match: just refresh submission counts.
-              const { data } = await supabase
-                .from('memory_match_submissions')
-                .select(MEMORY_MATCH_SUBMISSION_SELECT)
-                .eq('round_id', roundId)
-                .order('submitted_at', { ascending: true })
-              const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
-              setAllSubmissions(nextSubmissions)
-              setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
-            }
-          }
         })
+          .then(async (res) => {
+            if (!res.ok) {
+              flipFailed = true
+              const d = await res.json().catch(() => ({}))
+              toastError(d.error ?? 'Submit error')
+            } else {
+              const d = await res.json()
+              if (d.finishRank) setFinishRank(d.finishRank)
+              if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
+              if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
+              // Bug #2 fix: call load() after a finishing flip so computeScreen
+              // transitions to 'waiting_for_others' immediately. Without this,
+              // setFinished(true) updates local state but screen stays on 'playing'
+              // because computeScreen only reads state.ownFinished (set inside load).
+              if (d.finished || justFinished) {
+                setFinished(true)
+                void load()
+              } else {
+                // Non-finishing match: just refresh submission counts.
+                const { data } = await supabase
+                  .from('memory_match_submissions')
+                  .select(MEMORY_MATCH_SUBMISSION_SELECT)
+                  .eq('round_id', roundId)
+                  .order('submitted_at', { ascending: true })
+                const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
+                setAllSubmissions(nextSubmissions)
+                setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
+              }
+            }
+          })
+          .catch(() => {
+            flipFailed = true
+          })
+          .finally(() => flipTracker.end(flipFailed))
       } else {
         // Mismatch — flip back after delay.
         showFlash('miss')
@@ -585,6 +660,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         }, MATCHING_PAIRS_FLIP_BACK_MS)
 
         // Submit miss to server.
+        flipTracker.begin()
+        let flipFailed = false
         void fetch('/api/matching-pairs/flip', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -594,28 +671,35 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             pairIndex,
             isMatch: false,
           }),
-        }).then(async (res) => {
-          if (!res.ok) {
-            const d = await res.json()
-            toastError(d.error ?? 'Submit error')
-          } else {
-            const d = await res.json()
-            if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
-            if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
-            // Refresh submissions to keep local state in sync
-            const { data } = await supabase
-              .from('memory_match_submissions')
-              .select(MEMORY_MATCH_SUBMISSION_SELECT)
-              .eq('round_id', roundId)
-              .order('submitted_at', { ascending: true })
-            const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
-            setAllSubmissions(nextSubmissions)
-            setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
-          }
         })
+          .then(async (res) => {
+            if (!res.ok) {
+              flipFailed = true
+              const d = await res.json().catch(() => ({}))
+              toastError(d.error ?? 'Submit error')
+            } else {
+              const d = await res.json()
+              if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
+              if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
+              // Refresh submissions to keep local state in sync
+              const { data } = await supabase
+                .from('memory_match_submissions')
+                .select(MEMORY_MATCH_SUBMISSION_SELECT)
+                .eq('round_id', roundId)
+                .order('submitted_at', { ascending: true })
+              const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
+              setAllSubmissions(nextSubmissions)
+              setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
+            }
+          })
+          .catch(() => {
+            flipFailed = true
+          })
+          .finally(() => flipTracker.end(flipFailed))
       }
     },
     [
+      flipTracker,
       board,
       meta,
       myPlayerId,

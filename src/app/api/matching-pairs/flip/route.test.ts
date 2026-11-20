@@ -17,7 +17,7 @@ const insert = vi.fn()
 function makeClient() {
   return {
     rpc: async (fn: string, args: unknown) => {
-      if (fn === 'matching_pairs_record_flip') {
+      if (fn === 'matching_pairs_record_flip_checked') {
         insert(args)
         return recordResult
       }

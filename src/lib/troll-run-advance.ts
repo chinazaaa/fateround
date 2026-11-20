@@ -26,6 +26,9 @@ export interface TrollRunAdvanceResult {
   currentRound?: number
 }
 
+/** Rows per page when recounting a round's death events (PostgREST's default response cap). */
+export const TROLL_RUN_DEATH_EVENT_PAGE_SIZE = 1000
+
 async function readRoundStates(
   supabase: SupabaseClient,
   gameId: string,
@@ -38,6 +41,51 @@ async function readRoundStates(
     .eq('current_round', round)
 
   return (data as TrollRunPlayerState[] | null) ?? []
+}
+
+/**
+ * The event log is the source of truth for deaths: the per-player total is re-derived from it on
+ * every report, but that total write can fail after the event is stored (and a report that loses
+ * a race with the final clear is rolled back from both). Scoring therefore recounts the round's
+ * death events and uses that count, so a stale row total cannot change a placement or a penalty.
+ * If the log cannot be read, the stored totals are used as they are.
+ */
+export async function reconcileDeathTotals(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: number,
+  states: TrollRunPlayerState[],
+  pageSize: number = TROLL_RUN_DEATH_EVENT_PAGE_SIZE
+): Promise<TrollRunPlayerState[]> {
+  if (states.length === 0) return states
+
+  // PostgREST caps one response (1000 rows by default), and a long round with many runners can log
+  // more deaths than that: read every page, in a stable order so no row is skipped or repeated.
+  const counts = new Map<string, number>()
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('troll_run_events')
+      .select('id,player_id')
+      .eq('game_id', gameId)
+      .eq('round', round)
+      .eq('event_type', 'death')
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error || !Array.isArray(data)) return states
+
+    for (const row of data as Array<{ player_id: string }>) {
+      counts.set(row.player_id, (counts.get(row.player_id) ?? 0) + 1)
+    }
+    if (data.length < pageSize) break
+  }
+  const reconciled = states.map((state) => ({ ...state, deaths: counts.get(state.player_id) ?? 0 }))
+  // Best-effort repair of the stored totals so the scoreboard shows the same number the score used.
+  await Promise.all(
+    reconciled
+      .filter((state, index) => state.deaths !== states[index].deaths)
+      .map((state) => supabase.from('troll_run_player_states').update({ deaths: state.deaths }).eq('id', state.id))
+  )
+  return reconciled
 }
 
 /**
@@ -118,7 +166,12 @@ export async function syncTrollRunGameState(
 
     // Re-read after the claim so a finish that landed while the decision was being made is
     // still counted. Anything arriving later is rejected by the finish route's phase check.
-    const finalStates = await readRoundStates(supabase, gameId, session.current_round)
+    const finalStates = await reconcileDeathTotals(
+      supabase,
+      gameId,
+      session.current_round,
+      await readRoundStates(supabase, gameId, session.current_round)
+    )
     const parSeconds = trollRunRoundParSeconds(session.current_world, session.level_order)
 
     const roundScores = buildTrollRunRoundScores(finalStates, parSeconds)

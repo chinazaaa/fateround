@@ -23,11 +23,12 @@ const board = {
   winner: null,
 }
 
+const finish = vi.fn()
 let lastRpcArgs: Record<string, unknown> | undefined
 let rpcResult: { data: unknown; error: { message: string } | null } = { data: null, error: null }
 
 const base = makeSupabaseStub({
-  games: () => ({ data: gameRow({ status: 'active', game_type: 'codewords' }), error: null }),
+  games: () => ({ data: gameRow({ status: 'active', game_type: 'codewords', session_started_at: 'S1' }), error: null }),
   players: () => ({ data: { id: PLAYER_ID }, error: null }),
   codewords_player_roles: () => ({ data: { team: 'blue', role: 'operative' }, error: null }),
   codewords_boards: () => ({ data: board, error: null }),
@@ -44,7 +45,10 @@ const supabase = {
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => supabase }))
 vi.mock('@/lib/codewords', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/codewords')>()),
-  finishCodewordsGame: async () => ({ error: null, cleanupError: null }),
+  finishCodewordsGame: async (...args: unknown[]) => {
+    finish(...args)
+    return { error: null, cleanupError: null }
+  },
 }))
 
 let POST: typeof import('./route').POST
@@ -53,6 +57,7 @@ beforeAll(async () => {
 }, 60_000)
 
 beforeEach(() => {
+  finish.mockClear()
   rpcResult = { data: null, error: null }
 })
 
@@ -90,5 +95,17 @@ describe('POST /api/codewords/guess — RPC re-check errors', () => {
     rpcResult = { data: [{ ...board, revealed_indices: [1], guesses_remaining: 2 }], error: null }
     const res = await post()
     expect(res.status).toBe(200)
+  })
+
+  it('finishes a won game as a single-winner flip bound to the session the guess was validated against', async () => {
+    rpcResult = { data: [{ ...board, revealed_indices: [1], winner: 'blue' }], error: null }
+    await post()
+    expect(finish).toHaveBeenCalledWith(expect.anything(), 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+  })
+
+  it('does not try to finish when the guess did not win', async () => {
+    rpcResult = { data: [{ ...board, revealed_indices: [1] }], error: null }
+    await post()
+    expect(finish).not.toHaveBeenCalled()
   })
 })

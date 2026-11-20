@@ -6,7 +6,8 @@ import {
   processCheckersMove,
   processCheckersResign,
 } from './checkers'
-import { processWhotDraw } from './whot'
+import { processChessResign } from './chess'
+import { processWhotDraw, processWhotExpireTurn } from './whot'
 
 const LOST_RACE = 'Another action already updated this turn — try again'
 
@@ -16,13 +17,21 @@ type Rows = Record<string, unknown>
  * Fake client: selects return the canned row(s) per table; any `.update(...)` chain
  * resolves to zero matched rows, i.e. the optimistic-lock (updated_at) condition missed.
  */
-function fakeClient(tables: Rows, updated: string[]) {
+function fakeClient(
+  tables: Rows,
+  updated: string[],
+  opts: { updateError?: { message: string }; updateEqs?: Array<[string, unknown]> } = {}
+) {
   return {
     from(table: string) {
       const rows = tables[table]
       let isUpdate = false
       const chain: Record<string, unknown> = {}
-      for (const m of ['select', 'eq', 'order']) chain[m] = () => chain
+      for (const m of ['select', 'order']) chain[m] = () => chain
+      chain.eq = (col: string, val: unknown) => {
+        if (isUpdate && table.endsWith('_sessions')) opts.updateEqs?.push([col, val])
+        return chain
+      }
       chain.update = () => {
         isUpdate = true
         updated.push(table)
@@ -30,7 +39,10 @@ function fakeClient(tables: Rows, updated: string[]) {
       }
       chain.maybeSingle = () => Promise.resolve({ data: Array.isArray(rows) ? null : (rows ?? null), error: null })
       chain.then = (resolve: (v: unknown) => unknown) =>
-        resolve({ data: isUpdate ? [] : Array.isArray(rows) ? rows : [], error: null })
+        resolve({
+          data: isUpdate ? [] : Array.isArray(rows) ? rows : [],
+          error: isUpdate ? (opts.updateError ?? null) : null,
+        })
       return chain
     },
   } as unknown as SupabaseClient
@@ -84,6 +96,134 @@ describe('checkers lost optimistic-lock race', () => {
     const res = await processCheckersExpireTurn(client, 'G')
     expect(res).toEqual({ error: LOST_RACE })
     expect(updated).toEqual(['checkers_sessions'])
+  })
+})
+
+function whotTables(sessionOver: Rows = {}): Rows {
+  return {
+    whot_sessions: {
+      game_id: 'G',
+      phase: 'playing',
+      turn_order: ['p1', 'p2'],
+      current_turn_index: 0,
+      draw_pile: [
+        { shape: 'circle', number: 1 },
+        { shape: 'square', number: 2 },
+      ],
+      discard_pile: [],
+      top_card: { shape: 'triangle', number: 5 },
+      pick_two_stack: 0,
+      pick_five_stack: 0,
+      reshuffle_count: 0,
+      updated_at: '2026-01-01T00:00:00.000Z',
+      ...sessionOver,
+    },
+    whot_player_hands: [
+      { game_id: 'G', player_id: 'p1', player_order: 0, cards: [{ shape: 'cross', number: 3 }] },
+      { game_id: 'G', player_id: 'p2', player_order: 1, cards: [{ shape: 'star', number: 4 }] },
+    ],
+    games: { timer_seconds: 0, game_duration_seconds: 0, session_started_at: null },
+    players: [],
+  }
+}
+
+describe('database failures are not reported as a lost race', () => {
+  const dbError = { message: 'connection reset' }
+
+  it('checkers move surfaces a generic server error, not the conflict message', async () => {
+    const client = fakeClient({ checkers_sessions: checkersSession(), players: [] }, [], { updateError: dbError })
+    const res = await processCheckersMove(client, 'G', 'red', { from: '52', to: '43' })
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toBe(LOST_RACE)
+    expect(res.error).not.toContain('connection reset')
+  })
+
+  it('checkers resign surfaces a generic server error', async () => {
+    const client = fakeClient({ checkers_sessions: checkersSession(), players: [] }, [], { updateError: dbError })
+    const res = await processCheckersResign(client, 'G', 'red')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toBe(LOST_RACE)
+  })
+
+  it('chess resign surfaces a generic server error, and a lost race still reads as a conflict', async () => {
+    const session = {
+      game_id: 'G',
+      player_white_id: 'w',
+      player_black_id: 'b',
+      status: 'active',
+      updated_at: '2026-01-01T00:00:00.000Z',
+    }
+    const failing = fakeClient({ chess_sessions: session, players: [] }, [], { updateError: dbError })
+    const failed = await processChessResign(failing, 'G', 'w')
+    expect(failed.error).toBeTruthy()
+    expect(failed.error).not.toBe(LOST_RACE)
+    const lost = fakeClient({ chess_sessions: session, players: [] }, [])
+    expect(await processChessResign(lost, 'G', 'w')).toEqual({ error: LOST_RACE })
+  })
+
+  it('whot draw surfaces a generic server error', async () => {
+    const client = fakeClient(whotTables(), [], { updateError: dbError })
+    const res = await processWhotDraw(client, 'G', 'p1')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toBe(LOST_RACE)
+  })
+})
+
+describe('session claims carry the observed version', () => {
+  it('checkers move claims only the row version it read', async () => {
+    const updateEqs: Array<[string, unknown]> = []
+    const client = fakeClient({ checkers_sessions: checkersSession(), players: [] }, [], { updateEqs })
+    await processCheckersMove(client, 'G', 'red', { from: '52', to: '43' })
+    expect(updateEqs).toContainEqual(['game_id', 'G'])
+    expect(updateEqs).toContainEqual(['updated_at', '2026-01-01T00:00:00.000Z'])
+  })
+
+  it('whot draw claims only the row version it read', async () => {
+    const updateEqs: Array<[string, unknown]> = []
+    const client = fakeClient(whotTables(), [], { updateEqs })
+    await processWhotDraw(client, 'G', 'p1')
+    expect(updateEqs).toContainEqual(['updated_at', '2026-01-01T00:00:00.000Z'])
+  })
+})
+
+describe('whot expiry and deck exhaustion races', () => {
+  const dbError = { message: 'connection reset' }
+
+  it('maps a lost draw claim on the expiry path to skipped, not an error', async () => {
+    const client = fakeClient(whotTables({ turn_deadline_at: '2020-01-01T00:00:00.000Z' }), [])
+    const res = await processWhotExpireTurn(client, 'G')
+    expect(res).toEqual({ skipped: true })
+  })
+
+  it('still returns the conflict for a player draw that loses the claim', async () => {
+    const client = fakeClient(whotTables({ turn_deadline_at: '2020-01-01T00:00:00.000Z' }), [])
+    expect(await processWhotDraw(client, 'G', 'p1')).toEqual({ error: LOST_RACE })
+  })
+
+  it('does not report success when the deck-exhaustion finish loses the race', async () => {
+    const updated: string[] = []
+    const client = fakeClient(whotTables({ draw_pile: [], discard_pile: [] }), updated)
+    const res = await processWhotDraw(client, 'G', 'p1')
+    expect(res).toEqual({ error: LOST_RACE })
+    expect(updated).toEqual(['whot_sessions'])
+  })
+
+  it('surfaces a database error from the deck-exhaustion finish instead of the lost-race message', async () => {
+    const client = fakeClient(whotTables({ draw_pile: [], discard_pile: [] }), [], { updateError: dbError })
+    const res = await processWhotDraw(client, 'G', 'p1')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toBe(LOST_RACE)
+  })
+
+  it('does not map a database error from the deck-exhaustion finish to skipped on the expiry path', async () => {
+    const client = fakeClient(
+      whotTables({ draw_pile: [], discard_pile: [], turn_deadline_at: '2020-01-01T00:00:00.000Z' }),
+      [],
+      { updateError: dbError }
+    )
+    const res = await processWhotExpireTurn(client, 'G')
+    expect(res).not.toHaveProperty('skipped')
+    expect(res.error).toBeTruthy()
   })
 })
 

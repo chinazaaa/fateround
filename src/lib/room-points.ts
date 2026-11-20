@@ -397,7 +397,20 @@ export async function getCompetitiveStandings(
   return []
 }
 
-export async function awardRoomGamePoints(supabase: SupabaseClient, gameId: string): Promise<void> {
+/**
+ * Award a finished room game's points to its members.
+ *
+ * `leaseOwner` is the post-finish bookkeeping lease token (`games.finish_bookkeeping.owner`). With it the write is
+ * lease-fenced: the awards are applied by `award_room_game_points_fenced`, one transaction that locks the game row,
+ * checks the caller still owns the lease and stamps `points_awarded_at` together with the increments. A runner that
+ * stalled past its lease and woke up after another took over is therefore rejected (`'lost_lease'`) instead of
+ * adding the points a second time. Without it (untracked finishes) the legacy best-effort path runs unchanged.
+ */
+export async function awardRoomGamePoints(
+  supabase: SupabaseClient,
+  gameId: string,
+  leaseOwner?: string
+): Promise<'done' | 'lost_lease'> {
   const id = gameId.toUpperCase()
 
   const { data: roomGame } = await supabase
@@ -406,11 +419,11 @@ export async function awardRoomGamePoints(supabase: SupabaseClient, gameId: stri
     .eq('game_id', id)
     .maybeSingle()
 
-  if (!roomGame || roomGame.points_awarded_at) return
+  if (!roomGame || roomGame.points_awarded_at) return 'done'
 
   const { data: game } = await supabase.from('games').select('game_type, status').eq('id', id).maybeSingle()
 
-  if (!game || game.status !== 'finished') return
+  if (!game || game.status !== 'finished') return 'done'
 
   const [{ data: players }, { data: members }] = await Promise.all([
     supabase.from('players').select('id, name, room_member_id, spectator').eq('game_id', id),
@@ -461,6 +474,17 @@ export async function awardRoomGamePoints(supabase: SupabaseClient, gameId: stri
     }
   }
 
+  if (leaseOwner) {
+    const { data, error } = await supabase.rpc('award_room_game_points_fenced', {
+      p_game_id: id,
+      p_owner: leaseOwner,
+      p_awards: [...awards].map(([member_id, points]) => ({ member_id, points })),
+    })
+    // Thrown so a tracked finish counts the step as failed and retries it.
+    if (error) throw new Error(`room_points: fenced award failed: ${error.message}`)
+    return data === 'not_owner' ? 'lost_lease' : 'done'
+  }
+
   for (const [memberId, points] of awards) {
     const { data: member } = await supabase
       .from('room_members')
@@ -478,4 +502,5 @@ export async function awardRoomGamePoints(supabase: SupabaseClient, gameId: stri
   }
 
   await supabase.from('room_games').update({ points_awarded_at: new Date().toISOString() }).eq('id', roomGame.id)
+  return 'done'
 }
