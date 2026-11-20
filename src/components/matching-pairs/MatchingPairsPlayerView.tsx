@@ -521,6 +521,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   boardRef.current = board
   finishedRef.current = finished
 
+  // A snapshot skipped while a card was selected or a pair was flipping back is read once the board is idle
+  // again. Done in an effect so `boardRef` already reflects the rendered board: flushing from the flip-back
+  // timer itself could run before that render, and a read finishing in between would defer again for good.
+  useEffect(() => {
+    if (board && !board.locked && board.firstFlipped === null) flipTracker.flushDeferred()
+  }, [board, flipTracker])
+
   const handleCardFlip = useCallback(
     async (cardIndex: number) => {
       if (!board || !meta || !myPlayerId || !myResumeToken || !roundId) return
@@ -642,8 +649,6 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             next.cardStates[cardIndex] = 'hidden'
             return next
           })
-          // A snapshot skipped while this pair was flipping back can be applied now.
-          flipTracker.flushDeferred()
         }, MATCHING_PAIRS_FLIP_BACK_MS)
 
         // Submit miss to server.
