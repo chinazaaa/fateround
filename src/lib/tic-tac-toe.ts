@@ -205,14 +205,16 @@ async function persistSession(
   gameId: string,
   patch: Partial<TicTacToeSession>,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('tic_tac_toe_sessions')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: reporting it as one would answer 200 for a write that never landed.
+  if (error) return { won: false, error: internalErrorMessage('tic-tac-toe', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 export async function processTicTacToeMove(
@@ -279,7 +281,7 @@ export async function processTicTacToeMove(
   // Claim the turn with the exact state we read. If a concurrent request (e.g. a
   // client driving the turn timer) already moved the game from this state we lose
   // the CAS and bail — the winner finalizes, so we skip markGameFinished here.
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -295,7 +297,7 @@ export async function processTicTacToeMove(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -326,7 +328,7 @@ export async function processTicTacToeExpireTurn(
   // Claim with the exact state we read. If a move (or another expire) already
   // advanced the game we lose the CAS and no-op, so a stale "time ran out" message
   // never overlays a valid move.
-  await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -337,7 +339,8 @@ export async function processTicTacToeExpireTurn(
     session.updated_at
   )
 
-  return {}
+  // A lost claim is a normal no-op for a timer poke; a database failure is not.
+  return persisted.error ? { error: persisted.error } : {}
 }
 
 /** Play again — keep finished session so the next start can swap who opens as X. */
