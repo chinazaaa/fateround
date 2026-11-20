@@ -597,21 +597,40 @@ export function computeStreakBonus(streakBeforeMatch: number): number {
  * Counts flip requests in flight and calls `resync` once the last one settles if any of them failed. A
  * refused flip leaves the optimistic board ahead of what the server stored; resyncing only after the others
  * settle avoids rolling back a flip whose request has not been answered yet.
+ *
+ * `resync` may be async. A flip that starts while a resync is still reading would be hidden by the snapshot
+ * that read produces, so it marks another resync to run after that read has finished and the flip has
+ * settled.
  */
-export function createFlipResyncTracker(resync: () => void) {
+export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
   let pending = 0
   let failed = false
+  let resyncing = false
+
+  function maybeResync() {
+    if (pending !== 0 || !failed || resyncing) return
+    failed = false
+    resyncing = true
+    const done = () => {
+      resyncing = false
+      maybeResync()
+    }
+    try {
+      void Promise.resolve(resync()).then(done, done)
+    } catch {
+      done()
+    }
+  }
+
   return {
     begin() {
       pending += 1
+      if (resyncing) failed = true
     },
     end(didFail: boolean) {
       if (didFail) failed = true
       pending = Math.max(0, pending - 1)
-      if (pending === 0 && failed) {
-        failed = false
-        resync()
-      }
+      maybeResync()
     },
   }
 }

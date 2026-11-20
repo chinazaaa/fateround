@@ -858,6 +858,62 @@ describe('createFlipResyncTracker', () => {
     expect(resync).toHaveBeenCalledTimes(1)
   })
 
+  it('runs another resync when a flip starts while the resync is still reading, once that flip settles', async () => {
+    let release: () => void = () => {}
+    const resync = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          release = r
+        })
+    )
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    expect(resync).toHaveBeenCalledTimes(1)
+
+    // A new flip begins while the read is in flight: its match would be hidden by that read's snapshot.
+    t.begin()
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(1)
+
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('waits for a flip that is still in flight when the resync finishes', async () => {
+    let release: () => void = () => {}
+    const resync = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          release = r
+        })
+    )
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    t.begin() // starts during the resync and is still unanswered when the read finishes
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(1)
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps working when the resync rejects', async () => {
+    const resync = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined)
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    t.begin()
+    t.end(true)
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
   it('forgets a settled failure, so later successes do not resync again', () => {
     const resync = vi.fn()
     const t = createFlipResyncTracker(resync)

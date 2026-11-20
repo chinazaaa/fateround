@@ -475,7 +475,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // round from the server so the board shows the stored state, not only an error toast.
   const loadRef = useRef(load)
   loadRef.current = load
-  const [flipTracker] = useState(() => createFlipResyncTracker(() => void loadRef.current()))
+  const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
 
   const handleCardFlip = useCallback(
     async (cardIndex: number) => {
