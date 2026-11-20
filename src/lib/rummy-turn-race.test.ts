@@ -6,6 +6,7 @@ vi.mock('server-only', () => ({}))
 
 import {
   processRummyDiscard,
+  processRummyDraw,
   processRummyGoOut,
   processRummyExpireTurn,
   finishExpiredRummyGame,
@@ -42,6 +43,10 @@ type Faults = {
   failSessionMaybeSingleOn?: number
   /** Runs right after a transition commits (lets a test interleave another request). */
   afterRpc?: (tables: Record<string, Row[]>) => void
+  /** Each direct rummy_sessions update consumes one entry and fails with it (before applying). */
+  sessionUpdateErrors?: { code?: string; message: string }[]
+  /** Each rummy_player_hands delete consumes one entry and fails with it. */
+  handDeleteErrors?: { code?: string; message: string }[]
 }
 
 function makeDb(hand: RummyCard[], faults: Faults = {}) {
@@ -104,11 +109,17 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
       else await Promise.resolve()
       if (logName) faults.readLog?.push(`${logName}:end`)
       if (deleting) {
+        if (table === 'rummy_player_hands' && faults.handDeleteErrors?.length) {
+          return { data: null, error: faults.handDeleteErrors.shift() }
+        }
         const doomed = match()
         tables[table] = tables[table].filter((r) => !doomed.includes(r))
         return { data: null, error: null }
       }
       if (patch) {
+        if (table === 'rummy_sessions' && faults.sessionUpdateErrors?.length) {
+          return { data: null, error: faults.sessionUpdateErrors.shift() }
+        }
         if (table === 'games' && faults.gamesUpdateError) {
           return { data: null, error: { message: faults.gamesUpdateError } }
         }
@@ -501,11 +512,86 @@ describe('Rummy concurrent turn actions', () => {
     const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
 
     expect(res.error).toBeTruthy()
+    // Exhausted retries are a retryable conflict (the route answers 409), not an internal failure.
+    expect(res.conflict).toBe(true)
     expect(n).toBe(3)
     expect(tables.rummy_sessions[0].current_turn_index).toBe(1)
     expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2', 'p3'])
     expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(true)
     expect(tables.players.some((p) => p.id === 'p3')).toBe(true)
+  })
+
+  const threeSeats = (faults: Faults = {}) => {
+    const db = makeDb([c('hearts', 5), c('spades', 5)], faults)
+    db.tables.players.push({ id: 'p3', game_id: 'ABCD', name: 'Cy' })
+    db.tables.rummy_sessions[0].turn_order = ['p1', 'p2', 'p3']
+    db.tables.rummy_player_hands.push({ id: 'h3', game_id: 'ABCD', player_id: 'p3', player_order: 2, cards: [] })
+    return db
+  }
+
+  it('gives the next player a fresh draw step when the current player leaves after drawing', async () => {
+    const { client, tables } = threeSeats()
+    expect(tables.rummy_sessions[0].turn_step).toBe('discard') // p1 already drew
+
+    const res = await removeRummyPlayer(client, 'ABCD', 'p1', 'Ana')
+
+    expect(res.error).toBeNull()
+    expect(tables.rummy_sessions[0].turn_order).toEqual(['p2', 'p3'])
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(0)
+    expect(tables.rummy_sessions[0].turn_step).toBe('draw')
+    // The successor must draw, and cannot skip the draw by discarding straight away.
+    expect(await processRummyDiscard(client, 'ABCD', 'p2', 'clubs-1')).toEqual({
+      error: 'You must draw before discarding',
+    })
+    expect((await processRummyDraw(client, 'ABCD', 'p2', 'pile')).error).toBeUndefined()
+  })
+
+  it("keeps the current player's step when someone else leaves", async () => {
+    const { client, tables } = threeSeats()
+    expect((await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')).error).toBeNull()
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(0)
+    expect(tables.rummy_sessions[0].turn_step).toBe('discard')
+  })
+
+  it('retries a deadlock on the leave claim and never leaks the database text', async () => {
+    const { client, tables } = threeSeats({
+      sessionUpdateErrors: [{ code: '40P01', message: 'deadlock detected' }],
+    })
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+    expect(res.error).toBeNull()
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
+  })
+
+  it('answers a deadlock that outlasts the retries as a retryable conflict, and a repeat leave completes it', async () => {
+    const deadlock = { code: '40P01', message: 'deadlock detected' }
+    const { client, tables } = threeSeats({ sessionUpdateErrors: [deadlock, deadlock, deadlock] })
+
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+    expect(res.conflict).toBe(true)
+    expect(res.error).not.toMatch(/deadlock/i)
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(true) // still seated, nothing half-removed
+
+    const again = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+    expect(again.error).toBeNull()
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(false)
+  })
+
+  it('does not leak raw database text for a non-retryable failure and does not call it a conflict', async () => {
+    const { client } = threeSeats({ sessionUpdateErrors: [{ message: 'relation "rummy_sessions" is locked' }] })
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toContain('rummy_sessions')
+    expect(res.conflict).toBeUndefined()
+  })
+
+  it('completes a leave whose hand delete deadlocked after the turn claim on the next attempt', async () => {
+    const { client, tables } = threeSeats({ handDeleteErrors: [{ code: '40P01', message: 'deadlock detected' }] })
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+    expect(res.error).toBeNull()
+    expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2'])
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(false)
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
   })
 
   it('removes a leaving player normally when nothing raced', async () => {
