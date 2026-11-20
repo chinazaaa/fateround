@@ -336,6 +336,47 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     expect(boot.loadCalls).toBe(settled) // no repeated reads
   })
 
+  it('a read that finishes after the flip-back timer unlocked the board but before it rendered is still reconciled', async () => {
+    // Only setTimeout is faked, so the flip-back timer can be fired by hand while React's own scheduler (a
+    // separate macrotask) has not yet rendered the unlock. A read that completes in microtasks right then still
+    // sees the board as locked and defers; the idle-board effect must pick that up once the render lands.
+    fetchMock.mockResolvedValue(refused())
+    db.subs = storedMatch()
+    await mount()
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const flush = () =>
+      act(async () => {
+        for (let i = 0; i < 25; i++) await Promise.resolve()
+      })
+    fireEvent.click(cards()[2])
+    fireEvent.click(cards()[4]) // a miss, refused: its resync reads while the board is still locked and defers
+    await flush()
+    expect(scoreValue()).not.toBe('100') // still the optimistic miss
+    const loadsBeforeUnlock = boot.loadCalls
+
+    const g = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    const prevActEnv = g.IS_REACT_ACT_ENVIRONMENT
+    g.IS_REACT_ACT_ENVIRONMENT = false // let React render on its own scheduler, outside act
+    try {
+      vi.advanceTimersByTime(900) // the timer unlocks the board: setBoard is scheduled but not rendered yet
+      // A read completing in this gap: microtasks run before React's scheduler task.
+      await boot.opts!.afterResolve(GAME, 'p1', {})
+      vi.useRealTimers()
+      await waitFor(() => expect(scoreValue()).toBe('100'), { timeout: 3000 })
+    } finally {
+      vi.useRealTimers()
+      g.IS_REACT_ACT_ENVIRONMENT = prevActEnv
+    }
+    expect(streakValue()).toBe('1🔥')
+    expect(hiddenCount()).toBe(4)
+    // Reads: the one in the gap plus the single follow-up from the idle board; nothing keeps re-reading.
+    const settled = boot.loadCalls
+    await new Promise((r) => setTimeout(r, 300))
+    expect(boot.loadCalls).toBe(settled)
+    expect(settled - loadsBeforeUnlock).toBeLessThanOrEqual(1)
+  })
+
   it('a read that started before an accepted flip is not applied over it, and is read again', async () => {
     // The read's snapshot (taken when it starts) lacks the miss that is stored afterwards. It finishes only once
     // the board is idle again; applying it would put the pre-miss streak and points back.
