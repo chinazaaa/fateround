@@ -6,6 +6,7 @@ import {
   codewordsAllowsPlayerChanges,
   isSpymasterSeatConflict,
   reconcileCodewordsTeamAfterRemoval,
+  reconcileCodewordsAllTeams,
   removeCodewordsPlayerRole,
 } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
@@ -132,7 +133,17 @@ export async function DELETE(req: NextRequest) {
     .eq('game_id', code)
     .eq('player_id', playerId)
     .maybeSingle()
-  if (!role) return NextResponse.json({ error: 'Player is not on a team' }, { status: 400 })
+  if (!role) {
+    // A repeat of a removal whose reconciliation gave up ("try again") lands here: the role is
+    // already gone, so the team it left can no longer be read from the request. Reconcile every
+    // team (idempotent; a no-op for a healthy roster) so the retry can finish the repair.
+    const repair = await reconcileCodewordsAllTeams(supabase, code)
+    if (repair.error) return NextResponse.json({ error: repair.error }, { status: 500 })
+    if (repair.outcome.ended || repair.outcome.promotedPlayerId) {
+      return NextResponse.json({ success: true, ...repair.outcome })
+    }
+    return NextResponse.json({ error: 'Player is not on a team' }, { status: 400 })
+  }
 
   const { error } = await removeCodewordsPlayerRole(supabase, code, playerId)
   if (error) return NextResponse.json({ error }, { status: 500 })

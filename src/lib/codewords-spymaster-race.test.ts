@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { makeSupabaseStub } from '@/test-support/host-auth'
-import { persistRandomizedRoles, reconcileCodewordsTeamAfterRemoval } from './codewords'
+import { persistRandomizedRoles, reconcileCodewordsAllTeams, reconcileCodewordsTeamAfterRemoval } from './codewords'
 
 vi.mock('server-only', () => ({}))
 
@@ -115,6 +115,22 @@ describe('reconcileCodewordsTeamAfterRemoval — lost promotion race', () => {
     expect(rows.filter((r) => r.role === 'spymaster')).toHaveLength(0)
   })
 
+  it('forfeits on the re-read when only the selected operative moved, leaving exactly one red operative', async () => {
+    const { supabase, rows } = rolesDb(redOps, {
+      beforeUpdate: (r, n, targetId) => {
+        // Only the operative about to be promoted steps over to blue before the write lands.
+        if (n === 1) r.find((x) => x.player_id === targetId)!.team = 'blue'
+      },
+    })
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    // The stale write matched nothing; the re-read sees one lone red operative, which cannot be
+    // promoted without leaving nobody to guess, so the team forfeits.
+    expect(result.error).toBeNull()
+    expect(result.outcome).toMatchObject({ ended: true, forfeitWinner: 'blue' })
+    expect(rows.filter((r) => r.team === 'red' && r.role === 'operative')).toHaveLength(1)
+    expect(rows.filter((r) => r.role === 'spymaster')).toHaveLength(0)
+  })
+
   it('still reports other promotion errors', async () => {
     const supabase = makeSupabaseStub({
       codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
@@ -174,5 +190,45 @@ describe('persistRandomizedRoles — host replaced a spymaster mid-shuffle', () 
     const result = await persistRandomizedRoles(supabase, 'ABCD', playerIds, roles)
     expect(result.error).toBeNull()
     expect(result.conflict).toBeUndefined()
+  })
+})
+
+describe('reconcileCodewordsAllTeams — repeat after reconciliation gave up', () => {
+  it('fills a team left without a spymaster although no departed player is named', async () => {
+    const { supabase, rows } = rolesDb([
+      { player_id: 'r1', team: 'red', role: 'operative' },
+      { player_id: 'r2', team: 'red', role: 'operative' },
+      { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+      { player_id: 'b1', team: 'blue', role: 'operative' },
+    ])
+    // The one-team call with no team (what a repeat request can supply) does nothing...
+    expect((await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', null)).outcome).toEqual({ ended: false })
+    expect(rows.filter((r) => r.team === 'red' && r.role === 'spymaster')).toHaveLength(0)
+    // ...the all-teams repair fixes red and leaves the healthy blue team alone.
+    const result = await reconcileCodewordsAllTeams(supabase, 'ABCD')
+    expect(result.error).toBeNull()
+    expect(result.outcome.promotedPlayerId).toMatch(/^r/)
+    expect(rows.filter((r) => r.team === 'red' && r.role === 'spymaster')).toHaveLength(1)
+    expect(rows.filter((r) => r.team === 'blue' && r.role === 'spymaster')).toHaveLength(1)
+  })
+
+  it('forfeits a team down to one operative with no spymaster', async () => {
+    const { supabase } = rolesDb([
+      { player_id: 'r1', team: 'red', role: 'operative' },
+      { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+      { player_id: 'b1', team: 'blue', role: 'operative' },
+    ])
+    const result = await reconcileCodewordsAllTeams(supabase, 'ABCD')
+    expect(result.outcome).toMatchObject({ ended: true, forfeitWinner: 'blue' })
+  })
+
+  it('is a no-op for a healthy roster', async () => {
+    const { supabase } = rolesDb([
+      { player_id: 'r-spy', team: 'red', role: 'spymaster' },
+      { player_id: 'r1', team: 'red', role: 'operative' },
+      { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+      { player_id: 'b1', team: 'blue', role: 'operative' },
+    ])
+    expect(await reconcileCodewordsAllTeams(supabase, 'ABCD')).toEqual({ error: null, outcome: { ended: false } })
   })
 })

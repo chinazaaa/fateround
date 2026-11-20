@@ -747,6 +747,27 @@ export async function reconcileCodewordsTeamAfterRemoval(
 
 const RECONCILE_ATTEMPTS = 3
 
+/**
+ * Reconcile both teams of a game, whoever left. A removal commits before its reconciliation runs, so
+ * when reconciliation gives up (see RECONCILE_ATTEMPTS) the departed player is already gone and a
+ * repeat of the same request can no longer name the team they left. Callers that see such a repeat
+ * run this instead: it is idempotent and a no-op for a healthy roster.
+ */
+export async function reconcileCodewordsAllTeams(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null; outcome: CodewordsRemovalOutcome }> {
+  let outcome: CodewordsRemovalOutcome = { ended: false }
+  let error: string | null = null
+  for (const team of ['red', 'blue'] as const) {
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, gameId, team)
+    if (result.error && !error) error = result.error
+    if (result.outcome.ended) return { error: null, outcome: result.outcome }
+    if (result.outcome.promotedPlayerId) outcome = { ...outcome, promotedPlayerId: result.outcome.promotedPlayerId }
+  }
+  return { error, outcome }
+}
+
 /** Clears board, guesses, and team assignments — use only for a full session reset. */
 export async function clearCodewordsSessionData(
   supabase: SupabaseClient,
