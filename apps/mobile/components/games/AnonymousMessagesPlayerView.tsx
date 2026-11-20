@@ -169,6 +169,21 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return () => clearInterval(id)
   }, [])
 
+  // Live roster in every screen: lobby counters, `lobbyFull` and the headcount depend on who is
+  // seated, which changes on INSERT, DELETE and on UPDATE (a viewer readying up flips `spectator`).
+  useEffect(() => {
+    const supabase = getSupabase()
+    const channel = supabase
+      .channel(uniqueTopic(`anon-mobile-players-${code}`))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${code}` }, () => {
+        void load()
+      })
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [code, load])
+
   useEffect(() => {
     if (screen !== 'active') return
     const supabase = getSupabase()
