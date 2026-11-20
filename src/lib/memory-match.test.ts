@@ -941,6 +941,16 @@ describe('createFlipResyncTracker', () => {
     expect(resync).toHaveBeenCalledTimes(2)
   })
 
+  it('markDirty defers the resync to the next flip that settles instead of reading now', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.markDirty()
+    expect(resync).not.toHaveBeenCalled()
+    t.begin()
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
   it('requestResync during a running resync reads once more after it finishes', async () => {
     let release: () => void = () => {}
     const resync = vi.fn(

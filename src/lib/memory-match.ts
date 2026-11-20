@@ -638,6 +638,10 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
     epoch: () => epoch,
     /** True while any flip request is unanswered, so a snapshot may lack a flip the player already sees. */
     inFlight: () => pending > 0,
+    /** Ask for a resync after the next flip settles, without reading now (for a snapshot skipped mid-selection). */
+    markDirty() {
+      failed = true
+    },
     /** Resync (again) once nothing is in flight; for a snapshot that was not applied because it could be stale. */
     requestResync() {
       failed = true
