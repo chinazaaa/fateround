@@ -567,8 +567,17 @@ export function setCodewordsHostMode(gameCode: string, mode: CodewordsHostMode) 
   localStorage.setItem(codewordsHostModeKey(gameCode), mode)
 }
 
-export async function clearCodewordsChat(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('codewords_messages').delete().eq('game_id', gameId)
+export async function clearCodewordsChat(
+  supabase: SupabaseClient,
+  gameId: string,
+  // codewords_messages has no session column, so a session-bound finish scopes its wipe in time:
+  // only messages written up to the moment that session finished. A newer session starts after its
+  // predecessor finished, so its chat is never reached. Omitted = wipe everything (host/admin end).
+  createdAtOrBefore?: string
+): Promise<{ error: string | null }> {
+  let query = supabase.from('codewords_messages').delete().eq('game_id', gameId)
+  if (createdAtOrBefore) query = query.lte('created_at', createdAtOrBefore)
+  const { error } = await query
   if (error) return { error: internalErrorMessage('codewords', error) }
   return { error: null }
 }
@@ -578,19 +587,40 @@ export async function finishCodewordsGame(
   gameId: string,
   { onlyIfActive = false, onlySessionStartedAt }: { onlyIfActive?: boolean; onlySessionStartedAt?: string | null } = {}
 ): Promise<FinishGameResult> {
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, {
+  const finishedAt = new Date().toISOString()
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, finishedAt, {
     onlyIfActive,
     onlySessionStartedAt,
   })
   if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
-  // The chat wipe stays unconditional (idempotent delete); only `won` is threaded out so
-  // a caller can tell whether THIS request flipped the row.
+  // The chat wipe is an idempotent retry (a finish that committed but failed to wipe is repeated),
+  // so it also runs when another request won the flip. A session-bound finish must never reach a
+  // newer session's chat though: it wipes only what existed when ITS session finished, and a lost
+  // flip wipes only if the game is still the finished game of the session it observed.
   //
   // A failed wipe comes back as `cleanupError`, not `error`: the game is already
   // `finished`, so reporting it as a finish failure made callers drop a close they
   // had actually performed (and skip its `result_reason` stamp).
-  const { error: chatError } = await clearCodewordsChat(supabase, gameId)
+  let wipeUpTo: string | undefined
+  if (onlySessionStartedAt !== undefined) {
+    if (won) {
+      wipeUpTo = finishedAt
+    } else {
+      const { data: current, error: currentError } = await supabase
+        .from('games')
+        .select('status, session_started_at, finished_at')
+        .eq('id', gameId)
+        .maybeSingle()
+      if (currentError) return { error: null, won, cleanupError: internalErrorMessage('codewords', currentError) }
+      const sameSession = (current?.session_started_at ?? null) === onlySessionStartedAt
+      if (current?.status !== 'finished' || !sameSession || !current.finished_at) {
+        return { error: null, won, cleanupError: null }
+      }
+      wipeUpTo = current.finished_at as string
+    }
+  }
+  const { error: chatError } = await clearCodewordsChat(supabase, gameId, wipeUpTo)
   return { error: null, won, cleanupError: chatError }
 }
 
@@ -713,6 +743,15 @@ export async function reconcileCodewordsTeamAfterRemoval(
   if (!removedTeam) return { error: null, outcome: noop }
 
   const code = gameId.toUpperCase()
+  // The game is read BEFORE the board so a forfeit's finish can be bound to the session whose board
+  // was observed: a replay in between changes session_started_at and the finish matches nothing.
+  const { data: gameRow, error: gameReadError } = await supabase
+    .from('games')
+    .select('session_started_at')
+    .eq('id', code)
+    .maybeSingle()
+  if (gameReadError) return { error: internalErrorMessage('codewords', gameReadError), outcome: noop }
+  const observedSession = (gameRow?.session_started_at as string | null | undefined) ?? null
   const { data: board, error: boardError } = await supabase
     .from('codewords_boards')
     .select('id, winner')
@@ -742,7 +781,14 @@ export async function reconcileCodewordsTeamAfterRemoval(
     if (winError) return { error: internalErrorMessage('codewords', winError), outcome: noop }
     // Nothing matched: the round was decided or replaced meanwhile, so there is nothing to forfeit.
     if (!Array.isArray(decided) || decided.length === 0) return { error: null, outcome: noop }
-    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code)
+    // Single-winner and session-bound: a board read may already have finished the game through
+    // finishDecidedCodewordsGame (the winner write above is what it keys on), and an unguarded
+    // finish would count as a second win and award the room's points twice. Losing that flip is fine:
+    // the forfeit itself committed, so the outcome below still reports it.
+    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code, {
+      onlyIfActive: true,
+      onlySessionStartedAt: observedSession,
+    })
     if (finishError) return { error: finishError, outcome: noop }
     // The forfeit landed; only the chat wipe failed, and that cannot un-finish the game.
     // Nothing retries it, so log it instead of turning a completed forfeit into an error.
@@ -755,6 +801,20 @@ export async function reconcileCodewordsTeamAfterRemoval(
   // another removal lands). A promotion that matches nothing, or that the one-spymaster index
   // rejects, says the read was stale: re-read the team and decide again until its seat is settled.
   for (let attempt = 0; attempt < RECONCILE_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      // Retrying later than the first read: make sure the round we are repairing is still the one
+      // in play (not decided, not replaced by a restart) before writing to its roster again.
+      const { data: again, error: againError } = await supabase
+        .from('codewords_boards')
+        .select('id, winner')
+        .eq('game_id', code)
+        .maybeSingle()
+      if (againError) return { error: internalErrorMessage('codewords', againError), outcome: noop }
+      const current = again as Pick<CodewordsBoard, 'id' | 'winner'> | null
+      if (!current || current.winner || current.id !== (board as Pick<CodewordsBoard, 'id'>).id) {
+        return { error: null, outcome: noop }
+      }
+    }
     const { data: roleRows, error: rolesError } = await supabase
       .from('codewords_player_roles')
       .select('player_id, team, role')

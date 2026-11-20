@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { makeSupabaseStub } from '@/test-support/host-auth'
 import {
   persistRandomizedRoles,
+  finishCodewordsGame,
   finishDecidedCodewordsGame,
   reconcileCodewordsAllTeams,
   reconcileCodewordsTeamAfterRemoval,
@@ -457,5 +458,117 @@ describe('finishDecidedCodewordsGame — a decided board whose game is still act
     expect(ok.gameUpdates).toHaveLength(1)
     const bad = db({ gameError: true })
     expect((await reconcileCodewordsTeamAfterRemoval(bad.supabase, 'ABCD', 'red')).error).not.toBeNull()
+  })
+})
+
+describe('forfeit finish is single-winner', () => {
+  it('reports the forfeit and awards nothing twice when a board read already finished the game', async () => {
+    const gameUpdates: Array<readonly { method: string; args: readonly unknown[] }[]> = []
+    const supabase = makeSupabaseStub({
+      games: ({ op, filterCalls }) => {
+        if (op === 'update') {
+          gameUpdates.push(filterCalls)
+          return { data: [], error: null } // lost: finishDecidedCodewordsGame flipped it first
+        }
+        return {
+          data: { status: 'finished', session_started_at: 'S1', finished_at: '2026-01-01T00:00:00.000Z' },
+          error: null,
+        }
+      },
+      codewords_boards: boardResolver({ id: 'b1', winner: null }),
+      codewords_player_roles: () => ({ data: [], error: null }),
+      codewords_messages: () => ({ data: null, error: null }),
+    }) as unknown as SupabaseClient
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    expect(result).toEqual({ error: null, outcome: { ended: true, forfeitWinner: 'blue' } })
+    expect(gameUpdates).toHaveLength(1)
+    expect(gameUpdates[0]).toContainEqual({ method: 'eq', args: ['status', 'active'] })
+    expect(gameUpdates[0]).toContainEqual({ method: 'eq', args: ['session_started_at', 'S1'] })
+  })
+})
+
+describe("session-bound finish never wipes a newer session's chat", () => {
+  function chatDb(opts: { flipWins: boolean; current?: Record<string, unknown> }) {
+    const deletes: Array<readonly { method: string; args: readonly unknown[] }[]> = []
+    const supabase = makeSupabaseStub({
+      games: ({ op }) =>
+        op === 'update'
+          ? { data: opts.flipWins ? [{ id: 'ABCD' }] : [], error: null }
+          : { data: opts.current ?? null, error: null },
+      codewords_messages: ({ op, filterCalls }) => {
+        if (op === 'delete') deletes.push(filterCalls)
+        return { data: null, error: null }
+      },
+    }) as unknown as SupabaseClient
+    return { supabase, deletes }
+  }
+  const finished = { status: 'finished', session_started_at: 'S1', finished_at: '2026-01-01T00:00:00.000Z' }
+
+  it('a winning flip wipes only messages up to its own finish time', async () => {
+    const { supabase, deletes } = chatDb({ flipWins: true })
+    await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0].some((c) => c.method === 'lte' && c.args[0] === 'created_at')).toBe(true)
+  })
+
+  it('a lost flip still retries the wipe for the same finished session, up to its finish time', async () => {
+    const { supabase, deletes } = chatDb({ flipWins: false, current: finished })
+    await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0]).toContainEqual({ method: 'lte', args: ['created_at', '2026-01-01T00:00:00.000Z'] })
+  })
+
+  it('a lost flip does not wipe when the game now belongs to a newer session', async () => {
+    const newer = chatDb({ flipWins: false, current: { ...finished, session_started_at: 'S2', status: 'active' } })
+    await finishCodewordsGame(newer.supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(newer.deletes).toHaveLength(0)
+    const finishedNewer = chatDb({ flipWins: false, current: { ...finished, session_started_at: 'S2' } })
+    await finishCodewordsGame(finishedNewer.supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(finishedNewer.deletes).toHaveLength(0)
+  })
+
+  it('a host/admin finish (no session binding) still wipes everything', async () => {
+    const { supabase, deletes } = chatDb({ flipWins: true })
+    await finishCodewordsGame(supabase, 'ABCD')
+    expect(deletes).toHaveLength(1)
+    expect(deletes[0].some((c) => c.method === 'lte')).toBe(false)
+  })
+})
+
+describe('reconcile retries stay on the observed round', () => {
+  it('stops instead of promoting in a lobby the host reopened between attempts', async () => {
+    const reds: RoleRow[] = [
+      { player_id: 'op-1', team: 'red', role: 'operative' },
+      { player_id: 'op-2', team: 'red', role: 'operative' },
+    ]
+    const { supabase, rows } = rolesDb(reds, {
+      beforeUpdate: (_r, n) => {
+        // First promotion loses (zero rows); the game is replayed before the retry.
+        if (n === 1) rows.forEach((x) => (x.team = 'blue'))
+      },
+      beforeBoardUpdate: undefined,
+    })
+    // After the first attempt the board is gone (Play Again deleted it): the retry must not write.
+    let boardReads = 0
+    const wrapped = new Proxy(supabase, {
+      get(target, prop, recv) {
+        if (prop !== 'from') return Reflect.get(target, prop, recv)
+        return (table: string) => {
+          if (table === 'codewords_boards') {
+            boardReads += 1
+            if (boardReads > 1) {
+              const chain: Record<string, unknown> = {}
+              for (const m of ['select', 'eq']) chain[m] = () => chain
+              chain.maybeSingle = async () => ({ data: null, error: null })
+              return chain
+            }
+          }
+          return (target as unknown as { from: (t: string) => unknown }).from(table)
+        }
+      },
+    }) as unknown as SupabaseClient
+    const result = await reconcileCodewordsTeamAfterRemoval(wrapped, 'ABCD', 'red')
+    expect(result).toEqual({ error: null, outcome: { ended: false } })
+    expect(rows.filter((r) => r.role === 'spymaster')).toHaveLength(0)
   })
 })
