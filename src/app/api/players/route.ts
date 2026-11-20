@@ -7,12 +7,12 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
 import { removeMonopolyPlayer } from '@/lib/monopoly'
-import { removeScrabblePlayer } from '@/lib/scrabble'
+import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
 import { removeRummyPlayer } from '@/lib/rummy'
 import { removeGoFishPlayer } from '@/lib/gofish-server'
-import { removeUnoPlayer } from '@/lib/uno'
+import { removeUnoPlayer, UNO_REMOVE_CONFLICT_ERROR } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
 import { removeMahjongPlayer } from '@/lib/mahjong'
 import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
@@ -2061,7 +2061,9 @@ export async function DELETE(req: NextRequest) {
 
   if (isScrabbleGame(gameType)) {
     const { error } = await removeScrabblePlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
+    if (error) {
+      return NextResponse.json({ error }, { status: error === SCRABBLE_REMOVE_CONFLICT_ERROR ? 409 : 500 })
+    }
     return NextResponse.json({ success: true })
   }
 
@@ -2091,7 +2093,7 @@ export async function DELETE(req: NextRequest) {
 
   if (isUnoGame(gameType)) {
     const { error } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
+    if (error) return NextResponse.json({ error }, { status: error === UNO_REMOVE_CONFLICT_ERROR ? 409 : 500 })
     return NextResponse.json({ success: true })
   }
 
