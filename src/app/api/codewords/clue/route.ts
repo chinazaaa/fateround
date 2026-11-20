@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { codewordsClueSchema } from '@/lib/validation'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { effectiveTurnPhase, guessPhaseUpdate } from '@/lib/codewords'
+import { effectiveTurnPhase, guessPhaseUpdate, omitCodewordsServerCounters } from '@/lib/codewords'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import type { CodewordsBoard } from '@/types'
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const guessesRemaining = clueNumber === 0 ? 25 : clueNumber + 1
 
-  const { data: updated, error } = await supabase
+  let write = supabase
     .from('codewords_boards')
     .update({
       current_clue_word: clueWord.trim(),
@@ -74,9 +74,21 @@ export async function POST(req: NextRequest) {
       ...guessPhaseUpdate(typedBoard.operative_timer_seconds ?? 60),
     })
     .eq('id', typedBoard.id)
-    .select()
-    .single()
+    // Compare-and-swap on the state the checks above relied on: two clue requests can both read an
+    // empty clue, and the later one would otherwise overwrite the first clue and reset the guess
+    // allowance after operatives have already spent guesses on it (clue_seq cannot tell an identical
+    // repost apart). Only the request that finds the board still waiting for a clue wins.
+    .is('current_clue_word', null)
+    .is('winner', null)
+    .eq('current_turn', typedBoard.current_turn)
+  // turn_seq advances on every turn change, so a request held in flight across a full turn cycle
+  // (the same team's turn again, clue empty again) no longer matches. Skipped only when the column
+  // is absent from the read (route deployed before the migration).
+  if (typeof typedBoard.turn_seq === 'number') write = write.eq('turn_seq', typedBoard.turn_seq)
+
+  const { data: updated, error } = await write.select().maybeSingle()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/clue', error) }, { status: 500 })
-  return NextResponse.json({ success: true, board: updated })
+  if (!updated) return NextResponse.json({ error: 'A clue was already given this turn' }, { status: 409 })
+  return NextResponse.json({ success: true, board: omitCodewordsServerCounters(updated) })
 }

@@ -30,6 +30,20 @@ import { parsePickANumberPool, pickANumberQuestionAt } from '@/lib/pick-a-number
 import type { PairFlag, WyrChoice } from '@/types'
 import { parseJsonBody } from '@/lib/parse-body'
 
+/**
+ * At round expiry the player's timer auto-vote and the host's end-round request race. A vote that
+ * lands just after the host closed the round is still the player's valid timer choice, so accept it
+ * within this latency grace (mirrors the Trivia answer route). Later votes stay rejected.
+ *
+ * Two limits keep the grace from being abused: it never applies to Who Said This (the answer is
+ * revealed the moment the round finishes and the vote is scored, so a late vote could be informed),
+ * and during the grace a vote is only inserted when the player has none yet, so a retry cannot
+ * overwrite an accepted vote. The decision is made again, under a row lock, by the
+ * submit_vote_atomic Postgres function, so it holds even if end-round commits between the status
+ * read below and the vote write.
+ */
+const VOTE_CLOSE_GRACE_MS = 3000
+
 function parsePairAssignments(raw: unknown): Record<string, PairFlag> | null {
   if (!raw || typeof raw !== 'object') return null
   const out: Record<string, PairFlag> = {}
@@ -70,7 +84,7 @@ export async function POST(req: NextRequest) {
     // Scope the round to the authorized game so a known roundId from another game is rejected.
     supabase
       .from('rounds')
-      .select('status, participant_ids, submitter_player_id, quote_text, started_at, quote_submitted_at')
+      .select('status, participant_ids, submitter_player_id, quote_text, started_at, quote_submitted_at, ended_at')
       .eq('id', roundId)
       .eq('game_id', gameId.toUpperCase())
       .maybeSingle(),
@@ -89,7 +103,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Viewers cannot vote' }, { status: 403 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
-  if (round.status !== 'active') return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+  if (round.status !== 'active') {
+    const endedAtMs = round.ended_at ? Date.parse(round.ended_at) : NaN
+    const withinGrace =
+      round.status === 'finished' &&
+      !isWhoSaidThis(parseGameType(game.game_type)) &&
+      Number.isFinite(endedAtMs) &&
+      Date.now() - endedAtMs <= VOTE_CLOSE_GRACE_MS
+    if (!withinGrace) return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+  }
 
   const gameType = parseGameType(game.game_type)
   const roundIds = round.participant_ids as string[]
@@ -487,18 +509,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, pickedNumber: picked, revealedQuestion })
   }
 
-  const { error } = await supabase.from('votes').upsert(
-    {
-      player_id: playerId,
-      round_id: roundId,
-      game_id: gameId,
-      ...row,
-    },
-    { onConflict: 'player_id,round_id' }
-  )
+  // The round check and the vote write run in ONE transaction that locks the round row, so a vote
+  // cannot be saved as "active" after end-round has already committed (it waits for end-round, then
+  // sees the finished round and follows the close rules below). Without this, a resend racing the
+  // host could replace a vote that had already been tallied.
+  const { data: result, error } = await supabase.rpc('submit_vote_atomic', {
+    p_game_id: gameId,
+    p_round_id: roundId,
+    p_player_id: playerId,
+    p_row: row,
+    p_grace_ms: isWhoSaidThis(gameType) ? null : VOTE_CLOSE_GRACE_MS,
+    p_now: new Date().toISOString(),
+  })
 
   if (error) {
     return NextResponse.json({ error: internalErrorMessage('votes', error) }, { status: 500 })
+  }
+
+  const outcome = result as { status?: string } | null
+  if (outcome?.status === 'game_not_active') {
+    return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+  }
+  if (outcome?.status === 'round_not_active') {
+    return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+  }
+  if (outcome?.status === 'round_not_found') {
+    return NextResponse.json({ error: 'Round not found' }, { status: 404 })
+  }
+  // 'kept_existing' (a resend after close) is reported as success: the accepted vote stands.
+  if (outcome?.status !== 'ok' && outcome?.status !== 'kept_existing') {
+    return NextResponse.json(
+      { error: internalErrorMessage('votes', new Error('unexpected vote result')) },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({ success: true })

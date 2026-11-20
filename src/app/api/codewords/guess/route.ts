@@ -16,7 +16,11 @@ export async function POST(req: NextRequest) {
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
-  const { data: game } = await supabase.from('games').select('game_type, status').eq('id', code).maybeSingle()
+  const { data: game } = await supabase
+    .from('games')
+    .select('game_type, status, session_started_at')
+    .eq('id', code)
+    .maybeSingle()
   if (!game) return NextResponse.json({ error: 'Game not found' }, { status: 404 })
   if (!isCodewordsGame(parseGameType(game.game_type))) {
     return NextResponse.json({ error: 'Not a codewords game' }, { status: 400 })
@@ -60,6 +64,8 @@ export async function POST(req: NextRequest) {
     p_board_id: typedBoard.id,
     p_cell_index: cellIndex,
     p_player_team: role.team,
+    // The clue this route validated; the RPC rejects the guess if a newer clue has replaced it.
+    p_clue_seq: typedBoard.clue_seq ?? null,
   })
 
   if (rpcError) {
@@ -74,6 +80,9 @@ export async function POST(req: NextRequest) {
     }
     if (msg.includes('NO_CLUE')) {
       return NextResponse.json({ error: 'Wait for your spymaster to give a clue' }, { status: 400 })
+    }
+    if (msg.includes('STALE_CLUE')) {
+      return NextResponse.json({ error: 'The clue changed — try again' }, { status: 409 })
     }
     if (msg.includes('NO_GUESSES_LEFT')) {
       return NextResponse.json({ error: 'No guesses left this turn' }, { status: 400 })
@@ -101,7 +110,12 @@ export async function POST(req: NextRequest) {
   if (updated.winner) {
     // The win is already on the board; a finish or chat-wipe failure here must not fail the
     // guess that produced it. Neither is retried, so log both rather than swallowing them.
-    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code)
+    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code, {
+      onlyIfActive: true,
+      // The session this guess was validated against: a Play Again + restart during the awaits above
+      // must not have its new round finished by this delayed call.
+      onlySessionStartedAt: (game.session_started_at as string | null) ?? null,
+    })
     if (finishError) console.error(`codewords/guess: finish failed for ${code}`, finishError)
     if (cleanupError) console.error(`codewords/guess: chat cleanup failed for ${code} — not retried`, cleanupError)
   }

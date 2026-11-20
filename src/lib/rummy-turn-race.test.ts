@@ -10,6 +10,7 @@ import {
   processRummyExpireTurn,
   finishExpiredRummyGame,
   removeRummyPlayer,
+  rummyVersionKey,
 } from './rummy'
 
 /**
@@ -37,6 +38,8 @@ type Faults = {
   afterSessionRead?: (tables: Record<string, Row[]>) => void
   /** Make the game clock look expired (game_duration_seconds / session_started_at in the past). */
   clockExpired?: boolean
+  /** Makes the nth direct `maybeSingle` read of rummy_sessions fail with a transport error. */
+  failSessionMaybeSingleOn?: number
   /** Runs right after a transition commits (lets a test interleave another request). */
   afterRpc?: (tables: Record<string, Row[]>) => void
 }
@@ -81,6 +84,7 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
     ],
   }
   let tick = 0
+  let maybeSingleReads = 0
   const gamesWrites = { count: 0 }
 
   const builder = (table: string) => {
@@ -139,6 +143,12 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
       },
       maybeSingle: async () => {
         const res = await run()
+        if (table === 'rummy_sessions') {
+          maybeSingleReads += 1
+          if (faults.failSessionMaybeSingleOn === maybeSingleReads) {
+            return { data: null, error: { message: 'connection reset' } }
+          }
+        }
         return { data: (res.data as Row[])[0] ?? null, error: null }
       },
       then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => run().then(resolve, reject),
@@ -150,6 +160,17 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
   // compare-and-swap and every hand write apply atomically; any failure restores a snapshot.
   const rpc = async (fn: string, args: Record<string, unknown>) => {
     await Promise.resolve()
+    if (fn === 'rummy_finish_game_for_session') {
+      // Same semantics as the Postgres function: flips games only while it is active and the
+      // observed session is still the game's (finished) session.
+      if (faults.gamesUpdateError) return { data: null, error: { message: faults.gamesUpdateError } }
+      const game = tables.games.find((g) => g.id === args.p_game_id)
+      const sess = tables.rummy_sessions.find((r) => r.game_id === args.p_game_id && r.id === args.p_session_id)
+      if (!game || game.status !== 'active' || !sess || sess.phase !== 'finished') return { data: false, error: null }
+      game.status = 'finished'
+      gamesWrites.count++
+      return { data: true, error: null }
+    }
     if (fn !== 'rummy_apply_transition') return { data: null, error: { message: `unknown rpc ${fn}` } }
     if (faults.rpcError) return { data: null, error: { message: faults.rpcError } }
     const session = tables.rummy_sessions.find((r) => r.game_id === args.p_game_id)
@@ -281,12 +302,61 @@ describe('Rummy concurrent turn actions', () => {
     expect(tables.games[0].status).toBe('active')
 
     // ...and while the games write keeps failing, a retry keeps reporting it instead of "finished".
-    expect((await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')).error).not.toBe('Game is finished')
+    const stillFailing = await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')
+    expect(stillFailing.error).toBeTruthy()
+    expect(stillFailing.error).not.toBe('Game is finished')
 
     // Once it recovers, the retry finalizes the game.
     faults.gamesUpdateError = undefined
     expect((await processRummyDiscard(client, 'ABCD', 'p1', 'diamonds-9')).error).toBe('Game is finished')
     expect(tables.games[0].status).toBe('finished')
+  })
+
+  it('answers a replay of a committed go-out with success once finalization recovers', async () => {
+    const hand = [c('hearts', 5), c('spades', 5), c('clubs', 5), c('diamonds', 9)]
+    const faults: Faults = { gamesUpdateError: 'games down' }
+    const { client, tables } = makeDb(hand, faults)
+    const meld = [['hearts-5', 'spades-5', 'clubs-5']]
+
+    expect((await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')).error).toBeTruthy()
+    expect(tables.games[0].status).toBe('active')
+
+    faults.gamesUpdateError = undefined
+    // The same go-out, replayed: finalizes the game and reports success instead of "Game is finished".
+    expect(await processRummyGoOut(client, 'ABCD', 'p1', meld, 'diamonds-9')).toEqual({})
+    expect(tables.games[0].status).toBe('finished')
+  })
+
+  it('still rejects a go-out from a different player on a finished round', async () => {
+    const { client, tables } = makeDb([c('hearts', 5)])
+    Object.assign(tables.rummy_sessions[0], { phase: 'finished', winner_player_id: 'p2' })
+    const res = await processRummyGoOut(client, 'ABCD', 'p1', [['hearts-5']], null)
+    expect(res.error).toBe('Game is finished')
+  })
+
+  it('does not auto-discard when the turn got a fresh deadline after the expiry check', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    let reads = 0
+    const faults: Faults = {
+      afterSessionRead: (t) => {
+        reads += 1
+        // Reads: 1 = expiry check, 2 = hand reload, 3 = the discard's own load. Another player
+        // leaving between the checks gives the same player a new deadline and a new version.
+        if (reads === 2) {
+          Object.assign(t.rummy_sessions[0], {
+            turn_deadline_at: '2999-01-01T00:00:00.000Z',
+            updated_at: 'committed-v1',
+          })
+        }
+      },
+    }
+    const { client, tables } = makeDb(hand, faults)
+    tables.rummy_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'
+
+    const res = await processRummyExpireTurn(client, 'ABCD')
+    expect(res).toEqual({ skipped: true })
+    expect(handOf(tables, 'p1')).toHaveLength(2)
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(0)
   })
   it('does not finalize twice when a retry already finished the game before the original go-out does', async () => {
     const hand = [c('hearts', 5), c('spades', 5), c('clubs', 5), c('diamonds', 9)]
@@ -303,6 +373,24 @@ describe('Rummy concurrent turn actions', () => {
     expect(tables.games[0].status).toBe('finished')
     // The original go-out's finalization is guarded by status = 'active', so it must not write
     // (or award room points) a second time.
+    expect(gamesWrites.count).toBe(0)
+  })
+  it('does not let a stale finalizer finish a newer round started under the same game id', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      // Round A's finished session has been read; Play Again and a new round (new session id)
+      // replace it before the retry's finalization write runs.
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        t.rummy_sessions[0] = { ...t.rummy_sessions[0], id: 's2', phase: 'playing', winner_player_id: null }
+      },
+    }
+    const { client, tables, gamesWrites } = makeDb(hand, faults)
+    Object.assign(tables.rummy_sessions[0], { phase: 'finished', winner_player_id: 'p1' })
+
+    const res = await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5')
+    expect(res.error).toBe('Game is finished')
+    expect(tables.games[0].status).toBe('active')
     expect(gamesWrites.count).toBe(0)
   })
   it('reads the session before the hands (never in parallel) so a hand is never older than its session version', async () => {
@@ -371,7 +459,7 @@ describe('Rummy concurrent turn actions', () => {
     // ...and only the games finalization was retried.
     expect(tables.games[0].status).toBe('finished')
   })
-  it('does not remove a leaving player (or restore the old turn index) when a turn action commits after the session was read', async () => {
+  it('retries a leave against the fresh session when a turn action commits after it was read', async () => {
     const hand = [c('hearts', 5), c('spades', 5)]
     const faults: Faults = {
       // A discard advances the turn right after removeRummyPlayer has read the session.
@@ -387,8 +475,33 @@ describe('Rummy concurrent turn actions', () => {
 
     const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
 
+    // The committed discard is not undone (the turn stays with p2) and the leave goes through.
+    expect(res.error).toBeNull()
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(1)
+    expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2'])
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(false)
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
+  })
+
+  it('does not remove a leaving player (or restore the old turn index) while turn actions keep racing it', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    let n = 0
+    const faults: Faults = {
+      // Every read of the session is immediately followed by another committed turn action.
+      afterSessionRead: (t) => {
+        n += 1
+        Object.assign(t.rummy_sessions[0], { current_turn_index: 1, updated_at: `committed-v${n}` })
+      },
+    }
+    const { client, tables } = makeDb(hand, faults)
+    tables.players.push({ id: 'p3', game_id: 'ABCD', name: 'Cy' })
+    tables.rummy_sessions[0].turn_order = ['p1', 'p2', 'p3']
+    tables.rummy_player_hands.push({ id: 'h3', game_id: 'ABCD', player_id: 'p3', player_order: 2, cards: [] })
+
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+
     expect(res.error).toBeTruthy()
-    // The committed turn state is untouched and the leaver was not deleted (they can retry).
+    expect(n).toBe(3)
     expect(tables.rummy_sessions[0].current_turn_index).toBe(1)
     expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2', 'p3'])
     expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(true)
@@ -407,5 +520,87 @@ describe('Rummy concurrent turn actions', () => {
     expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2'])
     expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(false)
     expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
+  })
+
+  it('does not delete the leaver or their hand when the retry read of the session fails', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      failSessionMaybeSingleOn: 2,
+      // A turn action commits right after the first read, forcing the version conflict and a retry.
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        Object.assign(t.rummy_sessions[0], { current_turn_index: 1, updated_at: 'committed-v1' })
+      },
+    }
+    const { client, tables } = makeDb(hand, faults)
+    tables.players.push({ id: 'p3', game_id: 'ABCD', name: 'Cy' })
+    tables.rummy_sessions[0].turn_order = ['p1', 'p2', 'p3']
+    tables.rummy_player_hands.push({ id: 'h3', game_id: 'ABCD', player_id: 'p3', player_order: 2, cards: [] })
+
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+
+    expect(res.error).toBeTruthy()
+    expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2', 'p3'])
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(true)
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(true)
+  })
+
+  it('does not delete the leaver when the very first read of the session fails', async () => {
+    const { client, tables } = makeDb([c('hearts', 5)], { failSessionMaybeSingleOn: 1 })
+    const res = await removeRummyPlayer(client, 'ABCD', 'p2', 'Ben')
+    expect(res.error).toBeTruthy()
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p2')).toBe(true)
+    expect(tables.players.some((p) => p.id === 'p2')).toBe(true)
+  })
+
+  it('does not draw or discard when the deadline was renewed between the expiry read and the draw', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        // Read 1 is the expiry check; the turn then gets a fresh deadline and version (a leave).
+        Object.assign(t.rummy_sessions[0], {
+          turn_deadline_at: '2999-01-01T00:00:00.000Z',
+          updated_at: 'committed-v1',
+        })
+      },
+    }
+    const { client, tables } = makeDb(hand, faults)
+    Object.assign(tables.rummy_sessions[0], { turn_step: 'draw', turn_deadline_at: '2020-01-01T00:00:00.000Z' })
+
+    const res = await processRummyExpireTurn(client, 'ABCD')
+
+    expect(res).toEqual({ skipped: true })
+    expect(handOf(tables, 'p1')).toHaveLength(2)
+    expect((tables.rummy_sessions[0].draw_pile as RummyCard[]).map((x) => x.id)).toEqual(['clubs-9'])
+    expect(tables.rummy_sessions[0].turn_step).toBe('draw')
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(0)
+  })
+
+  it('rejects a discard bound to a version that differs only in microseconds', async () => {
+    const { client, tables } = makeDb([c('hearts', 5), c('hearts', 6)])
+    tables.rummy_sessions[0].updated_at = '2026-01-01T00:00:00.000200+00:00'
+    const stale = await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5', '2026-01-01T00:00:00.000100+00:00')
+    expect(stale.error).toMatch(/already updated this turn/)
+    expect(handOf(tables, 'p1')).toHaveLength(2)
+  })
+})
+
+describe('rummyVersionKey', () => {
+  it('tells apart versions inside the same millisecond', () => {
+    expect(rummyVersionKey('2026-01-01T00:00:00.000100+00:00')).not.toBe(
+      rummyVersionKey('2026-01-01T00:00:00.000200+00:00')
+    )
+  })
+
+  it('treats formatting differences of one instant as equal', () => {
+    const a = rummyVersionKey('2026-01-01T00:00:00.5+00:00')
+    expect(rummyVersionKey('2026-01-01T00:00:00.500000Z')).toBe(a)
+    expect(rummyVersionKey('2026-01-01 00:00:00.500000+00')).toBe(a)
+    expect(rummyVersionKey('2026-01-01T01:00:00.500000+01:00')).toBe(a)
+  })
+
+  it('falls back to the raw text for non-timestamps', () => {
+    expect(rummyVersionKey('committed-v1')).toBe('committed-v1')
   })
 })

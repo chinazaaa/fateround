@@ -88,9 +88,20 @@ describe('adminEndGame — finish outcome propagation', () => {
 
     const result = await adminEndGame(supabase, { id: 'AAAA', status: 'active', game_type: 'trivia' })
 
-    expect(markGameFinished.mock.calls[0][3]).toEqual({ onlyIfActive: false })
+    expect(markGameFinished.mock.calls[0][3]).toEqual({ onlyIfActive: false, trackBookkeeping: false })
     expect(result).toEqual({ error: null, won: true })
     expect(recorded.gameUpdates).toEqual([{ result_reason: 'admin_ended' }])
+  })
+
+  it("makes Word Rush's post-finish bookkeeping durable (Play Again deletes the rows it reads), and only Word Rush's", async () => {
+    markGameFinished.mockResolvedValue({ error: null, won: true })
+    const { supabase } = mockSupabase()
+
+    await adminEndGame(supabase, { id: 'AAAA', status: 'active', game_type: 'word_rush' }, { onlyIfActive: true })
+    expect(markGameFinished.mock.calls[0][3]).toEqual({ onlyIfActive: true, trackBookkeeping: true })
+    markGameFinished.mockClear()
+    await adminEndGame(supabase, { id: 'BBBB', status: 'active', game_type: 'trivia' }, { onlyIfActive: true })
+    expect(markGameFinished.mock.calls[0][3]).toEqual({ onlyIfActive: true, trackBookkeeping: false })
   })
 
   it('rejects an already-finished game as an error, never as a win', async () => {

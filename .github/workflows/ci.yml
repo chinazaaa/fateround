@@ -1409,6 +1409,27 @@ jobs:
           DB_CONCURRENCY_REQUIRED: '1'
         run: pnpm vitest run src/lib/db-concurrency.integration.test.ts
 
+      # Applies the Matching Pairs duplicate-cleanup migration to seeded histories and asserts the
+      # result (score replay, progress reconciliation, grid-size rule, idempotence). It runs in a
+      # transaction that is rolled back, so it leaves the database as it found it. The path inside
+      # the script is relative, so this must run from the repository root (the default).
+      - name: Matching Pairs duplicate cleanup migration
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/matching-pairs-dedupe.sql
+
+      # The checked flip insert: stale history fingerprints are rejected, nothing is inserted for them.
+      - name: Matching Pairs checked flip function
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/matching-pairs-record-flip-checked.sql
+
+      # Two sessions: a flip that read the history before a cleanup must wait for it and then be refused.
+      - name: Matching Pairs checked flip waits for a running cleanup
+        run: |
+          DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            supabase/tests/matching-pairs-record-flip-checked-lock.sh
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

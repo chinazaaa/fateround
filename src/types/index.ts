@@ -231,6 +231,10 @@ export interface CodewordsBoard {
   guesses_remaining: number | null
   current_clue_word: string | null
   current_clue_number: number | null
+  /** Bumped each time a clue is posted; lets a guess be bound to the clue it observed. */
+  clue_seq?: number
+  /** Bumped on every change of current_turn; lets a clue post be bound to the turn it was validated in. */
+  turn_seq?: number
   winner: CodewordsTeam | null
   assassin_team: CodewordsTeam | null
   spymaster_timer_seconds: number
@@ -1306,6 +1310,12 @@ export interface MahjongScoreSummary {
   winner_player_ids?: string[]
   honba?: number
   riichi_sticks?: number
+  /**
+   * Set by the hand transition that decides the match. Persisted with the hand so a failed
+   * `games` finalization is retried (and no further hand is dealt) even when the settlement had
+   * no payments to show.
+   */
+  match_finished?: boolean
 }
 
 export interface MahjongDiscard {
@@ -1721,6 +1731,23 @@ export type WordRushMode = 'team' | 'individual'
 export type WordRushPromptMode = 'automatic' | 'manual'
 export type WordRushDifficulty = 'standard' | 'hard'
 
+/**
+ * Effects still owed after an individual round was closed (see word_rush_finalize_award and
+ * runRoundFinalization). Stored on the session by the claim that closes the round and cleared once
+ * they have all been applied. Server-side only; clients ignore it.
+ */
+export interface WordRushRoundFinalize {
+  /** word_rush_sessions.id of the game the round belonged to (Play Again creates a new id). */
+  session_id: string
+  turn_index: number
+  round: number
+  setter_id: string | null
+  is_last: boolean
+  turn_deadline_at: string | null
+  turn_seconds: number
+  awarded?: boolean
+}
+
 export interface WordRushSession {
   id: string
   game_id: string
@@ -1745,6 +1772,7 @@ export interface WordRushSession {
   intermission_deadline_at: string | null
   status: 'active' | 'finished'
   status_message: string | null
+  round_finalize?: WordRushRoundFinalize | null
   created_at: string
   updated_at: string
 }

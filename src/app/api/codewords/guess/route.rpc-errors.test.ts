@@ -18,25 +18,37 @@ const board = {
   current_turn: 'blue',
   current_clue_word: 'clue',
   current_clue_number: 2,
+  clue_seq: 3,
   guesses_remaining: 3,
   winner: null,
 }
 
+const finish = vi.fn()
+let lastRpcArgs: Record<string, unknown> | undefined
 let rpcResult: { data: unknown; error: { message: string } | null } = { data: null, error: null }
 
 const base = makeSupabaseStub({
-  games: () => ({ data: gameRow({ status: 'active', game_type: 'codewords' }), error: null }),
+  games: () => ({ data: gameRow({ status: 'active', game_type: 'codewords', session_started_at: 'S1' }), error: null }),
   players: () => ({ data: { id: PLAYER_ID }, error: null }),
   codewords_player_roles: () => ({ data: { team: 'blue', role: 'operative' }, error: null }),
   codewords_boards: () => ({ data: board, error: null }),
   codewords_guesses: () => ({ data: null, error: null }),
 })
-const supabase = { ...base, rpc: async () => rpcResult }
+const supabase = {
+  ...base,
+  rpc: async (_fn: string, args: Record<string, unknown>) => {
+    lastRpcArgs = args
+    return rpcResult
+  },
+}
 
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => supabase }))
 vi.mock('@/lib/codewords', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/codewords')>()),
-  finishCodewordsGame: async () => ({ error: null, cleanupError: null }),
+  finishCodewordsGame: async (...args: unknown[]) => {
+    finish(...args)
+    return { error: null, cleanupError: null }
+  },
 }))
 
 let POST: typeof import('./route').POST
@@ -45,6 +57,7 @@ beforeAll(async () => {
 }, 60_000)
 
 beforeEach(() => {
+  finish.mockClear()
   rpcResult = { data: null, error: null }
 })
 
@@ -65,6 +78,13 @@ describe('POST /api/codewords/guess — RPC re-check errors', () => {
     await expect(res.json()).resolves.toEqual({ error: message })
   })
 
+  it('maps STALE_CLUE to 409 and passes the observed clue_seq to the RPC', async () => {
+    rpcResult = { data: null, error: { message: 'STALE_CLUE' } }
+    const res = await post()
+    expect(res.status).toBe(409)
+    expect(lastRpcArgs?.p_clue_seq).toBe(3)
+  })
+
   it('keeps unknown RPC errors as 500', async () => {
     rpcResult = { data: null, error: { message: 'boom' } }
     const res = await post()
@@ -75,5 +95,17 @@ describe('POST /api/codewords/guess — RPC re-check errors', () => {
     rpcResult = { data: [{ ...board, revealed_indices: [1], guesses_remaining: 2 }], error: null }
     const res = await post()
     expect(res.status).toBe(200)
+  })
+
+  it('finishes a won game as a single-winner flip bound to the session the guess was validated against', async () => {
+    rpcResult = { data: [{ ...board, revealed_indices: [1], winner: 'blue' }], error: null }
+    await post()
+    expect(finish).toHaveBeenCalledWith(expect.anything(), 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+  })
+
+  it('does not try to finish when the guess did not win', async () => {
+    rpcResult = { data: [{ ...board, revealed_indices: [1] }], error: null }
+    await post()
+    expect(finish).not.toHaveBeenCalled()
   })
 })

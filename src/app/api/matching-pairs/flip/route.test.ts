@@ -11,12 +11,18 @@ let game: Record<string, unknown> = {}
 let round: Record<string, unknown> = {}
 let player: Record<string, unknown> = {}
 let subs: Array<Record<string, unknown>> = []
-let insertError: { code?: string; message: string } | null = null
+let recordResult: { data: unknown; error: { message: string } | null } = { data: { status: 'ok' }, error: null }
 const insert = vi.fn()
 
 function makeClient() {
   return {
-    rpc: async () => ({ data: { finish_rank: 1 }, error: null }),
+    rpc: async (fn: string, args: unknown) => {
+      if (fn === 'matching_pairs_record_flip_checked') {
+        insert(args)
+        return recordResult
+      }
+      return { data: { finish_rank: 1 }, error: null }
+    },
     from: (table: string) => {
       const filters: Record<string, unknown> = {}
       const chain: Record<string, unknown> = {
@@ -36,10 +42,6 @@ function makeClient() {
             return { data: hit ?? null, error: null }
           }
           return { data: null, error: null }
-        },
-        insert: (row: unknown) => {
-          insert(row)
-          return Promise.resolve({ error: insertError })
         },
         then: (resolve: (v: unknown) => void) =>
           resolve({ data: table === 'memory_match_submissions' ? subs : [], error: null }),
@@ -73,7 +75,7 @@ describe('POST /api/matching-pairs/flip hardening', () => {
     vi.useFakeTimers()
     vi.setSystemTime(NOW)
     insert.mockClear()
-    insertError = null
+    recordResult = { data: { status: 'ok' }, error: null }
     subs = []
     game = {
       id: 'ABCD',
@@ -150,8 +152,20 @@ describe('POST /api/matching-pairs/flip hardening', () => {
     expect(insert).not.toHaveBeenCalled()
   })
 
-  it('returns 400 (not 500) on a unique-violation race', async () => {
-    insertError = { code: '23505', message: 'duplicate key' }
-    expect((await send(0)).status).toBe(400)
+  it('returns 409 (not 500) when the DB reports the pair already matched (cross-instance race)', async () => {
+    recordResult = { data: { status: 'already_matched' }, error: null }
+    expect((await send(0)).status).toBe(409)
+  })
+
+  it('returns 400 when the round closed between the status check and the insert', async () => {
+    recordResult = { data: { status: 'round_not_active' }, error: null }
+    const res = await send(0)
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Round is not active')
+  })
+
+  it('keeps real DB errors on the 500 path', async () => {
+    recordResult = { data: null, error: { message: 'boom' } }
+    expect((await send(0)).status).toBe(500)
   })
 })

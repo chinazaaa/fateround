@@ -32,6 +32,7 @@ import {
   assignCodewordsLateJoinOperative,
   codewordsAllowsPlayerChanges,
   reconcileCodewordsTeamAfterRemoval,
+  reconcileCodewordsAllTeams,
   removeCodewordsPlayer,
 } from '@/lib/codewords'
 import { assignDescribeItLateJoinTeam, reconcileDescribeItAfterRemoval } from '@/lib/describe-it'
@@ -1893,7 +1894,18 @@ export async function DELETE(req: NextRequest) {
     .eq('game_id', id)
     .maybeSingle()
 
-  if (!player) return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+  if (!player) {
+    // A host repeating a removal whose reconciliation gave up ("try again") finds the player already
+    // deleted and can no longer name the team they left: reconcile every team so the repair finishes.
+    if (hostToken && isCodewordsGame(parseGameType((game as { game_type?: string } | null)?.game_type))) {
+      const repair = await reconcileCodewordsAllTeams(getSupabaseAdmin(), id)
+      if (repair.error) return NextResponse.json({ error: repair.error }, { status: 500 })
+      if (repair.outcome.ended || repair.outcome.promotedPlayerId) {
+        return NextResponse.json({ success: true, ...repair.outcome })
+      }
+    }
+    return NextResponse.json({ error: 'Player not found' }, { status: 404 })
+  }
 
   /**
    * Host self-leave on a live game.

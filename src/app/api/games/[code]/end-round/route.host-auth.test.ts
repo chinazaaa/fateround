@@ -21,11 +21,17 @@ vi.mock('server-only', () => ({}))
 
 let game: Record<string, unknown> | null = gameRow({ status: 'active' })
 let activeRound: Record<string, unknown> | null = { id: 'r-1', round_number: 1 }
+// Rows the status-guarded update reports as changed (what PostgREST returns for `.select('id')`).
+let updateRows: unknown[] = [{ id: 'r-1' }]
+const updateFilters: Record<string, unknown>[] = []
 
 const supabase = makeSupabaseStub({
   games: () => ({ data: game, error: null }),
   rounds: ({ op, filters }) => {
-    if (op === 'update') return { data: null, error: null }
+    if (op === 'update') {
+      updateFilters.push(filters)
+      return { data: updateRows, error: null }
+    }
     if (filters.status === 'active') return { data: activeRound, error: null }
     return { data: null, error: null }
   },
@@ -47,6 +53,8 @@ beforeAll(async () => {
 beforeEach(() => {
   game = gameRow({ status: 'active' })
   activeRound = { id: 'r-1', round_number: 1 }
+  updateRows = [{ id: 'r-1' }]
+  updateFilters.length = 0
 })
 
 const post = (body: unknown) => POST(jsonRequest(`/api/games/${GAME_CODE}/end-round`, body), codeParams())
@@ -101,5 +109,22 @@ describe('POST /api/games/[code]/end-round — host authorization', () => {
     const res = await post({ hostToken: HOST_TOKEN })
     expect(res.status).toBe(200)
     await expect(res.json()).resolves.toEqual({ finished: true, isLastRound: false, roundNumber: 1 })
+  })
+
+  it('only finishes a round that is still active (compare-and-set), so a repeat cannot rewrite ended_at', async () => {
+    await post({ hostToken: HOST_TOKEN })
+    expect(updateFilters).toEqual([{ id: 'r-1', status: 'active' }])
+  })
+
+  it('reports alreadyEnded when another request finished the round first', async () => {
+    updateRows = []
+    const res = await post({ hostToken: HOST_TOKEN })
+    expect(res.status).toBe(200)
+    await expect(res.json()).resolves.toEqual({
+      finished: true,
+      alreadyEnded: true,
+      isLastRound: false,
+      roundNumber: 1,
+    })
   })
 })

@@ -449,6 +449,26 @@ const RUMMY_HANDS = 'rummy_player_hands'
 
 const RUMMY_CONFLICT_ERROR = 'Another action already updated this turn — try again'
 
+/**
+ * Canonical key for a Postgres timestamptz as PostgREST/rpc render it. `updated_at` carries
+ * microseconds, which `Date` (milliseconds) would truncate, so two distinct versions inside one
+ * millisecond would compare equal. The key is whole epoch seconds plus the fraction padded to six
+ * digits, so formatting differences (`Z` vs `+00:00`, trimmed trailing zeros) still match while
+ * distinct microsecond versions never do. Text that is not a timestamp is compared as-is.
+ */
+export function rummyVersionKey(value: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}(?::?\d{2})?)?$/.exec(value)
+  if (!m) return value
+  let tz = m[4] ?? 'Z'
+  if (tz !== 'Z') {
+    const digits = tz.slice(1).replace(':', '')
+    tz = `${tz[0]}${digits.slice(0, 2)}:${digits.slice(2).padEnd(2, '0')}`
+  }
+  const seconds = Date.parse(`${m[1]}T${m[2]}${tz}`)
+  if (Number.isNaN(seconds)) return value
+  return `${seconds / 1000}.${(m[3] ?? '').padEnd(6, '0').slice(0, 6)}`
+}
+
 function handRowId(hands: RummyPlayerHand[], playerId: string): string | null {
   return hands.find((h) => h.player_id === playerId)?.id ?? null
 }
@@ -479,13 +499,30 @@ export async function persistRummyTransition(
 }
 
 /**
+ * Single-winner active -> finished transition bound to the round whose session the caller read.
+ * Play Again deletes the session and the next round gets a new session id under the same game id, so
+ * a stale finalizer (paused between its read and this write) matches nothing instead of finishing
+ * the new round. The session-id check and the games update are one statement in the database.
+ */
+function finishRummyRound(supabase: SupabaseClient, gameId: string, session: Pick<RummySession, 'id'>) {
+  return markGameFinished(supabase, gameId, undefined, {
+    onlyIfActive: true,
+    roundGuard: { rpc: 'rummy_finish_game_for_session', params: { p_session_id: session.id } },
+  })
+}
+
+/**
  * A finished session whose games row is still 'active' means a previous finalization (go-out or
  * clock) committed the session but its markGameFinished failed. Retry it here (single-winner
  * active -> finished CAS, so a game that is already finished is a no-op and awards nothing twice);
  * otherwise report the normal "Game is finished".
  */
-async function finishedSessionResult(supabase: SupabaseClient, gameId: string): Promise<{ error: string }> {
-  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+async function finishedSessionResult(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: RummySession
+): Promise<{ error: string }> {
+  const finish = await finishRummyRound(supabase, gameId, session)
   if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return { error: 'Game is finished' }
 }
@@ -576,6 +613,11 @@ export async function clearRummySessionData(
  * removeCrazyEightsPlayer. Rummy has no finish_order (the round ends the moment
  * someone goes out), so any leaver who wasn't already the declared winner is
  * simply dropped.
+ *
+ * A leave is a must-succeed action and the caller may already have nominated a successor host
+ * before calling this, so a turn action that commits between the read and the version-checked write
+ * is retried against the fresh session instead of being surfaced (which would leave the handoff
+ * published with the leaver still seated).
  */
 export async function removeRummyPlayer(
   supabase: SupabaseClient,
@@ -583,7 +625,29 @@ export async function removeRummyPlayer(
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null }> {
-  const { data: sessionRaw } = await supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle()
+  let result = await removeRummyPlayerOnce(supabase, gameId, playerId, playerName)
+  for (let attempt = 1; attempt < REMOVE_PLAYER_ATTEMPTS && result.error === RUMMY_CONFLICT_ERROR; attempt++) {
+    result = await removeRummyPlayerOnce(supabase, gameId, playerId, playerName)
+  }
+  return result
+}
+
+const REMOVE_PLAYER_ATTEMPTS = 3
+
+async function removeRummyPlayerOnce(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null }> {
+  const { data: sessionRaw, error: sessionReadError } = await supabase
+    .from(RUMMY_SESSIONS)
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  // A failed read is not an absent session: falling through would delete the player and their hand
+  // while the session still lists them in turn_order.
+  if (sessionReadError) return { error: internalErrorMessage('rummy', sessionReadError) }
   const session = sessionRaw as RummySession | null
 
   const order = session ? [...(session.turn_order ?? [])] : []
@@ -638,7 +702,7 @@ export async function removeRummyPlayer(
     if (!claimed || claimed.length === 0) return { error: RUMMY_CONFLICT_ERROR }
 
     await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
-    if (finishing) await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    if (finishing) await finishRummyRound(supabase, gameId, session)
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
     return { error: error?.message ?? null }
   }
@@ -706,13 +770,19 @@ export async function processRummyDraw(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  source: 'pile' | 'discard'
-): Promise<{ error?: string }> {
+  source: 'pile' | 'discard',
+  // Set by the timer: the session version whose deadline it checked. A session that has moved on
+  // (the turn got a fresh deadline) is rejected before anything is changed.
+  expectedUpdatedAt?: string
+): Promise<{ error?: string; updatedAt?: string }> {
   const state = await loadRummyState(supabase, gameId)
   if (state.error) return { error: state.error }
   const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
-  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId)
+  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId, session)
+  if (expectedUpdatedAt && rummyVersionKey(session.updated_at) !== rummyVersionKey(expectedUpdatedAt)) {
+    return { error: RUMMY_CONFLICT_ERROR }
+  }
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -780,7 +850,9 @@ export async function processRummyDraw(
     session.updated_at
   )
   if (write.error) return { error: write.error }
-  return {}
+  // The version this draw committed, so a caller that continues the same turn (the timer's
+  // auto-discard) can bind its next write to exactly that state.
+  return { updatedAt: write.updatedAt }
 }
 
 /** Process the DISCARD half — moves the chosen card from the player's hand to the top
@@ -789,13 +861,20 @@ export async function processRummyDiscard(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  cardId: string
+  cardId: string,
+  // Set by the timer: the session version whose deadline it checked. If the session has moved on
+  // (e.g. another player left and the turn got a fresh deadline) the automatic discard must not
+  // act on the newer state, whose deadline has not passed.
+  expectedUpdatedAt?: string
 ): Promise<{ error?: string }> {
   const state = await loadRummyState(supabase, gameId)
   if (state.error) return { error: state.error }
   const { session, hands, names, timerSeconds, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
-  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId)
+  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId, session)
+  if (expectedUpdatedAt && rummyVersionKey(session.updated_at) !== rummyVersionKey(expectedUpdatedAt)) {
+    return { error: RUMMY_CONFLICT_ERROR }
+  }
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -855,7 +934,17 @@ export async function processRummyGoOut(
   if (state.error) return { error: state.error }
   const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
-  if (session.phase === 'finished') return finishedSessionResult(supabase, gameId)
+  if (session.phase === 'finished') {
+    // A replay of a go-out that already committed (the first response was lost, or the games
+    // update failed and the client sent it again): finish the bookkeeping and report success.
+    // Anyone else acting on a finished round still gets the normal rejection.
+    if (session.winner_player_id === playerId) {
+      const finish = await finishRummyRound(supabase, gameId, session)
+      if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
+      return {}
+    }
+    return finishedSessionResult(supabase, gameId, session)
+  }
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -913,9 +1002,11 @@ export async function processRummyGoOut(
   )
   if (write.error) return { error: write.error }
 
-  // The transition is committed. If marking the game finished fails, surface the error (the client
-  // retries): the retry reaches the finished-session guard above, which re-runs markGameFinished.
-  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+  // The transition is committed. If marking the game finished fails, surface the error. Nothing in
+  // the clients retries on its own, so a replay of this go-out is the way to repair it: it reaches
+  // the finished-session guard above, which re-runs markGameFinished and reports success. (An
+  // expire-turn poke does the same for a finished session; see processRummyExpireTurn.)
+  const finish = await finishRummyRound(supabase, gameId, session)
   if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return {}
 }
@@ -964,7 +1055,7 @@ export async function processRummyExpireTurn(
   if (session.phase === 'finished') {
     // A previous finalization may have committed the session but failed on the games row: retry it
     // (single-winner active -> finished guard; a no-op when the game is already finished).
-    const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    const finish = await finishRummyRound(supabase, gameId, session)
     if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
     return { skipped: true }
   }
@@ -985,15 +1076,22 @@ export async function processRummyExpireTurn(
   const currentId = currentPlayerId(session)
   if (!currentId) return { error: 'No current player' }
 
+  // The version whose deadline was checked above. Every automatic write is bound to it (or to the
+  // version this request's own draw committed), so a version change from anything else, such as
+  // a player leaving and the turn getting a fresh deadline, stops the timer instead of letting it
+  // discard before the new deadline passes. The next expiry poke checks the new deadline.
+  let expectedVersion: string = session.updated_at
   if (session.turn_step === 'draw') {
-    const dr = await processRummyDraw(supabase, gameId, currentId, 'pile')
-    if (dr.error) return { error: dr.error }
+    const dr = await processRummyDraw(supabase, gameId, currentId, 'pile', expectedVersion)
+    if (dr.error) return dr.error === RUMMY_CONFLICT_ERROR ? { skipped: true } : { error: dr.error }
     // The auto-draw can legitimately end the round (empty deck + reshuffle cap hit) —
     // calling processRummyDiscard against a finished session would return "Game is
     // finished" as an error and misreport the successful finalization.
     const after = await loadRummyState(supabase, gameId)
     if (after.error) return { error: after.error }
     if (!after.session || after.session.phase === 'finished') return {}
+    if (!dr.updatedAt) return { skipped: true }
+    expectedVersion = dr.updatedAt
   }
   // After the draw the turn_step is 'discard' — auto-discard the first hand card.
   const after2 = await loadRummyState(supabase, gameId)
@@ -1002,8 +1100,8 @@ export async function processRummyExpireTurn(
   const hand = handForPlayer(hands2, currentId)
   const first = hand[0]
   if (!first) return { skipped: true }
-  const dc = await processRummyDiscard(supabase, gameId, currentId, first.id)
-  if (dc.error) return { error: dc.error }
+  const dc = await processRummyDiscard(supabase, gameId, currentId, first.id, expectedVersion)
+  if (dc.error) return dc.error === RUMMY_CONFLICT_ERROR ? { skipped: true } : { error: dc.error }
   return {}
 }
 
@@ -1043,7 +1141,7 @@ async function finalizeByLowestHand(
   // the clock/expiry route now loads that finished session). Never re-rank and replace the
   // committed winner: only retry the single-winner games finalization.
   if (session.phase === 'finished') {
-    const retry = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    const retry = await finishRummyRound(supabase, gameId, session)
     if (retry.error) return { error: internalErrorMessage('rummy', retry.error) }
     return {}
   }
@@ -1074,7 +1172,7 @@ async function finalizeByLowestHand(
   // rummy_sessions row is already finished but games.status is still active — game-tick would
   // keep poking the expire route while the client sees a finished session. Propagate so the
   // caller returns false and the route retries next tick instead of misreporting success.
-  const finish = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+  const finish = await finishRummyRound(supabase, gameId, session)
   if (finish.error) return { error: internalErrorMessage('rummy', finish.error) }
   return {}
 }

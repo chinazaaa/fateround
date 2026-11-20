@@ -288,12 +288,17 @@ export function buildRandomizedRoles(playerIds: string[], roles: CodewordsLobbyR
   ]
 }
 
+/** Postgres unique violation on the one-spymaster-per-team partial index. */
+export function isSpymasterSeatConflict(error: { code?: string } | null | undefined): boolean {
+  return error?.code === '23505'
+}
+
 export async function persistRandomizedRoles(
   supabase: SupabaseClient,
   gameId: string,
   playerIds: string[],
   roles: CodewordsLobbyRole[]
-): Promise<{ roles: CodewordsLobbyRole[]; error: string | null }> {
+): Promise<{ roles: CodewordsLobbyRole[]; error: string | null; conflict?: boolean }> {
   const nextRoles = buildRandomizedRoles(playerIds, roles)
   for (const role of nextRoles) {
     const { error } = await supabase
@@ -302,7 +307,15 @@ export async function persistRandomizedRoles(
         { game_id: gameId, player_id: role.player_id, team: role.team, role: role.role },
         { onConflict: 'game_id,player_id' }
       )
-    if (error) return { roles: nextRoles, error: internalErrorMessage('codewords', error) }
+    if (error) {
+      // The host changed a spymaster after the roles were read, so restoring the old one hit the
+      // one-spymaster-per-team index. That is a lost race, not a server fault: callers ask the
+      // host to retry with the roles as they stand now.
+      if (isSpymasterSeatConflict(error)) {
+        return { roles: nextRoles, error: 'Team roles changed while shuffling — try again', conflict: true }
+      }
+      return { roles: nextRoles, error: internalErrorMessage('codewords', error) }
+    }
   }
   const assigned = new Set(nextRoles.map((r) => r.player_id))
   for (const playerId of playerIds) {
@@ -554,8 +567,17 @@ export function setCodewordsHostMode(gameCode: string, mode: CodewordsHostMode) 
   localStorage.setItem(codewordsHostModeKey(gameCode), mode)
 }
 
-export async function clearCodewordsChat(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('codewords_messages').delete().eq('game_id', gameId)
+export async function clearCodewordsChat(
+  supabase: SupabaseClient,
+  gameId: string,
+  // codewords_messages has no session column, so a session-bound finish scopes its wipe in time:
+  // only messages written up to the moment that session finished. A newer session starts after its
+  // predecessor finished, so its chat is never reached. Omitted = wipe everything (host/admin end).
+  createdAtOrBefore?: string
+): Promise<{ error: string | null }> {
+  let query = supabase.from('codewords_messages').delete().eq('game_id', gameId)
+  if (createdAtOrBefore) query = query.lte('created_at', createdAtOrBefore)
+  const { error } = await query
   if (error) return { error: internalErrorMessage('codewords', error) }
   return { error: null }
 }
@@ -563,19 +585,83 @@ export async function clearCodewordsChat(supabase: SupabaseClient, gameId: strin
 export async function finishCodewordsGame(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  { onlyIfActive = false, onlySessionStartedAt }: { onlyIfActive?: boolean; onlySessionStartedAt?: string | null } = {}
 ): Promise<FinishGameResult> {
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  const finishedAt = new Date().toISOString()
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, finishedAt, {
+    onlyIfActive,
+    onlySessionStartedAt,
+  })
   if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
-  // The chat wipe stays unconditional (idempotent delete); only `won` is threaded out so
-  // a caller can tell whether THIS request flipped the row.
+  // The chat wipe is an idempotent retry (a finish that committed but failed to wipe is repeated),
+  // so it also runs when another request won the flip. A session-bound finish must never reach a
+  // newer session's chat though: it wipes only what existed when ITS session finished, and a lost
+  // flip wipes only if the game is still the finished game of the session it observed.
   //
   // A failed wipe comes back as `cleanupError`, not `error`: the game is already
   // `finished`, so reporting it as a finish failure made callers drop a close they
   // had actually performed (and skip its `result_reason` stamp).
-  const { error: chatError } = await clearCodewordsChat(supabase, gameId)
+  let wipeUpTo: string | undefined
+  if (onlySessionStartedAt !== undefined) {
+    if (won) {
+      wipeUpTo = finishedAt
+    } else {
+      const { data: current, error: currentError } = await supabase
+        .from('games')
+        .select('status, session_started_at, finished_at')
+        .eq('id', gameId)
+        .maybeSingle()
+      if (currentError) return { error: null, won, cleanupError: internalErrorMessage('codewords', currentError) }
+      const sameSession = (current?.session_started_at ?? null) === onlySessionStartedAt
+      if (current?.status !== 'finished' || !sameSession || !current.finished_at) {
+        return { error: null, won, cleanupError: null }
+      }
+      wipeUpTo = current.finished_at as string
+    }
+  }
+  const { error: chatError } = await clearCodewordsChat(supabase, gameId, wipeUpTo)
   return { error: null, won, cleanupError: chatError }
+}
+
+/**
+ * Finish a game whose board already has a winner but whose game row is still `active`: the winner
+ * write committed and the finish (or the guess that produced the win) failed afterwards, and every
+ * later route returns early on a decided board, so nothing else would ever close the game.
+ *
+ * Idempotent and safe to call speculatively: it does nothing unless the game is active AND its board
+ * is decided, and the flip is a single-winner compare-and-set bound to the session it observed
+ * (the game is read before the board, so a Play Again + restart in between changes
+ * `session_started_at` and the flip matches nothing), so side effects run at most once.
+ */
+export async function finishDecidedCodewordsGame(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null; finished: boolean }> {
+  const code = gameId.toUpperCase()
+  const { data: game, error: gameError } = await supabase
+    .from('games')
+    .select('status, session_started_at')
+    .eq('id', code)
+    .maybeSingle()
+  if (gameError) return { error: internalErrorMessage('codewords', gameError), finished: false }
+  if (!game || game.status !== 'active') return { error: null, finished: false }
+
+  const { data: board, error: boardError } = await supabase
+    .from('codewords_boards')
+    .select('winner')
+    .eq('game_id', code)
+    .maybeSingle()
+  if (boardError) return { error: internalErrorMessage('codewords', boardError), finished: false }
+  if (!board || !(board as Pick<CodewordsBoard, 'winner'>).winner) return { error: null, finished: false }
+
+  const { error, cleanupError, won } = await finishCodewordsGame(supabase, code, {
+    onlyIfActive: true,
+    onlySessionStartedAt: (game.session_started_at as string | null) ?? null,
+  })
+  if (error) return { error, finished: false }
+  if (cleanupError) console.error(`codewords: chat cleanup after retried finish failed for ${code}`, cleanupError)
+  return { error: null, finished: won }
 }
 
 export async function clearCodewordsRoundData(
@@ -657,6 +743,15 @@ export async function reconcileCodewordsTeamAfterRemoval(
   if (!removedTeam) return { error: null, outcome: noop }
 
   const code = gameId.toUpperCase()
+  // The game is read BEFORE the board so a forfeit's finish can be bound to the session whose board
+  // was observed: a replay in between changes session_started_at and the finish matches nothing.
+  const { data: gameRow, error: gameReadError } = await supabase
+    .from('games')
+    .select('session_started_at')
+    .eq('id', code)
+    .maybeSingle()
+  if (gameReadError) return { error: internalErrorMessage('codewords', gameReadError), outcome: noop }
+  const observedSession = (gameRow?.session_started_at as string | null | undefined) ?? null
   const { data: board, error: boardError } = await supabase
     .from('codewords_boards')
     .select('id, winner')
@@ -664,28 +759,36 @@ export async function reconcileCodewordsTeamAfterRemoval(
     .maybeSingle()
   if (boardError) return { error: internalErrorMessage('codewords', boardError), outcome: noop }
   // No board = still in the lobby; a winner = round already over. Nothing to repair.
-  if (!board || (board as Pick<CodewordsBoard, 'winner'>).winner) return { error: null, outcome: noop }
+  if (!board) return { error: null, outcome: noop }
+  // A decided round needs no roster repair, but its game may still be `active` if the finish that
+  // follows a winner failed: let this call close it (a no-op for an already-finished game).
+  if ((board as Pick<CodewordsBoard, 'winner'>).winner) {
+    const { error: finishError } = await finishDecidedCodewordsGame(supabase, code)
+    return { error: finishError, outcome: noop }
+  }
 
-  const { data: roleRows, error: rolesError } = await supabase
-    .from('codewords_player_roles')
-    .select('player_id, team, role')
-    .eq('game_id', code)
-    .eq('team', removedTeam)
-  if (rolesError) return { error: internalErrorMessage('codewords', rolesError), outcome: noop }
-
-  const teamRoles = (roleRows as Array<Pick<CodewordsPlayerRole, 'player_id' | 'team' | 'role'>>) ?? []
-  const spymasters = teamRoles.filter((r) => r.role === 'spymaster')
-  const operatives = teamRoles.filter((r) => r.role === 'operative')
   const otherTeam: CodewordsTeam = removedTeam === 'red' ? 'blue' : 'red'
 
   const forfeit = async (): Promise<{ error: string | null; outcome: CodewordsRemovalOutcome }> => {
-    const { error: winError } = await supabase
+    // Bound to the board that was observed: if the host replayed the game since (the board was
+    // deleted and a new one started under the same game id) this must not decide the new round.
+    const { data: decided, error: winError } = await supabase
       .from('codewords_boards')
       .update({ winner: otherTeam })
-      .eq('game_id', code)
+      .eq('id', (board as Pick<CodewordsBoard, 'id'>).id)
       .is('winner', null)
+      .select('id')
     if (winError) return { error: internalErrorMessage('codewords', winError), outcome: noop }
-    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code)
+    // Nothing matched: the round was decided or replaced meanwhile, so there is nothing to forfeit.
+    if (!Array.isArray(decided) || decided.length === 0) return { error: null, outcome: noop }
+    // Single-winner and session-bound: a board read may already have finished the game through
+    // finishDecidedCodewordsGame (the winner write above is what it keys on), and an unguarded
+    // finish would count as a second win and award the room's points twice. Losing that flip is fine:
+    // the forfeit itself committed, so the outcome below still reports it.
+    const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code, {
+      onlyIfActive: true,
+      onlySessionStartedAt: observedSession,
+    })
     if (finishError) return { error: finishError, outcome: noop }
     // The forfeit landed; only the chat wipe failed, and that cannot un-finish the game.
     // Nothing retries it, so log it instead of turning a completed forfeit into an error.
@@ -694,25 +797,122 @@ export async function reconcileCodewordsTeamAfterRemoval(
     return { error: null, outcome: { ended: true, forfeitWinner: otherTeam } }
   }
 
-  // No operatives left → nobody can guess for this team.
-  if (operatives.length === 0) return forfeit()
+  // The roster can change between reading it and writing the promotion (the host moves a player,
+  // another removal lands). A promotion that matches nothing, or that the one-spymaster index
+  // rejects, says the read was stale: re-read the team and decide again until its seat is settled.
+  for (let attempt = 0; attempt < RECONCILE_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      // Retrying later than the first read: make sure the round we are repairing is still the one
+      // in play (not decided, not replaced by a restart) before writing to its roster again.
+      const { data: again, error: againError } = await supabase
+        .from('codewords_boards')
+        .select('id, winner')
+        .eq('game_id', code)
+        .maybeSingle()
+      if (againError) return { error: internalErrorMessage('codewords', againError), outcome: noop }
+      const current = again as Pick<CodewordsBoard, 'id' | 'winner'> | null
+      if (!current || current.winner || current.id !== (board as Pick<CodewordsBoard, 'id'>).id) {
+        return { error: null, outcome: noop }
+      }
+    }
+    const { data: roleRows, error: rolesError } = await supabase
+      .from('codewords_player_roles')
+      .select('player_id, team, role')
+      .eq('game_id', code)
+      .eq('team', removedTeam)
+    if (rolesError) return { error: internalErrorMessage('codewords', rolesError), outcome: noop }
 
-  // Spymaster seat is empty (the departing player held it).
-  if (spymasters.length === 0) {
+    const teamRoles = (roleRows as Array<Pick<CodewordsPlayerRole, 'player_id' | 'team' | 'role'>>) ?? []
+    const spymasters = teamRoles.filter((r) => r.role === 'spymaster')
+    const operatives = teamRoles.filter((r) => r.role === 'operative')
+
+    // No operatives left → nobody can guess for this team.
+    if (operatives.length === 0) return forfeit()
+
+    // The team has its spymaster (the departing player did not hold it, or it is already refilled).
+    if (spymasters.length > 0) return { error: null, outcome: noop }
+
     // Only one operative — promoting them would leave nobody to guess.
     if (operatives.length === 1) return forfeit()
-    // Promote a random operative to spymaster so the round can continue.
+
+    // Promote a random operative to spymaster so the round can continue. Bound to the team and
+    // role that were observed, so a player who has since moved teams is not promoted in the
+    // wrong team's seat, and the rows touched are checked.
     const promoted = shuffle(operatives)[0]
-    const { error: promoteError } = await supabase
+    const { data: promotedRows, error: promoteError } = await supabase
       .from('codewords_player_roles')
       .update({ role: 'spymaster' })
       .eq('game_id', code)
       .eq('player_id', promoted.player_id)
-    if (promoteError) return { error: internalErrorMessage('codewords', promoteError), outcome: noop }
-    return { error: null, outcome: { ended: false, promotedPlayerId: promoted.player_id } }
+      .eq('team', removedTeam)
+      .eq('role', 'operative')
+      .select('player_id')
+    if (promoteError && !isSpymasterSeatConflict(promoteError)) {
+      return { error: internalErrorMessage('codewords', promoteError), outcome: noop }
+    }
+    if (!promoteError && Array.isArray(promotedRows) && promotedRows.length > 0) {
+      return { error: null, outcome: { ended: false, promotedPlayerId: promoted.player_id } }
+    }
+    // Rejected by the unique index or matched no row: re-read and reconcile again.
   }
 
-  return { error: null, outcome: noop }
+  return { error: 'Team roles changed while reconciling — try again', outcome: noop }
+}
+
+const RECONCILE_ATTEMPTS = 5
+
+/**
+ * Reconcile both teams of a game, whoever left. A removal commits before its reconciliation runs, so
+ * when reconciliation gives up (see RECONCILE_ATTEMPTS) the departed player is already gone and a
+ * repeat of the same request can no longer name the team they left. Callers that see such a repeat
+ * run this instead: it is idempotent and a no-op for a healthy roster.
+ */
+export async function reconcileCodewordsAllTeams(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null; outcome: CodewordsRemovalOutcome }> {
+  let outcome: CodewordsRemovalOutcome = { ended: false }
+  let error: string | null = null
+  for (const team of ['red', 'blue'] as const) {
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, gameId, team)
+    if (result.error && !error) error = result.error
+    if (result.outcome.ended) return { error: null, outcome: result.outcome }
+    if (result.outcome.promotedPlayerId) outcome = { ...outcome, promotedPlayerId: result.outcome.promotedPlayerId }
+  }
+  return { error, outcome }
+}
+
+/**
+ * Self-healing roster check for an in-progress round, run from the board read that every
+ * participant makes. A removal or bench commits before its reconciliation, and when that gives up
+ * nothing else names the team it left (the removed player's token is dead and their row or role is
+ * gone from the host's controls). This reads the game's roles once and only reconciles when a team
+ * really is missing its spymaster or all its operatives, so a healthy roster costs one query and is
+ * never touched. Returns true when it changed the game (promotion or forfeit), so the caller can
+ * re-read the board. Best-effort: a failure is logged, never thrown.
+ */
+export async function repairBrokenCodewordsRoster(supabase: SupabaseClient, gameId: string): Promise<boolean> {
+  try {
+    const code = gameId.toUpperCase()
+    const { data, error } = await supabase.from('codewords_player_roles').select('team, role').eq('game_id', code)
+    if (error || !Array.isArray(data) || data.length === 0) return false
+    const rows = data as Array<{ team: CodewordsTeam; role: string }>
+    // The caller only asks for an active game with an undecided board. Start refuses to create that
+    // board until both teams hold a spymaster, so inside that context a team with no role rows while
+    // the other still has players is a casualty of concurrent removals (reconciliation then forfeits
+    // it, exactly as for "no operatives left"). Both teams empty (no rows at all, handled above) is a reset/lobby state: leave it.
+    const broken = (['red', 'blue'] as const).some((team) => {
+      const mine = rows.filter((r) => r.team === team)
+      return !mine.some((r) => r.role === 'spymaster') || !mine.some((r) => r.role === 'operative')
+    })
+    if (!broken) return false
+    const result = await reconcileCodewordsAllTeams(supabase, code)
+    if (result.error) console.error(`codewords: roster self-repair failed for ${code}`, result.error)
+    return result.outcome.ended || !!result.outcome.promotedPlayerId
+  } catch (err) {
+    console.error('codewords: roster self-repair threw', err)
+    return false
+  }
 }
 
 /** Clears board, guesses, and team assignments — use only for a full session reset. */
@@ -751,6 +951,21 @@ export function mergeCodewordsBoardUpdate(
 }
 
 /**
+ * Drop the server-side concurrency counters from a `codewords_boards` row before it leaves the server:
+ * `clue_seq` (codewords_process_guess) and `turn_seq` (the clue route's turn binding). Clients never
+ * need them. Every response that carries the row goes through this or `maskCodewordsBoardKey`, so a
+ * counter added later cannot reach a client by being spread out of `select('*')`.
+ */
+export function omitCodewordsServerCounters<T extends { clue_seq?: number; turn_seq?: number }>(
+  board: T
+): Omit<T, 'clue_seq' | 'turn_seq'> {
+  const { clue_seq: _clueSeq, turn_seq: _turnSeq, ...rest } = board
+  void _clueSeq
+  void _turnSeq
+  return rest
+}
+
+/**
  * The board as every non-spymaster may see it: the key card is masked down to the cells already
  * revealed (unrevealed cells become null, the actual secret), and the red/blue/neutral/assassin
  * split is sent as `key_totals` because it can't be derived from a masked key. Mirrors what
@@ -760,7 +975,8 @@ export function mergeCodewordsBoardUpdate(
  * through this instead of the raw database row: the service-role read includes the full `key`.
  * Once the game has a winner the key is no longer secret and is returned as is.
  */
-export function maskCodewordsBoardKey(board: CodewordsBoard): CodewordsBoard {
+export function maskCodewordsBoardKey(fullBoard: CodewordsBoard): CodewordsBoard {
+  const board = omitCodewordsServerCounters(fullBoard)
   if (board.winner) return board
   const fullKey = (board.key ?? []) as CodewordsBoard['key']
   const key_totals = fullKey.reduce<Record<string, number>>((acc, cell) => {
