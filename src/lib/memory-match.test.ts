@@ -951,6 +951,37 @@ describe('createFlipResyncTracker', () => {
     expect(resync).toHaveBeenCalledTimes(1)
   })
 
+  it('markDirty inside a running resync does not start another read when it finishes (no loop)', async () => {
+    let release: () => void = () => {}
+    const resync = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          release = r
+        })
+    )
+    const t = createFlipResyncTracker(resync)
+    t.requestResync()
+    t.markDirty() // the read found a card selected and skipped its snapshot
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('flushDeferred reads once after a deferred snapshot, and does nothing when none was deferred', async () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.flushDeferred()
+    expect(resync).not.toHaveBeenCalled()
+    t.markDirty()
+    t.flushDeferred()
+    expect(resync).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    await Promise.resolve()
+    t.flushDeferred()
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
   it('requestResync during a running resync reads once more after it finishes', async () => {
     let release: () => void = () => {}
     const resync = vi.fn(

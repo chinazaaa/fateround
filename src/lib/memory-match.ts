@@ -610,6 +610,7 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
   let pending = 0
   let failed = false
   let resyncing = false
+  let deferred = false
 
   function maybeResync() {
     if (pending !== 0 || !failed || resyncing) return
@@ -638,9 +639,20 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
     epoch: () => epoch,
     /** True while any flip request is unanswered, so a snapshot may lack a flip the player already sees. */
     inFlight: () => pending > 0,
-    /** Ask for a resync after the next flip settles, without reading now (for a snapshot skipped mid-selection). */
+    /**
+     * A snapshot was skipped because a card is selected or flipping back, so there is nothing to read until
+     * that ends. Unlike `requestResync` this never triggers a read by itself (a read that finds the same
+     * selection would just repeat); `flushDeferred()` or the next flip to settle does.
+     */
     markDirty() {
+      deferred = true
+    },
+    /** The selection ended (flip-back finished): read now if a snapshot was deferred. */
+    flushDeferred() {
+      if (!deferred) return
+      deferred = false
       failed = true
+      maybeResync()
     },
     /** Resync (again) once nothing is in flight; for a snapshot that was not applied because it could be stale. */
     requestResync() {
@@ -648,7 +660,8 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
       maybeResync()
     },
     end(didFail: boolean) {
-      if (didFail) failed = true
+      if (didFail || deferred) failed = true
+      deferred = false
       pending = Math.max(0, pending - 1)
       maybeResync()
     },

@@ -642,6 +642,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             next.cardStates[cardIndex] = 'hidden'
             return next
           })
+          // A snapshot skipped while this pair was flipping back can be applied now.
+          flipTracker.flushDeferred()
         }, MATCHING_PAIRS_FLIP_BACK_MS)
 
         // Submit miss to server.
