@@ -3,7 +3,7 @@ import type { CodewordsBoard, CodewordsCellType } from '@/types'
 
 vi.mock('server-only', () => ({}))
 
-import { maskCodewordsBoardKey } from '@/lib/codewords'
+import { maskCodewordsBoardKey, omitCodewordsServerCounters } from '@/lib/codewords'
 
 const fullKey: CodewordsCellType[] = ['red', 'red', 'blue', 'blue', 'neutral', 'assassin', 'red', 'blue']
 
@@ -58,9 +58,23 @@ describe('maskCodewordsBoardKey', () => {
     expect(maskCodewordsBoardKey(board({ clue_seq: 4, winner: 'red' }))).not.toHaveProperty('clue_seq')
   })
 
+  it('never sends the server-side turn_seq counter to clients, live or finished', () => {
+    expect(maskCodewordsBoardKey(board({ turn_seq: 4 }))).not.toHaveProperty('turn_seq')
+    expect(maskCodewordsBoardKey(board({ turn_seq: 4, winner: 'red' }))).not.toHaveProperty('turn_seq')
+  })
+
   it('keeps clue_seq on the stored board it was given', () => {
     const original = board({ clue_seq: 4 })
     maskCodewordsBoardKey(original)
     expect(original.clue_seq).toBe(4)
+  })
+})
+
+describe('omitCodewordsServerCounters', () => {
+  it('drops clue_seq and turn_seq and leaves every other column, including key, untouched', () => {
+    const row = { id: 'b', key: ['red', 'blue'], current_clue_word: 'fruit', clue_seq: 7, turn_seq: 3, future_col: 1 }
+    const out = omitCodewordsServerCounters(row)
+    expect(out).toEqual({ id: 'b', key: ['red', 'blue'], current_clue_word: 'fruit', future_col: 1 })
+    expect(row).toHaveProperty('clue_seq') // the input row is not mutated
   })
 })
