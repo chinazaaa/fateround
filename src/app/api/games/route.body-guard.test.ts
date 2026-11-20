@@ -101,4 +101,11 @@ describe('POST /api/games — request body guard', () => {
     expect(res.status).toBe(400)
     await expect(res.json()).resolves.toEqual({ error: 'startingLives is required for lives mode' })
   })
+
+  it('still rejects lives mode with no startingLives when another field (rule) is also invalid', async () => {
+    const res = await post(JSON.stringify({ title: 'Round table', elimination_config: { mode: 'lives', rule: 42 } }))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'startingLives is required for lives mode' })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
 })

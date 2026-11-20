@@ -100,11 +100,13 @@ export const RATE_LIMITS = {
   // new signed-in device calls this once. Sized to absorb reconnect storms without stalling a
   // real recovery — it never gates gameplay, only hands back the token the profile already owns.
   hostReclaim: { bucket: 'host-reclaim', max: 60, windowSeconds: 300 },
-  // Host inbox poll for Secret Message boards: one request per 10 s per open inbox (~30 per
-  // window). The bucket is per client IP, and hosts on a shared network (office, campus, mobile
-  // carrier NAT) share it, so 300 per 5 minutes covers about ten visible inboxes plus
-  // visibility refreshes without a valid host being throttled before real abuse is.
-  anonymousMessagesList: { bucket: 'anonymous-messages-list', max: 300, windowSeconds: 300 },
+  // Host inbox poll for Secret Message boards. The client polls every POLL_INTERVALS.activeGame
+  // (10 s) while the tab is visible, plus one immediate read on mount: ~30 requests per 5-minute
+  // window per open inbox. The bucket is per client IP and hosts on a shared network (office,
+  // campus, mobile carrier NAT) share it. 1200 covers 20 inboxes polling steadily (~600) with
+  // 2x headroom for mount and visibility refreshes; a rate-limit test pins this against the
+  // real poll interval so a faster poll cannot silently outgrow the bucket.
+  anonymousMessagesList: { bucket: 'anonymous-messages-list', max: 1200, windowSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>
 
 // Keyed hash so stored keys can't be reversed by offline enumeration. Peppered

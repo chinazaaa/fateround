@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { placementEnd, type WordSearchPlacement } from '@/lib/word-search'
 import { GAME_CODE, PLAYER_ID, gameRow, jsonRequest, makeSupabaseStub } from '@/test-support/host-auth'
 
 /**
@@ -9,13 +10,14 @@ import { GAME_CODE, PLAYER_ID, gameRow, jsonRequest, makeSupabaseStub } from '@/
 
 vi.mock('server-only', () => ({}))
 
-const PLACEMENTS = [
+const PLACEMENTS: WordSearchPlacement[] = [
   { word: 'APPLE', row: 0, col: 0, direction: 'E' },
   { word: 'PEAR', row: 2, col: 0, direction: 'E' },
 ]
 
 let insertErrors: Array<{ code: string; message: string } | null> = []
 const inserted: string[] = []
+const insertedRows: Array<Record<string, unknown>> = []
 
 const supabase = makeSupabaseStub({
   games: () => ({
@@ -28,7 +30,10 @@ const supabase = makeSupabaseStub({
   word_search_found: ({ op, payload }) => {
     if (op === 'insert') {
       const error = insertErrors.shift() ?? null
-      if (!error) inserted.push((payload as { word: string }).word)
+      if (!error) {
+        inserted.push((payload as { word: string }).word)
+        insertedRows.push(payload as Record<string, unknown>)
+      }
       return { data: null, error }
     }
     return { data: [], error: null }
@@ -56,6 +61,8 @@ beforeAll(async () => {
 beforeEach(() => {
   insertErrors = []
   inserted.length = 0
+  insertedRows.length = 0
+  vi.restoreAllMocks()
 })
 
 const hint = () =>
@@ -73,6 +80,8 @@ const hint = () =>
 
 describe('POST /api/word-search/found — hint races a normal find', () => {
   it('reveals the other word when the first pick was just saved by a concurrent find', async () => {
+    // Pin the first pick to APPLE so the lost race forces a move to PEAR (different endpoint).
+    vi.spyOn(Math, 'random').mockReturnValue(0)
     insertErrors = [{ code: '23505', message: 'duplicate key' }]
     const res = await hint()
     const json = await res.json()
@@ -83,6 +92,19 @@ describe('POST /api/word-search/found — hint races a normal find', () => {
     // Exactly one new word was stored, and it is the one the response names.
     expect(inserted).toHaveLength(1)
     expect(inserted[0]).toBe(json.word)
+    // The retry must store and return the endpoints of the word it actually picked, not the
+    // endpoint calculated for the placement that lost the race.
+    const placement = PLACEMENTS.find((p) => p.word === json.word)!
+    const end = placementEnd(placement)
+    expect(insertedRows[0]).toMatchObject({
+      start_row: placement.row,
+      start_col: placement.col,
+      end_row: end[0],
+      end_col: end[1],
+    })
+    expect(json.start).toEqual([placement.row, placement.col])
+    expect(json.end).toEqual(end)
+    expect(json.word).toBe('PEAR')
   })
 
   it('reports completion when every remaining word turns out to be taken', async () => {

@@ -562,9 +562,16 @@ export async function POST(req: NextRequest) {
 
   const elimParsed = eliminationConfigSchema.safeParse((body as Record<string, unknown>).elimination_config)
   let eliminationConfig = elimParsed.success ? (elimParsed.data ?? null) : null
+  // Zod skips the whole-object refinement once any other issue (e.g. an invalid `rule`) exists, so
+  // also check the raw lives-mode value here instead of relying on the refinement having run.
+  const rawElim = (body as Record<string, unknown>).elimination_config
+  const rawElimRec = typeof rawElim === 'object' && rawElim !== null ? (rawElim as Record<string, unknown>) : null
+  const rawLives = rawElimRec?.startingLives
+  const livesMissingStartingLives =
+    rawElimRec?.mode === 'lives' && (rawLives == null || (typeof rawLives === 'string' && rawLives.trim() === ''))
   if (
-    !elimParsed.success &&
-    elimParsed.error.issues.some((i) => i.path[0] === 'startingLives' && i.code === 'custom')
+    livesMissingStartingLives ||
+    (!elimParsed.success && elimParsed.error.issues.some((i) => i.path[0] === 'startingLives' && i.code === 'custom'))
   ) {
     return NextResponse.json({ error: 'startingLives is required for lives mode' }, { status: 400 })
   }

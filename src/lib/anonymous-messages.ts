@@ -68,8 +68,9 @@ export function anonymousPlayerCanChat(
   player: Pick<Player, 'joined_at' | 'spectator'>,
   game: Pick<Game, 'status' | 'session_started_at'>
 ): boolean {
-  if (game.status === 'waiting') return true
+  // An explicit watch-only join is a spectator even in the lobby, so check it first.
   if (player.spectator) return false
+  if (game.status === 'waiting') return true
   if (!game.session_started_at) return false
   return new Date(player.joined_at).getTime() < new Date(game.session_started_at).getTime()
 }
@@ -78,7 +79,8 @@ export function countAnonymousRoomPresence(
   players: Pick<Player, 'joined_at' | 'spectator'>[],
   game: Pick<Game, 'status' | 'session_started_at'>
 ): { total: number; participants: number; viewers: number } {
-  if (game.status !== 'active') {
+  // Waiting rooms hold explicit watch-only viewers too; only other states skip the split.
+  if (game.status !== 'active' && game.status !== 'waiting') {
     return { total: players.length, participants: players.length, viewers: 0 }
   }
 
