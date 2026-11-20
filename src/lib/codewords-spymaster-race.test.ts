@@ -7,35 +7,127 @@ vi.mock('server-only', () => ({}))
 
 const UNIQUE = { code: '23505', message: 'duplicate key value violates unique constraint' }
 
+type RoleRow = { player_id: string; team: 'red' | 'blue'; role: 'spymaster' | 'operative' }
+
+/**
+ * Stateful stand-in for codewords_player_roles: reads and updates honour the `team` / `role` /
+ * `player_id` filters, and a promotion is rejected with the unique-index error when the team
+ * already holds a spymaster (what the one-spymaster-per-team partial index does).
+ * `beforeUpdate` runs right before the nth promotion write, to interleave another request.
+ */
+function rolesDb(initial: RoleRow[], hooks: { beforeUpdate?: (rows: RoleRow[], n: number, targetId: string) => void } = {}) {
+  const rows: RoleRow[] = initial.map((r) => ({ ...r }))
+  let updates = 0
+  const filtered = (filters: Record<string, unknown>) =>
+    rows.filter((r) =>
+      Object.entries(filters).every(([k, v]) => k === 'game_id' || (r as Record<string, unknown>)[k] === v)
+    )
+  const supabase = makeSupabaseStub({
+    codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
+    codewords_player_roles: ({ op, filters, payload }) => {
+      if (op !== 'update') return { data: filtered(filters).map((r) => ({ ...r })), error: null }
+      updates += 1
+      hooks.beforeUpdate?.(rows, updates, String(filters.player_id))
+      const live = filtered(filters)
+      if (live.length === 0) return { data: [], error: null }
+      const patch = payload as Partial<RoleRow>
+      if (patch.role === 'spymaster' && live.some((r) => rows.some((x) => x.team === r.team && x.role === 'spymaster'))) {
+        return { data: null, error: UNIQUE }
+      }
+      for (const r of live) Object.assign(r, patch)
+      return { data: live.map((r) => ({ player_id: r.player_id })), error: null }
+    },
+  }) as unknown as SupabaseClient
+  return { supabase, rows }
+}
+
 describe('reconcileCodewordsTeamAfterRemoval — lost promotion race', () => {
-  const roster = [
+  const redOps: RoleRow[] = [
     { player_id: 'op-1', team: 'red', role: 'operative' },
     { player_id: 'op-2', team: 'red', role: 'operative' },
   ]
+  const redSpies = (rows: RoleRow[]) => rows.filter((r) => r.team === 'red' && r.role === 'spymaster')
 
-  function client(promoteError: { code: string; message: string } | null) {
-    return makeSupabaseStub({
-      codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
-      codewords_player_roles: ({ op }) =>
-        op === 'update' ? { data: null, error: promoteError } : { data: roster, error: null },
-    }) as unknown as SupabaseClient
-  }
+  it('promotes an operative when the seat is really empty', async () => {
+    const { supabase, rows } = rolesDb(redOps)
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    expect(result.error).toBeNull()
+    expect(result.outcome.promotedPlayerId).toMatch(/^op-/)
+    expect(redSpies(rows)).toHaveLength(1)
+  })
 
-  it('treats a unique-index rejection as a filled seat, not an error', async () => {
-    const result = await reconcileCodewordsTeamAfterRemoval(client(UNIQUE), 'ABCD', 'red')
+  it('treats a unique-index rejection as a filled seat once the re-read shows the spymaster', async () => {
+    // Someone else fills the seat between our read and our write; the index rejects ours.
+    const { supabase, rows } = rolesDb(redOps, {
+      beforeUpdate: (r, n) => {
+        if (n === 1) r[1].role = 'spymaster'
+      },
+    })
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
     expect(result.error).toBeNull()
     expect(result.outcome).toEqual({ ended: false })
+    expect(redSpies(rows)).toHaveLength(1)
+  })
+
+  it('re-reads and fills red\'s seat when the chosen operative moved to blue (which has a spymaster)', async () => {
+    // Unbound, the promotion would hit blue's one-spymaster index, be swallowed as "seat filled"
+    // and leave red with no spymaster. Bound to red/operative it matches nothing and is retried.
+    const { supabase, rows } = rolesDb(
+      [
+        { player_id: 'blue-spy', team: 'blue', role: 'spymaster' },
+        { player_id: 'op-1', team: 'red', role: 'operative' },
+        { player_id: 'op-2', team: 'red', role: 'operative' },
+        { player_id: 'op-3', team: 'red', role: 'operative' },
+      ],
+      {
+        beforeUpdate: (r, n, targetId) => {
+          // The operative about to be promoted moves to blue between the roster read and the write.
+          if (n === 1) r.find((x) => x.player_id === targetId)!.team = 'blue'
+        },
+      }
+    )
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    expect(result.error).toBeNull()
+    expect(result.outcome.promotedPlayerId).toMatch(/^op-/)
+    expect(redSpies(rows)).toHaveLength(1)
+    expect(rows.filter((r) => r.team === 'blue' && r.role === 'spymaster')).toHaveLength(1)
+  })
+
+  it('does not promote a player who moved teams after the roster was read, and retries', async () => {
+    const { supabase, rows } = rolesDb(redOps, {
+      beforeUpdate: (r, n) => {
+        // Both operatives step over to blue before the first write lands, then one comes back.
+        if (n === 1) for (const x of r) x.team = 'blue'
+        if (n === 2) r[0].team = 'red'
+      },
+    })
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    // Red's only remaining operative is alone, so the round ends by forfeit rather than
+    // reporting success with an empty seat. Nobody on blue was promoted in red's name.
+    expect(result.error).toBeNull()
+    expect(result.outcome.ended).toBe(true)
+    expect(rows.filter((r) => r.role === 'spymaster')).toHaveLength(0)
   })
 
   it('still reports other promotion errors', async () => {
-    const result = await reconcileCodewordsTeamAfterRemoval(client({ code: '23503', message: 'fk' }), 'ABCD', 'red')
+    const supabase = makeSupabaseStub({
+      codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
+      codewords_player_roles: ({ op }) =>
+        op === 'update' ? { data: null, error: { code: '23503', message: 'fk' } } : { data: redOps, error: null },
+    }) as unknown as SupabaseClient
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
     expect(result.error).not.toBeNull()
   })
 
-  it('promotes an operative when the seat is really empty', async () => {
-    const result = await reconcileCodewordsTeamAfterRemoval(client(null), 'ABCD', 'red')
-    expect(result.error).toBeNull()
-    expect(result.outcome.promotedPlayerId).toMatch(/^op-/)
+  it('gives up with a retryable error when the seat keeps being contested', async () => {
+    const supabase = makeSupabaseStub({
+      codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
+      codewords_player_roles: ({ op }) =>
+        op === 'update' ? { data: null, error: UNIQUE } : { data: redOps, error: null },
+    }) as unknown as SupabaseClient
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    expect(result.error).toMatch(/try again/)
+    expect(result.outcome).toEqual({ ended: false })
   })
 })
 

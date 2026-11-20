@@ -679,16 +679,6 @@ export async function reconcileCodewordsTeamAfterRemoval(
   // No board = still in the lobby; a winner = round already over. Nothing to repair.
   if (!board || (board as Pick<CodewordsBoard, 'winner'>).winner) return { error: null, outcome: noop }
 
-  const { data: roleRows, error: rolesError } = await supabase
-    .from('codewords_player_roles')
-    .select('player_id, team, role')
-    .eq('game_id', code)
-    .eq('team', removedTeam)
-  if (rolesError) return { error: internalErrorMessage('codewords', rolesError), outcome: noop }
-
-  const teamRoles = (roleRows as Array<Pick<CodewordsPlayerRole, 'player_id' | 'team' | 'role'>>) ?? []
-  const spymasters = teamRoles.filter((r) => r.role === 'spymaster')
-  const operatives = teamRoles.filter((r) => r.role === 'operative')
   const otherTeam: CodewordsTeam = removedTeam === 'red' ? 'blue' : 'red'
 
   const forfeit = async (): Promise<{ error: string | null; outcome: CodewordsRemovalOutcome }> => {
@@ -707,29 +697,55 @@ export async function reconcileCodewordsTeamAfterRemoval(
     return { error: null, outcome: { ended: true, forfeitWinner: otherTeam } }
   }
 
-  // No operatives left → nobody can guess for this team.
-  if (operatives.length === 0) return forfeit()
+  // The roster can change between reading it and writing the promotion (the host moves a player,
+  // another removal lands). A promotion that matches nothing, or that the one-spymaster index
+  // rejects, says the read was stale: re-read the team and decide again until its seat is settled.
+  for (let attempt = 0; attempt < RECONCILE_ATTEMPTS; attempt++) {
+    const { data: roleRows, error: rolesError } = await supabase
+      .from('codewords_player_roles')
+      .select('player_id, team, role')
+      .eq('game_id', code)
+      .eq('team', removedTeam)
+    if (rolesError) return { error: internalErrorMessage('codewords', rolesError), outcome: noop }
 
-  // Spymaster seat is empty (the departing player held it).
-  if (spymasters.length === 0) {
+    const teamRoles = (roleRows as Array<Pick<CodewordsPlayerRole, 'player_id' | 'team' | 'role'>>) ?? []
+    const spymasters = teamRoles.filter((r) => r.role === 'spymaster')
+    const operatives = teamRoles.filter((r) => r.role === 'operative')
+
+    // No operatives left → nobody can guess for this team.
+    if (operatives.length === 0) return forfeit()
+
+    // The team has its spymaster (the departing player did not hold it, or it is already refilled).
+    if (spymasters.length > 0) return { error: null, outcome: noop }
+
     // Only one operative — promoting them would leave nobody to guess.
     if (operatives.length === 1) return forfeit()
-    // Promote a random operative to spymaster so the round can continue.
+
+    // Promote a random operative to spymaster so the round can continue. Bound to the team and
+    // role that were observed, so a player who has since moved teams is not promoted in the
+    // wrong team's seat, and the rows touched are checked.
     const promoted = shuffle(operatives)[0]
-    const { error: promoteError } = await supabase
+    const { data: promotedRows, error: promoteError } = await supabase
       .from('codewords_player_roles')
       .update({ role: 'spymaster' })
       .eq('game_id', code)
       .eq('player_id', promoted.player_id)
-    // A concurrent removal (or the host) already filled the seat and the unique index rejected
-    // this promotion: the team has its spymaster, which is the state we wanted.
-    if (promoteError && isSpymasterSeatConflict(promoteError)) return { error: null, outcome: noop }
-    if (promoteError) return { error: internalErrorMessage('codewords', promoteError), outcome: noop }
-    return { error: null, outcome: { ended: false, promotedPlayerId: promoted.player_id } }
+      .eq('team', removedTeam)
+      .eq('role', 'operative')
+      .select('player_id')
+    if (promoteError && !isSpymasterSeatConflict(promoteError)) {
+      return { error: internalErrorMessage('codewords', promoteError), outcome: noop }
+    }
+    if (!promoteError && Array.isArray(promotedRows) && promotedRows.length > 0) {
+      return { error: null, outcome: { ended: false, promotedPlayerId: promoted.player_id } }
+    }
+    // Rejected by the unique index or matched no row: re-read and reconcile again.
   }
 
-  return { error: null, outcome: noop }
+  return { error: 'Team roles changed while reconciling — try again', outcome: noop }
 }
+
+const RECONCILE_ATTEMPTS = 3
 
 /** Clears board, guesses, and team assignments — use only for a full session reset. */
 export async function clearCodewordsSessionData(
