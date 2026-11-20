@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeResumeToken } from '@/lib/utils'
 import { secretMatches } from '@/lib/secret-compare'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { omitCodewordsServerCounters } from '@/lib/codewords'
+import { omitCodewordsServerCounters, repairBrokenCodewordsRoster } from '@/lib/codewords'
 
 /**
  * The Codewords board, with the key card attached only for callers entitled to see it.
@@ -60,11 +60,22 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameCode)
       .maybeSingle()
     if (!fullBoard) return NextResponse.json({ board: null })
+    let currentBoard = fullBoard
     // clue_seq / turn_seq are server-side concurrency counters; clients never need them, and the row is
     // spread below so a column added later reaches operatives by default.
-    const board = omitCodewordsServerCounters(fullBoard)
-
     const { data: game } = await supabase.from('games').select('status, host_token').eq('id', gameCode).maybeSingle()
+
+    // Self-heal a roster that a removal or bench left without a spymaster or operatives when its own
+    // reconciliation gave up: no repeat request by the departed player can ever finish it.
+    if (game?.status === 'active' && !fullBoard.winner && (await repairBrokenCodewordsRoster(supabase, gameCode))) {
+      const { data: refreshed } = await supabase
+        .from('codewords_boards')
+        .select('*')
+        .eq('game_id', gameCode)
+        .maybeSingle()
+      if (refreshed) currentBoard = refreshed
+    }
+    const board = omitCodewordsServerCounters(currentBoard)
 
     let maySeeKey = false
 

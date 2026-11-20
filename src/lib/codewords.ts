@@ -745,7 +745,7 @@ export async function reconcileCodewordsTeamAfterRemoval(
   return { error: 'Team roles changed while reconciling — try again', outcome: noop }
 }
 
-const RECONCILE_ATTEMPTS = 3
+const RECONCILE_ATTEMPTS = 5
 
 /**
  * Reconcile both teams of a game, whoever left. A removal commits before its reconciliation runs, so
@@ -766,6 +766,37 @@ export async function reconcileCodewordsAllTeams(
     if (result.outcome.promotedPlayerId) outcome = { ...outcome, promotedPlayerId: result.outcome.promotedPlayerId }
   }
   return { error, outcome }
+}
+
+/**
+ * Self-healing roster check for an in-progress round, run from the board read that every
+ * participant makes. A removal or bench commits before its reconciliation, and when that gives up
+ * nothing else names the team it left (the removed player's token is dead and their row or role is
+ * gone from the host's controls). This reads the game's roles once and only reconciles when a team
+ * really is missing its spymaster or all its operatives, so a healthy roster costs one query and is
+ * never touched. Returns true when it changed the game (promotion or forfeit), so the caller can
+ * re-read the board. Best-effort: a failure is logged, never thrown.
+ */
+export async function repairBrokenCodewordsRoster(supabase: SupabaseClient, gameId: string): Promise<boolean> {
+  try {
+    const code = gameId.toUpperCase()
+    const { data, error } = await supabase.from('codewords_player_roles').select('team, role').eq('game_id', code)
+    if (error || !Array.isArray(data) || data.length === 0) return false
+    const rows = data as Array<{ team: CodewordsTeam; role: string }>
+    const broken = (['red', 'blue'] as const).some((team) => {
+      const mine = rows.filter((r) => r.team === team)
+      // A team with no rows at all is a lobby/reset state, not a casualty of a removal.
+      if (mine.length === 0) return false
+      return !mine.some((r) => r.role === 'spymaster') || !mine.some((r) => r.role === 'operative')
+    })
+    if (!broken) return false
+    const result = await reconcileCodewordsAllTeams(supabase, code)
+    if (result.error) console.error(`codewords: roster self-repair failed for ${code}`, result.error)
+    return result.outcome.ended || !!result.outcome.promotedPlayerId
+  } catch (err) {
+    console.error('codewords: roster self-repair threw', err)
+    return false
+  }
 }
 
 /** Clears board, guesses, and team assignments — use only for a full session reset. */

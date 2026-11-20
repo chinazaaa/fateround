@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { makeSupabaseStub } from '@/test-support/host-auth'
-import { persistRandomizedRoles, reconcileCodewordsAllTeams, reconcileCodewordsTeamAfterRemoval } from './codewords'
+import {
+  persistRandomizedRoles,
+  reconcileCodewordsAllTeams,
+  reconcileCodewordsTeamAfterRemoval,
+  repairBrokenCodewordsRoster,
+} from './codewords'
 
 vi.mock('server-only', () => ({}))
 
@@ -17,7 +22,7 @@ type RoleRow = { player_id: string; team: 'red' | 'blue'; role: 'spymaster' | 'o
  */
 function rolesDb(
   initial: RoleRow[],
-  hooks: { beforeUpdate?: (rows: RoleRow[], n: number, targetId: string) => void } = {}
+  hooks: { beforeUpdate?: (rows: RoleRow[], n: number, targetId: string) => void; rejectPromotion?: () => boolean } = {}
 ) {
   const rows: RoleRow[] = initial.map((r) => ({ ...r }))
   let updates = 0
@@ -31,6 +36,7 @@ function rolesDb(
       if (op !== 'update') return { data: filtered(filters).map((r) => ({ ...r })), error: null }
       updates += 1
       hooks.beforeUpdate?.(rows, updates, String(filters.player_id))
+      if (hooks.rejectPromotion?.()) return { data: null, error: UNIQUE }
       const live = filtered(filters)
       if (live.length === 0) return { data: [], error: null }
       const patch = payload as Partial<RoleRow>
@@ -44,7 +50,7 @@ function rolesDb(
       return { data: live.map((r) => ({ player_id: r.player_id })), error: null }
     },
   }) as unknown as SupabaseClient
-  return { supabase, rows }
+  return { supabase, rows, updateCount: () => updates }
 }
 
 describe('reconcileCodewordsTeamAfterRemoval — lost promotion race', () => {
@@ -230,5 +236,78 @@ describe('reconcileCodewordsAllTeams — repeat after reconciliation gave up', (
       { player_id: 'b1', team: 'blue', role: 'operative' },
     ])
     expect(await reconcileCodewordsAllTeams(supabase, 'ABCD')).toEqual({ error: null, outcome: { ended: false } })
+  })
+})
+
+describe('repairBrokenCodewordsRoster — recovery that needs no repeat request', () => {
+  const spies = (rows: RoleRow[], team: 'red' | 'blue') => rows.filter((r) => r.team === team && r.role === 'spymaster')
+
+  it('heals a removal whose own reconciliation gave up', async () => {
+    // The red spymaster was removed; every promotion attempt of the removal lost the seat race.
+    let contested = true
+    const { supabase, rows } = rolesDb(
+      [
+        { player_id: 'r1', team: 'red', role: 'operative' },
+        { player_id: 'r2', team: 'red', role: 'operative' },
+        { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+        { player_id: 'b1', team: 'blue', role: 'operative' },
+      ],
+      { rejectPromotion: () => contested }
+    )
+    const first = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    expect(first.error).toMatch(/try again/)
+    expect(spies(rows, 'red')).toHaveLength(0)
+
+    // Contention is over; any participant's board read (no player id, no token of the removed
+    // player) repairs the team.
+    contested = false
+    expect(await repairBrokenCodewordsRoster(supabase, 'ABCD')).toBe(true)
+    expect(spies(rows, 'red')).toHaveLength(1)
+    expect(spies(rows, 'blue')).toHaveLength(1)
+  })
+
+  it('heals a bench whose reconciliation gave up (the benched player has no role row any more)', async () => {
+    let contested = true
+    const { supabase, rows } = rolesDb(
+      [
+        { player_id: 'r-spy', team: 'red', role: 'spymaster' },
+        { player_id: 'r1', team: 'red', role: 'operative' },
+        // blue's spymaster was benched: their role row is gone, two operatives remain
+        { player_id: 'b1', team: 'blue', role: 'operative' },
+        { player_id: 'b2', team: 'blue', role: 'operative' },
+      ],
+      { rejectPromotion: () => contested }
+    )
+    expect((await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'blue')).error).toMatch(/try again/)
+    contested = false
+    expect(await repairBrokenCodewordsRoster(supabase, 'ABCD')).toBe(true)
+    expect(spies(rows, 'blue')).toHaveLength(1)
+    expect(spies(rows, 'red')).toHaveLength(1)
+  })
+
+  it('forfeits a team left with one operative and no spymaster', async () => {
+    const { supabase } = rolesDb([
+      { player_id: 'r1', team: 'red', role: 'operative' },
+      { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+      { player_id: 'b1', team: 'blue', role: 'operative' },
+    ])
+    expect(await repairBrokenCodewordsRoster(supabase, 'ABCD')).toBe(true)
+  })
+
+  it('does not touch a healthy roster, a lobby with no roles, or a team with no rows', async () => {
+    const healthy = rolesDb([
+      { player_id: 'r-spy', team: 'red', role: 'spymaster' },
+      { player_id: 'r1', team: 'red', role: 'operative' },
+      { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+      { player_id: 'b1', team: 'blue', role: 'operative' },
+    ])
+    expect(await repairBrokenCodewordsRoster(healthy.supabase, 'ABCD')).toBe(false)
+    expect(healthy.updateCount()).toBe(0)
+    expect(await repairBrokenCodewordsRoster(rolesDb([]).supabase, 'ABCD')).toBe(false)
+    const oneTeam = rolesDb([
+      { player_id: 'r-spy', team: 'red', role: 'spymaster' },
+      { player_id: 'r1', team: 'red', role: 'operative' },
+    ])
+    expect(await repairBrokenCodewordsRoster(oneTeam.supabase, 'ABCD')).toBe(false)
   })
 })
