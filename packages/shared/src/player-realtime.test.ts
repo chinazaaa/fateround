@@ -226,9 +226,9 @@ describe('createLatestResultApplier', () => {
     const older = run(fetchFeed, apply)
     const newer = run(fetchFeed, apply)
     resolvers[1](['m1', 'm2']) // newer response arrives first
-    await expect(newer).resolves.toBe(true)
+    await expect(newer).resolves.toBe('applied')
     resolvers[0](['m1']) // stale response arrives last
-    await expect(older).resolves.toBe(false)
+    await expect(older).resolves.toBe('superseded')
     expect(feed).toEqual(['m1', 'm2'])
   })
 
@@ -240,13 +240,36 @@ describe('createLatestResultApplier', () => {
         async () => ['a'],
         (v) => (feed = v)
       )
-    ).resolves.toBe(true)
+    ).resolves.toBe('applied')
     await expect(
       run(
         async () => null,
         (v: string[]) => (feed = v)
       )
-    ).resolves.toBe(false)
+    ).resolves.toBe('failed')
     expect(feed).toEqual(['a'])
+  })
+
+  it('reports a superseded FAILED read as superseded, not failed (no stale error)', async () => {
+    const run = createLatestResultApplier()
+    const resolvers: Array<(v: string[] | null) => void> = []
+    const fetchFeed = () => new Promise<string[] | null>((r) => resolvers.push(r))
+    const apply = () => {}
+    const older = run(fetchFeed, apply)
+    const newer = run(fetchFeed, apply)
+    resolvers[1](['ok'])
+    await expect(newer).resolves.toBe('applied')
+    resolvers[0](null) // older read fails after the newer one succeeded
+    await expect(older).resolves.toBe('superseded')
+  })
+
+  it('reports a current failed read as failed', async () => {
+    const run = createLatestResultApplier()
+    await expect(
+      run(
+        async () => null,
+        () => {}
+      )
+    ).resolves.toBe('failed')
   })
 })

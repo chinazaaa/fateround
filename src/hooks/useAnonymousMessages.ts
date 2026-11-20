@@ -116,8 +116,7 @@ export function useAnonymousMessages(
         return false
       }
     }
-    let failed = false
-    const applied = await applyLatestMessages(
+    const outcome = await applyLatestMessages(
       async () => {
         const res = await supabase
           .from('anonymous_messages')
@@ -133,11 +132,7 @@ export function useAnonymousMessages(
           // in the N-row window is deterministic across polls.
           .order('id', { ascending: false })
           .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
-        if (!supabasePollOk(res)) {
-          failed = true
-          return null
-        }
-        return res.data ?? []
+        return supabasePollOk(res) ? (res.data ?? []) : null
       },
       (rows) => {
         const names = nameById()
@@ -146,12 +141,13 @@ export function useAnonymousMessages(
         setLoadError(false)
       }
     )
-    if (failed) {
+    // Only a CURRENT failure may set loadError and back polling off; a superseded read (even a failed
+    // one) is obsolete and the newer read owns the feed and the error state.
+    if (outcome === 'failed') {
       setLoadError(true)
       return false
     }
-    // A superseded read is not a failure: the newer read owns the feed.
-    return applied || !failed
+    return true
   }, [applyLatestMessages, gameCode, hostToken, nameById])
 
   // Host inbox: when the board closes the server clears it. Drop the cached messages and invalidate

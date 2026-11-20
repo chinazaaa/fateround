@@ -115,16 +115,21 @@ export function createNewestCallTracker() {
  * Latest-wins applier for a feed loaded by overlapping async reads (poll, realtime event, resume).
  * `run(fetch, apply)` starts a read; if a newer `run` started before this one's fetch resolved, the
  * older result is dropped without calling `apply`, so a slow old response cannot overwrite a newer
- * feed. Resolves true when `apply` ran, false when the result was superseded. A fetch that returns
- * null (a read error) is not applied and resolves false.
+ * feed. Resolves 'applied' when `apply` ran, 'superseded' when a newer `run` started first (whether
+ * this read succeeded or failed: it is obsolete either way), and 'failed' when this is still the
+ * newest read and its fetch returned null (a read error), so only a current failure is reported.
  */
 export function createLatestResultApplier() {
   const tracker = createNewestCallTracker()
-  return async function run<T>(fetch: () => Promise<T | null>, apply: (value: T) => void): Promise<boolean> {
+  return async function run<T>(
+    fetch: () => Promise<T | null>,
+    apply: (value: T) => void
+  ): Promise<'applied' | 'superseded' | 'failed'> {
     const superseded = tracker.begin()
     const value = await fetch()
-    if (value === null || superseded()) return false
+    if (superseded()) return 'superseded'
+    if (value === null) return 'failed'
     apply(value)
-    return true
+    return 'applied'
   }
 }

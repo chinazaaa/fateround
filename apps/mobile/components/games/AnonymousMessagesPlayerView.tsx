@@ -125,19 +125,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [applyLatestMessages] = useState(createLatestResultApplier)
 
   const loadMessages = useCallback(async () => {
-    let failed = false
-    const applied = await applyLatestMessages(
+    const outcome = await applyLatestMessages(
       async () => {
         const res = await getSupabase()
           .from('anonymous_messages')
           .select(ANONYMOUS_MESSAGE_SELECT)
           .eq('game_id', code)
           .order('created_at', { ascending: true })
-        if (res.error) {
-          failed = true
-          return null
-        }
-        return (res.data as AnonymousMessage[]) ?? []
+        return res.error ? null : ((res.data as AnonymousMessage[]) ?? [])
       },
       (rows) => {
         const nameById = new Map(playersRef.current.map((p) => [p.id, p.name]))
@@ -145,7 +140,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       }
     )
     // A superseded read is not a failure: the newer read owns the feed.
-    return applied || !failed
+    return outcome !== 'failed'
   }, [applyLatestMessages, code])
 
   // Newest-load token: overlapping loads (initial, game-row event, SUBSCRIBED, app resume) can finish
@@ -175,8 +170,15 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setGame(gameData)
     playersRef.current = playerRows
     setPlayers(playerRows)
-    const session = await getPlayerSession(code)
+    let session = await getPlayerSession(code)
     if (superseded()) return true
+    // A successful roster read that lacks the saved id means the host removed this player. Drop the
+    // stale session so resume/reconnect stop reusing it and the player lands on the join screen.
+    if (session && !playerRows.some((p) => p.id === session!.playerId)) {
+      await clearPlayerSession(code)
+      if (superseded()) return true
+      session = null
+    }
     const playerId = session?.playerId ?? null
     if (session) setMyPlayerId(session.playerId)
     else setMyPlayerId(null)
@@ -286,7 +288,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       )
       setMyPlayerId(data.playerId)
       setCanChat(data.canChat !== false)
-      await load()
+      // Bounded recovery like the other event-driven reloads, so one failed read after joining
+      // does not strand the view.
+      reload()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
@@ -406,7 +410,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       await postPlayerReady(code, session.resumeToken, true)
       setReady(true)
-      await load()
+      reload()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to ready up')
     } finally {
@@ -451,7 +455,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   useTurnExpiryTimer({
     deadlineAt: anonSessionDeadlineAt,
     enabled: game?.status === 'active',
-    onExpire: () => postExpireSession(code).then(() => load()),
+    onExpire: () => postExpireSession(code).then(() => reload()),
   })
 
   // Pinned countdowns — session bar (+ ban bar when banned) stay visible under
@@ -476,7 +480,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         game={game}
         onLobbyOpen={() => {
           setScreen('join')
-          void load()
+          reload()
         }}
       />
     )

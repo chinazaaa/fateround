@@ -36,7 +36,12 @@ import { appOrigin } from '@/lib/site'
 import type { Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
-import { applyPlayerChange, createLoadRecovery, createRosterReadGuard } from '@/lib/player-realtime'
+import {
+  applyPlayerChange,
+  createLoadRecovery,
+  createNewestCallTracker,
+  createRosterReadGuard,
+} from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -56,6 +61,9 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const [roomDeleted, setRoomDeleted] = useState(false)
   // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
   const [rosterGuard] = useState(createRosterReadGuard)
+  // Newest-load token: a load that started before a newer one (e.g. before the DELETE-triggered
+  // reload found no game row) must not write its older snapshot afterwards.
+  const [loadTracker] = useState(createNewestCallTracker)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
@@ -85,6 +93,8 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const visibleLobbyPlayers = players.slice(lobbyPagination.start, lobbyPagination.end)
 
   const load = useCallback(async (): Promise<boolean> => {
+    // A superseded load reports success: the newer load owns the result.
+    const superseded = loadTracker.begin()
     const snapshot = await rosterGuard.read(async () => {
       const [gameRes, plrsRes] = await Promise.all([
         supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
@@ -92,6 +102,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       ])
       return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
     })
+    if (superseded()) return true
     if (!snapshot) return false
     if (snapshot.gameRes.data) {
       setGame(snapshot.gameRes.data)
@@ -101,7 +112,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     }
     setPlayers(snapshot.plrsRes.data ?? [])
     return true
-  }, [gameCode, rosterGuard])
+  }, [gameCode, loadTracker, rosterGuard])
 
   // First load, with bounded retry: a failed read must not strand the skeleton while realtime is
   // healthy (the fallback poll is suspended then and no event calls load()).
