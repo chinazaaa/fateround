@@ -187,6 +187,8 @@ describe('session claims carry the observed version', () => {
 })
 
 describe('whot expiry and deck exhaustion races', () => {
+  const dbError = { message: 'connection reset' }
+
   it('maps a lost draw claim on the expiry path to skipped, not an error', async () => {
     const client = fakeClient(whotTables({ turn_deadline_at: '2020-01-01T00:00:00.000Z' }), [])
     const res = await processWhotExpireTurn(client, 'G')
@@ -204,6 +206,24 @@ describe('whot expiry and deck exhaustion races', () => {
     const res = await processWhotDraw(client, 'G', 'p1')
     expect(res).toEqual({ error: LOST_RACE })
     expect(updated).toEqual(['whot_sessions'])
+  })
+
+  it('surfaces a database error from the deck-exhaustion finish instead of the lost-race message', async () => {
+    const client = fakeClient(whotTables({ draw_pile: [], discard_pile: [] }), [], { updateError: dbError })
+    const res = await processWhotDraw(client, 'G', 'p1')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toBe(LOST_RACE)
+  })
+
+  it('does not map a database error from the deck-exhaustion finish to skipped on the expiry path', async () => {
+    const client = fakeClient(
+      whotTables({ draw_pile: [], discard_pile: [], turn_deadline_at: '2020-01-01T00:00:00.000Z' }),
+      [],
+      { updateError: dbError }
+    )
+    const res = await processWhotExpireTurn(client, 'G')
+    expect(res).not.toHaveProperty('skipped')
+    expect(res.error).toBeTruthy()
   })
 })
 
