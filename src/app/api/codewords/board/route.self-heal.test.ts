@@ -8,9 +8,11 @@ vi.mock('@/lib/rate-limit', async (importOriginal) => ({
 }))
 
 const repair = vi.fn()
+const finishDecided = vi.fn()
 vi.mock('@/lib/codewords', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/codewords')>()),
   repairBrokenCodewordsRoster: (...args: unknown[]) => repair(...args),
+  finishDecidedCodewordsGame: (...args: unknown[]) => finishDecided(...args),
 }))
 
 let boardRows: Array<Record<string, unknown>> = []
@@ -50,6 +52,8 @@ const board = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   repair.mockReset()
+  finishDecided.mockReset()
+  finishDecided.mockResolvedValue({ error: null, finished: true })
   gameStatus = 'active'
 })
 
@@ -89,5 +93,25 @@ describe('POST /api/codewords/board — roster self-heal', () => {
     boardRows = [board({ current_clue_word: 'same' })]
     const res = await post()
     expect((await res.json()).board.current_clue_word).toBe('same')
+  })
+
+  it('closes a decided board whose game is still active, and still answers the read if that fails', async () => {
+    boardRows = [board({ winner: 'red' })]
+    const ok = await post()
+    expect(finishDecided).toHaveBeenCalledWith(expect.anything(), 'ABCD')
+    expect(ok.status).toBe(200)
+
+    finishDecided.mockResolvedValue({ error: 'down', finished: false })
+    boardRows = [board({ winner: 'red' })]
+    expect((await post()).status).toBe(200)
+  })
+
+  it('does not try to finish an undecided board or an already finished game', async () => {
+    boardRows = [board()]
+    await post()
+    boardRows = [board({ winner: 'red' })]
+    gameStatus = 'finished'
+    await post()
+    expect(finishDecided).not.toHaveBeenCalled()
   })
 })

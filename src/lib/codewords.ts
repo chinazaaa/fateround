@@ -576,9 +576,12 @@ export async function clearCodewordsChat(supabase: SupabaseClient, gameId: strin
 export async function finishCodewordsGame(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  { onlyIfActive = false, onlySessionStartedAt }: { onlyIfActive?: boolean; onlySessionStartedAt?: string | null } = {}
 ): Promise<FinishGameResult> {
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, {
+    onlyIfActive,
+    onlySessionStartedAt,
+  })
   if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
   // The chat wipe stays unconditional (idempotent delete); only `won` is threaded out so
@@ -589,6 +592,46 @@ export async function finishCodewordsGame(
   // had actually performed (and skip its `result_reason` stamp).
   const { error: chatError } = await clearCodewordsChat(supabase, gameId)
   return { error: null, won, cleanupError: chatError }
+}
+
+/**
+ * Finish a game whose board already has a winner but whose game row is still `active`: the winner
+ * write committed and the finish (or the guess that produced the win) failed afterwards, and every
+ * later route returns early on a decided board, so nothing else would ever close the game.
+ *
+ * Idempotent and safe to call speculatively: it does nothing unless the game is active AND its board
+ * is decided, and the flip is a single-winner compare-and-set bound to the session it observed
+ * (the game is read before the board, so a Play Again + restart in between changes
+ * `session_started_at` and the flip matches nothing), so side effects run at most once.
+ */
+export async function finishDecidedCodewordsGame(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null; finished: boolean }> {
+  const code = gameId.toUpperCase()
+  const { data: game, error: gameError } = await supabase
+    .from('games')
+    .select('status, session_started_at')
+    .eq('id', code)
+    .maybeSingle()
+  if (gameError) return { error: internalErrorMessage('codewords', gameError), finished: false }
+  if (!game || game.status !== 'active') return { error: null, finished: false }
+
+  const { data: board, error: boardError } = await supabase
+    .from('codewords_boards')
+    .select('winner')
+    .eq('game_id', code)
+    .maybeSingle()
+  if (boardError) return { error: internalErrorMessage('codewords', boardError), finished: false }
+  if (!board || !(board as Pick<CodewordsBoard, 'winner'>).winner) return { error: null, finished: false }
+
+  const { error, cleanupError, won } = await finishCodewordsGame(supabase, code, {
+    onlyIfActive: true,
+    onlySessionStartedAt: (game.session_started_at as string | null) ?? null,
+  })
+  if (error) return { error, finished: false }
+  if (cleanupError) console.error(`codewords: chat cleanup after retried finish failed for ${code}`, cleanupError)
+  return { error: null, finished: won }
 }
 
 export async function clearCodewordsRoundData(
@@ -677,17 +720,28 @@ export async function reconcileCodewordsTeamAfterRemoval(
     .maybeSingle()
   if (boardError) return { error: internalErrorMessage('codewords', boardError), outcome: noop }
   // No board = still in the lobby; a winner = round already over. Nothing to repair.
-  if (!board || (board as Pick<CodewordsBoard, 'winner'>).winner) return { error: null, outcome: noop }
+  if (!board) return { error: null, outcome: noop }
+  // A decided round needs no roster repair, but its game may still be `active` if the finish that
+  // follows a winner failed: let this call close it (a no-op for an already-finished game).
+  if ((board as Pick<CodewordsBoard, 'winner'>).winner) {
+    const { error: finishError } = await finishDecidedCodewordsGame(supabase, code)
+    return { error: finishError, outcome: noop }
+  }
 
   const otherTeam: CodewordsTeam = removedTeam === 'red' ? 'blue' : 'red'
 
   const forfeit = async (): Promise<{ error: string | null; outcome: CodewordsRemovalOutcome }> => {
-    const { error: winError } = await supabase
+    // Bound to the board that was observed: if the host replayed the game since (the board was
+    // deleted and a new one started under the same game id) this must not decide the new round.
+    const { data: decided, error: winError } = await supabase
       .from('codewords_boards')
       .update({ winner: otherTeam })
-      .eq('game_id', code)
+      .eq('id', (board as Pick<CodewordsBoard, 'id'>).id)
       .is('winner', null)
+      .select('id')
     if (winError) return { error: internalErrorMessage('codewords', winError), outcome: noop }
+    // Nothing matched: the round was decided or replaced meanwhile, so there is nothing to forfeit.
+    if (!Array.isArray(decided) || decided.length === 0) return { error: null, outcome: noop }
     const { error: finishError, cleanupError } = await finishCodewordsGame(supabase, code)
     if (finishError) return { error: finishError, outcome: noop }
     // The forfeit landed; only the chat wipe failed, and that cannot un-finish the game.

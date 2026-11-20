@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeResumeToken } from '@/lib/utils'
 import { secretMatches } from '@/lib/secret-compare'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { omitCodewordsServerCounters, repairBrokenCodewordsRoster } from '@/lib/codewords'
+import { finishDecidedCodewordsGame, omitCodewordsServerCounters, repairBrokenCodewordsRoster } from '@/lib/codewords'
 
 /**
  * The Codewords board, with the key card attached only for callers entitled to see it.
@@ -74,6 +74,12 @@ export async function POST(req: NextRequest) {
         .eq('game_id', gameCode)
         .maybeSingle()
       if (refreshed) currentBoard = refreshed
+    }
+    // A decided board whose game is still active means the finish after the winning write failed and
+    // every other codewords route returns early on a decided board: close it from here (idempotent).
+    if (game?.status === 'active' && fullBoard.winner) {
+      const finish = await finishDecidedCodewordsGame(supabase, gameCode)
+      if (finish.error) console.error(`codewords/board: retried finish failed for ${gameCode}`, finish.error)
     }
     const board = omitCodewordsServerCounters(currentBoard)
 

@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { makeSupabaseStub } from '@/test-support/host-auth'
 import {
   persistRandomizedRoles,
+  finishDecidedCodewordsGame,
   reconcileCodewordsAllTeams,
   reconcileCodewordsTeamAfterRemoval,
   repairBrokenCodewordsRoster,
@@ -14,6 +15,19 @@ const UNIQUE = { code: '23505', message: 'duplicate key value violates unique co
 
 type RoleRow = { player_id: string; team: 'red' | 'blue'; role: 'spymaster' | 'operative' }
 
+type BoardState = { id: string; winner: string | null }
+
+/** Stateful codewords_boards: an update only lands on the named board while it is undecided. */
+function boardResolver(board: BoardState, beforeUpdate?: (b: BoardState) => void) {
+  return ({ op, filters, payload }: { op: string; filters: Record<string, unknown>; payload: unknown }) => {
+    if (op !== 'update') return { data: { id: board.id, winner: board.winner }, error: null }
+    beforeUpdate?.(board)
+    if (('id' in filters && filters.id !== board.id) || board.winner !== null) return { data: [], error: null }
+    board.winner = (payload as { winner: string }).winner
+    return { data: [{ id: board.id }], error: null }
+  }
+}
+
 /**
  * Stateful stand-in for codewords_player_roles: reads and updates honour the `team` / `role` /
  * `player_id` filters, and a promotion is rejected with the unique-index error when the team
@@ -22,8 +36,14 @@ type RoleRow = { player_id: string; team: 'red' | 'blue'; role: 'spymaster' | 'o
  */
 function rolesDb(
   initial: RoleRow[],
-  hooks: { beforeUpdate?: (rows: RoleRow[], n: number, targetId: string) => void; rejectPromotion?: () => boolean } = {}
+  hooks: {
+    beforeUpdate?: (rows: RoleRow[], n: number, targetId: string) => void
+    rejectPromotion?: () => boolean
+    beforeBoardUpdate?: (b: BoardState) => void
+  } = {}
 ) {
+  const board: BoardState = { id: 'b1', winner: null }
+  const gamesUpdates: unknown[] = []
   const rows: RoleRow[] = initial.map((r) => ({ ...r }))
   let updates = 0
   const filtered = (filters: Record<string, unknown>) =>
@@ -31,7 +51,11 @@ function rolesDb(
       Object.entries(filters).every(([k, v]) => k === 'game_id' || (r as Record<string, unknown>)[k] === v)
     )
   const supabase = makeSupabaseStub({
-    codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
+    codewords_boards: boardResolver(board, hooks.beforeBoardUpdate),
+    games: ({ op, payload }) => {
+      if (op === 'update') gamesUpdates.push(payload)
+      return { data: null, error: null }
+    },
     codewords_player_roles: ({ op, filters, payload }) => {
       if (op !== 'update') return { data: filtered(filters).map((r) => ({ ...r })), error: null }
       updates += 1
@@ -50,7 +74,7 @@ function rolesDb(
       return { data: live.map((r) => ({ player_id: r.player_id })), error: null }
     },
   }) as unknown as SupabaseClient
-  return { supabase, rows, updateCount: () => updates }
+  return { supabase, rows, board, gamesUpdates, updateCount: () => updates }
 }
 
 describe('reconcileCodewordsTeamAfterRemoval — lost promotion race', () => {
@@ -139,7 +163,7 @@ describe('reconcileCodewordsTeamAfterRemoval — lost promotion race', () => {
 
   it('still reports other promotion errors', async () => {
     const supabase = makeSupabaseStub({
-      codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
+      codewords_boards: boardResolver({ id: 'b1', winner: null }),
       codewords_player_roles: ({ op }) =>
         op === 'update' ? { data: null, error: { code: '23503', message: 'fk' } } : { data: redOps, error: null },
     }) as unknown as SupabaseClient
@@ -149,7 +173,7 @@ describe('reconcileCodewordsTeamAfterRemoval — lost promotion race', () => {
 
   it('gives up with a retryable error when the seat keeps being contested', async () => {
     const supabase = makeSupabaseStub({
-      codewords_boards: () => ({ data: { id: 'b1', winner: null }, error: null }),
+      codewords_boards: boardResolver({ id: 'b1', winner: null }),
       codewords_player_roles: ({ op }) =>
         op === 'update' ? { data: null, error: UNIQUE } : { data: redOps, error: null },
     }) as unknown as SupabaseClient
@@ -334,5 +358,104 @@ describe('repairBrokenCodewordsRoster — recovery that needs no repeat request'
       { player_id: 'b1', team: 'blue', role: 'operative' },
     ])
     expect(await repairBrokenCodewordsRoster(supabase, 'ABCD')).toBe(true)
+  })
+})
+
+describe('forfeit write is bound to the observed board', () => {
+  it('leaves a board started after the read untouched and does not finish its game', async () => {
+    const { supabase, board, gamesUpdates } = rolesDb(
+      [
+        { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+        { player_id: 'b1', team: 'blue', role: 'operative' },
+      ],
+      {
+        // The host resets and restarts between the board read and the forfeit write.
+        beforeBoardUpdate: (b) => {
+          b.id = 'b2'
+        },
+      }
+    )
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    expect(result).toEqual({ error: null, outcome: { ended: false } })
+    expect(board.winner).toBeNull()
+    expect(gamesUpdates).toHaveLength(0)
+  })
+
+  it('still forfeits when the observed board is unchanged', async () => {
+    const { supabase, board, gamesUpdates } = rolesDb([{ player_id: 'b-spy', team: 'blue', role: 'spymaster' }])
+    const result = await reconcileCodewordsTeamAfterRemoval(supabase, 'ABCD', 'red')
+    expect(result.outcome).toMatchObject({ ended: true, forfeitWinner: 'blue' })
+    expect(board.winner).toBe('blue')
+    expect(gamesUpdates).toHaveLength(1)
+  })
+})
+
+describe('finishDecidedCodewordsGame — a decided board whose game is still active', () => {
+  function db(opts: {
+    status?: string
+    winner?: string | null
+    gameError?: boolean
+    sessionStartedAt?: string | null
+    flipMatches?: boolean
+  }) {
+    const gameUpdates: Array<{ patch: unknown; calls: readonly { method: string; args: readonly unknown[] }[] }> = []
+    const supabase = makeSupabaseStub({
+      games: ({ op, payload, filterCalls }) => {
+        if (op === 'update') {
+          gameUpdates.push({ patch: payload, calls: filterCalls })
+          return {
+            data: opts.flipMatches === false ? [] : [{ id: 'ABCD' }],
+            error: opts.gameError ? { message: 'down' } : null,
+          }
+        }
+        return {
+          data: { status: opts.status ?? 'active', session_started_at: opts.sessionStartedAt ?? 'S1' },
+          error: null,
+        }
+      },
+      codewords_boards: () => ({
+        data: { id: 'b1', winner: opts.winner === undefined ? 'red' : opts.winner },
+        error: null,
+      }),
+      codewords_messages: () => ({ data: null, error: null }),
+    }) as unknown as SupabaseClient
+    return { supabase, gameUpdates }
+  }
+
+  it('finishes the game, bound to the observed session', async () => {
+    const { supabase, gameUpdates } = db({})
+    expect(await finishDecidedCodewordsGame(supabase, 'abcd')).toEqual({ error: null, finished: true })
+    expect(gameUpdates).toHaveLength(1)
+    expect(gameUpdates[0].calls).toContainEqual({ method: 'eq', args: ['status', 'active'] })
+    expect(gameUpdates[0].calls).toContainEqual({ method: 'eq', args: ['session_started_at', 'S1'] })
+  })
+
+  it('is a no-op for an already finished game, an undecided board, or a lost compare-and-set', async () => {
+    const done = db({ status: 'finished' })
+    expect(await finishDecidedCodewordsGame(done.supabase, 'ABCD')).toEqual({ error: null, finished: false })
+    expect(done.gameUpdates).toHaveLength(0)
+    const live = db({ winner: null })
+    expect(await finishDecidedCodewordsGame(live.supabase, 'ABCD')).toEqual({ error: null, finished: false })
+    expect(live.gameUpdates).toHaveLength(0)
+    const lost = db({ flipMatches: false })
+    expect(await finishDecidedCodewordsGame(lost.supabase, 'ABCD')).toEqual({ error: null, finished: false })
+  })
+
+  it('surfaces a failed finish', async () => {
+    const { supabase } = db({ gameError: true })
+    const result = await finishDecidedCodewordsGame(supabase, 'ABCD')
+    expect(result.error).not.toBeNull()
+    expect(result.finished).toBe(false)
+  })
+
+  it('is what reconciliation does for a decided board, and surfaces its failure', async () => {
+    const ok = db({})
+    expect(await reconcileCodewordsTeamAfterRemoval(ok.supabase, 'ABCD', 'red')).toEqual({
+      error: null,
+      outcome: { ended: false },
+    })
+    expect(ok.gameUpdates).toHaveLength(1)
+    const bad = db({ gameError: true })
+    expect((await reconcileCodewordsTeamAfterRemoval(bad.supabase, 'ABCD', 'red')).error).not.toBeNull()
   })
 })
