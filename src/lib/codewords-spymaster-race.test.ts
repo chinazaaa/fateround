@@ -15,7 +15,10 @@ type RoleRow = { player_id: string; team: 'red' | 'blue'; role: 'spymaster' | 'o
  * already holds a spymaster (what the one-spymaster-per-team partial index does).
  * `beforeUpdate` runs right before the nth promotion write, to interleave another request.
  */
-function rolesDb(initial: RoleRow[], hooks: { beforeUpdate?: (rows: RoleRow[], n: number, targetId: string) => void } = {}) {
+function rolesDb(
+  initial: RoleRow[],
+  hooks: { beforeUpdate?: (rows: RoleRow[], n: number, targetId: string) => void } = {}
+) {
   const rows: RoleRow[] = initial.map((r) => ({ ...r }))
   let updates = 0
   const filtered = (filters: Record<string, unknown>) =>
@@ -31,7 +34,10 @@ function rolesDb(initial: RoleRow[], hooks: { beforeUpdate?: (rows: RoleRow[], n
       const live = filtered(filters)
       if (live.length === 0) return { data: [], error: null }
       const patch = payload as Partial<RoleRow>
-      if (patch.role === 'spymaster' && live.some((r) => rows.some((x) => x.team === r.team && x.role === 'spymaster'))) {
+      if (
+        patch.role === 'spymaster' &&
+        live.some((r) => rows.some((x) => x.team === r.team && x.role === 'spymaster'))
+      ) {
         return { data: null, error: UNIQUE }
       }
       for (const r of live) Object.assign(r, patch)
@@ -69,7 +75,7 @@ describe('reconcileCodewordsTeamAfterRemoval — lost promotion race', () => {
     expect(redSpies(rows)).toHaveLength(1)
   })
 
-  it('re-reads and fills red\'s seat when the chosen operative moved to blue (which has a spymaster)', async () => {
+  it("re-reads and fills red's seat when the chosen operative moved to blue (which has a spymaster)", async () => {
     // Unbound, the promotion would hit blue's one-spymaster index, be swallowed as "seat filled"
     // and leave red with no spymaster. Bound to red/operative it matches nothing and is retried.
     const { supabase, rows } = rolesDb(
