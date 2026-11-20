@@ -6,6 +6,14 @@ import {
   processCheckersMove,
   processCheckersResign,
 } from './checkers'
+import {
+  DRAUGHTS10_STARTING_BOARD,
+  legalMovesForColor,
+  processDraughts10ExpireTurn,
+  processDraughts10Huff,
+  processDraughts10Move,
+  processDraughts10Resign,
+} from './draughts10'
 import { processChessResign } from './chess'
 import { processWhotDraw, processWhotExpireTurn } from './whot'
 
@@ -84,7 +92,7 @@ describe('checkers lost optimistic-lock race', () => {
     expect(updated).toEqual(['checkers_sessions'])
   })
 
-  it('expire-turn returns an error and does not finish the game', async () => {
+  it('expire-turn is a no-op (not an error) when it loses the claim, and does not finish the game', async () => {
     const updated: string[] = []
     const client = fakeClient(
       {
@@ -94,8 +102,91 @@ describe('checkers lost optimistic-lock race', () => {
       updated
     )
     const res = await processCheckersExpireTurn(client, 'G')
-    expect(res).toEqual({ error: LOST_RACE })
+    expect(res).toEqual({})
     expect(updated).toEqual(['checkers_sessions'])
+  })
+
+  it('expire-turn still surfaces a database failure', async () => {
+    const client = fakeClient(
+      { checkers_sessions: checkersSession({ turn_deadline_at: '2020-01-01T00:00:00.000Z' }), players: [] },
+      [],
+      { updateError: { message: 'connection reset' } }
+    )
+    const res = await processCheckersExpireTurn(client, 'G')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toContain('connection reset')
+  })
+})
+
+const draughtsSession = (over: Rows = {}) => ({
+  id: 's',
+  game_id: 'G',
+  player_red_id: 'red',
+  player_black_id: 'blk',
+  board: DRAUGHTS10_STARTING_BOARD,
+  current_turn: 'b',
+  move_count: 0,
+  position_counts: {},
+  must_continue_from: null,
+  must_continue_remaining: null,
+  huffing_enabled: false,
+  huffable_squares: [],
+  red_time_ms: null,
+  black_time_ms: null,
+  turn_started_at: null,
+  status: 'active',
+  updated_at: '2026-01-01T00:00:00.000Z',
+  turn_deadline_at: null,
+  ...over,
+})
+
+describe('draughts10 lost optimistic-lock race and database failures', () => {
+  const first = legalMovesForColor(DRAUGHTS10_STARTING_BOARD, 'b')[0]
+  const dbError = { message: 'connection reset' }
+  const tables = (over: Rows = {}) => ({ checkers10_sessions: draughtsSession(over), players: [] })
+
+  it('move returns the conflict (not success) when the conditional update matches 0 rows', async () => {
+    const updated: string[] = []
+    const res = await processDraughts10Move(fakeClient(tables(), updated), 'G', 'blk', first)
+    expect(res).toEqual({ error: LOST_RACE })
+    expect(updated).toEqual(['checkers10_sessions'])
+  })
+
+  it('resign returns the conflict (not success) when the claim is lost', async () => {
+    const res = await processDraughts10Resign(fakeClient(tables(), []), 'G', 'red')
+    expect(res).toEqual({ error: LOST_RACE })
+  })
+
+  it('huff returns the conflict (not success) when the claim is lost', async () => {
+    // Black (to move) huffs the red man at 61 that red left un-captured.
+    const res = await processDraughts10Huff(
+      fakeClient(tables({ huffing_enabled: true, huffable_squares: ['61'] }), []),
+      'G',
+      'blk',
+      '61'
+    )
+    expect(res).toEqual({ error: LOST_RACE })
+  })
+
+  it('expire-turn is a no-op when it loses the claim, and surfaces a database failure', async () => {
+    const over = { turn_deadline_at: '2020-01-01T00:00:00.000Z', black_time_ms: 0 }
+    const updated: string[] = []
+    expect(await processDraughts10ExpireTurn(fakeClient(tables(over), updated), 'G')).toEqual({})
+    expect(updated).toEqual(['checkers10_sessions'])
+    const failed = await processDraughts10ExpireTurn(fakeClient(tables(over), [], { updateError: dbError }), 'G')
+    expect(failed.error).toBeTruthy()
+    expect(failed.error).not.toContain('connection reset')
+  })
+
+  it('move, resign and huff surface a database failure as a generic error, not the conflict', async () => {
+    const opts = { updateError: dbError }
+    const move = await processDraughts10Move(fakeClient(tables(), [], opts), 'G', 'blk', first)
+    const resign = await processDraughts10Resign(fakeClient(tables(), [], opts), 'G', 'red')
+    for (const res of [move, resign]) {
+      expect(res.error).toBeTruthy()
+      expect(res.error).not.toBe(LOST_RACE)
+      expect(res.error).not.toContain('connection reset')
+    }
   })
 })
 
