@@ -124,4 +124,39 @@ describe('useAnonymousMessages host inbox', () => {
     expect(result.current.loading).toBe(false)
     expect(result.current.messages.map((m) => m.id)).toEqual(['a'])
   })
+
+  it('a slower, older read that succeeds does not hide the failure of a read started after it', async () => {
+    fetchMock.mockResolvedValueOnce(okResponse(['a']))
+    const { result } = renderHook(() => useAnonymousMessages('ABCD', true, NO_PLAYERS, hostInbox))
+    await waitFor(() => expect(result.current.messages).toHaveLength(1))
+
+    // Read A starts first and is slow ...
+    let releaseA: (v: unknown) => void = () => {}
+    fetchMock.mockReturnValueOnce(new Promise((r) => (releaseA = r)))
+    let pendingA: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      pendingA = result.current.reload()
+    })
+    // ... read B starts after it and fails first.
+    fetchMock.mockResolvedValueOnce(failResponse)
+    await act(async () => {
+      await result.current.reload()
+    })
+    expect(result.current.loadError).toBe(true)
+
+    // A then succeeds: its newer-than-shown messages still apply, but the failed latest read stays reported.
+    await act(async () => {
+      releaseA(okResponse(['a', 'b']))
+      await pendingA
+    })
+    expect(result.current.messages.map((m) => m.id)).toEqual(['a', 'b'])
+    expect(result.current.loadError).toBe(true)
+
+    // A read that started after the failure and succeeds clears it.
+    fetchMock.mockResolvedValueOnce(okResponse(['a', 'b', 'c']))
+    await act(async () => {
+      await result.current.reload()
+    })
+    expect(result.current.loadError).toBe(false)
+  })
 })

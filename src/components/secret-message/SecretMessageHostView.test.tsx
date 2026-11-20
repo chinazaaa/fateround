@@ -36,7 +36,17 @@ vi.mock('@/components/host-lobby/HostVisibilityToggle', () => ({ HostVisibilityT
 vi.mock('@/components/ui/CreateNewGameButton', () => ({ CreateNewGameButton: () => null }))
 vi.mock('@/components/host/host-icons', () => ({ ExitIcon: () => null }))
 vi.mock('@/components/anonymous-messages/AnonymousMessageFeed', () => ({
-  AnonymousMessageFeed: ({ emptyLabel }: { emptyLabel: string }) => <div>{emptyLabel}</div>,
+  AnonymousMessageFeed: ({
+    emptyLabel,
+    scrollToLatestOnMount,
+  }: {
+    emptyLabel: string
+    scrollToLatestOnMount?: boolean
+  }) => (
+    <div data-testid="feed" data-scroll-on-mount={String(Boolean(scrollToLatestOnMount))}>
+      {emptyLabel}
+    </div>
+  ),
 }))
 
 import { SecretMessageHostView } from './SecretMessageHostView'
@@ -73,5 +83,12 @@ describe('SecretMessageHostView inbox states', () => {
     render(<SecretMessageHostView gameCode="ABCD" hostToken="tok" />)
     await waitFor(() => expect(screen.getByText(/No messages yet/)).toBeTruthy())
     expect(screen.getByText(/Couldn.t refresh/)).toBeTruthy()
+  })
+
+  it('asks the feed to jump to the newest message, since it mounts already holding the inbox', async () => {
+    inbox.state = { messages: [{ id: 'm1' }], loading: false, loadError: false }
+    render(<SecretMessageHostView gameCode="ABCD" hostToken="tok" />)
+    const feed = await screen.findByTestId('feed')
+    expect(feed.getAttribute('data-scroll-on-mount')).toBe('true')
   })
 })

@@ -53,12 +53,16 @@ export function useAnonymousMessages(
   const hostToken = hostInbox?.hostToken
   const [messages, setMessages] = useState<AnonymousMessage[]>([])
   const [loading, setLoading] = useState(true)
-  // True when the most recent read failed (cleared by the next successful read).
+  // True while the most recently STARTED read has failed. Cleared by a successful read that started at or
+  // after that failed one (host reads: see hostErrorRef), or by the next successful read otherwise.
   const [loadError, setLoadError] = useState(false)
   // Host reads can overlap (mount + visibility refresh). Each gets a generation; only a response newer
   // than the last applied one may replace the list, and a removal invalidates reads started before it.
   const hostRequestRef = useRef(0)
   const hostAppliedRef = useRef(0)
+  // Generation of the newest host read that failed. A slower, older read that succeeds afterwards still
+  // applies its messages but must not hide the failure of a read that started after it.
+  const hostErrorRef = useRef(0)
 
   const nameById = useCallback(() => new Map(players.map((p) => [p.id, p.name])), [players])
 
@@ -86,7 +90,10 @@ export function useAnonymousMessages(
           body: JSON.stringify({ gameId: gameCode, hostToken }),
         })
         if (!r.ok) {
-          if (generation > hostAppliedRef.current) setLoadError(true)
+          if (generation > hostAppliedRef.current) {
+            hostErrorRef.current = Math.max(hostErrorRef.current, generation)
+            setLoadError(true)
+          }
           return false
         }
         const json = (await r.json()) as { messages?: Omit<AnonymousMessage, 'player_id'>[] }
@@ -95,11 +102,14 @@ export function useAnonymousMessages(
           hostAppliedRef.current = generation
           setMessages((json.messages ?? []).map((m) => ({ ...m, player_id: '' })))
           setLoading(false)
-          setLoadError(false)
+          if (generation >= hostErrorRef.current) setLoadError(false)
         }
         return true
       } catch {
-        if (generation > hostAppliedRef.current) setLoadError(true)
+        if (generation > hostAppliedRef.current) {
+          hostErrorRef.current = Math.max(hostErrorRef.current, generation)
+          setLoadError(true)
+        }
         return false
       }
     }
@@ -134,6 +144,7 @@ export function useAnonymousMessages(
   useEffect(() => {
     if (enabled || !hostToken) return
     hostAppliedRef.current = hostRequestRef.current
+    hostErrorRef.current = 0
     setMessages([])
     setLoading(true)
     setLoadError(false)

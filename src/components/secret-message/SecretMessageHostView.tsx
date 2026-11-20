@@ -237,6 +237,8 @@ export function SecretMessageHostView({ gameCode, hostToken }: { gameCode: strin
             title="Your inbox"
             emptyLabel="No messages yet — share your link to start receiving"
             hideSenderNames
+            // The inbox is held back until its first read, so the feed mounts already holding messages.
+            scrollToLatestOnMount
             canShareAsImage
             sharingId={sharingId}
             onShareAsImage={shareMessageAsImage}
