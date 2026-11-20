@@ -7,6 +7,7 @@
  *   - mahjong_apply_transition   (20261201140000)
  *   - rummy_apply_transition     (20261201150000)
  *   - bingo_claim_win            (20261202700000)
+ *   - matching_pairs_record_flip_checked (20261202900000)
  *   - submit_vote_atomic         (20261203100000)
  *
  * Each replaced route code that read, decided, then wrote across several requests, and lost races:
@@ -657,6 +658,76 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
   })
 
   // -------------------------------------------------------------------------------------------
+  describe('matching_pairs_record_flip_checked', () => {
+    // Every caller scored its flip from the same (empty) history, so its fingerprint is (0, null). Only the
+    // first to run may store; the rest must see the history it appended and answer `stale`, inserting nothing.
+    const flip = (gameId: string, roundId: string, playerId: string, pairIndex: number) =>
+      service.rpc('matching_pairs_record_flip_checked', {
+        p_game_id: gameId,
+        p_round_id: roundId,
+        p_player_id: playerId,
+        p_pair_index: pairIndex,
+        p_is_match: true,
+        p_streak_at_time: 1,
+        p_streak_bonus: 0,
+        p_points_after: 1000,
+        p_expected_count: 0,
+        p_expected_last_id: null,
+      })
+
+    async function storedFlips(roundId: string, playerId: string): Promise<number> {
+      const rows = must<unknown[]>(
+        'read submissions',
+        await service.from('memory_match_submissions').select('id').eq('round_id', roundId).eq('player_id', playerId)
+      )
+      return rows.length
+    }
+
+    it.each([
+      ['has a progress row', true],
+      // Joined or promoted after the round was seeded: nothing to FOR UPDATE, so the advisory lock is what serialises.
+      ['has no progress row (joined mid-round)', false],
+    ])(
+      'stores exactly one of many simultaneous flips scored from the same history when the player %s',
+      async (_name, seeded) => {
+        await repeatRace(async () => {
+          const gameId = await makeGame('matching_pairs')
+          const playerId = await makePlayer(gameId, 'Flipper')
+          const roundId = await makeRound(gameId)
+          if (seeded) {
+            must(
+              'insert progress',
+              await service
+                .from('memory_match_progress')
+                .insert({ game_id: gameId, round_id: roundId, player_id: playerId })
+                .select('player_id')
+                .single()
+            )
+          }
+
+          const results = await inParallel(8, (i) => flip(gameId, roundId, playerId, i))
+
+          noErrors(results)
+          const list = outcomes(results)
+          expect(count(list, 'ok')).toBe(1)
+          expect(count(list, 'stale')).toBe(7)
+          expect(await storedFlips(roundId, playerId)).toBe(1)
+        })
+      }
+    )
+
+    it('refuses a flip on a round that is no longer active', async () => {
+      const gameId = await makeGame('matching_pairs')
+      const playerId = await makePlayer(gameId, 'Late')
+      const roundId = await makeRound(gameId, 'finished')
+      const res = await flip(gameId, roundId, playerId, 0)
+      expect(res.error).toBeNull()
+      expect((res.data as Outcome).status).toBe('round_not_active')
+      expect(await storedFlips(roundId, playerId)).toBe(0)
+    })
+  })
+
+  // -------------------------------------------------------------------------------------------
   describe('execute privileges', () => {
     // These are SECURITY DEFINER and write hidden game state. If a later migration re-grants
     // EXECUTE to PUBLIC, the public anon key could call them straight from a browser.
@@ -699,6 +770,21 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
           p_player_id: '00000000-0000-4000-8000-000000000000',
           p_pattern: 'line',
           p_finished_at: new Date().toISOString(),
+        },
+      ],
+      [
+        'matching_pairs_record_flip_checked',
+        {
+          p_game_id: 'NOPE',
+          p_round_id: '00000000-0000-4000-8000-000000000000',
+          p_player_id: '00000000-0000-4000-8000-000000000000',
+          p_pair_index: 0,
+          p_is_match: true,
+          p_streak_at_time: 1,
+          p_streak_bonus: 0,
+          p_points_after: 1000,
+          p_expected_count: 0,
+          p_expected_last_id: null,
         },
       ],
     ]

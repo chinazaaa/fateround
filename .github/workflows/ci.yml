@@ -1418,6 +1418,18 @@ jobs:
           psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
             -f supabase/tests/matching-pairs-dedupe.sql
 
+      # The checked flip insert: stale history fingerprints are rejected, nothing is inserted for them.
+      - name: Matching Pairs checked flip function
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/matching-pairs-record-flip-checked.sql
+
+      # Two sessions: a flip that read the history before a cleanup must wait for it and then be refused.
+      - name: Matching Pairs checked flip waits for a running cleanup
+        run: |
+          DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            supabase/tests/matching-pairs-record-flip-checked-lock.sh
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
