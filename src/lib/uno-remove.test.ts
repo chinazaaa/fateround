@@ -32,7 +32,11 @@ function makeMock(opts: { session: unknown; players: { id: string; name: string 
           return chain({ data: null, error: null })
         },
         update(vals: Record<string, unknown>) {
-          if (table === 'uno_sessions') sessionUpdates.push(vals)
+          if (table === 'uno_sessions') {
+            sessionUpdates.push(vals)
+            // The leave's CAS write is `.update().eq().eq().select()`: report one claimed row.
+            return chain({ data: [{ game_id: 'G1' }], error: null })
+          }
           return chain({ data: null, error: null })
         },
         delete() {

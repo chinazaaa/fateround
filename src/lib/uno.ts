@@ -3087,6 +3087,18 @@ export async function processUnoExpireTurn(
   const currentId = currentPlayerId(session)
   if (!currentId) return { error: 'No current player' }
 
+  // Concurrent expire pokes all pass the deadline check above; the winner's auto-play advances the
+  // turn, so the losers' delegated processor re-reads a moved-on session and fails its own turn /
+  // phase validation ("Not your turn", "Card not in hand", ...). That is not a client error — the
+  // turn was already handled — so when the session changed under us, report a skip instead.
+  const expectedUpdatedAt = session.updated_at
+  const settle = async (result: { error?: string }): Promise<{ error?: string; skipped?: boolean }> => {
+    if (!result.error) return result
+    const { data: fresh } = await supabase.from('uno_sessions').select('updated_at').eq('game_id', gameId).maybeSingle()
+    if (fresh && fresh.updated_at !== expectedUpdatedAt) return { skipped: true }
+    return result
+  }
+
   const hand = handForPlayer(hands, currentId)
   if (hand.length === 0) {
     const direction = session.direction < 0 ? -1 : 1
@@ -3113,18 +3125,18 @@ export async function processUnoExpireTurn(
   }
 
   if (session.phase === 'choose_color') {
-    return processUnoChoose(supabase, gameId, currentId, dominantColor(hand))
+    return settle(await processUnoChoose(supabase, gameId, currentId, dominantColor(hand)))
   }
 
   if (session.phase === 'challenge_window') {
     // Auto-accept on timeout — the safe default.
-    return processUnoChallenge(supabase, gameId, currentId, false)
+    return settle(await processUnoChallenge(supabase, gameId, currentId, false))
   }
 
   if (session.phase === 'swap_target') {
     // Auto-swap with the first other active player on timeout.
     const targetId = (session.turn_order ?? []).find((id) => id !== currentId && unoHandCount(hands, id) > 0)
-    if (targetId) return processUnoSwap(supabase, gameId, currentId, targetId)
+    if (targetId) return settle(await processUnoSwap(supabase, gameId, currentId, targetId))
     // No one to swap with — just resume play.
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -3144,7 +3156,7 @@ export async function processUnoExpireTurn(
 
   // Already drew this turn and idled — keep the card (auto-pass), the safe default.
   if (session.drawn_card_id) {
-    return processUnoPass(supabase, gameId, currentId)
+    return settle(await processUnoPass(supabase, gameId, currentId))
   }
 
   if (hasPlayableCard(hand, session)) {
@@ -3153,10 +3165,10 @@ export async function processUnoExpireTurn(
     const nonWild = playable.filter((c) => !isWildCard(c))
     const pool = nonWild.length > 0 ? nonWild : playable
     const card = [...pool].sort((a, b) => cardPoints(a) - cardPoints(b))[0]!
-    return processUnoPlay(supabase, gameId, currentId, card.id, hand.length - 1 === 1)
+    return settle(await processUnoPlay(supabase, gameId, currentId, card.id, hand.length - 1 === 1))
   }
 
-  return processUnoDraw(supabase, gameId, currentId)
+  return settle(await processUnoDraw(supabase, gameId, currentId))
 }
 
 export async function finishExpiredUnoGame(
@@ -3199,12 +3211,36 @@ export function setUnoHostMode(gameCode: string, mode: UnoHostMode): void {
 }
 
 // ── Remove player ─────────────────────────────────────────────────────────────
+/** Surfaced (as a 409 by the DELETE players route) when a leave keeps losing the session race. */
+export const UNO_REMOVE_CONFLICT_ERROR = 'Game changed, please try again.'
+const UNO_REMOVE_MAX_ATTEMPTS = 4
+
+/**
+ * A leave rewrites turn_order / current_turn_index from a snapshot of the session, so the write is
+ * compare-and-swapped on `updated_at`. Two concurrent leaves (or a leave racing a play) used to
+ * each write from the same snapshot, the second silently dropping the first removal and leaving a
+ * dead seat in turn_order. Nothing retries a Leave, so we retry here against a freshly read
+ * session, and only delete the players row once the session write has landed.
+ */
 export async function removeUnoPlayer(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
   playerNameArg?: string
 ): Promise<{ error: string | null }> {
+  for (let attempt = 0; attempt < UNO_REMOVE_MAX_ATTEMPTS; attempt++) {
+    const result = await removeUnoPlayerOnce(supabase, gameId, playerId, playerNameArg)
+    if (result !== 'retry') return result
+  }
+  return { error: UNO_REMOVE_CONFLICT_ERROR }
+}
+
+async function removeUnoPlayerOnce(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerNameArg?: string
+): Promise<{ error: string | null } | 'retry'> {
   const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
   const session = sessionRaw as UnoSession | null
 
@@ -3275,8 +3311,14 @@ export async function removeUnoPlayer(
           : `${removedName} left — game over.`
       }
 
-      const { error: teamError } = await supabase.from('uno_sessions').update(teamUpdate).eq('game_id', gameId)
+      const { data: teamClaimed, error: teamError } = await supabase
+        .from('uno_sessions')
+        .update(teamUpdate)
+        .eq('game_id', gameId)
+        .eq('updated_at', session.updated_at)
+        .select('game_id')
       if (teamError) return { error: internalErrorMessage('uno', teamError) }
+      if (!teamClaimed || teamClaimed.length === 0) return 'retry'
       await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
       if (teamUpdate.phase === 'finished') await markGameFinished(supabase, gameId)
       const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
@@ -3326,8 +3368,14 @@ export async function removeUnoPlayer(
       update.turn_deadline_at = unoTurnDeadline(timerSeconds)
     }
 
-    const { error: sessionError } = await supabase.from('uno_sessions').update(update).eq('game_id', gameId)
+    const { data: claimed, error: sessionError } = await supabase
+      .from('uno_sessions')
+      .update(update)
+      .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
     if (sessionError) return { error: internalErrorMessage('uno', sessionError) }
+    if (!claimed || claimed.length === 0) return 'retry'
 
     await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
     if (finishing) await markGameFinished(supabase, gameId)

@@ -989,15 +989,34 @@ export async function clearScrabbleSessionData(
  * was gone. Drop them from the turn order (fixing current_turn_index), end the game
  * if fewer than two players remain, then delete their state + player row.
  *
- * The session write is a plain (non-CAS) update on purpose: a removal must always
- * land — a lost optimistic-concurrency race would otherwise leave the ghost behind.
+ * The session write is compare-and-swapped on `updated_at`: the new turn state is derived
+ * from a snapshot, so an unconditional write could clobber a concurrent play (handing the
+ * mover a second turn) or a concurrent leave (dropping its removal), or leave the turn on
+ * a removed player. A lost race retries against a freshly read session; the players row
+ * is only deleted once the session write has landed.
  */
+export const SCRABBLE_REMOVE_CONFLICT_ERROR = 'Game changed, please try again.'
+const SCRABBLE_REMOVE_MAX_ATTEMPTS = 4
+
 export async function removeScrabblePlayer(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null }> {
+  for (let attempt = 0; attempt < SCRABBLE_REMOVE_MAX_ATTEMPTS; attempt++) {
+    const result = await removeScrabblePlayerOnce(supabase, gameId, playerId, playerName)
+    if (result !== 'retry') return result
+  }
+  return { error: SCRABBLE_REMOVE_CONFLICT_ERROR }
+}
+
+async function removeScrabblePlayerOnce(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<{ error: string | null } | 'retry'> {
   const { data: sessionRaw } = await supabase.from('scrabble_sessions').select('*').eq('game_id', gameId).maybeSingle()
   const session = sessionRaw as ScrabbleSession | null
   const order = session ? [...(session.turn_order ?? [])] : []
@@ -1069,8 +1088,14 @@ export async function removeScrabblePlayer(
       update.turn_deadline_at = computeDeadline(timerSeconds, Date.now())
     }
 
-    const { error: sessionError } = await supabase.from('scrabble_sessions').update(update).eq('game_id', gameId)
+    const { data: claimed, error: sessionError } = await supabase
+      .from('scrabble_sessions')
+      .update(update)
+      .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+      .select('game_id')
     if (sessionError) return { error: internalErrorMessage('scrabble', sessionError) }
+    if (!claimed || claimed.length === 0) return 'retry'
 
     await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
     if (finishing) await markGameFinished(supabase, gameId)
