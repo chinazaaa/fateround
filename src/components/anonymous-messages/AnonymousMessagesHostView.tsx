@@ -36,7 +36,7 @@ import { appOrigin } from '@/lib/site'
 import type { Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
-import { applyPlayerChange } from '@/lib/player-realtime'
+import { applyPlayerChange, createRosterReadGuard } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -52,6 +52,8 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
+  const [rosterGuard] = useState(createRosterReadGuard)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
@@ -81,15 +83,18 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const visibleLobbyPlayers = players.slice(lobbyPagination.start, lobbyPagination.end)
 
   const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
-    if (gameRes.data) setGame(gameRes.data)
-    setPlayers(plrsRes.data ?? [])
+    const snapshot = await rosterGuard.read(async () => {
+      const [gameRes, plrsRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      ])
+      return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
+    })
+    if (!snapshot) return false
+    if (snapshot.gameRes.data) setGame(snapshot.gameRes.data)
+    setPlayers(snapshot.plrsRes.data ?? [])
     return true
-  }, [gameCode])
+  }, [gameCode, rosterGuard])
 
   useEffect(() => {
     load()
@@ -101,9 +106,13 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  const handlePlayerRemoved = useCallback((playerId: string) => {
-    setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-  }, [])
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      rosterGuard.noteEvent()
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [rosterGuard]
+  )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
@@ -120,7 +129,8 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.new as Player
-          setPlayers((prev) => (prev.some((p) => p.id === player.id) ? prev : [...prev, player]))
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'INSERT', new: player }))
         }
       )
       .on(
@@ -128,6 +138,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.new as Player
+          rosterGuard.noteEvent()
           setPlayers((prev) => applyPlayerChange(prev, { eventType: 'UPDATE', new: player }))
         }
       )
@@ -136,7 +147,8 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.old as Player
-          setPlayers((prev) => prev.filter((p) => p.id !== player.id))
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'DELETE', old: { id: player.id } }))
         }
       )
       .subscribe()
@@ -144,7 +156,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode])
+  }, [gameCode, rosterGuard])
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

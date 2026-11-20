@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createRosterReadGuard } from '@fateround/shared/player-realtime'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
 import {
@@ -68,6 +69,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // Latest roster for name lookups, so `loadMessages` (and therefore `load` and the roster
+  // subscription) does not change identity on every roster update.
+  const playersRef = useRef<Player[]>([])
+  // Rejects a roster read that a players event overtook while it was in flight.
+  const [rosterGuard] = useState(createRosterReadGuard)
   const [messages, setMessages] = useState<AnonymousMessage[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [canChat, setCanChat] = useState(true)
@@ -117,7 +123,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       .eq('game_id', code)
       .order('created_at', { ascending: true })
     if (res.error) return false
-    const nameById = new Map(players.map((p) => [p.id, p.name]))
+    const nameById = new Map(playersRef.current.map((p) => [p.id, p.name]))
     setMessages(
       ((res.data as AnonymousMessage[]) ?? []).map((row) => ({
         ...row,
@@ -125,15 +131,19 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       }))
     )
     return true
-  }, [code, players])
+  }, [code])
 
   const load = useCallback(async () => {
     const supabase = getSupabase()
-    const [gameRes, playersRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
-    ])
-    if (gameRes.error || playersRes.error) return false
+    const snapshot = await rosterGuard.read(async () => {
+      const [g, p] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
+      ])
+      return g.error || p.error ? null : { gameRes: g, playersRes: p }
+    })
+    if (!snapshot) return false
+    const { gameRes, playersRes } = snapshot
     if (!gameRes.data) {
       setScreen('not_found')
       return true
@@ -141,6 +151,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     const gameData = gameRes.data as Game
     const playerRows = (playersRes.data as Player[]) ?? []
     setGame(gameData)
+    playersRef.current = playerRows
     setPlayers(playerRows)
     const session = await getPlayerSession(code)
     const playerId = session?.playerId ?? null
@@ -158,7 +169,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
     await loadMessages()
     return true
-  }, [code, loadMessages, syncScreen])
+  }, [code, loadMessages, rosterGuard, syncScreen])
 
   useEffect(() => {
     void load()
@@ -176,13 +187,15 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     const channel = supabase
       .channel(uniqueTopic(`anon-mobile-players-${code}`))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${code}` }, () => {
+        // An in-flight read that started before this event is now stale; the guard re-fetches it.
+        rosterGuard.noteEvent()
         void load()
       })
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [code, load])
+  }, [code, load, rosterGuard])
 
   useEffect(() => {
     if (screen !== 'active') return

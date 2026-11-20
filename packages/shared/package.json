@@ -69,6 +69,7 @@
     "./quick-draw-lie": "./src/quick-draw-lie.ts",
     "./batch-9-games": "./src/batch-9-games.ts",
     "./anonymous-messages": "./src/anonymous-messages.ts",
+    "./player-realtime": "./src/player-realtime.ts",
     "./hot-seat": "./src/hot-seat.ts",
     "./custom-game": "./src/custom-game.ts",
     "./create-board-games": "./src/create-board-games.ts",

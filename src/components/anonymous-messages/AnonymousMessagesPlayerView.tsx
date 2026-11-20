@@ -31,7 +31,7 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
 import { useToast } from '@/components/ui/Toast'
-import { applyPlayerChange } from '@/lib/player-realtime'
+import { applyPlayerChange, createRosterReadGuard } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -65,6 +65,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
+  const [rosterGuard] = useState(createRosterReadGuard)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joining, setJoining] = useState(false)
@@ -99,14 +101,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }, [])
 
   const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
+    const snapshot = await rosterGuard.read(async () => {
+      const [gameRes, plrsRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      ])
+      return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
+    })
+    if (!snapshot) return false
 
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
+    const gameData = snapshot.gameRes.data
+    const plrs = snapshot.plrsRes.data
 
     if (!gameData) {
       setScreen('not_found')
@@ -127,7 +132,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
     syncScreen(gameData, playerId)
     return true
-  }, [gameCode, syncScreen])
+  }, [gameCode, rosterGuard, syncScreen])
 
   useEffect(() => {
     load()
@@ -150,7 +155,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.new as Player
-          setPlayers((prev) => (prev.some((p) => p.id === player.id) ? prev : [...prev, player]))
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'INSERT', new: player }))
         }
       )
       .on(
@@ -158,6 +164,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.new as Player
+          rosterGuard.noteEvent()
           setPlayers((prev) => applyPlayerChange(prev, { eventType: 'UPDATE', new: player }))
         }
       )
@@ -166,6 +173,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.old as Player
+          rosterGuard.noteEvent()
           if (player.id === myPlayerId) {
             clearPlayerSession(gameCode)
             setMyPlayerId(null)
@@ -173,7 +181,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
             setScreen('join')
             toastError('You were removed from the room')
           }
-          setPlayers((prev) => prev.filter((p) => p.id !== player.id))
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'DELETE', old: { id: player.id } }))
         }
       )
       .subscribe()
@@ -181,7 +189,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, myPlayerId, syncScreen, toastError])
+  }, [gameCode, myPlayerId, rosterGuard, syncScreen, toastError])
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 
