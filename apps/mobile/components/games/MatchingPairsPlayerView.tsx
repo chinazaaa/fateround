@@ -22,6 +22,7 @@ import {
 } from '@fateround/shared/memory-match'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
+import { createFlipResyncTracker } from '@fateround/shared/flip-resync'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
@@ -94,6 +95,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [memorizeCountdown, setMemorizeCountdown] = useState<number | null>(null)
   const memorizeRoundRef = useRef<string | null>(null)
   const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Latest board for the snapshot guard in afterResolve (a closure over `board` would be stale).
+  const boardRef = useRef<BoardState | null>(null)
+  boardRef.current = board
+  // Reloads from the server after a refused/failed flip (same tracker the web view uses); see postFlip.
+  const loadRef = useRef<() => Promise<unknown>>(async () => {})
+  const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
 
   const loadGameState = useCallback(
     async (game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -151,6 +158,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     },
     afterResolve: async (game, playerId) => {
       if (!playerId || !game) return
+      const flipEpochAtStart = flipTracker.epoch()
       const roundNumber = game.current_round_number ?? 1
       const { data: roundData } = await getSupabase()
         .from('rounds')
@@ -186,6 +194,17 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         if (matchedPairs.has(cardOrder[i]!)) cardStates[i] = 'matched'
       }
 
+      // This snapshot may predate a flip the player already sees (one still unanswered, or started while the
+      // read ran), or would drop a card selection / flip-back in progress. Keep the optimistic board, streak
+      // and points then, and read again once nothing is in the way.
+      const cur = boardRef.current
+      const selecting = !!cur && (cur.firstFlipped !== null || cur.locked)
+      if (flipTracker.inFlight() || flipTracker.epoch() !== flipEpochAtStart || selecting) {
+        if (selecting) flipTracker.markDirty()
+        else flipTracker.requestResync()
+        return
+      }
+
       setBoard({ cardOrder, cardStates, firstFlipped: null, locked: false })
       const lastPoints =
         mySubs.filter((s) => s.is_match).length > 0 ? (mySubs[mySubs.length - 1]?.points_after ?? 0) : 0
@@ -206,7 +225,33 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       }
     },
   })
+  loadRef.current = () => bootstrap.load()
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
+
+  // A snapshot skipped while a card was selected / flipping back is read once that ends.
+  useEffect(() => {
+    if (board && !board.locked && board.firstFlipped === null) flipTracker.flushDeferred()
+  }, [board, flipTracker])
+
+  /**
+   * Fire-and-forget flip: the UI is optimistic. postMatchingPairsFlip throws on a refused (4xx/409) or failed
+   * request, so a rejection tells the tracker to reload from the server once no flip is left in flight —
+   * otherwise the optimistic board stays ahead of what the server stored. Never rejects.
+   */
+  const postFlip = (pairIndex: number, isMatch: boolean) => {
+    if (!bootstrap.myResumeToken) return
+    flipTracker.begin()
+    let flipFailed = false
+    void postMatchingPairsFlip(bootstrap.code, bootstrap.myResumeToken, pairIndex, isMatch)
+      .catch(() => {
+        flipFailed = true
+      })
+      .then(() => {
+        flipTracker.end(flipFailed)
+        // A clean accept still refreshes (points, progress); the tracker's own resync covers failures.
+        if (!flipFailed) void Promise.resolve(bootstrap.load()).catch(() => {})
+      })
+  }
 
   useGameTableSync(
     gameCode,
@@ -308,7 +353,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         nextStates[index] = 'matched'
         return { ...prev, cardStates: nextStates, firstFlipped: null, locked: false }
       })
-      void postMatchingPairsFlip(bootstrap.code, bootstrap.myResumeToken, pairA, true).then(() => bootstrap.load())
+      postFlip(pairA, true)
     } else {
       setStreak(0)
       setPoints((p) => Math.max(0, p - MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY))
@@ -323,7 +368,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           return { ...prev, cardStates: nextStates, firstFlipped: null, locked: false }
         })
       }, MATCHING_PAIRS_FLIP_BACK_MS)
-      void postMatchingPairsFlip(bootstrap.code, bootstrap.myResumeToken, pairA, false).then(() => bootstrap.load())
+      postFlip(pairA, false)
     }
   }
 
