@@ -149,12 +149,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Bootstrap ──────────────────────────────────────────────────────────────
 
+  // A flip the server refused (409 stale / already matched, 400 round closed, 5xx) leaves the optimistic
+  // cards, streak and points ahead of what was stored. Once every in-flight flip has settled after a failure,
+  // reload the round from the server so the board shows the stored state, not only an error toast. A snapshot
+  // that could predate a flip (one is in flight, or started after the read began) does not overwrite the
+  // optimistic board; it asks for a fresh read instead (see afterResolve).
+  const loadRef = useRef<() => Promise<unknown>>(async () => {})
+  const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
+
   const loadGameState = useCallback(async (): Promise<{ state: MatchingPairsGameState; ok: boolean }> => {
     return { state: { hasBoard: false, ownFinished: false, roundFinished: false }, ok: true }
   }, [])
 
   const afterResolve = useCallback(
     async (gameData: Game, playerId: string | null): Promise<MatchingPairsGameState> => {
+      const flipEpochAtStart = flipTracker.epoch()
       if (!playerId) {
         setRoundId(null)
         setRoundStartedAt(null)
@@ -213,6 +222,22 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               if (matchedPairs.has(boardState.cardOrder[i])) {
                 boardState.cardStates[i] = 'matched'
               }
+            }
+            // A flip is in flight, or started after this read began: this snapshot may lack it, and applying it
+            // would hide a match the player already sees (or let a pending flip-back timer fire over the
+            // rebuilt board). Keep the optimistic state and read again once nothing is in flight.
+            const snapshotMayBeStale = flipTracker.inFlight() || flipTracker.epoch() !== flipEpochAtStart
+            if (snapshotMayBeStale) {
+              flipTracker.requestResync()
+              const myProgressNow = ((progData ?? []) as MatchingPairsProgress[]).find(
+                (p) => p.round_id === roundData.id && p.player_id === playerId
+              )
+              return { hasBoard: true, ownFinished: myProgressNow?.finished === true, roundFinished: false }
+            }
+            // The board is rebuilt from the server: a flip-back timer from before it must not fire over it.
+            if (flipTimeoutRef.current) {
+              clearTimeout(flipTimeoutRef.current)
+              flipTimeoutRef.current = null
             }
             setBoard(boardState)
 
@@ -283,7 +308,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         return { hasBoard: false, ownFinished: false, roundFinished: false }
       }
     },
-    [gameCode]
+    [gameCode, flipTracker]
   )
 
   const computeScreen = useCallback(
@@ -470,12 +495,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // ── Flip handler ───────────────────────────────────────────────────────────
 
-  // A flip the server refused (409 stale / already matched, 400 round closed, 5xx) leaves the optimistic
-  // cards, streak and points ahead of what was stored. Once every in-flight flip has settled, re-read the
-  // round from the server so the board shows the stored state, not only an error toast.
-  const loadRef = useRef(load)
   loadRef.current = load
-  const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
 
   const handleCardFlip = useCallback(
     async (cardIndex: number) => {

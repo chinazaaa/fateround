@@ -601,6 +601,10 @@ export function computeStreakBonus(streakBeforeMatch: number): number {
  * `resync` may be async. A flip that starts while a resync is still reading would be hidden by the snapshot
  * that read produces, so it marks another resync to run after that read has finished and the flip has
  * settled.
+ *
+ * Whoever applies a snapshot should skip the optimistic state (board, streak, points) when
+ * `inFlight()` or when `epoch()` moved since its read started, and call `requestResync()` instead: that read
+ * may predate a flip the player already sees, and the follow-up read is guaranteed to start after it.
  */
 export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
   let pending = 0
@@ -622,10 +626,22 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
     }
   }
 
+  let epoch = 0
+
   return {
     begin() {
       pending += 1
+      epoch += 1
       if (resyncing) failed = true
+    },
+    /** Counts every flip started so far. A snapshot read that began at an older epoch may predate a flip. */
+    epoch: () => epoch,
+    /** True while any flip request is unanswered, so a snapshot may lack a flip the player already sees. */
+    inFlight: () => pending > 0,
+    /** Resync (again) once nothing is in flight; for a snapshot that was not applied because it could be stale. */
+    requestResync() {
+      failed = true
+      maybeResync()
     },
     end(didFail: boolean) {
       if (didFail) failed = true
