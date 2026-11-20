@@ -53,10 +53,16 @@ export function useAnonymousMessages(
   const hostToken = hostInbox?.hostToken
   const [messages, setMessages] = useState<AnonymousMessage[]>([])
   const [loading, setLoading] = useState(true)
+  // True while the most recently STARTED read has failed. Cleared by a successful read that started at or
+  // after that failed one (host reads: see hostErrorRef), or by the next successful read otherwise.
+  const [loadError, setLoadError] = useState(false)
   // Host reads can overlap (mount + visibility refresh). Each gets a generation; only a response newer
   // than the last applied one may replace the list, and a removal invalidates reads started before it.
   const hostRequestRef = useRef(0)
   const hostAppliedRef = useRef(0)
+  // Generation of the newest host read that failed. A slower, older read that succeeds afterwards still
+  // applies its messages but must not hide the failure of a read that started after it.
+  const hostErrorRef = useRef(0)
 
   const nameById = useCallback(() => new Map(players.map((p) => [p.id, p.name])), [players])
 
@@ -83,16 +89,27 @@ export function useAnonymousMessages(
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ gameId: gameCode, hostToken }),
         })
-        if (!r.ok) return false
+        if (!r.ok) {
+          if (generation > hostAppliedRef.current) {
+            hostErrorRef.current = Math.max(hostErrorRef.current, generation)
+            setLoadError(true)
+          }
+          return false
+        }
         const json = (await r.json()) as { messages?: Omit<AnonymousMessage, 'player_id'>[] }
         // Sender identity is never sent to the host; player_id stays empty.
         if (generation > hostAppliedRef.current) {
           hostAppliedRef.current = generation
           setMessages((json.messages ?? []).map((m) => ({ ...m, player_id: '' })))
+          setLoading(false)
+          if (generation >= hostErrorRef.current) setLoadError(false)
         }
-        setLoading(false)
         return true
       } catch {
+        if (generation > hostAppliedRef.current) {
+          hostErrorRef.current = Math.max(hostErrorRef.current, generation)
+          setLoadError(true)
+        }
         return false
       }
     }
@@ -111,17 +128,34 @@ export function useAnonymousMessages(
       .order('id', { ascending: false })
       .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
 
-    if (!supabasePollOk(res)) return false
+    if (!supabasePollOk(res)) {
+      setLoadError(true)
+      return false
+    }
     const names = nameById()
     setMessages((res.data ?? []).map((row) => normalizeMessage(row as RawAnonymousMessage, names)).reverse())
     setLoading(false)
+    setLoadError(false)
     return true
   }, [gameCode, hostToken, nameById])
 
+  // Host inbox: when the board closes the server clears it. Drop the cached messages and invalidate
+  // reads still in flight from the closed period so only a read after reopening can fill the feed.
   useEffect(() => {
-    if (!enabled) return
+    if (enabled || !hostToken) return
+    hostAppliedRef.current = hostRequestRef.current
+    hostErrorRef.current = 0
+    setMessages([])
+    setLoading(true)
+    setLoadError(false)
+  }, [enabled, hostToken])
+
+  useEffect(() => {
+    // The host inbox's initial read is owned by usePolling below (it runs immediately), so running
+    // it here too would send two list POSTs on every enable.
+    if (!enabled || hostToken) return
     loadMessages()
-  }, [enabled, loadMessages])
+  }, [enabled, hostToken, loadMessages])
 
   useEffect(() => {
     // Host inbox is poll-only: RLS hides these rows from anon, so realtime would deliver nothing.
@@ -170,5 +204,5 @@ export function useAnonymousMessages(
     })
   }, [enabled, nameById, players])
 
-  return { messages, loading, reload: loadMessages, removeMessage }
+  return { messages, loading, loadError, reload: loadMessages, removeMessage }
 }
