@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import type { AnonymousMessage, Game, Player } from '@fateround/shared'
+import { createLatestResultApplier } from '@fateround/shared/player-realtime'
 import {
   anonymousSessionSecondsLeft,
   banSecondsLeft,
@@ -67,20 +68,22 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
 
   const nameById = useMemo(() => new Map(players.map((p) => [p.id, p.name])), [players])
 
+  // Message reads overlap (mount, realtime events); only the newest response may replace the feed.
+  const [applyLatestMessages] = useState(createLatestResultApplier)
+
   const loadMessages = useCallback(async () => {
-    const res = await getSupabase()
-      .from('anonymous_messages')
-      .select(ANONYMOUS_MESSAGE_SELECT)
-      .eq('game_id', code)
-      .order('created_at', { ascending: true })
-    if (res.error) return
-    setMessages(
-      ((res.data as AnonymousMessage[]) ?? []).map((row) => ({
-        ...row,
-        player_name: nameById.get(row.player_id) ?? 'Unknown',
-      }))
+    await applyLatestMessages(
+      async () => {
+        const res = await getSupabase()
+          .from('anonymous_messages')
+          .select(ANONYMOUS_MESSAGE_SELECT)
+          .eq('game_id', code)
+          .order('created_at', { ascending: true })
+        return res.error ? null : ((res.data as AnonymousMessage[]) ?? [])
+      },
+      (rows) => setMessages(rows.map((row) => ({ ...row, player_name: nameById.get(row.player_id) ?? 'Unknown' })))
     )
-  }, [code, nameById])
+  }, [applyLatestMessages, code, nameById])
 
   const loadBans = useCallback(async () => {
     const res = await getSupabase().from('anonymous_room_bans').select(ANONYMOUS_ROOM_BAN_SELECT).eq('game_id', code)

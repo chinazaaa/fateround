@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   applyPlayerChange,
+  createLatestResultApplier,
   createLoadRecovery,
   createNewestCallTracker,
   createRosterReadGuard,
@@ -210,5 +211,42 @@ describe('createNewestCallTracker', () => {
     resolvers[0]() // older finishes last
     await older
     expect(writes).toEqual(['newer'])
+  })
+})
+
+describe('createLatestResultApplier', () => {
+  it('drops an older message response that resolves after a newer one', async () => {
+    const run = createLatestResultApplier()
+    const resolvers: Array<(v: string[]) => void> = []
+    const fetchFeed = () => new Promise<string[]>((r) => resolvers.push(r))
+    let feed: string[] = []
+    const apply = (v: string[]) => {
+      feed = v
+    }
+    const older = run(fetchFeed, apply)
+    const newer = run(fetchFeed, apply)
+    resolvers[1](['m1', 'm2']) // newer response arrives first
+    await expect(newer).resolves.toBe(true)
+    resolvers[0](['m1']) // stale response arrives last
+    await expect(older).resolves.toBe(false)
+    expect(feed).toEqual(['m1', 'm2'])
+  })
+
+  it('applies an in-order response and skips a failed (null) read', async () => {
+    const run = createLatestResultApplier()
+    let feed: string[] = []
+    await expect(
+      run(
+        async () => ['a'],
+        (v) => (feed = v)
+      )
+    ).resolves.toBe(true)
+    await expect(
+      run(
+        async () => null,
+        (v: string[]) => (feed = v)
+      )
+    ).resolves.toBe(false)
+    expect(feed).toEqual(['a'])
   })
 })

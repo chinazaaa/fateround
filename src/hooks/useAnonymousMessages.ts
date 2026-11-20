@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { AnonymousMessage, Player } from '@/types'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { createLatestResultApplier } from '@/lib/player-realtime'
 
 type RawAnonymousMessage = Omit<AnonymousMessage, 'player_name'> & {
   players?: { name: string } | { name: string }[] | null
@@ -63,6 +64,8 @@ export function useAnonymousMessages(
   // Generation of the newest host read that failed. A slower, older read that succeeds afterwards still
   // applies its messages but must not hide the failure of a read that started after it.
   const hostErrorRef = useRef(0)
+  // Player-side reads overlap (poll, realtime event, mount); only the newest response may replace the feed.
+  const [applyLatestMessages] = useState(createLatestResultApplier)
 
   const nameById = useCallback(() => new Map(players.map((p) => [p.id, p.name])), [players])
 
@@ -113,31 +116,43 @@ export function useAnonymousMessages(
         return false
       }
     }
-    const res = await supabase
-      .from('anonymous_messages')
-      .select(
-        'id, game_id, player_id, text, created_at, reply_to_id, reply_to_text, message_type, media_url, players(name)'
-      )
-      .eq('game_id', gameCode)
-      // Descending + limit gives the NEWEST N rows; reversed below so the feed still
-      // renders oldest-first. Ascending + limit would return the OLDEST N and new
-      // messages would never appear.
-      .order('created_at', { ascending: false })
-      // Secondary order breaks created_at ties at the window boundary so membership
-      // in the N-row window is deterministic across polls.
-      .order('id', { ascending: false })
-      .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
-
-    if (!supabasePollOk(res)) {
+    let failed = false
+    const applied = await applyLatestMessages(
+      async () => {
+        const res = await supabase
+          .from('anonymous_messages')
+          .select(
+            'id, game_id, player_id, text, created_at, reply_to_id, reply_to_text, message_type, media_url, players(name)'
+          )
+          .eq('game_id', gameCode)
+          // Descending + limit gives the NEWEST N rows; reversed below so the feed still
+          // renders oldest-first. Ascending + limit would return the OLDEST N and new
+          // messages would never appear.
+          .order('created_at', { ascending: false })
+          // Secondary order breaks created_at ties at the window boundary so membership
+          // in the N-row window is deterministic across polls.
+          .order('id', { ascending: false })
+          .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
+        if (!supabasePollOk(res)) {
+          failed = true
+          return null
+        }
+        return res.data ?? []
+      },
+      (rows) => {
+        const names = nameById()
+        setMessages(rows.map((row) => normalizeMessage(row as RawAnonymousMessage, names)).reverse())
+        setLoading(false)
+        setLoadError(false)
+      }
+    )
+    if (failed) {
       setLoadError(true)
       return false
     }
-    const names = nameById()
-    setMessages((res.data ?? []).map((row) => normalizeMessage(row as RawAnonymousMessage, names)).reverse())
-    setLoading(false)
-    setLoadError(false)
-    return true
-  }, [gameCode, hostToken, nameById])
+    // A superseded read is not a failure: the newer read owns the feed.
+    return applied || !failed
+  }, [applyLatestMessages, gameCode, hostToken, nameById])
 
   // Host inbox: when the board closes the server clears it. Drop the cached messages and invalidate
   // reads still in flight from the closed period so only a read after reopening can fill the feed.

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createLoadRecovery, createNewestCallTracker, createRosterReadGuard } from '@fateround/shared/player-realtime'
+import {
+  createLatestResultApplier,
+  createLoadRecovery,
+  createNewestCallTracker,
+  createRosterReadGuard,
+} from '@fateround/shared/player-realtime'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
 import { useOnAppResume } from '@/hooks/useAppActive'
@@ -116,22 +121,32 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setScreen(playerId ? 'finished' : 'game_ended')
   }, [])
 
+  // Message reads overlap (load, realtime events); only the newest response may replace the feed.
+  const [applyLatestMessages] = useState(createLatestResultApplier)
+
   const loadMessages = useCallback(async () => {
-    const res = await getSupabase()
-      .from('anonymous_messages')
-      .select(ANONYMOUS_MESSAGE_SELECT)
-      .eq('game_id', code)
-      .order('created_at', { ascending: true })
-    if (res.error) return false
-    const nameById = new Map(playersRef.current.map((p) => [p.id, p.name]))
-    setMessages(
-      ((res.data as AnonymousMessage[]) ?? []).map((row) => ({
-        ...row,
-        player_name: nameById.get(row.player_id) ?? 'Unknown',
-      }))
+    let failed = false
+    const applied = await applyLatestMessages(
+      async () => {
+        const res = await getSupabase()
+          .from('anonymous_messages')
+          .select(ANONYMOUS_MESSAGE_SELECT)
+          .eq('game_id', code)
+          .order('created_at', { ascending: true })
+        if (res.error) {
+          failed = true
+          return null
+        }
+        return (res.data as AnonymousMessage[]) ?? []
+      },
+      (rows) => {
+        const nameById = new Map(playersRef.current.map((p) => [p.id, p.name]))
+        setMessages(rows.map((row) => ({ ...row, player_name: nameById.get(row.player_id) ?? 'Unknown' })))
+      }
     )
-    return true
-  }, [code])
+    // A superseded read is not a failure: the newer read owns the feed.
+    return applied || !failed
+  }, [applyLatestMessages, code])
 
   // Newest-load token: overlapping loads (initial, game-row event, SUBSCRIBED, app resume) can finish
   // out of order, and an older one must not overwrite state a newer one already wrote.
