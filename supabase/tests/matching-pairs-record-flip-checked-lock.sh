@@ -5,12 +5,14 @@
 #   DB=postgresql://postgres:postgres@127.0.0.1:54322/postgres supabase/tests/matching-pairs-record-flip-checked-lock.sh
 #
 # Session A plays the duplicate cleanup (20261202500000): it takes SHARE ROW EXCLUSIVE on
-# memory_match_submissions, deletes one of the player's rows and commits a few seconds later. Session B is a
+# memory_match_submissions and keeps its transaction open until the test releases it, then deletes one of the
+# player's rows and commits. Session B is a
 # flip that read the history BEFORE the cleanup (so its fingerprint is the old one). The test asserts that B
 #   - is observed WAITING on A's lock in pg_locks (so it cannot have read the pre-cleanup history), and
 #   - then answers `stale` and inserts nothing.
-# The sessions are coordinated through pg_locks / pg_stat_activity, not timing: B is started only once A is seen
-# holding the lock, and the test only proceeds once B is seen waiting. Without the table lock in the function B
+# The sessions are coordinated through pg_locks / pg_stat_activity and an advisory-lock gate, not timing: A is
+# held open by the gate, B is started only once A is seen holding its lock, and the gate is opened only once B
+# is seen waiting, so no delay on a slow runner can change the outcome. Without the table lock in the function B
 # would not wait and would store a score from the superseded history. Fixtures are committed (two sessions
 # cannot share a transaction) and removed on exit.
 set -euo pipefail
@@ -38,8 +40,24 @@ SQL
 # The fingerprint session B scored from: two rows, the latest of which is `last_id`.
 LAST_ID=$(psqlq -c "select id from public.memory_match_submissions where round_id='$R' and player_id='$P' order by submitted_at desc, id desc limit 1")
 
-HOLD_SECONDS=4   # A's lock is held for at most this long; B is seen waiting well inside it
-fail() { echo "matching-pairs-record-flip-checked-lock: FAILED - $*" >&2; exit 1; }
+GATE_KEY=7770001   # advisory lock the test holds to keep session A's transaction open
+fail() { release_gate; echo "matching-pairs-record-flip-checked-lock: FAILED - $*" >&2; exit 1; }
+
+# The gate: a long-lived session (fed through a FIFO) that holds the advisory lock until told to let go.
+GATE_DIR=$(mktemp -d)
+mkfifo "$GATE_DIR/in"
+PGAPPNAME=mp_lock_gate psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A <"$GATE_DIR/in" >/dev/null &
+GATE_PID=$!
+exec 3>"$GATE_DIR/in"
+GATE_OPEN=0
+release_gate() {
+  if [ "$GATE_OPEN" = "0" ]; then
+    GATE_OPEN=1
+    echo "select pg_advisory_unlock($GATE_KEY);" >&3 2>/dev/null || true
+    exec 3>&-
+  fi
+}
+trap 'release_gate; kill "$GATE_PID" 2>/dev/null || true; rm -rf "$GATE_DIR"; cleanup' EXIT
 
 # Poll until a query returns a row (1 = found); gives up after ~10 s.
 wait_for() {
@@ -51,11 +69,16 @@ wait_for() {
   return 1
 }
 
-# Session A: the cleanup, holding its lock before it deletes the earlier row and commits.
+echo "select pg_advisory_lock($GATE_KEY);" >&3
+wait_for "select 1 from pg_locks l join pg_stat_activity a on a.pid = l.pid
+          where a.application_name = 'mp_lock_gate' and l.locktype = 'advisory' and l.granted limit 1" \
+  || fail "the gate session never took its advisory lock"
+
+# Session A: the cleanup. It takes its table lock and then waits on the gate, so it stays open until released.
 PGAPPNAME=mp_lock_A psqlq >/dev/null <<SQL &
 begin;
 lock table public.memory_match_submissions in share row exclusive mode;
-select pg_sleep($HOLD_SECONDS);
+select pg_advisory_xact_lock($GATE_KEY);
 delete from public.memory_match_submissions where round_id = '$R' and player_id = '$P' and pair_index = 0;
 commit;
 SQL
@@ -82,8 +105,9 @@ for i in $(seq 1 100); do
   kill -0 "$B_PID" 2>/dev/null || break
   sleep 0.1
 done
-[ "$SAW_WAITING" = "1" ] || { wait "$B_PID" 2>/dev/null || true; wait "$A_PID" 2>/dev/null || true; fail "the flip did not wait for the cleanup (it returned '$(cat "$B_OUT")' without blocking on A's lock)"; }
+[ "$SAW_WAITING" = "1" ] || { release_gate; wait "$B_PID" 2>/dev/null || true; wait "$A_PID" 2>/dev/null || true; fail "the flip did not wait for the cleanup (it returned '$(cat "$B_OUT")' without blocking on A's lock)"; }
 
+release_gate   # B is waiting on A's lock: let A delete and commit
 wait "$B_PID"
 wait "$A_PID"
 STATUS=$(tr -d '[:space:]' <"$B_OUT")
