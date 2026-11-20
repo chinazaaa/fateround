@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { applyPlayerChange, createRosterReadGuard } from './player-realtime'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { applyPlayerChange, createLoadRecovery, createRosterReadGuard } from './player-realtime'
 
 type P = { id: string; name: string; spectator: boolean }
 const a: P = { id: 'a', name: 'A', spectator: false }
@@ -101,5 +101,78 @@ describe('shared copy parity', () => {
   it('keeps packages/shared/src/player-realtime.ts identical to the web copy (minus the header comment)', () => {
     const body = (path: string) => readFileSync(join(process.cwd(), path), 'utf8').split('\n').slice(2).join('\n')
     expect(body('packages/shared/src/player-realtime.ts')).toBe(body('src/lib/player-realtime.ts'))
+  })
+})
+
+describe('createLoadRecovery', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('does not retry when the first load succeeds', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn(async () => true)
+    createLoadRecovery(load).start()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
+  it('retries a failed initial load with backoff until it succeeds', async () => {
+    vi.useFakeTimers()
+    const load = vi
+      .fn<() => Promise<boolean>>()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true)
+    createLoadRecovery(load).start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(load).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(999)
+    expect(load).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1) // 1s
+    expect(load).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1999)
+    expect(load).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1) // +2s
+    expect(load).toHaveBeenCalledTimes(3)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(3)
+  })
+
+  it('treats a thrown load like a failure', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn<() => Promise<boolean>>().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(true)
+    createLoadRecovery(load).start()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('stays bounded: gives up after maxRetries', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn(async () => false)
+    createLoadRecovery(load, { maxRetries: 3 }).start()
+    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(load).toHaveBeenCalledTimes(4)
+  })
+
+  it('stop() cancels a pending retry (unmount during retry)', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn(async () => false)
+    const recovery = createLoadRecovery(load)
+    recovery.start()
+    await vi.advanceTimersByTimeAsync(0)
+    recovery.stop()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
+  it('stop() while a load is in flight prevents scheduling a retry', async () => {
+    vi.useFakeTimers()
+    let resolve!: (v: boolean) => void
+    const load = vi.fn(() => new Promise<boolean>((r) => (resolve = r)))
+    const recovery = createLoadRecovery(load)
+    recovery.start()
+    recovery.stop()
+    resolve(false)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(1)
   })
 })

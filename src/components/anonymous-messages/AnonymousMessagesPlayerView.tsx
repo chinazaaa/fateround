@@ -31,7 +31,7 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
 import { useToast } from '@/components/ui/Toast'
-import { applyPlayerChange, createRosterReadGuard } from '@/lib/player-realtime'
+import { applyPlayerChange, createLoadRecovery, createRosterReadGuard } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -134,8 +134,12 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return true
   }, [gameCode, rosterGuard, syncScreen])
 
+  // First load, with bounded retry: a failed read must not strand the loading screen while realtime
+  // is healthy (the fallback poll is suspended then and no event calls load()).
   useEffect(() => {
-    load()
+    const recovery = createLoadRecovery(load)
+    recovery.start()
+    return recovery.stop
   }, [load])
 
   useEffect(() => {
@@ -148,6 +152,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
           const next = payload.new as Game
           setGame((prev) => mergeRealtimeGame(prev, next))
           syncScreen(next, myPlayerId)
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        () => {
+          void load()
         }
       )
       .on(
@@ -189,7 +200,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, myPlayerId, rosterGuard, syncScreen, toastError])
+  }, [gameCode, load, myPlayerId, rosterGuard, syncScreen, toastError])
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

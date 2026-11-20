@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createRosterReadGuard } from '@fateround/shared/player-realtime'
+import { createLoadRecovery, createRosterReadGuard } from '@fateround/shared/player-realtime'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
+import { useOnAppResume } from '@/hooks/useAppActive'
 import {
   ActivityIndicator,
   Alert,
@@ -48,7 +49,6 @@ import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supabase-selects'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type Screen =
   | 'loading'
@@ -171,17 +171,26 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return true
   }, [code, loadMessages, rosterGuard, syncScreen])
 
+  // First load, with bounded retry: a failed read must not strand the loading screen (this view has
+  // no fallback poll).
   useEffect(() => {
-    void load()
+    const recovery = createLoadRecovery(load)
+    recovery.start()
+    return recovery.stop
   }, [load])
+
+  // Backgrounded apps lose their sockets and timers; reconcile on return to the foreground.
+  useOnAppResume(() => void load())
 
   useEffect(() => {
     const id = setInterval(() => setTimerTick((t) => t + 1), 1000)
     return () => clearInterval(id)
   }, [])
 
-  // Live roster in every screen: lobby counters, `lobbyFull` and the headcount depend on who is
-  // seated, which changes on INSERT, DELETE and on UPDATE (a viewer readying up flips `spectator`).
+  // Live roster + game row in every screen: lobby counters, `lobbyFull` and the headcount depend on
+  // who is seated (INSERT, DELETE, and UPDATE when a viewer readies up), and the screen follows the
+  // game status (the host's start writes only the `games` row). This is the single `games`
+  // listener; the active-screen channel below only carries messages.
   useEffect(() => {
     const supabase = getSupabase()
     const channel = supabase
@@ -191,7 +200,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         rosterGuard.noteEvent()
         void load()
       })
-      .subscribe()
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `id=eq.${code}` }, () => {
+        void load()
+      })
+      .subscribe((status) => {
+        // (Re)connected: events sent while the socket was down are gone, so resync.
+        if (status === 'SUBSCRIBED') void load()
+      })
     return () => {
       void supabase.removeChannel(channel)
     }
@@ -209,20 +224,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
           void loadMessages()
         }
       )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` },
-        (payload) => {
-          const next = payload.new as Game
-          setGame((prev) => mergeRealtimeGame(prev, next))
-          syncScreen(next, myPlayerId)
-        }
-      )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [code, loadMessages, myPlayerId, screen, syncScreen])
+  }, [code, loadMessages, screen])
 
   const myPlayer = players.find((p) => p.id === myPlayerId)
   const canPost =

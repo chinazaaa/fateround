@@ -36,7 +36,7 @@ import { appOrigin } from '@/lib/site'
 import type { Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
-import { applyPlayerChange, createRosterReadGuard } from '@/lib/player-realtime'
+import { applyPlayerChange, createLoadRecovery, createRosterReadGuard } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -96,8 +96,12 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     return true
   }, [gameCode, rosterGuard])
 
+  // First load, with bounded retry: a failed read must not strand the skeleton while realtime is
+  // healthy (the fallback poll is suspended then and no event calls load()).
   useEffect(() => {
-    load()
+    const recovery = createLoadRecovery(load)
+    recovery.start()
+    return recovery.stop
   }, [load])
 
   // Land on the primary (Watch) tab when the session starts, and on Manage when it ends.
@@ -123,6 +127,13 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        () => {
+          void load()
+        }
       )
       .on(
         'postgres_changes',
@@ -156,7 +167,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, rosterGuard])
+  }, [gameCode, load, rosterGuard])
 
   usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
 

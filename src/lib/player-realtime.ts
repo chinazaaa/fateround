@@ -45,3 +45,52 @@ export function createRosterReadGuard(maxAttempts = 3) {
     },
   }
 }
+
+export type LoadRecoveryOptions = {
+  /** Retries after the first attempt fails. Bounded so a dead backend is not hammered. */
+  maxRetries?: number
+  baseDelayMs?: number
+  maxDelayMs?: number
+}
+
+/**
+ * Bounded recovery for a view's INITIAL load. A failed first read (a read error, or the roster read
+ * guard giving up in an event burst) leaves the view on its skeleton, and when realtime is healthy
+ * the fallback poll is suspended and no event calls `load()`, so nothing would retry. This retries
+ * with exponential backoff, a few times at most, independent of realtime health. `stop()` (call it
+ * from the effect cleanup) cancels the pending retry and prevents any later one.
+ * `load` returns false (or throws) on failure.
+ */
+export function createLoadRecovery(
+  load: () => Promise<boolean | void>,
+  { maxRetries = 4, baseDelayMs = 1000, maxDelayMs = 8000 }: LoadRecoveryOptions = {}
+) {
+  let stopped = false
+  let retries = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+
+  async function attempt(): Promise<void> {
+    if (stopped) return
+    let ok: boolean
+    try {
+      ok = (await load()) !== false
+    } catch {
+      ok = false
+    }
+    if (stopped || ok || retries >= maxRetries) return
+    const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** retries)
+    retries += 1
+    timer = setTimeout(() => void attempt(), delay)
+  }
+
+  return {
+    start() {
+      void attempt()
+    },
+    stop() {
+      stopped = true
+      if (timer) clearTimeout(timer)
+      timer = null
+    },
+  }
+}
