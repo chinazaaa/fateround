@@ -26,6 +26,9 @@ export interface TrollRunAdvanceResult {
   currentRound?: number
 }
 
+/** Rows per page when recounting a round's death events (PostgREST's default response cap). */
+export const TROLL_RUN_DEATH_EVENT_PAGE_SIZE = 1000
+
 async function readRoundStates(
   supabase: SupabaseClient,
   gameId: string,
@@ -47,24 +50,33 @@ async function readRoundStates(
  * death events and uses that count, so a stale row total cannot change a placement or a penalty.
  * If the log cannot be read, the stored totals are used as they are.
  */
-async function reconcileDeathTotals(
+export async function reconcileDeathTotals(
   supabase: SupabaseClient,
   gameId: string,
   round: number,
-  states: TrollRunPlayerState[]
+  states: TrollRunPlayerState[],
+  pageSize: number = TROLL_RUN_DEATH_EVENT_PAGE_SIZE
 ): Promise<TrollRunPlayerState[]> {
   if (states.length === 0) return states
-  const { data, error } = await supabase
-    .from('troll_run_events')
-    .select('player_id')
-    .eq('game_id', gameId)
-    .eq('round', round)
-    .eq('event_type', 'death')
-  if (error || !Array.isArray(data)) return states
 
+  // PostgREST caps one response (1000 rows by default), and a long round with many runners can log
+  // more deaths than that: read every page, in a stable order so no row is skipped or repeated.
   const counts = new Map<string, number>()
-  for (const row of data as Array<{ player_id: string }>) {
-    counts.set(row.player_id, (counts.get(row.player_id) ?? 0) + 1)
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('troll_run_events')
+      .select('id,player_id')
+      .eq('game_id', gameId)
+      .eq('round', round)
+      .eq('event_type', 'death')
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error || !Array.isArray(data)) return states
+
+    for (const row of data as Array<{ player_id: string }>) {
+      counts.set(row.player_id, (counts.get(row.player_id) ?? 0) + 1)
+    }
+    if (data.length < pageSize) break
   }
   const reconciled = states.map((state) => ({ ...state, deaths: counts.get(state.player_id) ?? 0 }))
   // Best-effort repair of the stored totals so the scoreboard shows the same number the score used.

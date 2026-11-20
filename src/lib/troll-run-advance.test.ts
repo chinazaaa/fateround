@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { describe, expect, it } from 'vitest'
-import { syncTrollRunGameState } from '@/lib/troll-run-advance'
+import { reconcileDeathTotals, syncTrollRunGameState } from '@/lib/troll-run-advance'
 import { calculateTrollRunDnfScore } from '@/lib/troll-run'
 
 const SESSION_ROW = {
@@ -67,6 +67,8 @@ function makeTrollRunSupabase(failuresByStateId: Record<string, number> = {}) {
 
     const chain: Record<string, unknown> = {
       select: () => chain,
+      order: () => chain,
+      range: () => chain,
       update: () => {
         context.isUpdate = true
         return chain
@@ -129,6 +131,8 @@ describe('syncTrollRunGameState — death totals come from the event log', () =>
         let stateId = ''
         const chain: Record<string, unknown> = {
           select: () => chain,
+          order: () => chain,
+          range: () => chain,
           update: (p: Record<string, unknown>) => {
             isUpdate = true
             patch = p
@@ -166,5 +170,73 @@ describe('syncTrollRunGameState — death totals come from the event log', () =>
     // Player 2 is unfinished (DNF): 2 levels cleared, scored with 1 death (the log), not 3 (the row).
     expect(roundScores['state-2']).toBe(calculateTrollRunDnfScore(2, 1))
     expect(roundScores['state-2']).not.toBe(calculateTrollRunDnfScore(2, 3))
+  })
+})
+
+describe('reconcileDeathTotals — paging through the death log', () => {
+  const states = [
+    { id: 's1', player_id: 'p1', deaths: 0 },
+    { id: 's2', player_id: 'p2', deaths: 0 },
+  ] as unknown as Parameters<typeof reconcileDeathTotals>[3]
+
+  /** A death log served the way PostgREST does: ordered by id, `range` slices it. */
+  function eventLog(rows: Array<{ id: string; player_id: string }>, failOnPage?: number) {
+    const ranges: Array<[number, number]> = []
+    const supabase = {
+      from(table: string) {
+        let range: [number, number] = [0, 0]
+        const chain: Record<string, unknown> = {
+          select: () => chain,
+          eq: () => chain,
+          order: () => chain,
+          range: (a: number, b: number) => {
+            range = [a, b]
+            ranges.push(range)
+            return chain
+          },
+          update: () => chain,
+          then: (resolve: (v: unknown) => unknown) => {
+            if (table === 'troll_run_events') {
+              if (failOnPage !== undefined && ranges.length === failOnPage) {
+                return resolve({ data: null, error: { message: 'read failed' } })
+              }
+              return resolve({ data: rows.slice(range[0], range[1] + 1), error: null })
+            }
+            return resolve({ data: null, error: null })
+          },
+        }
+        return chain
+      },
+    } as unknown as SupabaseClient
+    return { supabase, ranges }
+  }
+
+  it('counts deaths beyond the first page', async () => {
+    const rows = Array.from({ length: 7 }, (_, i) => ({ id: `e${i}`, player_id: i < 5 ? 'p1' : 'p2' }))
+    const { supabase, ranges } = eventLog(rows)
+
+    const result = await reconcileDeathTotals(supabase, 'GAME', 1, states, 3)
+
+    expect(result.map((s) => s.deaths)).toEqual([5, 2])
+    expect(ranges).toEqual([
+      [0, 2],
+      [3, 5],
+      [6, 8],
+    ])
+  })
+
+  it('stops after a page that exactly fills the last slot only once an empty page confirms it', async () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({ id: `e${i}`, player_id: 'p1' }))
+    const { supabase, ranges } = eventLog(rows)
+    const result = await reconcileDeathTotals(supabase, 'GAME', 1, states, 3)
+    expect(result[0].deaths).toBe(6)
+    expect(ranges).toHaveLength(3)
+  })
+
+  it('returns the stored totals untouched when a later page cannot be read', async () => {
+    const rows = Array.from({ length: 7 }, (_, i) => ({ id: `e${i}`, player_id: 'p1' }))
+    const { supabase } = eventLog(rows, 2)
+    const result = await reconcileDeathTotals(supabase, 'GAME', 1, states, 3)
+    expect(result).toBe(states)
   })
 })
