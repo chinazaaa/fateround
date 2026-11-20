@@ -294,7 +294,7 @@ describe('repairBrokenCodewordsRoster — recovery that needs no repeat request'
     expect(await repairBrokenCodewordsRoster(supabase, 'ABCD')).toBe(true)
   })
 
-  it('does not touch a healthy roster, a lobby with no roles, or a team with no rows', async () => {
+  it('does not touch a healthy roster or a reset state with no roles at all', async () => {
     const healthy = rolesDb([
       { player_id: 'r-spy', team: 'red', role: 'spymaster' },
       { player_id: 'r1', team: 'red', role: 'operative' },
@@ -304,10 +304,35 @@ describe('repairBrokenCodewordsRoster — recovery that needs no repeat request'
     expect(await repairBrokenCodewordsRoster(healthy.supabase, 'ABCD')).toBe(false)
     expect(healthy.updateCount()).toBe(0)
     expect(await repairBrokenCodewordsRoster(rolesDb([]).supabase, 'ABCD')).toBe(false)
-    const oneTeam = rolesDb([
-      { player_id: 'r-spy', team: 'red', role: 'spymaster' },
-      { player_id: 'r1', team: 'red', role: 'operative' },
+  })
+
+  it('forfeits an emptied team to the team that still has players', async () => {
+    const { supabase } = rolesDb([
+      { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+      { player_id: 'b1', team: 'blue', role: 'operative' },
     ])
-    expect(await repairBrokenCodewordsRoster(oneTeam.supabase, 'ABCD')).toBe(false)
+    expect(await repairBrokenCodewordsRoster(supabase, 'ABCD')).toBe(true)
+  })
+
+  it('repairs after two concurrent removals each failed before settling the board', async () => {
+    // The last red player and the red spymaster of a 2-player red team were removed together:
+    // both reconciliations lost to storage errors, leaving red with no rows and no winner.
+    const calls: string[] = []
+    const failing = makeSupabaseStub({
+      codewords_boards: ({ op, payload }) => {
+        calls.push(op)
+        if (op === 'update') return { data: null, error: { code: '08006', message: 'down' } }
+        return { data: { id: 'b1', winner: (payload as { winner?: string } | undefined)?.winner ?? null }, error: null }
+      },
+      codewords_player_roles: () => ({ data: [], error: null }),
+    }) as unknown as SupabaseClient
+    expect((await reconcileCodewordsTeamAfterRemoval(failing, 'ABCD', 'red')).error).not.toBeNull()
+
+    // Storage is back; a later board read, with only blue's rows left, forfeits red.
+    const { supabase } = rolesDb([
+      { player_id: 'b-spy', team: 'blue', role: 'spymaster' },
+      { player_id: 'b1', team: 'blue', role: 'operative' },
+    ])
+    expect(await repairBrokenCodewordsRoster(supabase, 'ABCD')).toBe(true)
   })
 })

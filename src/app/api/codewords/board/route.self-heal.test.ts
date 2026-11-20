@@ -71,9 +71,12 @@ describe('POST /api/codewords/board — roster self-heal', () => {
     expect((await res.json()).board.winner).toBe('blue')
   })
 
-  it('does not run on a finished game or a decided round', async () => {
+  it('does not run on a lobby, a finished game or a decided round', async () => {
     boardRows = [board()]
     gameStatus = 'finished'
+    await post()
+    boardRows = [board()]
+    gameStatus = 'waiting'
     await post()
     boardRows = [board({ winner: 'red' })]
     gameStatus = 'active'

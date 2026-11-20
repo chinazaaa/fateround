@@ -783,10 +783,12 @@ export async function repairBrokenCodewordsRoster(supabase: SupabaseClient, game
     const { data, error } = await supabase.from('codewords_player_roles').select('team, role').eq('game_id', code)
     if (error || !Array.isArray(data) || data.length === 0) return false
     const rows = data as Array<{ team: CodewordsTeam; role: string }>
+    // The caller only asks for an active game with an undecided board. Start refuses to create that
+    // board until both teams hold a spymaster, so inside that context a team with no role rows while
+    // the other still has players is a casualty of concurrent removals (reconciliation then forfeits
+    // it, exactly as for "no operatives left"). Both teams empty (no rows at all, handled above) is a reset/lobby state: leave it.
     const broken = (['red', 'blue'] as const).some((team) => {
       const mine = rows.filter((r) => r.team === team)
-      // A team with no rows at all is a lobby/reset state, not a casualty of a removal.
-      if (mine.length === 0) return false
       return !mine.some((r) => r.role === 'spymaster') || !mine.some((r) => r.role === 'operative')
     })
     if (!broken) return false
