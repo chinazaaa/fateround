@@ -17,6 +17,7 @@ const fullBoard = {
   current_clue_word: 'fruit',
   current_clue_number: 2,
   clue_seq: 7,
+  turn_seq: 3,
   winner: null,
 }
 
@@ -59,22 +60,25 @@ const post = (body: Record<string, unknown>) =>
   )
 
 describe('POST /api/codewords/board — server-side counters stay server-side', () => {
-  it('never sends clue_seq to an operative, and still withholds the key', async () => {
+  it('never sends clue_seq or turn_seq to an operative, and still withholds the key', async () => {
     role = { role: 'operative' }
     const { board } = await (await post({ gameCode: 'ABCD', resumeToken: 'resume-token' })).json()
     expect(board).not.toHaveProperty('clue_seq')
+    expect(board).not.toHaveProperty('turn_seq')
     expect(board.key).toEqual([null, 'blue', null, null]) // only the revealed cell
     expect(board.current_clue_word).toBe('fruit') // everything else still reaches the client
   })
 
-  it('never sends clue_seq to a spymaster or the host either', async () => {
+  it('never sends clue_seq or turn_seq to a spymaster or the host either', async () => {
     role = { role: 'spymaster' }
     const spy = await (await post({ gameCode: 'ABCD', resumeToken: 'resume-token' })).json()
     expect(spy.board).not.toHaveProperty('clue_seq')
+    expect(spy.board).not.toHaveProperty('turn_seq')
     expect(spy.board.key).toEqual(['red', 'blue', 'neutral', 'assassin'])
 
     const host = await (await post({ gameCode: 'ABCD', hostToken: 'host-secret' })).json()
     expect(host.board).not.toHaveProperty('clue_seq')
+    expect(host.board).not.toHaveProperty('turn_seq')
     expect(host.board.key).toEqual(['red', 'blue', 'neutral', 'assassin'])
   })
 })
