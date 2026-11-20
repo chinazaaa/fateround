@@ -2084,8 +2084,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (isRummyGame(gameType)) {
-    const { error } = await removeRummyPlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
+    const { error, conflict } = await removeRummyPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    // A lost race / deadlock after retries is retryable: repeating the leave completes it.
+    if (error) return NextResponse.json({ error }, { status: conflict ? 409 : 500 })
     return NextResponse.json({ success: true })
   }
 

@@ -638,25 +638,30 @@ async function loadSession(
   return { session: data as Draughts10Session | null }
 }
 
+/** Returned when a concurrent request already advanced the turn (same wording as Checkers/Chess/Rummy). */
+const LOST_RACE_MESSAGE = 'Another action already updated this turn — try again'
+
 /**
  * Optimistic-concurrency session write (CAS on updated_at). Mirrors Checkers/Chess:
  * the update only lands if the row still carries the updated_at we read, so a
  * stale expire-turn can't overwrite a real move, and two requests never both
- * call markGameFinished. Returns true if this write won.
+ * call markGameFinished. Returns `won: true` if this write won; `error` is set only for a database failure.
  */
 async function persistSession(
   supabase: SupabaseClient,
   gameId: string,
   patch: Partial<Draughts10Session> & { red_stats?: Draughts10Stats; black_stats?: Draughts10Stats },
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('checkers10_sessions')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: swallowing it would answer 200 for a write that never landed.
+  if (error) return { won: false, error: internalErrorMessage('draughts10', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 export async function processDraughts10Move(
@@ -807,7 +812,7 @@ export async function processDraughts10Move(
   const nextRemaining = nextTurn === 'r' ? redMs : blackMs
   const nextDeadline = !finished && timed && nextRemaining != null ? new Date(now + nextRemaining).toISOString() : null
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -834,7 +839,7 @@ export async function processDraughts10Move(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return { error: persisted.error ?? LOST_RACE_MESSAGE }
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -944,7 +949,7 @@ export async function processDraughts10Huff(
   const nextRemaining = nextTurn === 'r' ? redMs : blackMs
   const nextDeadline = !finished && timed && nextRemaining != null ? new Date(now + nextRemaining).toISOString() : null
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -970,7 +975,7 @@ export async function processDraughts10Huff(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return { error: persisted.error ?? LOST_RACE_MESSAGE }
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -997,7 +1002,7 @@ export async function processDraughts10ExpireTurn(
   const loserName = names.get(playerIdForColor(session, loserColor)) ?? (loserColor === 'r' ? 'Red' : 'Black')
   const winnerName = names.get(winnerPlayerId) ?? (winnerColor === 'r' ? 'Red' : 'Black')
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1013,7 +1018,8 @@ export async function processDraughts10ExpireTurn(
     },
     session.updated_at
   )
-  if (!won) return {}
+  // Lost CAS = the player moved in time (or another poller already finished it): not an error.
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await markGameFinished(supabase, gameId)
   return {}
@@ -1039,7 +1045,7 @@ export async function processDraughts10Resign(
   const loserName = names.get(playerId) ?? (color === 'r' ? 'Red' : 'Black')
   const winnerName = names.get(winnerPlayerId) ?? (winnerColor === 'r' ? 'Red' : 'Black')
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1052,7 +1058,7 @@ export async function processDraughts10Resign(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return { error: persisted.error ?? LOST_RACE_MESSAGE }
 
   await markGameFinished(supabase, gameId)
   return {}
