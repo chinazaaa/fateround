@@ -367,4 +367,56 @@ describe('trackBookkeeping — durable, recoverable post-finish bookkeeping', ()
     expect(calls).not.toContain('complete_finish_bookkeeping')
     expect(calls).not.toContain('fail_finish_bookkeeping')
   })
+
+  function makeLeased(claimed = true) {
+    const calls: string[] = []
+    const owners: unknown[] = []
+    const supabase = {
+      rpc: vi.fn(async (fn: string, args: Record<string, unknown>) => {
+        calls.push(fn)
+        if (fn === 'claim_finish_bookkeeping') {
+          owners.push(args.p_owner)
+          return claimed
+            ? { data: { status: 'claimed', finished_at: '2026-01-01T00:00:00.000Z', attempts: 0 }, error: null }
+            : { data: { status: 'none' }, error: null }
+        }
+        if (fn === 'renew_finish_bookkeeping') return { data: 'renewed', error: null }
+        return { data: 'completed', error: null }
+      }),
+    } as never
+    return { supabase, calls, owners }
+  }
+
+  it('hands the claimed lease owner to the shared writers so their writes can be fenced', async () => {
+    const { supabase, owners } = makeLeased()
+    const res = await recoverFinishBookkeeping(supabase, 'GAME')
+    expect(res.state).toBe('done')
+    expect(owners).toHaveLength(1)
+    expect(award).toHaveBeenCalledWith(supabase, 'GAME', owners[0])
+    expect(recordFacts).toHaveBeenCalledWith(supabase, 'GAME', '2026-01-01T00:00:00.000Z', owners[0])
+  })
+
+  it('a fenced room-points write rejected as lost_lease stops the run and reports held (no complete, no fail)', async () => {
+    award.mockResolvedValue('lost_lease')
+    const { supabase, calls } = makeLeased()
+    const res = await recoverFinishBookkeeping(supabase, 'GAME')
+    expect(res.state).toBe('held')
+    expect(recordFacts).not.toHaveBeenCalled()
+    expect(resolveH2H).not.toHaveBeenCalled()
+    expect(calls).not.toContain('complete_finish_bookkeeping')
+    expect(calls).not.toContain('fail_finish_bookkeeping')
+  })
+
+  it('a fenced round-facts write rejected as lost_lease stops before the tournament steps', async () => {
+    award.mockResolvedValue('done')
+    recordFacts.mockResolvedValue('lost_lease')
+    const { supabase, calls } = makeLeased()
+    const res = await recoverFinishBookkeeping(supabase, 'GAME')
+    expect(res.state).toBe('held')
+    expect(resolveH2H).not.toHaveBeenCalled()
+    expect(resolveSchool).not.toHaveBeenCalled()
+    expect(resolveKnockout).not.toHaveBeenCalled()
+    expect(calls).not.toContain('complete_finish_bookkeeping')
+    expect(calls).not.toContain('fail_finish_bookkeeping')
+  })
 })
