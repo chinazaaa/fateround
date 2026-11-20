@@ -10,6 +10,7 @@ import {
   processRummyExpireTurn,
   finishExpiredRummyGame,
   removeRummyPlayer,
+  rummyVersionKey,
 } from './rummy'
 
 /**
@@ -37,6 +38,8 @@ type Faults = {
   afterSessionRead?: (tables: Record<string, Row[]>) => void
   /** Make the game clock look expired (game_duration_seconds / session_started_at in the past). */
   clockExpired?: boolean
+  /** Makes the nth direct `maybeSingle` read of rummy_sessions fail with a transport error. */
+  failSessionMaybeSingleOn?: number
   /** Runs right after a transition commits (lets a test interleave another request). */
   afterRpc?: (tables: Record<string, Row[]>) => void
 }
@@ -81,6 +84,7 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
     ],
   }
   let tick = 0
+  let maybeSingleReads = 0
   const gamesWrites = { count: 0 }
 
   const builder = (table: string) => {
@@ -139,6 +143,12 @@ function makeDb(hand: RummyCard[], faults: Faults = {}) {
       },
       maybeSingle: async () => {
         const res = await run()
+        if (table === 'rummy_sessions') {
+          maybeSingleReads += 1
+          if (faults.failSessionMaybeSingleOn === maybeSingleReads) {
+            return { data: null, error: { message: 'connection reset' } }
+          }
+        }
         return { data: (res.data as Row[])[0] ?? null, error: null }
       },
       then: (resolve: (v: unknown) => void, reject?: (e: unknown) => void) => run().then(resolve, reject),
@@ -510,5 +520,87 @@ describe('Rummy concurrent turn actions', () => {
     expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2'])
     expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(false)
     expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
+  })
+
+  it('does not delete the leaver or their hand when the retry read of the session fails', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      failSessionMaybeSingleOn: 2,
+      // A turn action commits right after the first read, forcing the version conflict and a retry.
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        Object.assign(t.rummy_sessions[0], { current_turn_index: 1, updated_at: 'committed-v1' })
+      },
+    }
+    const { client, tables } = makeDb(hand, faults)
+    tables.players.push({ id: 'p3', game_id: 'ABCD', name: 'Cy' })
+    tables.rummy_sessions[0].turn_order = ['p1', 'p2', 'p3']
+    tables.rummy_player_hands.push({ id: 'h3', game_id: 'ABCD', player_id: 'p3', player_order: 2, cards: [] })
+
+    const res = await removeRummyPlayer(client, 'ABCD', 'p3', 'Cy')
+
+    expect(res.error).toBeTruthy()
+    expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2', 'p3'])
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(true)
+    expect(tables.players.some((p) => p.id === 'p3')).toBe(true)
+  })
+
+  it('does not delete the leaver when the very first read of the session fails', async () => {
+    const { client, tables } = makeDb([c('hearts', 5)], { failSessionMaybeSingleOn: 1 })
+    const res = await removeRummyPlayer(client, 'ABCD', 'p2', 'Ben')
+    expect(res.error).toBeTruthy()
+    expect(tables.rummy_player_hands.some((h) => h.player_id === 'p2')).toBe(true)
+    expect(tables.players.some((p) => p.id === 'p2')).toBe(true)
+  })
+
+  it('does not draw or discard when the deadline was renewed between the expiry read and the draw', async () => {
+    const hand = [c('hearts', 5), c('spades', 5)]
+    const faults: Faults = {
+      afterSessionRead: (t) => {
+        faults.afterSessionRead = undefined
+        // Read 1 is the expiry check; the turn then gets a fresh deadline and version (a leave).
+        Object.assign(t.rummy_sessions[0], {
+          turn_deadline_at: '2999-01-01T00:00:00.000Z',
+          updated_at: 'committed-v1',
+        })
+      },
+    }
+    const { client, tables } = makeDb(hand, faults)
+    Object.assign(tables.rummy_sessions[0], { turn_step: 'draw', turn_deadline_at: '2020-01-01T00:00:00.000Z' })
+
+    const res = await processRummyExpireTurn(client, 'ABCD')
+
+    expect(res).toEqual({ skipped: true })
+    expect(handOf(tables, 'p1')).toHaveLength(2)
+    expect((tables.rummy_sessions[0].draw_pile as RummyCard[]).map((x) => x.id)).toEqual(['clubs-9'])
+    expect(tables.rummy_sessions[0].turn_step).toBe('draw')
+    expect(tables.rummy_sessions[0].current_turn_index).toBe(0)
+  })
+
+  it('rejects a discard bound to a version that differs only in microseconds', async () => {
+    const { client, tables } = makeDb([c('hearts', 5), c('hearts', 6)])
+    tables.rummy_sessions[0].updated_at = '2026-01-01T00:00:00.000200+00:00'
+    const stale = await processRummyDiscard(client, 'ABCD', 'p1', 'hearts-5', '2026-01-01T00:00:00.000100+00:00')
+    expect(stale.error).toMatch(/already updated this turn/)
+    expect(handOf(tables, 'p1')).toHaveLength(2)
+  })
+})
+
+describe('rummyVersionKey', () => {
+  it('tells apart versions inside the same millisecond', () => {
+    expect(rummyVersionKey('2026-01-01T00:00:00.000100+00:00')).not.toBe(
+      rummyVersionKey('2026-01-01T00:00:00.000200+00:00')
+    )
+  })
+
+  it('treats formatting differences of one instant as equal', () => {
+    const a = rummyVersionKey('2026-01-01T00:00:00.5+00:00')
+    expect(rummyVersionKey('2026-01-01T00:00:00.500000Z')).toBe(a)
+    expect(rummyVersionKey('2026-01-01 00:00:00.500000+00')).toBe(a)
+    expect(rummyVersionKey('2026-01-01T01:00:00.500000+01:00')).toBe(a)
+  })
+
+  it('falls back to the raw text for non-timestamps', () => {
+    expect(rummyVersionKey('committed-v1')).toBe('committed-v1')
   })
 })

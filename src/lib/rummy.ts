@@ -449,6 +449,26 @@ const RUMMY_HANDS = 'rummy_player_hands'
 
 const RUMMY_CONFLICT_ERROR = 'Another action already updated this turn — try again'
 
+/**
+ * Canonical key for a Postgres timestamptz as PostgREST/rpc render it. `updated_at` carries
+ * microseconds, which `Date` (milliseconds) would truncate, so two distinct versions inside one
+ * millisecond would compare equal. The key is whole epoch seconds plus the fraction padded to six
+ * digits, so formatting differences (`Z` vs `+00:00`, trimmed trailing zeros) still match while
+ * distinct microsecond versions never do. Text that is not a timestamp is compared as-is.
+ */
+export function rummyVersionKey(value: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}(?::?\d{2})?)?$/.exec(value)
+  if (!m) return value
+  let tz = m[4] ?? 'Z'
+  if (tz !== 'Z') {
+    const digits = tz.slice(1).replace(':', '')
+    tz = `${tz[0]}${digits.slice(0, 2)}:${digits.slice(2).padEnd(2, '0')}`
+  }
+  const seconds = Date.parse(`${m[1]}T${m[2]}${tz}`)
+  if (Number.isNaN(seconds)) return value
+  return `${seconds / 1000}.${(m[3] ?? '').padEnd(6, '0').slice(0, 6)}`
+}
+
 function handRowId(hands: RummyPlayerHand[], playerId: string): string | null {
   return hands.find((h) => h.player_id === playerId)?.id ?? null
 }
@@ -620,7 +640,14 @@ async function removeRummyPlayerOnce(
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null }> {
-  const { data: sessionRaw } = await supabase.from(RUMMY_SESSIONS).select('*').eq('game_id', gameId).maybeSingle()
+  const { data: sessionRaw, error: sessionReadError } = await supabase
+    .from(RUMMY_SESSIONS)
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  // A failed read is not an absent session: falling through would delete the player and their hand
+  // while the session still lists them in turn_order.
+  if (sessionReadError) return { error: internalErrorMessage('rummy', sessionReadError) }
   const session = sessionRaw as RummySession | null
 
   const order = session ? [...(session.turn_order ?? [])] : []
@@ -743,13 +770,19 @@ export async function processRummyDraw(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  source: 'pile' | 'discard'
+  source: 'pile' | 'discard',
+  // Set by the timer: the session version whose deadline it checked. A session that has moved on
+  // (the turn got a fresh deadline) is rejected before anything is changed.
+  expectedUpdatedAt?: string
 ): Promise<{ error?: string; updatedAt?: string }> {
   const state = await loadRummyState(supabase, gameId)
   if (state.error) return { error: state.error }
   const { session, hands, names, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return finishedSessionResult(supabase, gameId, session)
+  if (expectedUpdatedAt && rummyVersionKey(session.updated_at) !== rummyVersionKey(expectedUpdatedAt)) {
+    return { error: RUMMY_CONFLICT_ERROR }
+  }
   const clockRes = await maybeFinalizeGameClock(
     supabase,
     gameId,
@@ -839,7 +872,7 @@ export async function processRummyDiscard(
   const { session, hands, names, timerSeconds, gameDurationSeconds, sessionStartedAt } = state
   if (!session) return { error: 'Rummy session not found' }
   if (session.phase === 'finished') return finishedSessionResult(supabase, gameId, session)
-  if (expectedUpdatedAt && new Date(session.updated_at).getTime() !== new Date(expectedUpdatedAt).getTime()) {
+  if (expectedUpdatedAt && rummyVersionKey(session.updated_at) !== rummyVersionKey(expectedUpdatedAt)) {
     return { error: RUMMY_CONFLICT_ERROR }
   }
   const clockRes = await maybeFinalizeGameClock(
@@ -1049,7 +1082,7 @@ export async function processRummyExpireTurn(
   // discard before the new deadline passes. The next expiry poke checks the new deadline.
   let expectedVersion: string = session.updated_at
   if (session.turn_step === 'draw') {
-    const dr = await processRummyDraw(supabase, gameId, currentId, 'pile')
+    const dr = await processRummyDraw(supabase, gameId, currentId, 'pile', expectedVersion)
     if (dr.error) return dr.error === RUMMY_CONFLICT_ERROR ? { skipped: true } : { error: dr.error }
     // The auto-draw can legitimately end the round (empty deck + reshuffle cap hit) —
     // calling processRummyDiscard against a finished session would return "Game is
