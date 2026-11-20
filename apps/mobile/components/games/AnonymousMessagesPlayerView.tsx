@@ -32,7 +32,10 @@ import { AnonymousLobbyDetail } from '@/components/games/anonymous/AnonymousLobb
 import { AnonymousRoomHeadcount } from '@/components/games/anonymous/AnonymousRoomHeadcount'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { AnonymousBanCountdownBar } from '@/components/games/anonymous/AnonymousBanCountdownBar'
-import { anonymousRoomMaxPlayers } from '@/components/games/anonymous/anonymous-room-helpers'
+import {
+  anonymousRoomMaxPlayers,
+  countAnonymousRoomPresence,
+} from '@/components/games/anonymous/anonymous-room-helpers'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { autoJoinGame } from '@/lib/api'
@@ -415,7 +418,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   if (screen === 'join') {
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
-    const lobbyFull = game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
+    const lobbyFull =
+      game?.status === 'waiting' &&
+      roomCapacity != null &&
+      countAnonymousRoomPresence(players, game).participants >= roomCapacity
     const joinLabel = joining
       ? 'Joining…'
       : lobbyFull

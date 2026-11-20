@@ -18,6 +18,7 @@ import {
   anonymousPlayerCanChat,
   anonymousPlayerCanPost,
   anonymousRoomMaxPlayers,
+  countAnonymousRoomPresence,
   isPlayerBanned,
 } from '@/lib/anonymous-messages'
 import { useAnonymousRoomBans } from '@/hooks/useAnonymousRoomBans'
@@ -358,7 +359,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
-    const lobbyFull = game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
+    const lobbyFull =
+      game?.status === 'waiting' &&
+      roomCapacity != null &&
+      countAnonymousRoomPresence(players, game).participants >= roomCapacity
     return (
       <CenteredShell>
         <Header game={game} />
@@ -543,12 +547,14 @@ function PlayerBar({ name, subtitle }: { name: string; subtitle?: string }) {
 
 function LobbyPlayers({ players, game }: { players: Player[]; game: Game | null }) {
   const capacity = game ? anonymousRoomMaxPlayers(game) : null
+  // Watch-only viewers hold no seat, so the seat counter counts participants only.
+  const seated = game ? countAnonymousRoomPresence(players, game).participants : players.length
   return (
     <div className="glass-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-muted text-xs uppercase tracking-wider">Lobby names</p>
         <span className="text-faint text-xs tabular-nums">
-          {players.length}
+          {seated}
           {capacity != null ? ` / ${capacity}` : ''}
         </span>
       </div>

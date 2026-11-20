@@ -30,3 +30,13 @@ describe('anonymousPlayerCanChat in a waiting room', () => {
     expect(anonymousPlayerCanChat({ joined_at: joinedAt, spectator: true }, active)).toBe(false)
   })
 })
+
+describe('lobby seat counting with a viewer admitted to a full room', () => {
+  it('counts 20 participants + 1 viewer as 20 seated and 1 viewing (not 21 / 20)', () => {
+    const players = [
+      ...Array.from({ length: 20 }, () => ({ joined_at: joinedAt, spectator: false })),
+      { joined_at: joinedAt, spectator: true },
+    ]
+    expect(countAnonymousRoomPresence(players, waiting)).toEqual({ total: 21, participants: 20, viewers: 1 })
+  })
+})

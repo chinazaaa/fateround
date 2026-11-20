@@ -238,9 +238,10 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
 
   const cfg = gameTypeConfig('anonymous_messages')
   const playerLink = `${appOrigin()}/game/${gameCode}`
-  const canStart = players.length >= ANONYMOUS_ROOM_MIN_PLAYERS
   const roomCapacity = anonymousRoomMaxPlayers(game)
   const presence = countAnonymousRoomPresence(players, game)
+  // Seats and the start minimum count participants only; watch-only viewers hold no seat.
+  const canStart = presence.participants >= ANONYMOUS_ROOM_MIN_PLAYERS
 
   const gameStarted = game.status === 'active'
   const showTabs = game.status !== 'finished'
@@ -291,7 +292,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           <span className="text-faint text-xs tabular-nums">
             {game.status === 'waiting' ? (
               <>
-                {players.length} / {roomCapacity}
+                {presence.participants} / {roomCapacity}
               </>
             ) : (
               <>
@@ -392,7 +393,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
             disabledHint={
               canStart
                 ? null
-                : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${players.length}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
+                : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${presence.participants}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
             }
           />
         </>
@@ -476,7 +477,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         startDisabledHint={
           canStart
             ? null
-            : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${players.length}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
+            : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${presence.participants}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
         }
         startLabel="Open room"
         onRemovePlayer={removePlayer}

@@ -285,7 +285,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
                   ? `${presence.participants} ${presence.participants === 1 ? 'player' : 'players'}${
                       presence.viewers > 0 ? ` · ${presence.viewers} viewing` : ''
                     }`
-                  : `${players.length} / ${roomCapacity}`}
+                  : `${presence.participants} / ${roomCapacity}`}
               </Text>
             </View>
 
