@@ -8,6 +8,7 @@ import {
   isCodewordsGame,
   isSecretMessageGame,
   isTwoTruthsGame,
+  isWordRushGame,
   parseGameType,
 } from '@/lib/game-types'
 import { revealFinishedTtlRounds } from '@/lib/two-truths-advance'
@@ -90,7 +91,12 @@ export async function adminEndGame(
     return finishCodewordsGame(supabase, gameId, { onlyIfActive })
   }
 
-  const { error, won } = await markGameFinished(supabase, gameId, now, { onlyIfActive })
+  // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so its bookkeeping is made
+  // durable and recoverable (see markGameFinished's `trackBookkeeping`) on this path too.
+  const { error, won } = await markGameFinished(supabase, gameId, now, {
+    onlyIfActive,
+    trackBookkeeping: isWordRushGame(gameType),
+  })
   if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }
 
   // Lost the compare-and-set: another request already finished this game, so it is

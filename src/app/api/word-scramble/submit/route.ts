@@ -88,6 +88,11 @@ export async function POST(req: NextRequest) {
     via_hint: hint,
   })
   if (insertError) {
+    // Concurrent identical solves race past the select above and hit the unique index. The other
+    // request already recorded the solve, so answer exactly like a sequential duplicate.
+    if (insertError.code === '23505') {
+      return NextResponse.json({ correct: true, word: answer, alreadySolved: true })
+    }
     return NextResponse.json({ error: internalErrorMessage('word-scramble/submit', insertError) }, { status: 500 })
   }
 

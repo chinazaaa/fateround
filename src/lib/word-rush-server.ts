@@ -2,7 +2,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
-import { markGameFinished } from '@/lib/game-finish'
+import { markGameFinished, recoverFinishBookkeeping } from '@/lib/game-finish'
 import {
   pickRandomLetterPair,
   pairSupportsMinLengthForLetters,
@@ -46,7 +46,13 @@ import {
   wordRushPlayableTeams,
   nextPlayableTeamTurnIndex,
 } from '@/lib/word-rush'
-import type { WordRushDifficulty, WordRushPhase, WordRushPromptMode, WordRushSession } from '@/types'
+import type {
+  WordRushDifficulty,
+  WordRushPhase,
+  WordRushPromptMode,
+  WordRushRoundFinalize,
+  WordRushSession,
+} from '@/types'
 
 function deadline(secondsFromNow: number): string {
   return new Date(Date.now() + secondsFromNow * 1000).toISOString()
@@ -58,7 +64,121 @@ async function loadSession(
 ): Promise<{ session: WordRushSession | null; error?: string; internal?: boolean }> {
   const { data, error } = await supabase.from('word_rush_sessions').select('*').eq('game_id', gameId).maybeSingle()
   if (error) return { session: null, error: 'Could not load session', internal: true }
-  return { session: data as WordRushSession | null }
+  const session = data as WordRushSession | null
+  // A previous request closed an individual round but did not finish its effects (see
+  // endIndividualRound). Every request that loads the session picks the work back up, so a
+  // transient failure after the claim can never leave points or the game finish lost.
+  if (session?.round_finalize) {
+    const resumed = await runRoundFinalization(supabase, gameId, session.round_finalize)
+    if (!resumed.error) {
+      const { data: fresh } = await supabase.from('word_rush_sessions').select('*').eq('game_id', gameId).maybeSingle()
+      if (fresh) return { session: fresh as WordRushSession }
+    }
+  }
+  return { session }
+}
+
+/** Points for one correct individual guess, summed for the round (the setter's mirror score). */
+function tallyIndividualGuesses(
+  guesses: Array<{ player_id: string; created_at: string; text: string }> | null,
+  setterId: string | null,
+  turnDeadlineAt: string | null,
+  turnSeconds: number
+): { points: number; count: number } {
+  let points = 0
+  let count = 0
+  for (const guess of guesses ?? []) {
+    if (guess.player_id === setterId) continue
+    count += 1
+    points += wordRushIndividualGuessPointsAt(
+      turnDeadlineAt,
+      turnSeconds,
+      new Date(guess.created_at).getTime(),
+      normalizeWordRushWord(guess.text).length
+    )
+  }
+  return { points, count }
+}
+
+/**
+ * The effects of a closed individual round: the setter's mirror points, the "N guessed it" message
+ * and, on the last round, the game finish. Written to be resumed: the claim that closed the round
+ * stored `round_finalize` in the same UPDATE, every step here is idempotent, and the marker is only
+ * cleared once all of them have been applied. Answer admission is closed once the claim has landed,
+ * so the answers read here are the final set (no fallback to the pre-claim read is needed).
+ * On any failure the marker stays and the next request that loads the session resumes.
+ */
+async function runRoundFinalization(
+  supabase: SupabaseClient,
+  gameId: string,
+  pending: WordRushRoundFinalize
+): Promise<{ error?: string; internal?: boolean }> {
+  const { data: finalGuesses, error: finalError } = await supabase
+    .from('word_rush_answers')
+    .select('player_id, created_at, text')
+    .eq('game_id', gameId)
+    .eq('turn_index', pending.turn_index)
+    .eq('correct', true)
+  if (finalError) return internalFailure('word-rush:finalize-round:answers', finalError)
+  const finalTally = tallyIndividualGuesses(
+    finalGuesses,
+    pending.setter_id,
+    pending.turn_deadline_at,
+    pending.turn_seconds
+  )
+
+  // 1. Mirror points: applied once, atomically with the `awarded` flag in the marker.
+  if (!pending.awarded) {
+    const { data: outcome, error: awardError } = await supabase.rpc('word_rush_finalize_award', {
+      p_game_id: gameId,
+      p_session_id: pending.session_id,
+      p_turn_index: pending.turn_index,
+      p_player_id: pending.setter_id,
+      p_delta: finalTally.points,
+    })
+    if (awardError) return internalFailure('word-rush:finalize-round:award', awardError)
+    // Another request already completed the whole finalization and cleared the marker.
+    if (outcome === 'not_pending') return {}
+  }
+
+  // 2. The intermission message carries the final count (the claim only knew the pre-claim read).
+  if (!pending.is_last) {
+    const { error: messageError } = await supabase
+      .from('word_rush_sessions')
+      .update({ status_message: `Round ${pending.round} complete — ${finalTally.count} guessed it` })
+      .eq('game_id', gameId)
+      .eq('id', pending.session_id)
+      .eq('turn_index', pending.turn_index + 1)
+      .eq('phase', 'intermission')
+    if (messageError) return internalFailure('word-rush:finalize-round:message', messageError)
+  }
+
+  // 3. Last round: finish the game, then its post-finish bookkeeping (room points, trophy snapshot).
+  // That bookkeeping reads this session's rows and Play Again deletes them, so the flip records a
+  // durable `games.finish_bookkeeping` marker in the same statement and the bookkeeping runs under a
+  // lease (see recoverFinishBookkeeping); every other way this game can finish (admin, idle reaper)
+  // does the same. A resumed attempt that lost the flip recovers whatever its predecessor left owed.
+  if (pending.is_last) {
+    // Bound to this session: a finalizer that outlives Play Again must not finish the new game.
+    const finished = await markGameFinished(supabase, gameId, undefined, {
+      roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: pending.session_id } },
+      trackBookkeeping: true,
+    })
+    if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
+    const bookkeeping = finished.won ? finished.bookkeeping : (await recoverFinishBookkeeping(supabase, gameId)).state
+    // Only a runner that saw the bookkeeping through may clear the marker (which lets Play Again reset).
+    if (bookkeeping !== 'none' && bookkeeping !== 'done') return { error: 'Game finish is still in progress' }
+  }
+
+  // 4. Everything applied: clear the marker (only for this round).
+  const { error: clearError } = await supabase
+    .from('word_rush_sessions')
+    .update({ round_finalize: null })
+    .eq('game_id', gameId)
+    .eq('id', pending.session_id)
+    .eq('round_finalize->>turn_index', String(pending.turn_index))
+  if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
+  return {}
 }
 
 async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
@@ -343,8 +463,6 @@ export async function processWordRushSubmit(
   const mine = teamRows.find((r) => r.player_id === playerId)
   if (!mine) return { error: 'You are not in this game' }
 
-  let priorIndividualAnswer: { id: string; correct: boolean } | null = null
-
   if (session.mode === 'team') {
     if (mine.team !== session.active_team) return { error: "It's not your team's turn" }
     if (session.prompt_setter_player_id === playerId && session.prompt_mode === 'manual') {
@@ -361,7 +479,6 @@ export async function processWordRushSubmit(
       .eq('turn_index', session.turn_index)
       .eq('player_id', playerId)
       .maybeSingle()
-    priorIndividualAnswer = existing
     if (existing?.correct) return { error: 'You already got this round right' }
   }
 
@@ -374,27 +491,36 @@ export async function processWordRushSubmit(
   if (rejectReason) return { correct: false, message: rejectReason }
 
   if (session.mode === 'individual') {
-    const answerRow = {
-      game_id: gameId,
-      turn_index: session.turn_index,
-      round: session.current_round,
-      team: mine.team,
-      team_turn_index: null,
-      prompt_index: session.prompt_index,
-      start_letter: session.start_letter,
-      end_letter: session.end_letter,
-      player_id: playerId,
-      text: guess.slice(0, 80),
-      correct: true as const,
-    }
-
-    if (priorIndividualAnswer) {
-      await supabase.from('word_rush_answers').update(answerRow).eq('id', priorIndividualAnswer.id)
-    } else {
-      await supabase.from('word_rush_answers').insert(answerRow)
-    }
     const points = wordRushIndividualGuessPoints(session.turn_deadline_at, session.turn_seconds, normalized.length)
-    await supabase.rpc('word_rush_add_score', { p_game_id: gameId, p_player_id: playerId, p_delta: points })
+
+    // One transaction: re-checks the round is still open (it may have closed since the read
+    // above), writes the answer and adds the score. Parallel identical submits all pass the
+    // pre-check; exactly one is recorded and scored. If scoring fails the answer rolls back so
+    // the player can retry instead of being stuck with a correct answer and no points.
+    const { data: outcome, error: recordError } = await supabase.rpc('word_rush_record_individual_answer', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+      p_turn_index: session.turn_index,
+      p_prompt_index: session.prompt_index,
+      p_round: session.current_round,
+      p_team: mine.team,
+      p_start_letter: session.start_letter,
+      p_end_letter: session.end_letter,
+      p_text: guess.slice(0, 80),
+      p_points: points,
+    })
+    if (recordError) {
+      return internalFailure('word-rush individual answer', recordError, 'Could not record your answer')
+    }
+    if (outcome === 'round_closed') return { error: 'This round has ended — wait for the next one' }
+    if (outcome === 'already_correct') return { error: 'You already got this round right' }
+    if (outcome !== 'recorded') {
+      return internalFailure(
+        'word-rush individual answer',
+        new Error(`unexpected outcome ${String(outcome)}`),
+        'Could not record your answer'
+      )
+    }
 
     const { data: roundAnswers } = await supabase
       .from('word_rush_answers')
@@ -549,18 +675,12 @@ async function endIndividualRound(
   if (guessesError) return internalFailure('word-rush:end-individual-round:guesses', guessesError)
 
   const setterId = session.prompt_setter_player_id
-  let mirrorPoints = 0
-  let guessedCount = 0
-  for (const guess of correctGuesses ?? []) {
-    if (guess.player_id === setterId) continue
-    guessedCount += 1
-    mirrorPoints += wordRushIndividualGuessPointsAt(
-      session.turn_deadline_at,
-      session.turn_seconds,
-      new Date(guess.created_at).getTime(),
-      normalizeWordRushWord(guess.text).length
-    )
-  }
+  const guessedCount = tallyIndividualGuesses(
+    correctGuesses,
+    setterId,
+    session.turn_deadline_at,
+    session.turn_seconds
+  ).count
 
   const nextRound = session.turn_index + 1
   const isLastRound = nextRound >= session.total_rounds
@@ -583,6 +703,19 @@ async function endIndividualRound(
     ? 'All rounds complete!'
     : `Round ${session.current_round} complete — ${guessedCount} guessed it`
 
+  // What the round's effects need once this row has moved on to the next round. Written in the same
+  // UPDATE as the claim so "round closed" and "effects owed" can never be out of step.
+  const pending: WordRushRoundFinalize = {
+    session_id: session.id,
+    turn_index: session.turn_index,
+    round: session.current_round,
+    setter_id: setterId,
+    is_last: isLastRound,
+    turn_deadline_at: session.turn_deadline_at,
+    turn_seconds: session.turn_seconds,
+    awarded: false,
+  }
+
   const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
     .update({
@@ -600,28 +733,77 @@ async function endIndividualRound(
             intermission_deadline_at: deadline(WORD_RUSH_ROUND_RESULTS_SECONDS),
             status_message: statusMessage,
           }),
+      round_finalize: pending,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
     .eq('turn_index', session.turn_index)
     .in('phase', ['playing', 'awaiting_prompt'])
+    // Never overwrite a previous round's still-owed effects (loadSession resumes them first).
+    .is('round_finalize', null)
     .select('id')
 
   if (error) return internalFailure('word-rush:end-individual-round', error)
   if (!claimed?.length) return {}
 
-  if (mirrorPoints > 0 && setterId) {
-    await supabase.rpc('word_rush_add_score', {
-      p_game_id: gameId,
-      p_player_id: setterId,
-      p_delta: mirrorPoints,
-    })
-  }
-
-  if (isLastRound) {
-    await markGameFinished(supabase, gameId)
-  }
+  // Answer admission checks the phase under a row lock, so once the claim has landed no new answer
+  // can be admitted: finalization reads the final answer set. It is safe to fail from here on — the
+  // marker stays and the next request that loads the session resumes it (see loadSession). The
+  // round itself has ended, so report success to this caller.
+  await runRoundFinalization(supabase, gameId, pending)
   return {}
+}
+
+/**
+ * Resume the effects of a round that was closed but not finalized, for one game. Safe to call at any
+ * time and from anyone: it only completes work the marker says is owed, every step is idempotent, and
+ * it does nothing when no marker is set. Unlike loadSession's silent resume this reports the outcome,
+ * and it does not look at games.status (the marker can outlive the game finish if clearing it failed).
+ */
+export async function resumeWordRushFinalization(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ resumed: boolean; error?: string; internal?: boolean }> {
+  const { data, error } = await supabase
+    .from('word_rush_sessions')
+    .select('round_finalize')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (error) return { resumed: false, ...internalFailure('word-rush:resume-finalization:load', error) }
+  const pending = (data as { round_finalize?: WordRushRoundFinalize | null } | null)?.round_finalize
+  if (!pending) return { resumed: false }
+  const result = await runRoundFinalization(supabase, gameId, pending)
+  if (result.error) return { resumed: false, ...result }
+  return { resumed: true }
+}
+
+/**
+ * Server-side backstop: resume every game's pending finalization, with no client involved. Needed
+ * because after the last round the session is `finished`, so the clients' timers stop and nothing
+ * else would load the session again. Bounded per call; the next tick takes the rest.
+ */
+export async function resumeAllWordRushFinalizations(
+  supabase: SupabaseClient,
+  limit = 20
+): Promise<{ resumed: number; failed: number }> {
+  const { data, error } = await supabase
+    .from('word_rush_sessions')
+    .select('game_id, round_finalize')
+    .not('round_finalize', 'is', null)
+    .limit(limit)
+  if (error) {
+    internalFailure('word-rush:resume-all-finalizations', error)
+    return { resumed: 0, failed: 1 }
+  }
+  let resumed = 0
+  let failed = 0
+  for (const row of (data ?? []) as Array<{ game_id: string; round_finalize: WordRushRoundFinalize | null }>) {
+    if (!row.round_finalize) continue
+    const result = await runRoundFinalization(supabase, row.game_id, row.round_finalize)
+    if (result.error) failed += 1
+    else resumed += 1
+  }
+  return { resumed, failed }
 }
 
 async function finishWordRushGame(
@@ -645,7 +827,7 @@ async function finishWordRushGame(
     .select('id')
   if (error) return internalFailure('word-rush:finish', error)
   if (!claimed?.length) return {}
-  await markGameFinished(supabase, gameId)
+  await markGameFinished(supabase, gameId, undefined, { trackBookkeeping: true })
   return {}
 }
 
@@ -934,6 +1116,19 @@ export async function clearWordRushSessionData(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; poolUsage?: Record<string, unknown> }> {
+  // Never reset while a closed round's effects are still owed: deleting the session drops the
+  // marker and the answers the setter's points are computed from, so they could never be awarded.
+  // Finish them first; if that fails, refuse the reset so Play Again can simply be retried.
+  const owed = await resumeWordRushFinalization(supabase, gameId)
+  if (owed.error) return { error: 'The previous game is still being finalized — try again in a moment' }
+  // ...nor while the finished game's own bookkeeping (room points, trophy snapshot) is still reading
+  // these rows, whichever path finished it. Recover it here; if it is still owed or held by a live
+  // runner, refuse the reset so Play Again can simply be retried.
+  const bookkeeping = await recoverFinishBookkeeping(supabase, gameId)
+  if (bookkeeping.state !== 'none' && bookkeeping.state !== 'done') {
+    return { error: 'The previous game is still being finalized — try again in a moment' }
+  }
+
   const { data: session } = await supabase
     .from('word_rush_sessions')
     .select('used_pairs')

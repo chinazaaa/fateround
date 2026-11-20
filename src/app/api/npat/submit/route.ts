@@ -6,6 +6,7 @@ import { npatSubmitSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { playerIsViewer } from '@/lib/viewers'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, npatSubmitSchema)
@@ -39,18 +40,29 @@ export async function POST(req: NextRequest) {
   // Authorize by the secret resume_token; the resolved player.id is authoritative.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
-
-  const now = new Date().toISOString()
-  const payload = {
-    game_id: code,
-    round_id: roundId,
-    player_id: auth.player.id,
-    ...trimmed,
-    submitted_at: now,
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
   }
 
-  const { error } = await supabase.from('npat_answers').upsert(payload, { onConflict: 'player_id,round_id' })
+  // The "first submission wins" check lives in the database write (npat_save_answer only updates a
+  // row that is still unsubmitted), so two concurrent submits cannot both pass a read-then-write.
+  const { data: saved, error } = await supabase.rpc('npat_save_answer', {
+    p_game_id: code,
+    p_round_id: roundId,
+    p_player_id: auth.player.id,
+    p_name: trimmed.name,
+    p_animal: trimmed.animal,
+    p_place: trimmed.place,
+    p_thing: trimmed.thing,
+    p_food: trimmed.food,
+    p_submit: true,
+    p_now: new Date().toISOString(),
+  })
   if (error) return NextResponse.json({ error: internalErrorMessage('npat/submit', error) }, { status: 500 })
+  // A repeat submit is an idempotent no-op (same convention as draft): the first submission stands.
+  if ((saved as { status?: string } | null)?.status === 'already_submitted') {
+    return NextResponse.json({ success: true, alreadySubmitted: true })
+  }
 
   return NextResponse.json({ success: true })
 }

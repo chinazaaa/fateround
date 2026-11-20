@@ -10,6 +10,8 @@ const reportDeathSchema = z.object({
   resumeToken: z.string().min(4),
   levelId: z.string().min(1).max(80),
   levelName: z.string().min(1).max(80).optional(),
+  /** Round the client raised the death in; a death queued across a round change must not count. */
+  round: z.number().int().positive().optional(),
 })
 
 /**
@@ -24,44 +26,49 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, reportDeathSchema)
   if (bodyError) return bodyError
 
-  const { gameId, resumeToken, levelId, levelName } = body
+  const { gameId, resumeToken, levelId, levelName, round } = body
   const supabase = getSupabaseAdmin()
 
   const guard = await assertTrollRunRacingPlayer(supabase, gameId, resumeToken)
   if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
   const { session, state } = guard
 
-  const { error: eventError } = await supabase.from('troll_run_events').insert({
-    game_id: gameId,
-    player_id: state.player_id,
-    round: session.current_round,
-    level_id: levelId,
-    level_name: levelName ?? levelId,
-    event_type: 'death',
+  // A report that sat in the client's queue past a round change belongs to a round that is over.
+  if (round !== undefined && round !== session.current_round) {
+    return NextResponse.json({ ok: true, ignored: true, stale: true, deaths: state.deaths })
+  }
+  if (!session.level_order.includes(levelId)) {
+    return NextResponse.json({ error: 'That level is not in this round' }, { status: 400 })
+  }
+  // Finished runners can no longer die: acknowledge as ignored (report-clear's convention).
+  if (state.current_level_index >= session.level_order.length) {
+    return NextResponse.json({ ok: true, ignored: true, deaths: state.deaths })
+  }
+
+  // Event insert, total and the "runner still unfinished / round still racing" checks happen in
+  // one database transaction under row locks, so scoring sees either an accepted death or none
+  // and there is no withdraw step that could fail and leave an event behind.
+  const { data: result, error: rpcError } = await supabase.rpc('troll_run_report_death', {
+    p_game_id: gameId,
+    p_player_id: state.player_id,
+    p_round: session.current_round,
+    p_level_id: levelId,
+    p_level_name: levelName ?? levelId,
   })
 
-  if (eventError) {
-    return NextResponse.json({ error: internalErrorMessage('troll_run:report-death', eventError) }, { status: 500 })
+  if (rpcError) {
+    return NextResponse.json({ error: internalErrorMessage('troll_run:report-death', rpcError) }, { status: 500 })
   }
 
-  const { count } = await supabase
-    .from('troll_run_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('game_id', gameId)
-    .eq('player_id', state.player_id)
-    .eq('round', session.current_round)
-    .eq('event_type', 'death')
-
-  const deaths = count ?? state.deaths + 1
-
-  const { error: updateError } = await supabase
-    .from('troll_run_player_states')
-    .update({ deaths, updated_at: new Date().toISOString() })
-    .eq('id', state.id)
-
-  if (updateError) {
-    return NextResponse.json({ error: internalErrorMessage('troll_run:report-death', updateError) }, { status: 500 })
+  const outcome = (result ?? {}) as { status?: string; reason?: string; deaths?: number }
+  if (outcome.status === 'ok' && typeof outcome.deaths === 'number') {
+    return NextResponse.json({ ok: true, deaths: outcome.deaths })
   }
-
-  return NextResponse.json({ ok: true, deaths })
+  if (outcome.status === 'ignored') {
+    return NextResponse.json({ ok: true, ignored: true, deaths: outcome.deaths ?? state.deaths })
+  }
+  if (outcome.status === 'session_not_found' || outcome.status === 'state_not_found') {
+    return NextResponse.json({ error: 'The round is not running' }, { status: 400 })
+  }
+  return NextResponse.json({ error: 'Could not record that death' }, { status: 500 })
 }

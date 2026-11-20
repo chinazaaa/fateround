@@ -610,13 +610,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const randomizeTeams = game.codewords_randomize_teams === true
 
     if (randomizeTeams && teamsNeedRandomization(playerIds, roles)) {
-      const { roles: shuffled, error: shuffleError } = await persistRandomizedRoles(
-        getSupabaseAdmin(),
-        code.toUpperCase(),
-        playerIds,
-        roles
-      )
-      if (shuffleError) return NextResponse.json({ error: shuffleError }, { status: 500 })
+      const {
+        roles: shuffled,
+        error: shuffleError,
+        conflict: shuffleConflict,
+      } = await persistRandomizedRoles(getSupabaseAdmin(), code.toUpperCase(), playerIds, roles)
+      if (shuffleError) return NextResponse.json({ error: shuffleError }, { status: shuffleConflict ? 409 : 500 })
       roles = shuffled
     }
 
@@ -1812,6 +1811,7 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
           quote: typeof e.quote_text === 'string' ? e.quote_text.trim() : '',
           options: Array.isArray(e.options) ? e.options.map((o: unknown) => String(o).trim()).filter(Boolean) : [],
           correctIndex: typeof e.correct_index === 'number' ? e.correct_index : -1,
+          playerId: typeof e.player_id === 'string' ? e.player_id : null,
         }))
         .filter((q) => q.quote && q.options.length >= 2 && q.correctIndex >= 0 && q.correctIndex < q.options.length)
       if (deck.length < WST_DECK_MIN_ENTRIES) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { parseGameType, isCodewordsGame } from '@/lib/game-types'
-import { cluePhaseUpdate, isTurnExpired, otherTeam } from '@/lib/codewords'
+import { cluePhaseUpdate, isTurnExpired, maskCodewordsBoardKey, otherTeam } from '@/lib/codewords'
 import { parseJsonBody } from '@/lib/parse-body'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import type { CodewordsBoard, CodewordsTeam } from '@/types'
@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
   if (!board) return NextResponse.json({ error: 'Board not found' }, { status: 404 })
 
   const typedBoard = board as CodewordsBoard
-  if (typedBoard.winner) return NextResponse.json({ success: true, board: typedBoard })
+  if (typedBoard.winner) return NextResponse.json({ success: true, board: maskCodewordsBoardKey(typedBoard) })
   if (!typedBoard.turn_deadline_at || !isTurnExpired(typedBoard.turn_deadline_at)) {
-    return NextResponse.json({ success: true, board: typedBoard, skipped: true })
+    return NextResponse.json({ success: true, board: maskCodewordsBoardKey(typedBoard), skipped: true })
   }
 
   let update: Record<string, unknown>
@@ -50,13 +50,32 @@ export async function POST(req: NextRequest) {
     update = passTurn(typedBoard)
   }
 
-  const { data: updated, error } = await supabase
+  // Compare-and-swap on the exact expired turn that was observed above. The board id alone also
+  // matches a LATER turn: if another request already passed the turn and the next team posted a
+  // clue before this write, an id-only update would wipe that fresh clue before its own deadline.
+  // The deadline is rewritten on every phase change, so matching the observed value (and team and
+  // phase) pins this request to the turn that actually expired.
+  let write = supabase
     .from('codewords_boards')
     .update(update)
     .eq('id', typedBoard.id)
-    .select()
-    .single()
+    .eq('current_turn', typedBoard.current_turn)
+    .eq('turn_deadline_at', typedBoard.turn_deadline_at)
+    .is('winner', null)
+  // turn_phase is NOT NULL on current rows, but an older row without it must not make the filter
+  // `turn_phase = null` (never true) and block every expiry.
+  if (typedBoard.turn_phase) write = write.eq('turn_phase', typedBoard.turn_phase)
+  const { data: updated, error } = await write.select().maybeSingle()
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/expire-turn', error) }, { status: 500 })
-  return NextResponse.json({ success: true, board: updated })
+  if (!updated) {
+    // Another request advanced the board first: report the current state without changing it.
+    const { data: current } = await supabase.from('codewords_boards').select('*').eq('id', typedBoard.id).maybeSingle()
+    return NextResponse.json({
+      success: true,
+      board: maskCodewordsBoardKey((current ?? typedBoard) as CodewordsBoard),
+      skipped: true,
+    })
+  }
+  return NextResponse.json({ success: true, board: maskCodewordsBoardKey(updated as CodewordsBoard) })
 }

@@ -134,34 +134,54 @@ export async function trimAnonymousMessagesIfDue(
 
   if (gameError) return { trimmed: 0 }
 
-  const lastTrimMs = game?.anonymous_messages_trimmed_at ? new Date(game.anonymous_messages_trimmed_at).getTime() : 0
+  const lastTrimAt: string | null = game?.anonymous_messages_trimmed_at ?? null
+  const lastTrimMs = lastTrimAt ? new Date(lastTrimAt).getTime() : 0
 
   if (Date.now() - lastTrimMs < ANONYMOUS_ROOM_TRIM_INTERVAL_MS) {
     return { trimmed: 0 }
   }
 
-  const { data: oldest, error: fetchError } = await supabase
-    .from('anonymous_messages')
-    .select('id')
-    .eq('game_id', gameId)
-    .order('created_at', { ascending: true })
-    .limit(ANONYMOUS_ROOM_TRIM_BATCH)
+  // Claim the trim window before deleting: a compare-and-swap on the timestamp we just read.
+  // Concurrent callers that passed the checks above all try this update, but only the one
+  // that still sees the old value gets a row back and goes on to delete.
+  const claimedAt = new Date().toISOString()
+  const claimQuery = supabase.from('games').update({ anonymous_messages_trimmed_at: claimedAt }).eq('id', gameId)
+  const { data: claimed, error: claimError } = await (
+    lastTrimAt
+      ? claimQuery.eq('anonymous_messages_trimmed_at', lastTrimAt)
+      : claimQuery.is('anonymous_messages_trimmed_at', null)
+  ).select('id')
 
-  if (fetchError || !oldest?.length) return { trimmed: 0 }
+  if (claimError || !claimed?.length) return { trimmed: 0 }
 
-  const { error: deleteError } = await supabase
-    .from('anonymous_messages')
-    .delete()
-    .in(
-      'id',
-      oldest.map((row) => row.id)
-    )
+  // If anything below fails, hand the window back so a later call can retry — but only while the
+  // row still holds OUR claim. If this trim ran past the interval and another caller has since
+  // claimed a newer window, restoring the old value would overwrite theirs.
+  const releaseClaim = () =>
+    supabase
+      .from('games')
+      .update({ anonymous_messages_trimmed_at: lastTrimAt })
+      .eq('id', gameId)
+      .eq('anonymous_messages_trimmed_at', claimedAt)
 
-  if (deleteError) return { trimmed: 0 }
+  // The threshold is rechecked and the batch deleted in one SQL statement under a row lock, so a
+  // message deleted since the count above (e.g. by the host) cannot cause an over-trim.
+  const { data: deleted, error: trimError } = await supabase.rpc('trim_anonymous_messages', {
+    p_game_id: gameId,
+    p_max: ANONYMOUS_ROOM_MAX_MESSAGES,
+    p_batch: ANONYMOUS_ROOM_TRIM_BATCH,
+  })
 
-  await supabase.from('games').update({ anonymous_messages_trimmed_at: new Date().toISOString() }).eq('id', gameId)
+  if (trimError || typeof deleted !== 'number') {
+    await releaseClaim()
+    return { trimmed: 0 }
+  }
+  if (deleted === 0) {
+    await releaseClaim()
+    return { trimmed: 0 }
+  }
 
-  return { trimmed: oldest.length }
+  return { trimmed: deleted }
 }
 
 /** Wipe live session data when an anonymous room ends — messages are not kept. */

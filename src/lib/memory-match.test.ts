@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   computeStreakBonus,
+  createFlipResyncTracker,
   tallyMatchingPairsScore,
   matchingPairsPlacementBonus,
   buildMatchingPairsRoundMetadata,
@@ -826,5 +827,191 @@ describe('Group 3: Cumulative Scoring Across Rounds', () => {
 
     // Cumulative should be larger than round 2's score alone (unless round 1 was 0)
     expect(cumulativeAfter2).toBeGreaterThan(round2Score)
+  })
+})
+
+describe('createFlipResyncTracker', () => {
+  it('does nothing when every flip succeeds', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(false)
+    expect(resync).not.toHaveBeenCalled()
+  })
+
+  it('resyncs once when a flip fails', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for the other in-flight flips to settle before resyncing', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.begin()
+    t.end(true)
+    expect(resync).not.toHaveBeenCalled()
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs another resync when a flip starts while the resync is still reading, once that flip settles', async () => {
+    let release: () => void = () => {}
+    const resync = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          release = r
+        })
+    )
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    expect(resync).toHaveBeenCalledTimes(1)
+
+    // A new flip begins while the read is in flight: its match would be hidden by that read's snapshot.
+    t.begin()
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(1)
+
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('waits for a flip that is still in flight when the resync finishes', async () => {
+    let release: () => void = () => {}
+    const resync = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          release = r
+        })
+    )
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    t.begin() // starts during the resync and is still unanswered when the read finishes
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(1)
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps working when the resync rejects', async () => {
+    const resync = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined)
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    await Promise.resolve()
+    await Promise.resolve()
+    t.begin()
+    t.end(true)
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports in-flight flips and bumps the epoch on every flip, so a snapshot can tell it may be stale', () => {
+    const t = createFlipResyncTracker(vi.fn())
+    const readStartedAt = t.epoch()
+    expect(t.inFlight()).toBe(false)
+    t.begin()
+    expect(t.inFlight()).toBe(true)
+    t.end(false)
+    // The flip is settled, but it started after the read did: that read may not contain it.
+    expect(t.inFlight()).toBe(false)
+    expect(t.epoch()).not.toBe(readStartedAt)
+  })
+
+  it('requestResync reads again straight away when idle, and after the last flip when one is in flight', async () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.requestResync()
+    expect(resync).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    t.begin()
+    t.requestResync()
+    expect(resync).toHaveBeenCalledTimes(1)
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('markDirty defers the resync to the next flip that settles instead of reading now', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.markDirty()
+    expect(resync).not.toHaveBeenCalled()
+    t.begin()
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('markDirty inside a running resync does not start another read when it finishes (no loop)', async () => {
+    let release: () => void = () => {}
+    const resync = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          release = r
+        })
+    )
+    const t = createFlipResyncTracker(resync)
+    t.requestResync()
+    t.markDirty() // the read found a card selected and skipped its snapshot
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('flushDeferred reads once after a deferred snapshot, and does nothing when none was deferred', async () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.flushDeferred()
+    expect(resync).not.toHaveBeenCalled()
+    t.markDirty()
+    t.flushDeferred()
+    expect(resync).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+    await Promise.resolve()
+    t.flushDeferred()
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('requestResync during a running resync reads once more after it finishes', async () => {
+    let release: () => void = () => {}
+    const resync = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          release = r
+        })
+    )
+    const t = createFlipResyncTracker(resync)
+    t.requestResync()
+    t.requestResync()
+    expect(resync).toHaveBeenCalledTimes(1)
+    release()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('forgets a settled failure, so later successes do not resync again', async () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    // Let the first resync finish before the next flip starts, so only a leaked failure could trigger another.
+    await Promise.resolve()
+    await Promise.resolve()
+    t.begin()
+    t.end(false)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(1)
   })
 })

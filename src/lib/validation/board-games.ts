@@ -1,6 +1,13 @@
 import { z } from 'zod'
 import { normalizeTradePropertyList } from '@/lib/monopoly-trade-messages'
-import { gameCodeString, uuidString } from './shared'
+import {
+  gameCodeString,
+  uuidString,
+  coercedNumber,
+  optionalCoercedNumber,
+  coercedBoolean,
+  optionalCoercedBoolean,
+} from './shared'
 import { hostActionSchema } from './game'
 
 export const monopolyActionSchema = z.object({
@@ -129,7 +136,7 @@ export const whotDrawSchema = whotActionSchema
 
 export const whotChooseSchema = whotActionSchema.extend({
   shape: whotShapeEnum.optional(),
-  number: z.coerce.number().int().min(1).max(14).optional(),
+  number: optionalCoercedNumber((n) => n.int().min(1).max(14)),
 })
 
 export type WhotPlayInput = z.infer<typeof whotPlaySchema>
@@ -145,7 +152,7 @@ export const gofishActionSchema = z.object({
 
 export const gofishAskSchema = gofishActionSchema.extend({
   targetPlayerId: z.string().uuid(),
-  rank: z.coerce.number().int().min(1).max(13),
+  rank: coercedNumber((n) => n.int().min(1).max(13)),
 })
 
 export type GoFishAskInput = z.infer<typeof gofishAskSchema>
@@ -218,19 +225,19 @@ export const unoActionSchema = z.object({
 export const unoPlaySchema = unoActionSchema.extend({
   cardId: z.string().min(1),
   // True when the player is calling "UNO" as they play their second-to-last card.
-  callUno: z.coerce.boolean().optional(),
+  callUno: optionalCoercedBoolean(),
 })
 
 export const unoPlayMultiSchema = unoActionSchema.extend({
   // Cards to lay down together, in play order (the last one stays on top).
   cardIds: z.array(z.string().min(1)).min(2).max(20),
-  callUno: z.coerce.boolean().optional(),
+  callUno: optionalCoercedBoolean(),
 })
 
 export const unoJumpInSchema = unoActionSchema.extend({
   // The exact-match card played out of turn.
   cardId: z.string().min(1),
-  callUno: z.coerce.boolean().optional(),
+  callUno: optionalCoercedBoolean(),
 })
 
 export const unoDrawSchema = unoActionSchema
@@ -241,7 +248,7 @@ export const unoChooseSchema = unoActionSchema.extend({
 
 export const unoChallengeSchema = unoActionSchema.extend({
   // true = challenge the Wild Draw Four, false = accept the draw.
-  challenge: z.coerce.boolean(),
+  challenge: coercedBoolean(),
 })
 
 export const unoCallSchema = unoActionSchema
@@ -272,8 +279,8 @@ export const ludoActionSchema = z.object({
 })
 
 export const ludoMoveSchema = ludoActionSchema.extend({
-  pieceId: z.coerce.number().int().min(0).max(3),
-  diceIndex: z.coerce.number().int().min(0).max(1).optional(),
+  pieceId: coercedNumber((n) => n.int().min(0).max(3)),
+  diceIndex: optionalCoercedNumber((n) => n.int().min(0).max(1)),
 })
 
 export const ludoExpireSchema = z.object({
@@ -354,7 +361,7 @@ export const ticTacToeMoveSchema = z.object({
   // so cross-device resume keeps working.
   resumeToken: z.string().min(4),
   // 0-80: sub-board = floor(cellIndex/9), cell within board = cellIndex % 9.
-  cellIndex: z.coerce.number().int().min(0).max(80),
+  cellIndex: coercedNumber((n) => n.int().min(0).max(80)),
 })
 
 export const ticTacToeExpireSchema = z.object({
@@ -435,7 +442,7 @@ export type Draughts10HuffInput = z.infer<typeof draughts10HuffSchema>
 export const ayoMoveSchema = z.object({
   gameId: gameCodeString(),
   resumeToken: z.string().min(4),
-  pitIndex: z.coerce.number().int().min(0).max(11),
+  pitIndex: coercedNumber((n) => n.int().min(0).max(11)),
 })
 
 export const ayoExpireSchema = z.object({
@@ -461,8 +468,8 @@ export const scrabblePlaySchema = scrabbleActionSchema.extend({
   tiles: z
     .array(
       z.object({
-        row: z.coerce.number().int().min(0).max(14),
-        col: z.coerce.number().int().min(0).max(14),
+        row: coercedNumber((n) => n.int().min(0).max(14)),
+        col: coercedNumber((n) => n.int().min(0).max(14)),
         letter: z.string().regex(/^[A-Za-zÄÖÜÑäöüñ]$/),
         isBlank: z.boolean(),
       })
@@ -472,7 +479,10 @@ export const scrabblePlaySchema = scrabbleActionSchema.extend({
 })
 
 export const scrabbleExchangeSchema = scrabbleActionSchema.extend({
-  tileIndices: z.array(z.coerce.number().int().min(0).max(6)).min(1).max(7),
+  tileIndices: z
+    .array(coercedNumber((n) => n.int().min(0).max(6)))
+    .min(1)
+    .max(7),
 })
 
 export const scrabblePassSchema = scrabbleActionSchema
@@ -482,7 +492,7 @@ export const scrabbleExpireSchema = z.object({
 })
 
 export const scrabbleExtendTimeSchema = hostActionSchema.extend({
-  extensionSeconds: z.coerce.number().int().positive(),
+  extensionSeconds: coercedNumber((n) => n.int().positive()),
 })
 
 export type ScrabblePlayInput = z.infer<typeof scrabblePlaySchema>

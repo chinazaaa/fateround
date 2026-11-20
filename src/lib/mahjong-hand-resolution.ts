@@ -112,53 +112,57 @@ function mahjongWinCounterDeltas(opts: {
 }
 
 /**
- * Credit one winner's per-match counters for the hand they just won.
+ * One winner's per-match counters for the hand they just won, as a player-state write.
  *
  * Also advances the consecutive-hand-win streak (Table Sweep): the winner's run grows by one and
  * the match's best run is remembered. Non-winners' runs are reset to zero when the NEXT hand is
  * dealt (`processMahjongNextHand`), which reads this hand's result — so a run only survives while
  * the same player keeps winning, and this credit still lands for the final hand of a match, which
- * has no next-hand. Best-effort: a failure here must never turn a real win into an error.
+ * has no next-hand.
+ *
+ * The write is committed in the SAME transaction as the session that records the win. Written
+ * afterwards, a Next Hand request could see the finished hand with the old counters and finalize
+ * the match (whose finish snapshot reads them) before they landed.
  */
-async function creditMahjongHandWin(
-  supabase: SupabaseClient,
-  opts: {
-    winnerState: MahjongPlayerState
-    analysis: MahjongWinAnalysis
-    winType: MahjongWinType
-    ruleset: MahjongRuleset
-    session: MahjongSession
-    fan: number
-  }
-): Promise<void> {
+function mahjongHandWinStateWrite(opts: {
+  winnerState: MahjongPlayerState
+  analysis: MahjongWinAnalysis
+  winType: MahjongWinType
+  ruleset: MahjongRuleset
+  session: MahjongSession
+  fan: number
+}): MahjongPlayerStateWrite {
   const base = mahjongGameCounters(opts.winnerState)
   const next = bumpMahjongCounters(base, mahjongWinCounterDeltas(opts))
   const streak = (base.mahjong_win_streak ?? 0) + 1
   next.mahjong_win_streak = streak
   next.mahjong_win_streak_max = Math.max(base.mahjong_win_streak_max ?? 0, streak)
-  await supabase.from('mahjong_player_state').update({ game_counters: next }).eq('id', opts.winnerState.id)
+  return { id: opts.winnerState.id, patch: { game_counters: next } }
 }
 
-/** Credit every seated player for reaching the end of the wall (Wall Watcher). */
-async function creditMahjongExhaustiveDraw(supabase: SupabaseClient, states: MahjongPlayerState[]): Promise<void> {
-  await Promise.all(
-    states.map(async (state) => {
-      // RE-READ before bumping. The in-memory `state` predates the discard counter increment this
-      // same turn wrote to the row (a discard folds `mahjong_discards` into its own update), so
-      // bumping the stale blob and writing it back would clobber that discard. Read the current
-      // blob, add the exhaustive-draw credit to it, write once.
-      const { data } = await supabase
-        .from('mahjong_player_state')
-        .select('game_counters')
-        .eq('id', state.id)
-        .maybeSingle()
-      const current = mahjongGameCounters((data ?? state) as MahjongPlayerState)
-      await supabase
-        .from('mahjong_player_state')
-        .update({ game_counters: bumpMahjongCounters(current, { mahjong_exhaustive_draws_seen: 1 }) })
-        .eq('id', state.id)
-    })
-  )
+/**
+ * Wall Watcher: credit every seated player for reaching the end of the wall, as state writes to be
+ * committed with the hand-finishing transaction. Counters are folded onto any pending write for the
+ * same row (it already carries that row's newest counters, e.g. a discard or Kong increment);
+ * otherwise onto the row as loaded for this request.
+ */
+function withExhaustiveDrawCredit(
+  states: MahjongPlayerState[],
+  stateWrites: MahjongPlayerStateWrite[]
+): MahjongPlayerStateWrite[] {
+  const writes = stateWrites.map((write) => ({ ...write, patch: { ...write.patch } }))
+  for (const state of states) {
+    const existing = writes.find((write) => write.id === state.id)
+    const current = mahjongGameCounters(
+      existing?.patch.game_counters !== undefined
+        ? ({ id: state.id, game_counters: existing.patch.game_counters } as Pick<MahjongPlayerState, 'id'>)
+        : state
+    )
+    const game_counters = bumpMahjongCounters(current, { mahjong_exhaustive_draws_seen: 1 })
+    if (existing) existing.patch.game_counters = game_counters
+    else writes.push({ id: state.id, patch: { game_counters } })
+  }
+  return writes
 }
 
 async function persistMahjongSession(
@@ -176,6 +180,34 @@ async function persistMahjongSession(
   if (error) return { error: error.message }
   if (expectedUpdatedAt && (data?.length ?? 0) === 0) return { error: MAHJONG_CONFLICT_ERROR }
   return { updatedAt: data?.[0]?.updated_at as string | undefined }
+}
+
+export type MahjongPlayerStateWrite = { id: string; patch: Record<string, unknown> }
+
+/**
+ * Session compare-and-swap AND player-state writes in ONE database transaction
+ * (`mahjong_apply_transition` RPC). Either the CAS wins and every write lands, or nothing is
+ * written. This closes the window where a request could observe the new session phase with the
+ * old hand, and the failure mode where the session moved but the hand write failed.
+ */
+export async function persistMahjongTransition(
+  supabase: SupabaseClient,
+  gameId: string,
+  sessionPatch: Partial<MahjongSession>,
+  stateWrites: MahjongPlayerStateWrite[],
+  expectedUpdatedAt: string
+): Promise<{ error?: string; updatedAt?: string }> {
+  const { data, error } = await supabase.rpc('mahjong_apply_transition', {
+    p_game_id: gameId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_session_patch: sessionPatch,
+    p_state_writes: stateWrites,
+  })
+  if (error) return { error: error.message }
+  const result = (data ?? {}) as { status?: string; updated_at?: string }
+  if (result.status === 'conflict') return { error: MAHJONG_CONFLICT_ERROR }
+  if (result.status !== 'ok') return { error: 'Unexpected Mahjong transition result' }
+  return { updatedAt: result.updated_at }
 }
 
 function buildExhaustiveDrawSummary(session: MahjongSession, states: MahjongPlayerState[]): MahjongScoreSummary | null {
@@ -351,26 +383,112 @@ function applyMahjongMatchSettlement(
   return { scores: nextScores, payments: [...payments, ...settlementPayments] }
 }
 
-export async function maybeFinishMahjongMatch(
+/**
+ * Pure settlement for a hand that may end the match. Writes nothing: the caller commits the hand
+ * (session + player state) first and only then calls `finalizeMahjongMatch`, so a lost session
+ * CAS can never leave `games` marked finished, and the finish snapshot sees the final counters.
+ */
+export function settleMahjongMatch(
+  session: MahjongSession,
+  scores: Record<string, number>
+): { scores: Record<string, number>; payments: MahjongScorePayment[]; finishMatch: boolean } {
+  if (!shouldFinishMahjongMatch(session, scores)) return { scores, payments: [], finishMatch: false }
+  const settlement = applyMahjongMatchSettlement(session, scores, [])
+  return { scores: settlement.scores, payments: settlement.payments, finishMatch: true }
+}
+
+// The `games` generation (`session_started_at`) a request loaded the table under. Carried on the
+// in-memory session under a symbol key: it is not a column, it survives the `{ ...session }` copies
+// the hand transitions make, and JSON serialisation skips it, so it can never reach a database patch.
+const GAME_GENERATION = Symbol('mahjong.gameSessionStartedAt')
+
+export function withGameGeneration(session: MahjongSession, sessionStartedAt: string | null): MahjongSession {
+  return Object.assign({ ...session }, { [GAME_GENERATION]: sessionStartedAt })
+}
+
+function gameGeneration(session: MahjongSession | undefined): string | null | undefined {
+  return session ? (session as MahjongSession & { [GAME_GENERATION]?: string | null })[GAME_GENERATION] : undefined
+}
+
+/**
+ * Flip `games` to finished once the deciding hand is committed. Guarded by `onlyIfActive` so it is
+ * a single-winner transition and safe to retry (a retry after a success is a no-op).
+ *
+ * Play Again reuses the `games` row, so `onlyIfActive` alone cannot tell the match being settled
+ * from a replay that started while this finalizer was stalled. When the session carries the
+ * generation it was loaded under, the flip is also bound to it.
+ */
+export async function finalizeMahjongMatch(
   supabase: SupabaseClient,
   gameId: string,
+  session?: MahjongSession
+): Promise<{ error?: string }> {
+  const generation = gameGeneration(session)
+  const finish = await markGameFinished(supabase, gameId, new Date().toISOString(), {
+    onlyIfActive: true,
+    ...(generation !== undefined ? { onlySessionStartedAt: generation } : {}),
+  })
+  return { error: finish.error?.message }
+}
+
+/** After a hand write: surface its error, else finalize the match when this hand ended it. */
+export async function finalizeMahjongMatchAfterWrite(
+  supabase: SupabaseClient,
+  gameId: string,
+  write: { error?: string },
+  matchFinish: { finishMatch: boolean },
+  session?: MahjongSession
+): Promise<{ error?: string }> {
+  if (write.error) return { error: write.error }
+  if (!matchFinish.finishMatch) return {}
+  return finalizeMahjongMatch(supabase, gameId, session)
+}
+
+/**
+ * Stamp the summary of the hand that decides the match, so the decision is durable. The settlement
+ * line only exists when the settlement moved points, and a draw summary carries none, so neither
+ * can be what a retry keys on.
+ */
+export function withMatchFinished(
+  summary: MahjongScoreSummary | null,
   session: MahjongSession,
-  scores: Record<string, number>,
-  now: string
-): Promise<{ scores: Record<string, number>; payments: MahjongScorePayment[]; gameFinishError?: string }> {
-  if (!shouldFinishMahjongMatch(session, scores)) return { scores, payments: [] }
-  const settlement = applyMahjongMatchSettlement(session, scores, [])
-  const finish = await markGameFinished(supabase, gameId, now)
-  return { scores: settlement.scores, payments: settlement.payments, gameFinishError: finish.error?.message }
+  matchFinish: { finishMatch: boolean }
+): MahjongScoreSummary | null {
+  if (!matchFinish.finishMatch) return summary
+  return (
+    summary
+      ? { ...summary, match_finished: true }
+      : {
+          ruleset: parseMahjongRuleset(session.ruleset),
+          pattern: 'standard',
+          fan: 0,
+          fu: null,
+          base_points: 0,
+          total_points: 0,
+          lines: [],
+          payments: [],
+          payer_player_id: null,
+          match_finished: true,
+        }
+  ) satisfies MahjongScoreSummary
+}
+
+/** True for a finished hand that decided the match (the final `games` flip may still be owed). */
+export function mahjongMatchFinishPending(session: MahjongSession): boolean {
+  const summary = session.score_summary
+  return (
+    summary?.match_finished === true || (summary?.lines ?? []).some((line) => line.label === 'Final match settlement')
+  )
 }
 
 export async function finishWallDraw(
   supabase: SupabaseClient,
   gameId: string,
   session?: MahjongSession,
-  states: MahjongPlayerState[] = []
+  states: MahjongPlayerState[] = [],
+  // Player-state writes of the same action (e.g. a Kong meld) applied atomically with the session write.
+  stateWrites: MahjongPlayerStateWrite[] = []
 ): Promise<{ error?: string }> {
-  const now = new Date().toISOString()
   const tenpaiIds = states.filter((state) => isTenpai(state.hand, state.melds)).map((state) => state.player_id)
   const nagashiSummary = session ? buildNagashiManganSummary(session, states) : null
   const drawSummary = nagashiSummary ?? (session ? buildExhaustiveDrawSummary(session, states) : null)
@@ -386,9 +504,8 @@ export async function finishWallDraw(
       }
     : null
   const matchFinish = resultSession
-    ? await maybeFinishMahjongMatch(supabase, gameId, resultSession, drawScores, now)
-    : { scores: drawScores, payments: [] }
-  if (matchFinish.gameFinishError) return { error: matchFinish.gameFinishError }
+    ? settleMahjongMatch(resultSession, drawScores)
+    : { scores: drawScores, payments: [] as MahjongScorePayment[], finishMatch: false }
   const finalSummary =
     drawSummary || matchFinish.payments.length === 0
       ? drawSummary
@@ -405,34 +522,39 @@ export async function finishWallDraw(
           payments: matchFinish.payments,
           payer_player_id: null,
         } satisfies MahjongScoreSummary)
-  const sessionWrite = await persistMahjongSession(
-    supabase,
-    gameId,
-    {
-      phase: 'finished',
-      hand_result: nagashiSummary ? 'win' : 'exhaustive_draw',
-      status_message: nagashiSummary
-        ? `Nagashi Mangan — ${winnerIds.length} player${winnerIds.length === 1 ? '' : 's'}`
-        : tenpaiIds.length > 0
-          ? `The wall is empty — ${tenpaiIds.length} player(s) tenpai`
-          : 'The wall is empty — draw game',
-      winner_player_id: winnerIds[0] ?? null,
-      winning_tile: null,
-      win_type: nagashiSummary ? 'self_draw' : null,
-      exhaustive_draw_tenpai_player_ids: tenpaiIds,
-      score_summary: finalSummary,
-      scores: matchFinish.scores,
-      winner_player_ids: winnerIds,
-      riichi_sticks: nagashiSummary ? 0 : (session?.riichi_sticks ?? 0),
-      turn_deadline_at: null,
-    },
-    session?.updated_at
-  )
+  const wallDrawPatch: Partial<MahjongSession> = {
+    phase: 'finished',
+    // Persist the pile (and its last discard) as received: a called Kong that empties the wall has already
+    // marked its discard claimed, and a final discard that nobody can claim is not committed anywhere else
+    // before the hand ends, so the stored last discard would otherwise still be the one before it.
+    ...(session ? { discard_pile: session.discard_pile, last_discard: session.last_discard } : {}),
+    hand_result: nagashiSummary ? 'win' : 'exhaustive_draw',
+    status_message: nagashiSummary
+      ? `Nagashi Mangan — ${winnerIds.length} player${winnerIds.length === 1 ? '' : 's'}`
+      : tenpaiIds.length > 0
+        ? `The wall is empty — ${tenpaiIds.length} player(s) tenpai`
+        : 'The wall is empty — draw game',
+    winner_player_id: winnerIds[0] ?? null,
+    winning_tile: null,
+    win_type: nagashiSummary ? 'self_draw' : null,
+    exhaustive_draw_tenpai_player_ids: tenpaiIds,
+    score_summary: session ? withMatchFinished(finalSummary, session, matchFinish) : finalSummary,
+    scores: matchFinish.scores,
+    winner_player_ids: winnerIds,
+    riichi_sticks: nagashiSummary ? 0 : (session?.riichi_sticks ?? 0),
+    turn_deadline_at: null,
+  }
   // The wall ran out with everyone still in the hand — credit Wall Watcher to all seated players.
   // (Nagashi Mangan reaches here too and its winners are not credited to the hand-win trophies;
-  // it is a rare special ruling, noted in the report.)
-  if (!sessionWrite.error && states.length > 0) await creditMahjongExhaustiveDraw(supabase, states)
-  return { error: sessionWrite.error }
+  // it is a rare special ruling, noted in the report.) The credit rides in the SAME transaction as
+  // the hand finishing, merged with any pending counter write of this action (e.g. the Kong meld),
+  // so the next hand's re-deal reads it and a stale finish attempt cannot apply it.
+  const allWrites = session?.updated_at ? withExhaustiveDrawCredit(states, stateWrites) : stateWrites
+  const sessionWrite =
+    allWrites.length > 0 && session?.updated_at
+      ? await persistMahjongTransition(supabase, gameId, wallDrawPatch, allWrites, session.updated_at)
+      : await persistMahjongSession(supabase, gameId, wallDrawPatch, session?.updated_at)
+  return finalizeMahjongMatchAfterWrite(supabase, gameId, sessionWrite, matchFinish, session)
 }
 
 export async function finishAbortiveDraw(
@@ -440,9 +562,10 @@ export async function finishAbortiveDraw(
   gameId: string,
   reason: string,
   session: MahjongSession,
-  states: MahjongPlayerState[]
+  states: MahjongPlayerState[],
+  // Player-state writes of the same action (e.g. a Kong meld) applied atomically with the session write.
+  stateWrites: MahjongPlayerStateWrite[] = []
 ): Promise<{ error?: string }> {
-  const now = new Date().toISOString()
   const tenpaiIds = states.filter((state) => isTenpai(state.hand, state.melds)).map((state) => state.player_id)
   const resultSession = {
     ...session,
@@ -451,8 +574,7 @@ export async function finishAbortiveDraw(
     winner_player_ids: [],
     exhaustive_draw_tenpai_player_ids: tenpaiIds,
   }
-  const matchFinish = await maybeFinishMahjongMatch(supabase, gameId, resultSession, session.scores ?? {}, now)
-  if (matchFinish.gameFinishError) return { error: matchFinish.gameFinishError }
+  const matchFinish = settleMahjongMatch(resultSession, session.scores ?? {})
   const scoreSummary =
     matchFinish.payments.length > 0
       ? ({
@@ -467,24 +589,26 @@ export async function finishAbortiveDraw(
           payer_player_id: null,
         } satisfies MahjongScoreSummary)
       : null
-  return persistMahjongSession(
-    supabase,
-    gameId,
-    {
-      phase: 'finished',
-      hand_result: 'abortive_draw',
-      status_message: reason,
-      winner_player_id: null,
-      winner_player_ids: [],
-      winning_tile: null,
-      win_type: null,
-      exhaustive_draw_tenpai_player_ids: tenpaiIds,
-      score_summary: scoreSummary,
-      scores: matchFinish.scores,
-      turn_deadline_at: null,
-    },
-    session.updated_at
-  )
+  const abortivePatch: Partial<MahjongSession> = {
+    phase: 'finished',
+    hand_result: 'abortive_draw',
+    status_message: reason,
+    // Persist the pile as received: a called Kong that aborts the hand has already marked its discard claimed.
+    discard_pile: session.discard_pile,
+    winner_player_id: null,
+    winner_player_ids: [],
+    winning_tile: null,
+    win_type: null,
+    exhaustive_draw_tenpai_player_ids: tenpaiIds,
+    score_summary: withMatchFinished(scoreSummary, session, matchFinish),
+    scores: matchFinish.scores,
+    turn_deadline_at: null,
+  }
+  const write =
+    stateWrites.length > 0
+      ? await persistMahjongTransition(supabase, gameId, abortivePatch, stateWrites, session.updated_at)
+      : await persistMahjongSession(supabase, gameId, abortivePatch, session.updated_at)
+  return finalizeMahjongMatchAfterWrite(supabase, gameId, write, matchFinish, session)
 }
 
 export function riichiAbortiveDrawReason(session: MahjongSession, states: MahjongPlayerState[]): string | null {
@@ -527,7 +651,6 @@ export async function finishMahjongWin(
     fromPlayerId?: string | null
   }
 ): Promise<{ error?: string }> {
-  const now = new Date().toISOString()
   const scoreSummary = buildMahjongScoreSummary({
     winnerState: opts.winnerState,
     winTiles: opts.winTiles,
@@ -560,8 +683,7 @@ export async function finishMahjongWin(
     winner_player_id: opts.winnerPlayerId,
     winner_player_ids: [opts.winnerPlayerId],
   }
-  const matchFinish = await maybeFinishMahjongMatch(supabase, opts.gameId, resultSession, handScores, now)
-  if (matchFinish.gameFinishError) return { error: matchFinish.gameFinishError }
+  const matchFinish = settleMahjongMatch(resultSession, handScores)
   const finalScoreSummary: MahjongScoreSummary =
     matchFinish.payments.length > 0
       ? {
@@ -570,7 +692,10 @@ export async function finishMahjongWin(
           lines: [...scoreSummary.lines, { label: 'Final match settlement', fan: 0 }],
         }
       : scoreSummary
-  const sessionWrite = await persistMahjongSession(
+  // The win's per-match trophy counters ride in the SAME transaction as the session that records
+  // the win (see mahjongHandWinStateWrite). A lost CAS race means another request already resolved
+  // this hand, and nothing is counted twice.
+  const sessionWrite = await persistMahjongTransition(
     supabase,
     opts.gameId,
     {
@@ -584,26 +709,25 @@ export async function finishMahjongWin(
       winning_tile: opts.winningTile,
       win_type: opts.winType,
       discard_pile: opts.session.discard_pile,
-      score_summary: finalScoreSummary,
+      score_summary: withMatchFinished(finalScoreSummary, opts.session, matchFinish),
       scores: matchFinish.scores,
       riichi_sticks: opts.ruleset === 'riichi' ? 0 : (opts.session.riichi_sticks ?? 0),
       turn_deadline_at: null,
     },
+    [
+      mahjongHandWinStateWrite({
+        winnerState: opts.winnerState,
+        analysis: opts.analysis,
+        winType: opts.winType,
+        ruleset: opts.ruleset,
+        session: opts.session,
+        fan: scoreSummary.fan,
+      }),
+    ],
     opts.session.updated_at
   )
-  // Credit the win's per-match trophy counters only once the win is durably recorded — a lost
-  // CAS race means another request already resolved this hand, and must not double-count.
-  if (!sessionWrite.error) {
-    await creditMahjongHandWin(supabase, {
-      winnerState: opts.winnerState,
-      analysis: opts.analysis,
-      winType: opts.winType,
-      ruleset: opts.ruleset,
-      session: opts.session,
-      fan: scoreSummary.fan,
-    })
-  }
-  return { error: sessionWrite.error }
+  // Finalize only after the hand AND its trophy counters are committed (finish snapshots them).
+  return finalizeMahjongMatchAfterWrite(supabase, opts.gameId, sessionWrite, matchFinish, opts.session)
 }
 
 export async function finishMahjongMultiRon(
@@ -717,7 +841,6 @@ export async function finishMahjongMultiRon(
     riichi_sticks: opts.session.riichi_sticks ?? 0,
   }
 
-  const now = new Date().toISOString()
   const handScores = applyMahjongPayments(opts.session.scores, scoreSummary.payments)
   const resultSession: MahjongSession = {
     ...opts.session,
@@ -725,8 +848,7 @@ export async function finishMahjongMultiRon(
     winner_player_id: winnerIds[0] ?? null,
     winner_player_ids: winnerIds,
   }
-  const matchFinish = await maybeFinishMahjongMatch(supabase, opts.gameId, resultSession, handScores, now)
-  if (matchFinish.gameFinishError) return { error: matchFinish.gameFinishError }
+  const matchFinish = settleMahjongMatch(resultSession, handScores)
   const finalScoreSummary: MahjongScoreSummary =
     matchFinish.payments.length > 0
       ? {
@@ -735,7 +857,9 @@ export async function finishMahjongMultiRon(
           lines: [...scoreSummary.lines, { label: 'Final match settlement', fan: 0 }],
         }
       : scoreSummary
-  const sessionWrite = await persistMahjongSession(
+  // Each Ron winner is credited from their own hand (discard win), using that winner's own score
+  // summary, in the SAME transaction as the multi-Ron result.
+  const sessionWrite = await persistMahjongTransition(
     supabase,
     opts.gameId,
     {
@@ -748,28 +872,22 @@ export async function finishMahjongMultiRon(
       winning_tile: opts.winningTile,
       win_type: 'discard',
       discard_pile: opts.session.discard_pile,
-      score_summary: finalScoreSummary,
+      score_summary: withMatchFinished(finalScoreSummary, opts.session, matchFinish),
       scores: matchFinish.scores,
       riichi_sticks: opts.ruleset === 'riichi' ? 0 : (opts.session.riichi_sticks ?? 0),
       turn_deadline_at: null,
     },
+    sortedWinners.map((winner, index) =>
+      mahjongHandWinStateWrite({
+        winnerState: winner.state,
+        analysis: winner.analysis,
+        winType: 'discard',
+        ruleset: opts.ruleset,
+        session: opts.session,
+        fan: summaries[index]?.fan ?? 0,
+      })
+    ),
     opts.session.updated_at
   )
-  // Each Ron winner is credited from their own hand (discard win), using that winner's own score
-  // summary. Only once the multi-Ron result is durably recorded.
-  if (!sessionWrite.error) {
-    await Promise.all(
-      sortedWinners.map((winner, index) =>
-        creditMahjongHandWin(supabase, {
-          winnerState: winner.state,
-          analysis: winner.analysis,
-          winType: 'discard',
-          ruleset: opts.ruleset,
-          session: opts.session,
-          fan: summaries[index]?.fan ?? 0,
-        })
-      )
-    )
-  }
-  return { error: sessionWrite.error }
+  return finalizeMahjongMatchAfterWrite(supabase, opts.gameId, sessionWrite, matchFinish, opts.session)
 }

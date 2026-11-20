@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { normalizeResumeToken } from '@/lib/utils'
 import { secretMatches } from '@/lib/secret-compare'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { finishDecidedCodewordsGame, omitCodewordsServerCounters, repairBrokenCodewordsRoster } from '@/lib/codewords'
 
 /**
  * The Codewords board, with the key card attached only for callers entitled to see it.
@@ -53,10 +54,34 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseAdmin()
 
-    const { data: board } = await supabase.from('codewords_boards').select('*').eq('game_id', gameCode).maybeSingle()
-    if (!board) return NextResponse.json({ board: null })
-
+    const { data: fullBoard } = await supabase
+      .from('codewords_boards')
+      .select('*')
+      .eq('game_id', gameCode)
+      .maybeSingle()
+    if (!fullBoard) return NextResponse.json({ board: null })
+    let currentBoard = fullBoard
+    // clue_seq / turn_seq are server-side concurrency counters; clients never need them, and the row is
+    // spread below so a column added later reaches operatives by default.
     const { data: game } = await supabase.from('games').select('status, host_token').eq('id', gameCode).maybeSingle()
+
+    // Self-heal a roster that a removal or bench left without a spymaster or operatives when its own
+    // reconciliation gave up: no repeat request by the departed player can ever finish it.
+    if (game?.status === 'active' && !fullBoard.winner && (await repairBrokenCodewordsRoster(supabase, gameCode))) {
+      const { data: refreshed } = await supabase
+        .from('codewords_boards')
+        .select('*')
+        .eq('game_id', gameCode)
+        .maybeSingle()
+      if (refreshed) currentBoard = refreshed
+    }
+    // A decided board whose game is still active means the finish after the winning write failed and
+    // every other codewords route returns early on a decided board: close it from here (idempotent).
+    if (game?.status === 'active' && fullBoard.winner) {
+      const finish = await finishDecidedCodewordsGame(supabase, gameCode)
+      if (finish.error) console.error(`codewords/board: retried finish failed for ${gameCode}`, finish.error)
+    }
+    const board = omitCodewordsServerCounters(currentBoard)
 
     let maySeeKey = false
 

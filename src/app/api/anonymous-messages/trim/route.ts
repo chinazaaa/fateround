@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { parseGameType, isMessageInboxGame } from '@/lib/game-types'
 import { trimAnonymousMessagesIfDue } from '@/lib/anonymous-messages'
+import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 const supabase = getSupabaseAnon()
 
@@ -20,6 +21,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ trimmed: 0 })
   }
 
-  const { trimmed } = await trimAnonymousMessagesIfDue(supabase, gameId)
+  const { trimmed } = await trimAnonymousMessagesIfDue(getSupabaseAdmin(), gameId)
   return NextResponse.json({ trimmed })
 }

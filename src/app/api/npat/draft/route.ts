@@ -6,6 +6,7 @@ import { npatDraftSchema } from '@/lib/validation'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { assertPlayer } from '@/lib/game-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { playerIsViewer } from '@/lib/viewers'
 
 export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, npatDraftSchema)
@@ -39,24 +40,24 @@ export async function POST(req: NextRequest) {
   // Authorize by the secret resume_token; the resolved player.id is authoritative.
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
-
-  const { data: existing } = await supabase
-    .from('npat_answers')
-    .select('submitted_at')
-    .eq('round_id', roundId)
-    .eq('player_id', auth.player.id)
-    .maybeSingle()
-
-  if (existing?.submitted_at) return NextResponse.json({ success: true })
-
-  const payload = {
-    game_id: code,
-    round_id: roundId,
-    player_id: auth.player.id,
-    ...trimmed,
+  if (playerIsViewer(auth.player, game)) {
+    return NextResponse.json({ error: 'Spectators cannot submit answers' }, { status: 403 })
   }
 
-  const { error } = await supabase.from('npat_answers').upsert(payload, { onConflict: 'player_id,round_id' })
+  // A draft only lands on an unsubmitted row: the check is inside the database write, so a draft
+  // racing a submit cannot overwrite the submitted answers.
+  const { error } = await supabase.rpc('npat_save_answer', {
+    p_game_id: code,
+    p_round_id: roundId,
+    p_player_id: auth.player.id,
+    p_name: trimmed.name,
+    p_animal: trimmed.animal,
+    p_place: trimmed.place,
+    p_thing: trimmed.thing,
+    p_food: trimmed.food,
+    p_submit: false,
+    p_now: new Date().toISOString(),
+  })
   if (error) return NextResponse.json({ error: internalErrorMessage('npat/draft', error) }, { status: 500 })
 
   return NextResponse.json({ success: true })

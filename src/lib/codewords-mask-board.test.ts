@@ -1,0 +1,83 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { CodewordsBoard, CodewordsCellType } from '@/types'
+
+vi.mock('server-only', () => ({}))
+
+import { maskCodewordsBoardKey, omitCodewordsServerCounters } from '@/lib/codewords'
+
+const fullKey: CodewordsCellType[] = ['red', 'red', 'blue', 'blue', 'neutral', 'assassin', 'red', 'blue']
+
+function board(over: Partial<CodewordsBoard> = {}): CodewordsBoard {
+  return {
+    id: 'board-1',
+    game_id: 'ABCD',
+    words: fullKey.map((_, i) => `w${i}`),
+    // A fresh copy per board, so an in-place edit by the helper cannot also change `fullKey`.
+    key: [...fullKey],
+    starting_team: 'red',
+    revealed_indices: [],
+    current_turn: 'red',
+    guesses_remaining: null,
+    current_clue_word: null,
+    current_clue_number: null,
+    winner: null,
+    assassin_team: null,
+    spymaster_timer_seconds: 60,
+    operative_timer_seconds: 60,
+    turn_phase: 'clue',
+    turn_deadline_at: null,
+    created_at: '2026-08-01T00:00:00.000Z',
+    ...over,
+  } as CodewordsBoard
+}
+
+describe('maskCodewordsBoardKey', () => {
+  it('hides every unrevealed cell and sends the team totals separately', () => {
+    const masked = maskCodewordsBoardKey(board())
+    expect(masked.key.every((cell) => cell === null)).toBe(true)
+    expect(masked.key_totals).toEqual({ red: 3, blue: 3, neutral: 1, assassin: 1 })
+  })
+
+  it('keeps revealed cells, which every player has already seen', () => {
+    const masked = maskCodewordsBoardKey(board({ revealed_indices: [0, 5] }))
+    expect(masked.key).toEqual(['red', null, null, null, null, 'assassin', null, null])
+  })
+
+  it('does not mutate the stored board', () => {
+    const original = board()
+    const before = [...original.key]
+    maskCodewordsBoardKey(original)
+    expect(original.key).toEqual(before)
+    expect(original.key).toEqual(fullKey)
+  })
+
+  it('returns the full key once there is a winner, because the key is no longer secret', () => {
+    const finished = board({ winner: 'red' })
+    expect(maskCodewordsBoardKey(finished)).toEqual(finished)
+  })
+
+  it('never sends the server-side clue_seq counter to clients, live or finished', () => {
+    expect(maskCodewordsBoardKey(board({ clue_seq: 4 }))).not.toHaveProperty('clue_seq')
+    expect(maskCodewordsBoardKey(board({ clue_seq: 4, winner: 'red' }))).not.toHaveProperty('clue_seq')
+  })
+
+  it('never sends the server-side turn_seq counter to clients, live or finished', () => {
+    expect(maskCodewordsBoardKey(board({ turn_seq: 4 }))).not.toHaveProperty('turn_seq')
+    expect(maskCodewordsBoardKey(board({ turn_seq: 4, winner: 'red' }))).not.toHaveProperty('turn_seq')
+  })
+
+  it('keeps clue_seq on the stored board it was given', () => {
+    const original = board({ clue_seq: 4 })
+    maskCodewordsBoardKey(original)
+    expect(original.clue_seq).toBe(4)
+  })
+})
+
+describe('omitCodewordsServerCounters', () => {
+  it('drops clue_seq and turn_seq and leaves every other column, including key, untouched', () => {
+    const row = { id: 'b', key: ['red', 'blue'], current_clue_word: 'fruit', clue_seq: 7, turn_seq: 3, future_col: 1 }
+    const out = omitCodewordsServerCounters(row)
+    expect(out).toEqual({ id: 'b', key: ['red', 'blue'], current_clue_word: 'fruit', future_col: 1 })
+    expect(row).toHaveProperty('clue_seq') // the input row is not mutated
+  })
+})

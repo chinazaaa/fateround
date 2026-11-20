@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
 
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  if (auth.player.spectator === true) {
+    return NextResponse.json({ error: 'Spectators cannot fill the grid' }, { status: 403 })
+  }
 
   const { data, error } = await supabase.rpc('sudoku_submit_cell', {
     p_game_id: code,
