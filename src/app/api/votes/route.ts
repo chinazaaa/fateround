@@ -38,7 +38,9 @@ import { parseJsonBody } from '@/lib/parse-body'
  * Two limits keep the grace from being abused: it never applies to Who Said This (the answer is
  * revealed the moment the round finishes and the vote is scored, so a late vote could be informed),
  * and during the grace a vote is only inserted when the player has none yet, so a retry cannot
- * overwrite an accepted vote.
+ * overwrite an accepted vote. The decision is made again, under a row lock, by the
+ * submit_vote_atomic Postgres function, so it holds even if end-round commits between the status
+ * read below and the vote write.
  */
 const VOTE_CLOSE_GRACE_MS = 3000
 
@@ -101,7 +103,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Viewers cannot vote' }, { status: 403 })
   }
   if (game.status !== 'active') return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
-  let closedRoundGrace = false
   if (round.status !== 'active') {
     const endedAtMs = round.ended_at ? Date.parse(round.ended_at) : NaN
     const withinGrace =
@@ -110,7 +111,6 @@ export async function POST(req: NextRequest) {
       Number.isFinite(endedAtMs) &&
       Date.now() - endedAtMs <= VOTE_CLOSE_GRACE_MS
     if (!withinGrace) return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
-    closedRoundGrace = true
   }
 
   const gameType = parseGameType(game.game_type)
@@ -509,20 +509,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, pickedNumber: picked, revealedQuestion })
   }
 
-  const { error } = await supabase.from('votes').upsert(
-    {
-      player_id: playerId,
-      round_id: roundId,
-      game_id: gameId,
-      ...row,
-    },
-    // After the round closed, only a missing vote may be saved (ON CONFLICT DO NOTHING, atomic):
-    // a resend must not replace the vote that was accepted while the round was open.
-    { onConflict: 'player_id,round_id', ignoreDuplicates: closedRoundGrace }
-  )
+  // The round check and the vote write run in ONE transaction that locks the round row, so a vote
+  // cannot be saved as "active" after end-round has already committed (it waits for end-round, then
+  // sees the finished round and follows the close rules below). Without this, a resend racing the
+  // host could replace a vote that had already been tallied.
+  const { data: result, error } = await supabase.rpc('submit_vote_atomic', {
+    p_game_id: gameId,
+    p_round_id: roundId,
+    p_player_id: playerId,
+    p_row: row,
+    p_grace_ms: isWhoSaidThis(gameType) ? null : VOTE_CLOSE_GRACE_MS,
+    p_now: new Date().toISOString(),
+  })
 
   if (error) {
     return NextResponse.json({ error: internalErrorMessage('votes', error) }, { status: 500 })
+  }
+
+  const outcome = result as { status?: string } | null
+  if (outcome?.status === 'game_not_active') {
+    return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+  }
+  if (outcome?.status === 'round_not_active') {
+    return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
+  }
+  if (outcome?.status === 'round_not_found') {
+    return NextResponse.json({ error: 'Round not found' }, { status: 404 })
+  }
+  // 'kept_existing' (a resend after close) is reported as success: the accepted vote stands.
+  if (outcome?.status !== 'ok' && outcome?.status !== 'kept_existing') {
+    return NextResponse.json(
+      { error: internalErrorMessage('votes', new Error('unexpected vote result')) },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({ success: true })
