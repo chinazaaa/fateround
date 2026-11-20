@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   computeStreakBonus,
+  createFlipResyncTracker,
   tallyMatchingPairsScore,
   matchingPairsPlacementBonus,
   buildMatchingPairsRoundMetadata,
@@ -826,5 +827,44 @@ describe('Group 3: Cumulative Scoring Across Rounds', () => {
 
     // Cumulative should be larger than round 2's score alone (unless round 1 was 0)
     expect(cumulativeAfter2).toBeGreaterThan(round2Score)
+  })
+})
+
+describe('createFlipResyncTracker', () => {
+  it('does nothing when every flip succeeds', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(false)
+    expect(resync).not.toHaveBeenCalled()
+  })
+
+  it('resyncs once when a flip fails', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for the other in-flight flips to settle before resyncing', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.begin()
+    t.end(true)
+    expect(resync).not.toHaveBeenCalled()
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('forgets a settled failure, so later successes do not resync again', () => {
+    const resync = vi.fn()
+    const t = createFlipResyncTracker(resync)
+    t.begin()
+    t.end(true)
+    t.begin()
+    t.end(false)
+    expect(resync).toHaveBeenCalledTimes(1)
   })
 })

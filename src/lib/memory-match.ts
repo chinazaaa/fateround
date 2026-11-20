@@ -593,6 +593,29 @@ export function computeStreakBonus(streakBeforeMatch: number): number {
   return newStreak % 3 === 0 ? MATCHING_PAIRS_STREAK_BONUS : 0
 }
 
+/**
+ * Counts flip requests in flight and calls `resync` once the last one settles if any of them failed. A
+ * refused flip leaves the optimistic board ahead of what the server stored; resyncing only after the others
+ * settle avoids rolling back a flip whose request has not been answered yet.
+ */
+export function createFlipResyncTracker(resync: () => void) {
+  let pending = 0
+  let failed = false
+  return {
+    begin() {
+      pending += 1
+    },
+    end(didFail: boolean) {
+      if (didFail) failed = true
+      pending = Math.max(0, pending - 1)
+      if (pending === 0 && failed) {
+        failed = false
+        resync()
+      }
+    },
+  }
+}
+
 /** Format grid size as a readable label. */
 export function formatMatchingPairsGridSize(gridSizePairs: MatchingPairsGridSize): string {
   return gridSizePairs === 8 ? 'Standard (4×4)' : 'Large (8×4)'

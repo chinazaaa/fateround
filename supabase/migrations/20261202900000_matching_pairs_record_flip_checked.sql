@@ -18,8 +18,14 @@
 --      committed by then). It is taken BEFORE any row lock so it cannot deadlock with the cleanup, which holds
 --      the table locks first and only then updates progress rows.
 --   2. The round row FOR SHARE (the expiry route's UPDATE to 'finished' conflicts with it).
---   3. The player's progress row FOR UPDATE (was FOR SHARE): one player's flips are serialised across server
---      instances, so the fingerprint cannot change between the check and the insert.
+--   3. A transaction-level advisory lock on (round, player): one player's flips are serialised across server
+--      instances, so the fingerprint cannot change between the check and the insert. It is the serialisation
+--      point because it always exists, whereas the player's progress row does not for a player who joined or was
+--      promoted mid-round (the start / next-round routes seed progress rows only for the roster at that moment),
+--      and a FOR UPDATE on a missing row locks nothing. The cleanup takes no advisory locks, so the order
+--      table lock -> advisory lock -> row locks cannot deadlock with it.
+--   4. The player's progress row FOR UPDATE (when there is one), so the finish / expiry paths that update it
+--      cannot interleave with this check.
 --
 -- The old matching_pairs_record_flip() is left in place so a server still running the previous route code keeps
 -- working during a rolling deploy; nothing in the app calls it after this release and it can be dropped later.
@@ -50,6 +56,7 @@ declare
   v_last_id uuid;
 begin
   lock table public.memory_match_submissions in row exclusive mode;
+  perform pg_advisory_xact_lock(hashtextextended('matching_pairs_flip:' || p_round_id::text || ':' || p_player_id::text, 0));
 
   select status into v_round_status from public.rounds where id = p_round_id for share;
   if v_round_status is distinct from 'active' then

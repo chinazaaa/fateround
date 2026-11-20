@@ -6,8 +6,8 @@
 --
 -- The function inserts a flip only if the caller's fingerprint of the player's history (row count + id of the
 -- latest row) still matches, so a score computed before a cleanup / another instance's flip is never stored.
--- The blocking behaviour (a flip queues behind a running cleanup) needs two sessions and is covered by
--- src/app/api/matching-pairs/flip/route.stale-history.test.ts (route side) and by hand in the PR notes.
+-- The blocking behaviour needs two sessions: supabase/tests/matching-pairs-record-flip-checked-lock.sh (a flip
+-- queues behind a running cleanup) and the concurrent-callers case in src/lib/db-concurrency.integration.test.ts.
 
 begin;
 
@@ -68,6 +68,16 @@ begin
   update public.memory_match_progress set finished = true
   where player_id = '00000000-0000-0000-0000-00000000c001';
   assert pg_temp.call(3, pg_temp.cnt(), pg_temp.last_id()) = 'round_not_active';
+end
+$$;
+
+-- A player with no progress row for the round (joined or promoted after the round was seeded) is still checked
+-- and recorded: the serialisation does not depend on that row existing.
+delete from public.memory_match_progress where player_id = '00000000-0000-0000-0000-00000000c001';
+do $$
+begin
+  assert pg_temp.call(4, 99, null) = 'stale', 'no progress row: stale fingerprint is rejected';
+  assert pg_temp.call(4, pg_temp.cnt(), pg_temp.last_id()) = 'ok', 'no progress row: matching fingerprint inserts';
 end
 $$;
 
