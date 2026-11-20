@@ -751,6 +751,21 @@ export function mergeCodewordsBoardUpdate(
 }
 
 /**
+ * Drop the server-side concurrency counters from a `codewords_boards` row before it leaves the server:
+ * `clue_seq` (codewords_process_guess) and `turn_seq` (the clue route's turn binding). Clients never
+ * need them. Every response that carries the row goes through this or `maskCodewordsBoardKey`, so a
+ * counter added later cannot reach a client by being spread out of `select('*')`.
+ */
+export function omitCodewordsServerCounters<T extends { clue_seq?: number; turn_seq?: number }>(
+  board: T
+): Omit<T, 'clue_seq' | 'turn_seq'> {
+  const { clue_seq: _clueSeq, turn_seq: _turnSeq, ...rest } = board
+  void _clueSeq
+  void _turnSeq
+  return rest
+}
+
+/**
  * The board as every non-spymaster may see it: the key card is masked down to the cells already
  * revealed (unrevealed cells become null, the actual secret), and the red/blue/neutral/assassin
  * split is sent as `key_totals` because it can't be derived from a masked key. Mirrors what
@@ -761,9 +776,7 @@ export function mergeCodewordsBoardUpdate(
  * Once the game has a winner the key is no longer secret and is returned as is.
  */
 export function maskCodewordsBoardKey(fullBoard: CodewordsBoard): CodewordsBoard {
-  // clue_seq is a server-side concurrency counter (see codewords_process_guess); clients never need it.
-  const board = { ...fullBoard }
-  delete board.clue_seq
+  const board = omitCodewordsServerCounters(fullBoard)
   if (board.winner) return board
   const fullKey = (board.key ?? []) as CodewordsBoard['key']
   const key_totals = fullKey.reduce<Record<string, number>>((acc, cell) => {

@@ -233,6 +233,8 @@ export interface CodewordsBoard {
   current_clue_number: number | null
   /** Bumped each time a clue is posted; lets a guess be bound to the clue it observed. */
   clue_seq?: number
+  /** Bumped on every change of current_turn; lets a clue post be bound to the turn it was validated in. */
+  turn_seq?: number
   winner: CodewordsTeam | null
   assassin_team: CodewordsTeam | null
   spymaster_timer_seconds: number

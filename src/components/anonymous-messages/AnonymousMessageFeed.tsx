@@ -23,6 +23,12 @@ interface AnonymousMessageFeedProps {
   reactionsMap?: Map<string, Map<string, Set<string>>>
   myPlayerName?: string
   onReact?: (messageId: string, emoji: string, action: 'add' | 'remove') => void
+  /**
+   * Jump to the newest message when the feed first mounts already holding messages. The feed otherwise
+   * only scrolls when its message count grows, which is right for a feed that fills in after mounting but
+   * leaves one that is mounted with its messages (a host inbox held back until its first read) at the top.
+   */
+  scrollToLatestOnMount?: boolean
 }
 
 const NEAR_BOTTOM_PX = 80
@@ -45,6 +51,7 @@ export function AnonymousMessageFeed({
   reactionsMap,
   myPlayerName,
   onReact,
+  scrollToLatestOnMount = false,
 }: AnonymousMessageFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
@@ -57,6 +64,12 @@ export function AnonymousMessageFeed({
     const el = scrollRef.current
     if (!el) return
     el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
+
+  useEffect(() => {
+    if (scrollToLatestOnMount && prevMessageCount.current > 0) scrollToBottom('auto')
+    // Mount only: later messages are handled by the effect below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Track new messages when scrolled up
