@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   applyPlayerChange,
   createLatestResultApplier,
-  createLoadRecovery,
   createNewestCallTracker,
   createRosterReadGuard,
+  createSerialLoader,
 } from './player-realtime'
 
 type P = { id: string; name: string; spectator: boolean }
@@ -110,73 +110,149 @@ describe('shared copy parity', () => {
   })
 })
 
-describe('createLoadRecovery', () => {
+describe('createSerialLoader', () => {
   afterEach(() => vi.useRealTimers())
 
-  it('does not retry when the first load succeeds', async () => {
-    vi.useFakeTimers()
+  it('runs one load for the request and resolves true', async () => {
     const load = vi.fn(async () => true)
-    createLoadRecovery(load).start()
-    await vi.advanceTimersByTimeAsync(60_000)
+    const loader = createSerialLoader(load)
+    await expect(loader.request()).resolves.toBe(true)
     expect(load).toHaveBeenCalledTimes(1)
   })
 
-  it('retries a failed initial load with backoff until it succeeds', async () => {
+  it('never runs two loads at once and shares the in-flight result with plain requests', async () => {
+    let resolve!: (v: boolean) => void
+    let active = 0
+    let maxActive = 0
+    const load = vi.fn(() => {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      return new Promise<boolean>((r) => {
+        resolve = (v) => {
+          active -= 1
+          r(v)
+        }
+      })
+    })
+    const loader = createSerialLoader(load)
+    const first = loader.request()
+    const second = loader.request() // e.g. the poll's immediate tick while the initial load runs
+    resolve(true)
+    await expect(first).resolves.toBe(true)
+    await expect(second).resolves.toBe(true)
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(maxActive).toBe(1)
+  })
+
+  it('a fresh request during a load triggers exactly one follow-up read that starts after it', async () => {
+    const resolvers: Array<(v: boolean) => void> = []
+    const load = vi.fn(() => new Promise<boolean>((r) => resolvers.push(r)))
+    const loader = createSerialLoader(load)
+    const a = loader.request()
+    const b = loader.request({ fresh: true })
+    const c = loader.request({ fresh: true })
+    expect(load).toHaveBeenCalledTimes(1)
+    resolvers[0](true)
+    await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2))
+    resolvers[1](true)
+    await expect(Promise.all([a, b, c])).resolves.toEqual([true, true, true])
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('a failed shared load is not reported as success to a coalesced requester (no stranded skeleton)', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn<() => Promise<boolean>>().mockResolvedValueOnce(false).mockResolvedValue(true)
+    const loader = createSerialLoader(load)
+    const initial = loader.request() // retry owner
+    const poll = loader.request({ retry: false }) // coalesced, must see the real outcome
+    await expect(initial).resolves.toBe(false)
+    await expect(poll).resolves.toBe(false)
+    await vi.advanceTimersByTimeAsync(1000) // the retry still happens
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('retries a failed load with backoff until it succeeds, then stops', async () => {
     vi.useFakeTimers()
     const load = vi
       .fn<() => Promise<boolean>>()
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(false)
       .mockResolvedValue(true)
-    createLoadRecovery(load).start()
+    createSerialLoader(load).request()
     await vi.advanceTimersByTimeAsync(0)
     expect(load).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(999)
     expect(load).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(1) // 1s
+    await vi.advanceTimersByTimeAsync(1)
     expect(load).toHaveBeenCalledTimes(2)
     await vi.advanceTimersByTimeAsync(1999)
     expect(load).toHaveBeenCalledTimes(2)
-    await vi.advanceTimersByTimeAsync(1) // +2s
+    await vi.advanceTimersByTimeAsync(1)
     expect(load).toHaveBeenCalledTimes(3)
     await vi.advanceTimersByTimeAsync(60_000)
     expect(load).toHaveBeenCalledTimes(3)
   })
 
-  it('treats a thrown load like a failure', async () => {
-    vi.useFakeTimers()
-    const load = vi.fn<() => Promise<boolean>>().mockRejectedValueOnce(new Error('boom')).mockResolvedValue(true)
-    createLoadRecovery(load).start()
-    await vi.advanceTimersByTimeAsync(1000)
-    expect(load).toHaveBeenCalledTimes(2)
-  })
-
-  it('stays bounded: gives up after maxRetries', async () => {
+  it('does not retry when the requester opted out (the poll backs off itself)', async () => {
     vi.useFakeTimers()
     const load = vi.fn(async () => false)
-    createLoadRecovery(load, { maxRetries: 3 }).start()
+    await createSerialLoader(load).request({ retry: false })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a thrown load like a failure and stays bounded', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn(async (): Promise<boolean> => {
+      throw new Error('boom')
+    })
+    createSerialLoader(load, { maxRetries: 3 }).request()
     await vi.advanceTimersByTimeAsync(10 * 60_000)
     expect(load).toHaveBeenCalledTimes(4)
+  })
+
+  it('a new request cancels the pending retry and loads immediately', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn<() => Promise<boolean>>().mockResolvedValueOnce(false).mockResolvedValue(true)
+    const loader = createSerialLoader(load)
+    void loader.request()
+    await vi.advanceTimersByTimeAsync(0)
+    await loader.request({ fresh: true })
+    expect(load).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(2)
   })
 
   it('stop() cancels a pending retry (unmount during retry)', async () => {
     vi.useFakeTimers()
     const load = vi.fn(async () => false)
-    const recovery = createLoadRecovery(load)
-    recovery.start()
+    const loader = createSerialLoader(load)
+    void loader.request()
     await vi.advanceTimersByTimeAsync(0)
-    recovery.stop()
+    loader.stop()
     await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(1)
+    await expect(loader.request()).resolves.toBe(false)
     expect(load).toHaveBeenCalledTimes(1)
   })
 
-  it('stop() while a load is in flight prevents scheduling a retry', async () => {
+  it('start() re-arms a stopped loader (StrictMode cleanup then remount)', async () => {
+    const load = vi.fn(async () => true)
+    const loader = createSerialLoader(load)
+    loader.stop()
+    loader.start()
+    await expect(loader.request()).resolves.toBe(true)
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
+  it('stop() while a load is in flight prevents a follow-up or retry', async () => {
     vi.useFakeTimers()
     let resolve!: (v: boolean) => void
     const load = vi.fn(() => new Promise<boolean>((r) => (resolve = r)))
-    const recovery = createLoadRecovery(load)
-    recovery.start()
-    recovery.stop()
+    const loader = createSerialLoader(load)
+    void loader.request()
+    void loader.request({ fresh: true })
+    loader.stop()
     resolve(false)
     await vi.advanceTimersByTimeAsync(60_000)
     expect(load).toHaveBeenCalledTimes(1)

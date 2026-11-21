@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  createLatestResultApplier,
-  createLoadRecovery,
-  createNewestCallTracker,
-  createRosterReadGuard,
-} from '@fateround/shared/player-realtime'
+import { createLatestResultApplier, createRosterReadGuard, createSerialLoader } from '@fateround/shared/player-realtime'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
 import { useOnAppResume } from '@/hooks/useAppActive'
@@ -143,14 +138,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return outcome !== 'failed'
   }, [applyLatestMessages, code])
 
-  // Newest-load token: overlapping loads (initial, game-row event, SUBSCRIBED, app resume) can finish
-  // out of order, and an older one must not overwrite state a newer one already wrote.
-  const [loadTracker] = useState(createNewestCallTracker)
-
   const load = useCallback(async () => {
-    // A superseded load reports success: the newer load owns the result (and its own retry).
-    const superseded = loadTracker.begin()
     const supabase = getSupabase()
+    // Read the saved session BEFORE the roster. join() inserts the player and only then saves the
+    // session, so a session read first can only name a player already in the roster read after it
+    // (unless that player was removed). Reading it after the roster could pair an old roster with a
+    // just-saved session.
+    const savedSession = await getPlayerSession(code)
     const snapshot = await rosterGuard.read(async () => {
       const [g, p] = await Promise.all([
         supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
@@ -158,7 +152,6 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       ])
       return g.error || p.error ? null : { gameRes: g, playersRes: p }
     })
-    if (superseded()) return true
     if (!snapshot) return false
     const { gameRes, playersRes } = snapshot
     if (!gameRes.data) {
@@ -170,14 +163,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setGame(gameData)
     playersRef.current = playerRows
     setPlayers(playerRows)
-    let session = await getPlayerSession(code)
-    if (superseded()) return true
-    // A successful roster read that lacks the saved id means the host removed this player. Drop the
-    // stale session so resume/reconnect stop reusing it and the player lands on the join screen.
+    let session = savedSession
     if (session && !playerRows.some((p) => p.id === session!.playerId)) {
-      await clearPlayerSession(code)
-      if (superseded()) return true
-      session = null
+      // A successful roster read lacks the saved player: the host removed them. Drop the stale
+      // session (so resume/reconnect stop reusing it) unless join()/leave replaced it meanwhile.
+      const current = await getPlayerSession(code)
+      if (current?.playerId === session.playerId) {
+        await clearPlayerSession(code)
+        session = null
+      } else {
+        session = current
+      }
     }
     const playerId = session?.playerId ?? null
     if (session) setMyPlayerId(session.playerId)
@@ -190,33 +186,27 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         .eq('game_id', code)
         .eq('player_id', playerId)
         .maybeSingle()
-      if (superseded()) return true
       setBanUntil((banRes.data as { banned_until?: string } | null)?.banned_until ?? null)
     }
-    if (superseded()) return true
     await loadMessages()
     return true
-  }, [code, loadMessages, loadTracker, rosterGuard, syncScreen])
+  }, [code, loadMessages, rosterGuard, syncScreen])
 
-  // First load, with bounded retry: a failed read must not strand the loading screen (this view has
-  // no fallback poll).
-  useEffect(() => {
-    const recovery = createLoadRecovery(load)
-    recovery.start()
-    return recovery.stop
-  }, [load])
-
-  // Event-driven reloads (game row, roster, resubscribe, foreground) retry a bounded number of times
-  // when the read fails: this view has no fallback poll, so a single failed reload after the host
-  // ends the session would otherwise leave the player on a stale screen.
-  const reloadRecovery = useRef<ReturnType<typeof createLoadRecovery> | null>(null)
+  // Single owner of loading: the first load and every event/resume/action-triggered refresh go
+  // through one serial loader, so loads never overlap (a stale write cannot land after a newer one),
+  // a failed load retries with bounded backoff (this view has no fallback poll), and a load shared by
+  // several callers reports its real outcome to each.
+  const loader = useMemo(() => createSerialLoader(load), [load])
+  // Awaitable refresh for actions (join, ready-up, session expiry) that need the new state.
+  const refresh = useCallback(() => loader.request({ fresh: true }), [loader])
   const reload = useCallback(() => {
-    reloadRecovery.current?.stop()
-    const recovery = createLoadRecovery(load)
-    reloadRecovery.current = recovery
-    recovery.start()
-  }, [load])
-  useEffect(() => () => reloadRecovery.current?.stop(), [])
+    void refresh()
+  }, [refresh])
+  useEffect(() => {
+    loader.start()
+    void loader.request()
+    return loader.stop
+  }, [loader])
 
   // Backgrounded apps lose their sockets and timers; reconcile on return to the foreground.
   useOnAppResume(reload)
@@ -288,9 +278,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       )
       setMyPlayerId(data.playerId)
       setCanChat(data.canChat !== false)
-      // Bounded recovery like the other event-driven reloads, so one failed read after joining
-      // does not strand the view.
-      reload()
+      // Through the serial loader (bounded retry), and awaited so the busy flag spans the refresh.
+      await refresh()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
@@ -410,7 +399,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       await postPlayerReady(code, session.resumeToken, true)
       setReady(true)
-      reload()
+      await refresh()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to ready up')
     } finally {
@@ -455,7 +444,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   useTurnExpiryTimer({
     deadlineAt: anonSessionDeadlineAt,
     enabled: game?.status === 'active',
-    onExpire: () => postExpireSession(code).then(() => reload()),
+    onExpire: () => postExpireSession(code).then(() => refresh()),
   })
 
   // Pinned countdowns — session bar (+ ban bar when banned) stay visible under

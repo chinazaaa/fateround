@@ -46,51 +46,113 @@ export function createRosterReadGuard(maxAttempts = 3) {
   }
 }
 
-export type LoadRecoveryOptions = {
-  /** Retries after the first attempt fails. Bounded so a dead backend is not hammered. */
+export type SerialLoaderOptions = {
+  /** Retries after a failed attempt when the requester asked for retry. Bounded. */
   maxRetries?: number
   baseDelayMs?: number
   maxDelayMs?: number
 }
 
+export type SerialLoadRequest = {
+  /**
+   * The caller needs a read that STARTS AFTER this call (a realtime event, a join, a session change).
+   * If a load is in flight it is followed by one more; without it, the caller shares the in-flight
+   * read's result.
+   */
+  fresh?: boolean
+  /** Retry a failed attempt with bounded backoff. Default true; a poll that backs off itself passes false. */
+  retry?: boolean
+}
+
 /**
- * Bounded recovery for a view's INITIAL load. A failed first read (a read error, or the roster read
- * guard giving up in an event burst) leaves the view on its skeleton, and when realtime is healthy
- * the fallback poll is suspended and no event calls `load()`, so nothing would retry. This retries
- * with exponential backoff, a few times at most, independent of realtime health. `stop()` (call it
- * from the effect cleanup) cancels the pending retry and prevents any later one.
+ * The single owner of a view's load. Every caller (initial load, realtime event, poll, resume, join)
+ * goes through `request()`, so at most ONE load runs at a time and older reads can never finish after
+ * newer ones. That removes the whole "superseded load" class of bugs: nothing is superseded, so
+ * nothing needs to hand its result or its retry to someone else.
+ *
+ * - `request()` resolves with the outcome of the attempt that served it (true on success, false on a
+ *   failed attempt or after `stop()`), never waiting out scheduled retries.
+ * - A failed attempt schedules a bounded exponential-backoff retry when any requester in the cycle
+ *   asked for retry; a later request cancels the pending retry and loads immediately.
+ * - `stop()` (effect cleanup) cancels the pending retry, and no load starts or retries afterwards
+ *   until `start()` re-arms it.
  * `load` returns false (or throws) on failure.
  */
-export function createLoadRecovery(
+export function createSerialLoader(
   load: () => Promise<boolean | void>,
-  { maxRetries = 4, baseDelayMs = 1000, maxDelayMs = 8000 }: LoadRecoveryOptions = {}
+  { maxRetries = 4, baseDelayMs = 1000, maxDelayMs = 8000 }: SerialLoaderOptions = {}
 ) {
   let stopped = false
+  let running = false
+  let rerun = false
+  let wantsRetry = false
   let retries = 0
   let timer: ReturnType<typeof setTimeout> | null = null
+  let waiters: Array<(ok: boolean) => void> = []
 
-  async function attempt(): Promise<void> {
-    if (stopped) return
-    let ok: boolean
-    try {
-      ok = (await load()) !== false
-    } catch {
-      ok = false
+  function settle(ok: boolean) {
+    const done = waiters
+    waiters = []
+    for (const resolve of done) resolve(ok)
+  }
+
+  async function run(): Promise<void> {
+    running = true
+    let ok = false
+    do {
+      rerun = false
+      try {
+        ok = (await load()) !== false
+      } catch {
+        ok = false
+      }
+    } while (rerun && !stopped)
+    running = false
+    if (stopped) {
+      settle(false)
+      return
     }
-    if (stopped || ok || retries >= maxRetries) return
-    const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** retries)
-    retries += 1
-    timer = setTimeout(() => void attempt(), delay)
+    if (ok) {
+      retries = 0
+    } else if (wantsRetry && retries < maxRetries) {
+      const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** retries)
+      retries += 1
+      timer = setTimeout(() => {
+        timer = null
+        if (stopped || running) return
+        wantsRetry = true // a retry cycle keeps retrying until the bound
+        void run()
+      }, delay)
+    }
+    wantsRetry = false
+    settle(ok)
   }
 
   return {
+    /** (Re)arms the loader; effects call it first so a StrictMode cleanup-then-remount works. */
     start() {
-      void attempt()
+      stopped = false
+    },
+    request({ fresh = false, retry = true }: SerialLoadRequest = {}): Promise<boolean> {
+      if (stopped) return Promise.resolve(false)
+      return new Promise<boolean>((resolve) => {
+        waiters.push(resolve)
+        wantsRetry = wantsRetry || retry
+        if (running) {
+          if (fresh) rerun = true
+          return
+        }
+        if (timer) clearTimeout(timer)
+        timer = null
+        retries = 0
+        void run()
+      })
     },
     stop() {
       stopped = true
       if (timer) clearTimeout(timer)
       timer = null
+      if (!running) settle(false)
     },
   }
 }

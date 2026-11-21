@@ -31,7 +31,7 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
 import { useToast } from '@/components/ui/Toast'
-import { applyPlayerChange, createLoadRecovery, createRosterReadGuard } from '@/lib/player-realtime'
+import { applyPlayerChange, createRosterReadGuard, createSerialLoader } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -134,13 +134,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return true
   }, [gameCode, rosterGuard, syncScreen])
 
-  // First load, with bounded retry: a failed read must not strand the loading screen while realtime
-  // is healthy (the fallback poll is suspended then and no event calls load()).
+  // Single owner of loading: the first load, polls, realtime-triggered and action-triggered refreshes
+  // all go through one serial loader, so loads never overlap (no stale write can land after a newer
+  // one), a failed initial load retries with bounded backoff even while realtime is healthy, and a
+  // load that is shared by several callers reports its real outcome to each.
+  const loader = useMemo(() => createSerialLoader(load), [load])
+  const refresh = useCallback(() => loader.request({ fresh: true }), [loader])
   useEffect(() => {
-    const recovery = createLoadRecovery(load)
-    recovery.start()
-    return recovery.stop
-  }, [load])
+    loader.start()
+    void loader.request()
+    return loader.stop
+  }, [loader])
 
   useEffect(() => {
     const channel = supabase
@@ -158,7 +162,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         () => {
-          void load()
+          void refresh()
         }
       )
       .on(
@@ -200,17 +204,19 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, load, myPlayerId, rosterGuard, syncScreen, toastError])
+  }, [gameCode, refresh, myPlayerId, rosterGuard, syncScreen, toastError])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
-    void load()
-  }, [load])
+    void refresh()
+  }, [refresh])
 
   useLobbyOpenNotification(game?.status, () => {
-    if (screen === 'game_started_waiting' || screen === 'finished') void load()
+    if (screen === 'game_started_waiting' || screen === 'finished') void refresh()
   })
 
   const join = useCallback(async () => {
@@ -227,14 +233,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setMyPlayerId(data.playerId)
       setMyPlayerName(data.playerName)
-      await load()
+      await refresh()
       success(data.canChat === false ? `Joined as ${data.playerName} — view only` : `Joined as ${data.playerName}`)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
       setJoining(false)
     }
-  }, [gameCode, joinExtras, load, success, toastError])
+  }, [gameCode, joinExtras, refresh, success, toastError])
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -445,7 +451,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
                 const resumeToken = getPlayerSession(gameCode)?.resumeToken
                 if (!resumeToken) return
                 await markPlayerReady(gameCode, resumeToken)
-                await load()
+                await refresh()
               }}
               className="btn-primary w-full py-3 text-base font-bold"
             >

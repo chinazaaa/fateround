@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -36,12 +36,7 @@ import { appOrigin } from '@/lib/site'
 import type { Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
-import {
-  applyPlayerChange,
-  createLoadRecovery,
-  createNewestCallTracker,
-  createRosterReadGuard,
-} from '@/lib/player-realtime'
+import { applyPlayerChange, createRosterReadGuard, createSerialLoader } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -61,9 +56,6 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const [roomDeleted, setRoomDeleted] = useState(false)
   // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
   const [rosterGuard] = useState(createRosterReadGuard)
-  // Newest-load token: a load that started before a newer one (e.g. before the DELETE-triggered
-  // reload found no game row) must not write its older snapshot afterwards.
-  const [loadTracker] = useState(createNewestCallTracker)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
@@ -93,8 +85,6 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const visibleLobbyPlayers = players.slice(lobbyPagination.start, lobbyPagination.end)
 
   const load = useCallback(async (): Promise<boolean> => {
-    // A superseded load reports success: the newer load owns the result.
-    const superseded = loadTracker.begin()
     const snapshot = await rosterGuard.read(async () => {
       const [gameRes, plrsRes] = await Promise.all([
         supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
@@ -102,7 +92,6 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       ])
       return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
     })
-    if (superseded()) return true
     if (!snapshot) return false
     if (snapshot.gameRes.data) {
       setGame(snapshot.gameRes.data)
@@ -112,15 +101,19 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     }
     setPlayers(snapshot.plrsRes.data ?? [])
     return true
-  }, [gameCode, loadTracker, rosterGuard])
+  }, [gameCode, rosterGuard])
 
-  // First load, with bounded retry: a failed read must not strand the skeleton while realtime is
-  // healthy (the fallback poll is suspended then and no event calls load()).
+  // Single owner of loading: the first load, polls, realtime-triggered and action-triggered refreshes
+  // all go through one serial loader, so loads never overlap (no stale write can land after a newer
+  // one), a failed initial load retries with bounded backoff even while realtime is healthy, and a
+  // load that is shared by several callers reports its real outcome to each.
+  const loader = useMemo(() => createSerialLoader(load), [load])
+  const refresh = useCallback(() => loader.request({ fresh: true }), [loader])
   useEffect(() => {
-    const recovery = createLoadRecovery(load)
-    recovery.start()
-    return recovery.stop
-  }, [load])
+    loader.start()
+    void loader.request()
+    return loader.stop
+  }, [loader])
 
   // Land on the primary (Watch) tab when the session starts, and on Manage when it ends.
   useEffect(() => {
@@ -150,7 +143,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         () => {
-          void load()
+          void refresh()
         }
       )
       .on(
@@ -185,9 +178,11 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, load, rosterGuard])
+  }, [gameCode, refresh, rosterGuard])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+  })
 
   const startSession = async () => {
     setStarting(true)
@@ -199,7 +194,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
-      await load()
+      await refresh()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to start')
     } finally {
@@ -217,7 +212,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
-      await load()
+      await refresh()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
@@ -466,7 +461,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         <HostEndGameButton
           gameCode={gameCode}
           hostToken={hostToken}
-          onEnded={load}
+          onEnded={refresh}
           label="End lobby"
           icon={<ExitIcon size={14} />}
           confirmTitle="Close this lobby?"
@@ -479,7 +474,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         <HostEndGameButton
           gameCode={gameCode}
           hostToken={hostToken}
-          onEnded={load}
+          onEnded={refresh}
           label="End session"
           icon={<ExitIcon size={14} />}
           confirmTitle="End this session?"
@@ -545,7 +540,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         startLabel="Open room"
         onRemovePlayer={removePlayer}
         removingPlayerId={removingPlayerId}
-        onEnded={load}
+        onEnded={refresh}
       />
     )
   }
