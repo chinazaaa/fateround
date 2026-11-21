@@ -15,6 +15,7 @@ vi.mock('@/lib/community-rate-limit', () => ({
 process.env.ADMIN_SESSION_SECRET = 'test-secret'
 
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { POLL_INTERVALS } from '@/hooks/usePolling'
 
 const rule = { bucket: 'test', max: 3, windowSeconds: 300 }
 const req = new Request('https://x.test/api', { method: 'POST' })
@@ -75,5 +76,14 @@ describe('enforceRateLimit', () => {
   it('exposes sane default limits', () => {
     expect(RATE_LIMITS.gameCreate.max).toBeGreaterThan(0)
     expect(RATE_LIMITS.join.max).toBeGreaterThanOrEqual(RATE_LIMITS.gameCreate.max)
+  })
+
+  it('sizes the host inbox bucket above the steady poll load of 20 inboxes behind one IP', () => {
+    const { max, windowSeconds } = RATE_LIMITS.anonymousMessagesList
+    // Host inboxes poll at POLL_INTERVALS.activeGame while visible; the 2x covers mount and
+    // visibility-refresh reads on top of the steady poll.
+    const perInbox = (windowSeconds * 1000) / POLL_INTERVALS.activeGame
+    expect(windowSeconds).toBe(300)
+    expect(max).toBeGreaterThanOrEqual(20 * perInbox * 2)
   })
 })

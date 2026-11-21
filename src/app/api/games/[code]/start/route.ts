@@ -379,7 +379,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   const now = sessionStartedAt
 
   if (isAnonymousMessagesGame(gameType)) {
-    if (playersData.length < ANONYMOUS_ROOM_MIN_PLAYERS) {
+    // Watch-only viewers hold no seat and cannot chat, so only participants count toward the minimum.
+    if (playersData.filter((p) => p.spectator !== true).length < ANONYMOUS_ROOM_MIN_PLAYERS) {
       return NextResponse.json(
         { error: `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start` },
         { status: 400 }

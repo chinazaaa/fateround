@@ -52,7 +52,12 @@ function makeClient() {
 }
 
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => makeClient() }))
-vi.mock('@/lib/game-admin', () => ({ assertPlayer: async () => ({ player }) }))
+const { assertPlayerMock, touchMock } = vi.hoisted(() => ({
+  assertPlayerMock: vi.fn(),
+  touchMock: vi.fn(),
+}))
+vi.mock('@/lib/game-admin', () => ({ assertPlayer: assertPlayerMock }))
+vi.mock('@/lib/game-activity', () => ({ touchGameActivity: touchMock }))
 vi.mock('@/lib/memory-match', async (orig) => ({
   ...(await orig<typeof import('@/lib/memory-match')>()),
   finishMatchingPairsRoundIfAllDone: vi.fn(),
@@ -75,6 +80,9 @@ describe('POST /api/matching-pairs/flip hardening', () => {
     vi.useFakeTimers()
     vi.setSystemTime(NOW)
     insert.mockClear()
+    touchMock.mockClear()
+    assertPlayerMock.mockClear()
+    assertPlayerMock.mockImplementation(async () => ({ player }))
     recordResult = { data: { status: 'ok' }, error: null }
     subs = []
     game = {
@@ -99,6 +107,20 @@ describe('POST /api/matching-pairs/flip hardening', () => {
   it('accepts a plausible match', async () => {
     expect((await send(0)).status).toBe(200)
     expect(insert).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the liveness bump for accepted players only, not for rejected viewers', async () => {
+    await send(0)
+    expect(assertPlayerMock).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything(), {
+      readOnly: true,
+    })
+    expect(touchMock).toHaveBeenCalledTimes(1)
+
+    touchMock.mockClear()
+    player = { ...player, spectator: true }
+    const res = await send(0)
+    expect(res.status).toBe(403)
+    expect(touchMock).not.toHaveBeenCalled()
   })
 
   it('rejects a spectator', async () => {

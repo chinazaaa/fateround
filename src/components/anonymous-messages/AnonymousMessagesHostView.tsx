@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousRoomSessionSummary } from '@/components/anonymous-messages/AnonymousRoomSessionSummary'
 import { HostGameHeader } from '@/components/host/HostGameHeader'
@@ -36,6 +36,7 @@ import { appOrigin } from '@/lib/site'
 import type { Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
+import { applyPlayerChange, createRosterReadGuard, createSerialLoader } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
@@ -51,6 +52,10 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const { error: toastError, success } = useToast()
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // The game row is gone (deleted): distinct from the initial `game === null` loading state.
+  const [roomDeleted, setRoomDeleted] = useState(false)
+  // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
+  const [rosterGuard] = useState(createRosterReadGuard)
   const [starting, setStarting] = useState(false)
   const [playingAgain, setPlayingAgain] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
@@ -80,19 +85,35 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
   const visibleLobbyPlayers = players.slice(lobbyPagination.start, lobbyPagination.end)
 
   const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
-    if (gameRes.data) setGame(gameRes.data)
-    setPlayers(plrsRes.data ?? [])
+    const snapshot = await rosterGuard.read(async () => {
+      const [gameRes, plrsRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      ])
+      return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
+    })
+    if (!snapshot) return false
+    if (snapshot.gameRes.data) {
+      setGame(snapshot.gameRes.data)
+      setRoomDeleted(false)
+    } else {
+      setRoomDeleted(true)
+    }
+    setPlayers(snapshot.plrsRes.data ?? [])
     return true
-  }, [gameCode])
+  }, [gameCode, rosterGuard])
 
+  // Single owner of loading: the first load, polls, realtime-triggered and action-triggered refreshes
+  // all go through one serial loader, so loads never overlap (no stale write can land after a newer
+  // one), a failed initial load retries with bounded backoff even while realtime is healthy, and a
+  // load that is shared by several callers reports its real outcome to each.
+  const loader = useMemo(() => createSerialLoader(load), [load])
+  const refresh = useCallback(() => loader.request({ fresh: true }), [loader])
   useEffect(() => {
-    load()
-  }, [load])
+    loader.start()
+    void loader.request()
+    return loader.stop
+  }, [loader])
 
   // Land on the primary (Watch) tab when the session starts, and on Manage when it ends.
   useEffect(() => {
@@ -100,9 +121,13 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     else if (game?.status === 'finished') setTab('manage')
   }, [game?.status])
 
-  const handlePlayerRemoved = useCallback((playerId: string) => {
-    setPlayers((prev) => prev.filter((p) => p.id !== playerId))
-  }, [])
+  const handlePlayerRemoved = useCallback(
+    (playerId: string) => {
+      rosterGuard.noteEvent()
+      setPlayers((prev) => prev.filter((p) => p.id !== playerId))
+    },
+    [rosterGuard]
+  )
 
   const { removePlayer, removingPlayerId } = useHostRemovePlayer(gameCode, hostToken, handlePlayerRemoved)
 
@@ -116,10 +141,27 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       )
       .on(
         'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        () => {
+          void refresh()
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.new as Player
-          setPlayers((prev) => (prev.some((p) => p.id === player.id) ? prev : [...prev, player]))
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'INSERT', new: player }))
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const player = payload.new as Player
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'UPDATE', new: player }))
         }
       )
       .on(
@@ -127,7 +169,8 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.old as Player
-          setPlayers((prev) => prev.filter((p) => p.id !== player.id))
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'DELETE', old: { id: player.id } }))
         }
       )
       .subscribe()
@@ -135,9 +178,11 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode])
+  }, [gameCode, refresh, rosterGuard])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+  })
 
   const startSession = async () => {
     setStarting(true)
@@ -149,7 +194,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to start')
-      await load()
+      await refresh()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to start')
     } finally {
@@ -167,7 +212,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to reset')
-      await load()
+      await refresh()
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to reset')
     } finally {
@@ -232,15 +277,29 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
     }
   }
 
+  if (roomDeleted) {
+    return (
+      <div className="page-wrap flex min-h-screen items-center justify-center px-4 py-10">
+        <div className="w-full max-w-md space-y-5 text-center">
+          <p className="font-bold text-xl">This room no longer exists</p>
+          <a href="/" className="btn-primary block w-full">
+            Back home
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   if (!game) {
     return <HostLobbySkeleton />
   }
 
   const cfg = gameTypeConfig('anonymous_messages')
   const playerLink = `${appOrigin()}/game/${gameCode}`
-  const canStart = players.length >= ANONYMOUS_ROOM_MIN_PLAYERS
   const roomCapacity = anonymousRoomMaxPlayers(game)
   const presence = countAnonymousRoomPresence(players, game)
+  // Seats and the start minimum count participants only; watch-only viewers hold no seat.
+  const canStart = presence.participants >= ANONYMOUS_ROOM_MIN_PLAYERS
 
   const gameStarted = game.status === 'active'
   const showTabs = game.status !== 'finished'
@@ -291,7 +350,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           <span className="text-faint text-xs tabular-nums">
             {game.status === 'waiting' ? (
               <>
-                {players.length} / {roomCapacity}
+                {presence.participants} / {roomCapacity}
               </>
             ) : (
               <>
@@ -392,7 +451,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
             disabledHint={
               canStart
                 ? null
-                : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${players.length}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
+                : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${presence.participants}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
             }
           />
         </>
@@ -402,7 +461,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         <HostEndGameButton
           gameCode={gameCode}
           hostToken={hostToken}
-          onEnded={load}
+          onEnded={refresh}
           label="End lobby"
           icon={<ExitIcon size={14} />}
           confirmTitle="Close this lobby?"
@@ -415,7 +474,7 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         <HostEndGameButton
           gameCode={gameCode}
           hostToken={hostToken}
-          onEnded={load}
+          onEnded={refresh}
           label="End session"
           icon={<ExitIcon size={14} />}
           confirmTitle="End this session?"
@@ -476,12 +535,12 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
         startDisabledHint={
           canStart
             ? null
-            : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${players.length}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
+            : `Need at least ${ANONYMOUS_ROOM_MIN_PLAYERS} players to start (${presence.participants}/${ANONYMOUS_ROOM_MIN_PLAYERS})`
         }
         startLabel="Open room"
         onRemovePlayer={removePlayer}
         removingPlayerId={removingPlayerId}
-        onEnded={load}
+        onEnded={refresh}
       />
     )
   }

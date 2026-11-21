@@ -87,4 +87,25 @@ describe('POST /api/games — request body guard', () => {
     await expect(res.json()).resolves.not.toEqual({ error: 'Invalid or empty request body' })
     expect(fromSpy).not.toHaveBeenCalled()
   })
+  it('rejects a lives-mode elimination_config with no startingLives, before any DB call', async () => {
+    const res = await post(JSON.stringify({ title: 'Round table', elimination_config: { mode: 'lives' } }))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'startingLives is required for lives mode' })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
+
+  it('treats a null startingLives like a missing one in lives mode', async () => {
+    const res = await post(
+      JSON.stringify({ title: 'Round table', elimination_config: { mode: 'lives', startingLives: null } })
+    )
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'startingLives is required for lives mode' })
+  })
+
+  it('still rejects lives mode with no startingLives when another field (rule) is also invalid', async () => {
+    const res = await post(JSON.stringify({ title: 'Round table', elimination_config: { mode: 'lives', rule: 42 } }))
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'startingLives is required for lives mode' })
+    expect(fromSpy).not.toHaveBeenCalled()
+  })
 })

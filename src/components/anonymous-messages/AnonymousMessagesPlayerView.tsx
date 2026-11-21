@@ -18,6 +18,7 @@ import {
   anonymousPlayerCanChat,
   anonymousPlayerCanPost,
   anonymousRoomMaxPlayers,
+  countAnonymousRoomPresence,
   isPlayerBanned,
 } from '@/lib/anonymous-messages'
 import { useAnonymousRoomBans } from '@/hooks/useAnonymousRoomBans'
@@ -30,6 +31,7 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
 import { useToast } from '@/components/ui/Toast'
+import { applyPlayerChange, createRosterReadGuard, createSerialLoader } from '@/lib/player-realtime'
 import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
@@ -63,6 +65,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
+  const [rosterGuard] = useState(createRosterReadGuard)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joining, setJoining] = useState(false)
@@ -97,14 +101,17 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }, [])
 
   const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
+    const snapshot = await rosterGuard.read(async () => {
+      const [gameRes, plrsRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      ])
+      return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
+    })
+    if (!snapshot) return false
 
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
+    const gameData = snapshot.gameRes.data
+    const plrs = snapshot.plrsRes.data
 
     if (!gameData) {
       setScreen('not_found')
@@ -125,11 +132,19 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
     syncScreen(gameData, playerId)
     return true
-  }, [gameCode, syncScreen])
+  }, [gameCode, rosterGuard, syncScreen])
 
+  // Single owner of loading: the first load, polls, realtime-triggered and action-triggered refreshes
+  // all go through one serial loader, so loads never overlap (no stale write can land after a newer
+  // one), a failed initial load retries with bounded backoff even while realtime is healthy, and a
+  // load that is shared by several callers reports its real outcome to each.
+  const loader = useMemo(() => createSerialLoader(load), [load])
+  const refresh = useCallback(() => loader.request({ fresh: true }), [loader])
   useEffect(() => {
-    load()
-  }, [load])
+    loader.start()
+    void loader.request()
+    return loader.stop
+  }, [loader])
 
   useEffect(() => {
     const channel = supabase
@@ -145,10 +160,27 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       )
       .on(
         'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
+        () => {
+          void refresh()
+        }
+      )
+      .on(
+        'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.new as Player
-          setPlayers((prev) => (prev.some((p) => p.id === player.id) ? prev : [...prev, player]))
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'INSERT', new: player }))
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const player = payload.new as Player
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'UPDATE', new: player }))
         }
       )
       .on(
@@ -156,6 +188,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.old as Player
+          rosterGuard.noteEvent()
           if (player.id === myPlayerId) {
             clearPlayerSession(gameCode)
             setMyPlayerId(null)
@@ -163,7 +196,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
             setScreen('join')
             toastError('You were removed from the room')
           }
-          setPlayers((prev) => prev.filter((p) => p.id !== player.id))
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'DELETE', old: { id: player.id } }))
         }
       )
       .subscribe()
@@ -171,17 +204,19 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, myPlayerId, syncScreen, toastError])
+  }, [gameCode, refresh, myPlayerId, rosterGuard, syncScreen, toastError])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
-    void load()
-  }, [load])
+    void refresh()
+  }, [refresh])
 
   useLobbyOpenNotification(game?.status, () => {
-    if (screen === 'game_started_waiting' || screen === 'finished') void load()
+    if (screen === 'game_started_waiting' || screen === 'finished') void refresh()
   })
 
   const join = useCallback(async () => {
@@ -198,14 +233,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setMyPlayerId(data.playerId)
       setMyPlayerName(data.playerName)
-      await load()
+      await refresh()
       success(data.canChat === false ? `Joined as ${data.playerName} — view only` : `Joined as ${data.playerName}`)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
       setJoining(false)
     }
-  }, [gameCode, joinExtras, load, success, toastError])
+  }, [gameCode, joinExtras, refresh, success, toastError])
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -358,7 +393,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
-    const lobbyFull = game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
+    const lobbyFull =
+      game?.status === 'waiting' &&
+      roomCapacity != null &&
+      countAnonymousRoomPresence(players, game).participants >= roomCapacity
     return (
       <CenteredShell>
         <Header game={game} />
@@ -413,7 +451,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
                 const resumeToken = getPlayerSession(gameCode)?.resumeToken
                 if (!resumeToken) return
                 await markPlayerReady(gameCode, resumeToken)
-                await load()
+                await refresh()
               }}
               className="btn-primary w-full py-3 text-base font-bold"
             >
@@ -543,12 +581,14 @@ function PlayerBar({ name, subtitle }: { name: string; subtitle?: string }) {
 
 function LobbyPlayers({ players, game }: { players: Player[]; game: Game | null }) {
   const capacity = game ? anonymousRoomMaxPlayers(game) : null
+  // Watch-only viewers hold no seat, so the seat counter counts participants only.
+  const seated = game ? countAnonymousRoomPresence(players, game).participants : players.length
   return (
     <div className="glass-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-muted text-xs uppercase tracking-wider">Lobby names</p>
         <span className="text-faint text-xs tabular-nums">
-          {players.length}
+          {seated}
           {capacity != null ? ` / ${capacity}` : ''}
         </span>
       </div>
