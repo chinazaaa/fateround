@@ -98,7 +98,7 @@ export function createSerialLoader(
 
   async function run(): Promise<void> {
     running = true
-    let ok = false
+    let ok: boolean
     do {
       rerun = false
       try {
@@ -161,7 +161,7 @@ export function createSerialLoader(
  * Newest-call token for overlapping async loads. `begin()` starts a call and returns its
  * `superseded()` check: true once a later `begin()` happened. A load checks it after every await
  * and stops writing state when superseded, so an older response cannot overwrite a newer one. A
- * superseded load should report success to `createLoadRecovery`: the newer load owns the result.
+ * superseded load should report success: the newer load owns the result.
  */
 export function createNewestCallTracker() {
   let latest = 0
