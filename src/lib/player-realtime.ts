@@ -66,66 +66,83 @@ export type SerialLoadRequest = {
 
 /**
  * The single owner of a view's load. Every caller (initial load, realtime event, poll, resume, join)
- * goes through `request()`, so at most ONE load runs at a time and older reads can never finish after
- * newer ones. That removes the whole "superseded load" class of bugs: nothing is superseded, so
- * nothing needs to hand its result or its retry to someone else.
+ * goes through `request()`, so at most ONE `load` callback runs at a time and older reads can never
+ * finish after newer ones. Nothing is superseded, so nothing hands its result or its retry to
+ * someone else.
  *
- * - `request()` resolves with the outcome of the attempt that served it (true on success, false on a
- *   failed attempt or after `stop()`), never waiting out scheduled retries.
- * - A failed attempt schedules a bounded exponential-backoff retry when any requester in the cycle
- *   asked for retry; a later request cancels the pending retry and loads immediately.
- * - `stop()` (effect cleanup) cancels the pending retry, and no load starts or retries afterwards
- *   until `start()` re-arms it.
- * `load` returns false (or throws) on failure.
+ * State machine (all state is below; every transition is in `request`, `pump`, the retry timer, `stop`):
+ *
+ *   idle      no active attempt. A request starts one (retry budget reset).
+ *   running   `active` = the attempt whose `load` call is in flight, with its own `waiters`.
+ *   queued    `queued` = ONE follow-up attempt (own `waiters`) that starts as soon as `active` ends.
+ *             Fresh requests, and requests from a newer start()/stop() generation, go here.
+ *   retrying  a backoff `timer` is pending after a failed attempt; a request cancels it.
+ *   stopped   `gen` is bumped by `stop()`; waiters of every attempt are settled false at once, the
+ *             in-flight callback is left to finish (callbacks stay serialized) and its result is
+ *             ignored. `start()` re-arms; a request after it queues behind the still-running callback.
+ *
+ * Each request resolves with the outcome of the attempt that served it:
+ * - plain request while running (same generation): joins `active` and shares its outcome
+ * - fresh request while running: joins `queued` (a read that starts after the request)
+ * - request while idle/retrying: starts its own attempt
+ * A failed attempt schedules a bounded exponential-backoff retry when any requester of that attempt
+ * asked for retry. A queued follow-up always starts a NEW retry budget (it is a new request); only
+ * timer-started retries consume the budget. `load` returns false (or throws) on failure.
  */
 export function createSerialLoader(
   load: () => Promise<boolean | void>,
   { maxRetries = 4, baseDelayMs = 1000, maxDelayMs = 8000 }: SerialLoaderOptions = {}
 ) {
+  type Attempt = { gen: number; waiters: Array<(ok: boolean) => void>; retry: boolean }
+  type Followup = { waiters: Array<(ok: boolean) => void>; retry: boolean }
+
+  let gen = 0
   let stopped = false
-  let running = false
-  let rerun = false
-  let wantsRetry = false
+  let active: Attempt | null = null
+  let queued: Followup | null = null
   let retries = 0
   let timer: ReturnType<typeof setTimeout> | null = null
-  let waiters: Array<(ok: boolean) => void> = []
 
-  function settle(ok: boolean) {
-    const done = waiters
-    waiters = []
-    for (const resolve of done) resolve(ok)
+  function clearTimer() {
+    if (timer) clearTimeout(timer)
+    timer = null
   }
 
-  async function run(): Promise<void> {
-    running = true
-    let ok: boolean
-    do {
-      rerun = false
+  /** Runs attempts one after another until nothing is active. Only ever one `pump` loop at a time. */
+  async function pump(): Promise<void> {
+    while (active) {
+      const attempt: Attempt = active
+      let ok: boolean
       try {
         ok = (await load()) !== false
       } catch {
         ok = false
       }
-    } while (rerun && !stopped)
-    running = false
-    if (stopped) {
-      settle(false)
-      return
+      // stop() already settled this attempt's waiters (false) and bumped `gen`; a stale result is ignored.
+      const current = attempt.gen === gen
+      if (current) for (const resolve of attempt.waiters) resolve(ok)
+      active = null
+      if (queued) {
+        // A follow-up is a new request: it gets its own retry budget.
+        active = { gen, waiters: queued.waiters, retry: queued.retry }
+        queued = null
+        retries = 0
+        continue
+      }
+      if (!current) break
+      if (ok) {
+        retries = 0
+      } else if (attempt.retry && retries < maxRetries) {
+        const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** retries)
+        retries += 1
+        timer = setTimeout(() => {
+          timer = null
+          if (stopped || active) return
+          active = { gen, waiters: [], retry: true } // a timer-started retry keeps the budget it consumed
+          void pump()
+        }, delay)
+      }
     }
-    if (ok) {
-      retries = 0
-    } else if (wantsRetry && retries < maxRetries) {
-      const delay = Math.min(maxDelayMs, baseDelayMs * 2 ** retries)
-      retries += 1
-      timer = setTimeout(() => {
-        timer = null
-        if (stopped || running) return
-        wantsRetry = true // a retry cycle keeps retrying until the bound
-        void run()
-      }, delay)
-    }
-    wantsRetry = false
-    settle(ok)
   }
 
   return {
@@ -136,23 +153,31 @@ export function createSerialLoader(
     request({ fresh = false, retry = true }: SerialLoadRequest = {}): Promise<boolean> {
       if (stopped) return Promise.resolve(false)
       return new Promise<boolean>((resolve) => {
-        waiters.push(resolve)
-        wantsRetry = wantsRetry || retry
-        if (running) {
-          if (fresh) rerun = true
+        if (!active) {
+          clearTimer()
+          retries = 0
+          active = { gen, waiters: [resolve], retry }
+          void pump()
           return
         }
-        if (timer) clearTimeout(timer)
-        timer = null
-        retries = 0
-        void run()
+        if (!fresh && active.gen === gen) {
+          active.waiters.push(resolve)
+          active.retry = active.retry || retry
+          return
+        }
+        queued ??= { waiters: [], retry: false }
+        queued.waiters.push(resolve)
+        queued.retry = queued.retry || retry
       })
     },
     stop() {
       stopped = true
-      if (timer) clearTimeout(timer)
-      timer = null
-      if (!running) settle(false)
+      gen += 1
+      clearTimer()
+      const dropped = [...(active?.waiters ?? []), ...(queued?.waiters ?? [])]
+      if (active) active.waiters = []
+      queued = null
+      for (const resolve of dropped) resolve(false)
     },
   }
 }

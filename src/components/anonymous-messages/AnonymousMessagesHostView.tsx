@@ -97,6 +97,9 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       setGame(snapshot.gameRes.data)
       setRoomDeleted(false)
     } else {
+      // The row is confirmed gone: clear `game` too so the active-room hooks (message trim, polls,
+      // reactions) stop talking to a deleted room. The distinct deleted-room screen renders first.
+      setGame(null)
       setRoomDeleted(true)
     }
     setPlayers(snapshot.plrsRes.data ?? [])
@@ -137,7 +140,11 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        (payload) => setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
+        (payload) => {
+          // A roster/game read already in flight predates this update; the guard re-fetches it.
+          rosterGuard.noteEvent()
+          setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
+        }
       )
       .on(
         'postgres_changes',

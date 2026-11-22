@@ -259,6 +259,105 @@ describe('createSerialLoader', () => {
   })
 })
 
+describe('createSerialLoader state machine', () => {
+  afterEach(() => vi.useRealTimers())
+
+  /** A load whose attempts the test resolves by hand, in order. */
+  function manualLoad() {
+    const pending: Array<(v: boolean) => void> = []
+    const load = vi.fn(() => new Promise<boolean>((r) => pending.push(r)))
+    return { load, finish: (n: number, ok: boolean) => pending[n](ok), calls: () => load.mock.calls.length }
+  }
+
+  // Each request resolves with the outcome of the attempt that served it.
+  it.each([
+    { active: true, followup: true },
+    { active: true, followup: false },
+    { active: false, followup: true },
+    { active: false, followup: false },
+  ])('ordinary request gets $active and queued fresh request gets $followup', async ({ active, followup }) => {
+    const m = manualLoad()
+    const loader = createSerialLoader(m.load)
+    const ordinary = loader.request({ retry: false })
+    const fresh = loader.request({ fresh: true, retry: false })
+    m.finish(0, active)
+    await vi.waitFor(() => expect(m.calls()).toBe(2))
+    m.finish(1, followup)
+    await expect(ordinary).resolves.toBe(active)
+    await expect(fresh).resolves.toBe(followup)
+  })
+
+  it('a queued fresh request starts a new retry budget after the budget was exhausted', async () => {
+    vi.useFakeTimers()
+    const m = manualLoad()
+    const loader = createSerialLoader(m.load, { maxRetries: 1 })
+    void loader.request() // attempt 0
+    m.finish(0, false)
+    await vi.advanceTimersByTimeAsync(1000) // the one allowed retry starts: attempt 1 (last of the budget)
+    expect(m.calls()).toBe(2)
+    const fresh = loader.request({ fresh: true }) // arrives during the last retry
+    m.finish(1, false) // exhausts the old budget
+    await vi.waitFor(() => expect(m.calls()).toBe(3)) // follow-up runs
+    m.finish(2, false) // follow-up fails: it must schedule a retry of its own
+    await expect(fresh).resolves.toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(m.calls()).toBe(4)
+  })
+
+  it('timer-started retries still stop at the bound', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn(async () => false)
+    void createSerialLoader(load, { maxRetries: 2 }).request()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(3)
+  })
+
+  it('stop() settles old waiters false; a request after start() queues behind the running callback', async () => {
+    const m = manualLoad()
+    const loader = createSerialLoader(m.load)
+    const old = loader.request()
+    loader.stop()
+    await expect(old).resolves.toBe(false)
+    loader.start()
+    const next = loader.request()
+    expect(m.calls()).toBe(1) // callbacks stay serialized: the old one is still running
+    m.finish(0, true) // old callback ends; its result belongs to no one
+    await vi.waitFor(() => expect(m.calls()).toBe(2)) // the new setup gets its own read
+    m.finish(1, true)
+    await expect(next).resolves.toBe(true)
+  })
+
+  it('a stale attempt that ends after stop() does not schedule a retry or settle new waiters early', async () => {
+    vi.useFakeTimers()
+    const m = manualLoad()
+    const loader = createSerialLoader(m.load)
+    void loader.request()
+    loader.stop()
+    m.finish(0, false)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(m.calls()).toBe(1)
+  })
+
+  it('a plain request after start() while a stale attempt runs does not join it', async () => {
+    const m = manualLoad()
+    const loader = createSerialLoader(m.load)
+    void loader.request()
+    loader.stop()
+    loader.start()
+    let settled = false
+    const next = loader.request().then((v) => {
+      settled = true
+      return v
+    })
+    m.finish(0, true)
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    await vi.waitFor(() => expect(m.calls()).toBe(2))
+    m.finish(1, false)
+    await expect(next).resolves.toBe(false)
+  })
+})
+
 describe('createNewestCallTracker', () => {
   it('reports only the latest call as current', () => {
     const tracker = createNewestCallTracker()

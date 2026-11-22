@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousBanCountdownBar } from '@/components/anonymous-messages/AnonymousBanCountdownBar'
@@ -65,6 +65,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // Latest game applied by either the load or a realtime update, so a load that resumes after an
+  // await selects the screen from the CURRENT game, not the snapshot it started with.
+  const gameRef = useRef<Game | null>(null)
   // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
   const [rosterGuard] = useState(createRosterReadGuard)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
@@ -118,6 +121,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       return true
     }
 
+    gameRef.current = gameData
     setGame(gameData)
     setPlayers(plrs ?? [])
 
@@ -130,7 +134,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       setMyPlayerId(null)
       setMyPlayerName('')
     }
-    syncScreen(gameData, playerId)
+    // A realtime update (e.g. the host starting the room) may have landed while the session resolved.
+    syncScreen(gameRef.current ?? gameData, playerId)
     return true
   }, [gameCode, rosterGuard, syncScreen])
 
@@ -154,7 +159,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame((prev) => mergeRealtimeGame(prev, next))
+          // A read already in flight predates this update; the guard re-fetches it.
+          rosterGuard.noteEvent()
+          const merged = mergeRealtimeGame(gameRef.current, next)
+          gameRef.current = merged
+          setGame(merged)
           syncScreen(next, myPlayerId)
         }
       )

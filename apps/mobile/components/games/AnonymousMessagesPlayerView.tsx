@@ -138,8 +138,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return outcome !== 'failed'
   }, [applyLatestMessages, code])
 
+  // Bumped whenever this device changes its own saved session (join, leave, stale drop), so a load
+  // that captured the session earlier can tell it is outdated and re-read it before applying.
+  const sessionEpoch = useRef(0)
+
   const load = useCallback(async () => {
     const supabase = getSupabase()
+    const epochAtRead = sessionEpoch.current
     // Read the saved session BEFORE the roster. join() inserts the player and only then saves the
     // session, so a session read first can only name a player already in the roster read after it
     // (unless that player was removed). Reading it after the roster could pair an old roster with a
@@ -164,6 +169,15 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     playersRef.current = playerRows
     setPlayers(playerRows)
     let session = savedSession
+    let seenEpoch = epochAtRead
+    // A local join/leave that finished while this load was in flight makes the captured session
+    // outdated: re-read until no local session change happened during the last read. The final check
+    // is synchronous with the state writes below, so nothing can slip in between.
+    const staleSession = () => sessionEpoch.current !== seenEpoch
+    while (staleSession()) {
+      seenEpoch = sessionEpoch.current
+      session = await getPlayerSession(code)
+    }
     if (session && !playerRows.some((p) => p.id === session!.playerId)) {
       // A successful roster read lacks the saved player: the host removed them. Drop the stale
       // session (so resume/reconnect stop reusing it) unless join()/leave replaced it meanwhile.
@@ -174,6 +188,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       } else {
         session = current
       }
+    }
+    while (staleSession()) {
+      // the awaits above overlapped a local join/leave
+      seenEpoch = sessionEpoch.current
+      session = await getPlayerSession(code)
     }
     const playerId = session?.playerId ?? null
     if (session) setMyPlayerId(session.playerId)
@@ -188,8 +207,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         .maybeSingle()
       setBanUntil((banRes.data as { banned_until?: string } | null)?.banned_until ?? null)
     }
-    await loadMessages()
-    return true
+    // The message read's outcome is the load's: a current failure must make the loader retry.
+    return loadMessages()
   }, [code, loadMessages, rosterGuard, syncScreen])
 
   // Single owner of loading: the first load and every event/resume/action-triggered refresh go
@@ -276,6 +295,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         data.playerGender ?? 'both',
         data.resumeToken ?? null
       )
+      sessionEpoch.current += 1
       setMyPlayerId(data.playerId)
       setCanChat(data.canChat !== false)
       // Through the serial loader (bounded retry), and awaited so the busy flag spans the refresh.
@@ -299,6 +319,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
    */
   const dropStaleSession = async () => {
     await clearPlayerSession(code)
+    sessionEpoch.current += 1
     setMyPlayerId(null)
     if (game) syncScreen(game, null)
     else setScreen('join')
@@ -379,6 +400,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       await leaveGame(code, myPlayerId, session.resumeToken)
       await clearPlayerSession(code)
+      sessionEpoch.current += 1
       setMyPlayerId(null)
       setScreen('join')
     } catch (err) {
