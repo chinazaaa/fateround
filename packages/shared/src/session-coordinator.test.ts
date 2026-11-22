@@ -276,10 +276,15 @@ describe('per-room coordinator registry', () => {
     let releaseClear!: () => void
     const gateClear = new Promise<void>((r) => (releaseClear = r))
     let clearStarted = false
+    let rosterReadStarted!: () => void
+    const rosterReadInFlight = new Promise<void>((r) => (rosterReadStarted = r))
     const held = getSessionCoordinator('ABCD') // the load holds this across its awaits
     const view = resolveSessionAgainstRoster(held, {
       readSession: room.read,
-      readRoster: () => gateRead, // slow roster read: nothing is queued on the coordinator meanwhile
+      readRoster: () => {
+        rosterReadStarted() // the read is now genuinely in flight
+        return gateRead // slow: nothing is queued on the coordinator meanwhile
+      },
       rosterHasPlayer: has,
       clear: async () => {
         clearStarted = true
@@ -287,6 +292,7 @@ describe('per-room coordinator registry', () => {
         await room.rawDelete()
       },
     })
+    await rosterReadInFlight // churn only starts once the roster read is actually running
     // Many other rooms are created while the read is in flight. (An idle-based eviction would drop
     // `held` here, and a later writer would get a SECOND coordinator for the same room.)
     for (let i = 0; i < 200; i++) getSessionCoordinator(`OTHER${i}`)
