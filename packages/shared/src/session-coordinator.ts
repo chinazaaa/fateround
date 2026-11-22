@@ -15,21 +15,25 @@
  *   and clears only if it is still the player that was found missing, and no save can interleave
  *   because saves are serialized with it.
  */
-export function createSessionCoordinator() {
-  let epoch = 0
+export function createSessionCoordinator(startEpoch = 0) {
+  let epoch = startEpoch
+  let pending = 0
   let tail: Promise<unknown> = Promise.resolve()
 
   function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    pending += 1
     const run = tail.then(fn, fn)
-    tail = run.then(
-      () => undefined,
-      () => undefined
-    )
+    const settled = () => {
+      pending -= 1
+    }
+    tail = run.then(settled, settled)
     return run
   }
 
   return {
     epoch: () => epoch,
+    /** True when no save, clear or check is queued or running. */
+    idle: () => pending === 0,
     /** Run a session save or clear. Serialized with every other mutation and conditional clear. */
     mutate<T>(fn: () => Promise<T>): Promise<T> {
       return exclusive(async () => {
@@ -51,8 +55,11 @@ export function createSessionCoordinator() {
       savedPlayerId: string
       readSession: () => Promise<{ playerId: string } | null>
       clear: () => Promise<void>
-    }): Promise<'cleared' | 'stale' | 'replaced'> {
+      /** Checked inside the exclusive step: false (e.g. the view unmounted) makes the clear a no-op. */
+      proceed?: () => boolean
+    }): Promise<'cleared' | 'stale' | 'replaced' | 'skipped'> {
       return exclusive(async () => {
+        if (args.proceed && !args.proceed()) return 'skipped'
         if (epoch !== args.readEpoch) return 'stale'
         const current = await args.readSession()
         if (current?.playerId !== args.savedPlayerId) return 'replaced'
@@ -84,10 +91,12 @@ export async function resolveSessionAgainstRoster<S extends { playerId: string }
     readRoster: () => Promise<R | null>
     rosterHasPlayer: (roster: R, playerId: string) => boolean
     clear: () => Promise<void>
+    /** False (e.g. unmounted) makes any clear a no-op. */
+    proceed?: () => boolean
     maxAttempts?: number
   }
 ): Promise<{ session: S | null; roster: R } | null> {
-  const { readSession, readRoster, rosterHasPlayer, clear, maxAttempts = 3 } = args
+  const { readSession, readRoster, rosterHasPlayer, clear, proceed, maxAttempts = 3 } = args
   let lastRoster: R | null = null
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const readEpoch = coordinator.epoch()
@@ -103,11 +112,45 @@ export async function resolveSessionAgainstRoster<S extends { playerId: string }
       savedPlayerId: session.playerId,
       readSession,
       clear,
+      proceed,
     })
     if (outcome === 'cleared') return { session: null, roster }
-    if (outcome === 'replaced') return { session: await readSession(), roster }
+    if (outcome === 'replaced' || outcome === 'skipped') return { session: await readSession(), roster }
     // 'stale': the epoch moved before the check; loop and read again
   }
   // Exhausted: keep whatever is stored now, never clear on an outdated roster.
   return { session: await readSession(), roster: lastRoster as R }
+}
+
+// One coordinator per room, shared by every view instance and every session writer in the process, so
+// an old (unmounting) view's pending clear and a new view's or a join flow's save serialize against
+// each other. Entries are kept (a few bytes each) and only evicted when idle and the registry is
+// large; an evicted room's epoch becomes the floor for later coordinators so epochs never go
+// backwards and an in-flight comparison cannot be fooled by a recreated coordinator.
+const MAX_ROOMS = 64
+const registry = new Map<string, SessionCoordinator>()
+let epochFloor = 0
+
+export function getSessionCoordinator(room: string): SessionCoordinator {
+  const key = room.toUpperCase()
+  let coordinator = registry.get(key)
+  if (!coordinator) {
+    if (registry.size >= MAX_ROOMS) {
+      for (const [k, c] of registry) {
+        if (!c.idle()) continue
+        epochFloor = Math.max(epochFloor, c.epoch())
+        registry.delete(k)
+        if (registry.size < MAX_ROOMS) break
+      }
+    }
+    coordinator = createSessionCoordinator(epochFloor)
+    registry.set(key, coordinator)
+  }
+  return coordinator
+}
+
+/** Test helper: forget every room's coordinator. */
+export function resetSessionCoordinatorsForTests(): void {
+  registry.clear()
+  epochFloor = 0
 }

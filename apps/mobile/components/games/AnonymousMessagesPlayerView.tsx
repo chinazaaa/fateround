@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRosterReadGuard, createSerialLoader } from '@fateround/shared/player-realtime'
-import { createSessionCoordinator, resolveSessionAgainstRoster } from '@fateround/shared/session-coordinator'
+import { getSessionCoordinator, resolveSessionAgainstRoster } from '@fateround/shared/session-coordinator'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
 import { useAppActive, useOnAppResume } from '@/hooks/useAppActive'
@@ -45,7 +45,7 @@ import { autoJoinGame } from '@/lib/api'
 import { leaveGame, postAnonymousGif, postAnonymousMessage, postExpireSession, postPlayerReady } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { clearPlayerSession, deletePlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supabase-selects'
 import type { Theme } from '@/constants/theme'
@@ -158,9 +158,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return messageLoader.stop
   }, [messageLoader])
 
-  // Serializes every save/clear of this device's saved session with the roster check that may drop it
-  // (see createSessionCoordinator): a stale roster can never delete a session join() just saved.
-  const [sessionCoordinator] = useState(createSessionCoordinator)
+  // The room's shared coordinator: the same instance for every view and every session writer of this
+  // room (setPlayerSession/clearPlayerSession serialize through it), so an old unmounting view's pending
+  // clear cannot delete a session a new view or the join flow saved.
+  const sessionCoordinator = getSessionCoordinator(code)
 
   const load = useCallback(async () => {
     const supabase = getSupabase()
@@ -177,7 +178,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       // A missing game row has an empty roster, which says nothing about the saved player.
       rosterHasPlayer: (snap, id) =>
         !snap.gameRes.data || ((snap.playersRes.data as Player[]) ?? []).some((p) => p.id === id),
-      clear: () => clearPlayerSession(code),
+      // Already inside the coordinator's exclusive step: use the raw delete.
+      clear: () => deletePlayerSession(code),
+      // An unmounted view must not start a clear.
+      proceed: () => alive.current,
     })
     if (!alive.current) return true // unmounted while reading: nothing left to update
     if (!resolved) return false
@@ -300,8 +304,13 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       const existing = await getPlayerSession(code)
       const data = await autoJoinGame(code, existing?.resumeToken)
-      await sessionCoordinator.mutate(() =>
-        setPlayerSession(code, data.playerId, data.playerName, data.playerGender ?? 'both', data.resumeToken ?? null)
+      // setPlayerSession serializes through the room's coordinator itself.
+      await setPlayerSession(
+        code,
+        data.playerId,
+        data.playerName,
+        data.playerGender ?? 'both',
+        data.resumeToken ?? null
       )
       setMyPlayerId(data.playerId)
       setCanChat(data.canChat !== false)
@@ -325,7 +334,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
    * picks the right destination for the game's current status.
    */
   const dropStaleSession = async () => {
-    await sessionCoordinator.mutate(() => clearPlayerSession(code))
+    await clearPlayerSession(code)
     setMyPlayerId(null)
     if (game) syncScreen(game, null)
     else setScreen('join')
@@ -405,7 +414,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setLeaving(true)
     try {
       await leaveGame(code, myPlayerId, session.resumeToken)
-      await sessionCoordinator.mutate(() => clearPlayerSession(code))
+      await clearPlayerSession(code)
       setMyPlayerId(null)
       setScreen('join')
     } catch (err) {

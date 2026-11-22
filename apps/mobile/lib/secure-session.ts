@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store'
 import type { PlayerGender } from '@fateround/shared'
+import { getSessionCoordinator } from '@fateround/shared/session-coordinator'
 
 const playerKey = (gameCode: string) => `kmk_player_${gameCode.toUpperCase()}`
 const hostKey = (gameCode: string) => `game_host_${gameCode.toUpperCase()}`
@@ -87,7 +88,25 @@ export async function getPlayerSession(gameCode: string): Promise<PlayerSession 
   }
 }
 
-export async function setPlayerSession(
+/**
+ * EVERY player-session save and clear goes through the room's shared coordinator (see
+ * session-coordinator.ts): one serialized queue per room for all views and flows (join, share, rotate,
+ * reconcile, leave...), so a pending roster-driven clear from an old view can never delete a session a
+ * newer writer saved.
+ */
+export function setPlayerSession(
+  gameCode: string,
+  playerId: string,
+  playerName: string,
+  playerGender: PlayerGender,
+  resumeToken?: string | null
+): Promise<void> {
+  return getSessionCoordinator(gameCode).mutate(() =>
+    writePlayerSession(gameCode, playerId, playerName, playerGender, resumeToken)
+  )
+}
+
+async function writePlayerSession(
   gameCode: string,
   playerId: string,
   playerName: string,
@@ -107,7 +126,16 @@ export async function setPlayerSession(
   await writePlayerCodesManifest(next)
 }
 
-export async function clearPlayerSession(gameCode: string): Promise<void> {
+export function clearPlayerSession(gameCode: string): Promise<void> {
+  return getSessionCoordinator(gameCode).mutate(() => deletePlayerSession(gameCode))
+}
+
+/**
+ * The raw delete, WITHOUT the coordinator. Only for use as the `clear` callback of the coordinator's own
+ * `clearIfStillMissing` (already inside the exclusive step; calling `clearPlayerSession` there would
+ * wait on itself). Everything else must call `clearPlayerSession`.
+ */
+export async function deletePlayerSession(gameCode: string): Promise<void> {
   const code = gameCode.toUpperCase()
   await SecureStore.deleteItemAsync(playerKey(code))
   const codes = await readPlayerCodesManifest()
