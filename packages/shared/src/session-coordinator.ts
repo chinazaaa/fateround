@@ -15,25 +15,21 @@
  *   and clears only if it is still the player that was found missing, and no save can interleave
  *   because saves are serialized with it.
  */
-export function createSessionCoordinator(startEpoch = 0) {
-  let epoch = startEpoch
-  let pending = 0
+export function createSessionCoordinator() {
+  let epoch = 0
   let tail: Promise<unknown> = Promise.resolve()
 
   function exclusive<T>(fn: () => Promise<T>): Promise<T> {
-    pending += 1
     const run = tail.then(fn, fn)
-    const settled = () => {
-      pending -= 1
-    }
-    tail = run.then(settled, settled)
+    tail = run.then(
+      () => undefined,
+      () => undefined
+    )
     return run
   }
 
   return {
     epoch: () => epoch,
-    /** True when no save, clear or check is queued or running. */
-    idle: () => pending === 0,
     /** Run a session save or clear. Serialized with every other mutation and conditional clear. */
     mutate<T>(fn: () => Promise<T>): Promise<T> {
       return exclusive(async () => {
@@ -122,28 +118,26 @@ export async function resolveSessionAgainstRoster<S extends { playerId: string }
   return { session: await readSession(), roster: lastRoster as R }
 }
 
-// One coordinator per room, shared by every view instance and every session writer in the process, so
-// an old (unmounting) view's pending clear and a new view's or a join flow's save serialize against
-// each other. Entries are kept (a few bytes each) and only evicted when idle and the registry is
-// large; an evicted room's epoch becomes the floor for later coordinators so epochs never go
-// backwards and an in-flight comparison cannot be fooled by a recreated coordinator.
-const MAX_ROOMS = 64
+// One coordinator per room for the whole process lifetime, shared by every view instance and every
+// session writer, so an old (unmounting) view's pending clear and a new view's or a join flow's save
+// serialize against each other.
+//
+// Deliberately NO eviction: a roster read (resolveSessionAgainstRoster) holds its coordinator across
+// awaits without being "pending" in the queue, so an idle-based eviction could drop a coordinator that a
+// load still holds; a later save would then create a SECOND coordinator for the same room, and the
+// old one's clear could delete the new session. The map only ever gains an entry for a room the user
+// actually opened or joined on this device (a handful per session, a few bytes each), so there is no
+// meaningful leak to trade that safety for.
+//
+// The key mirrors the storage key (`kmk_player_<CODE>` uses `gameCode.toUpperCase()`): exactly
+// toUpperCase, no trimming, so one coordinator corresponds to exactly one stored session.
 const registry = new Map<string, SessionCoordinator>()
-let epochFloor = 0
 
 export function getSessionCoordinator(room: string): SessionCoordinator {
   const key = room.toUpperCase()
   let coordinator = registry.get(key)
   if (!coordinator) {
-    if (registry.size >= MAX_ROOMS) {
-      for (const [k, c] of registry) {
-        if (!c.idle()) continue
-        epochFloor = Math.max(epochFloor, c.epoch())
-        registry.delete(k)
-        if (registry.size < MAX_ROOMS) break
-      }
-    }
-    coordinator = createSessionCoordinator(epochFloor)
+    coordinator = createSessionCoordinator()
     registry.set(key, coordinator)
   }
   return coordinator
@@ -152,5 +146,4 @@ export function getSessionCoordinator(room: string): SessionCoordinator {
 /** Test helper: forget every room's coordinator. */
 export function resetSessionCoordinatorsForTests(): void {
   registry.clear()
-  epochFloor = 0
 }

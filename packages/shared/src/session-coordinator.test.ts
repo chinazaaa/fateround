@@ -268,12 +268,41 @@ describe('per-room coordinator registry', () => {
     expect(order).toEqual(['clear-start', 'clear-end', 'save'])
   })
 
-  it('evicting idle rooms keeps epochs monotonic for later coordinators', async () => {
-    const first = getSessionCoordinator('R0')
-    await first.mutate(async () => {})
-    const epochBefore = first.epoch()
-    for (let i = 1; i <= 70; i++) await getSessionCoordinator(`R${i}`).mutate(async () => {})
-    const again = getSessionCoordinator('R0') // evicted and recreated
-    expect(again.epoch()).toBeGreaterThanOrEqual(epochBefore)
+  it('returns the SAME coordinator across a long-running roster read and many other rooms being created', async () => {
+    const room = fakeStore('ABCD')
+    room.store.session = { playerId: 'ghost' }
+    let releaseRead!: (r: string[]) => void
+    const gateRead = new Promise<string[]>((r) => (releaseRead = r))
+    let releaseClear!: () => void
+    const gateClear = new Promise<void>((r) => (releaseClear = r))
+    let clearStarted = false
+    const held = getSessionCoordinator('ABCD') // the load holds this across its awaits
+    const view = resolveSessionAgainstRoster(held, {
+      readSession: room.read,
+      readRoster: () => gateRead, // slow roster read: nothing is queued on the coordinator meanwhile
+      rosterHasPlayer: has,
+      clear: async () => {
+        clearStarted = true
+        await gateClear
+        await room.rawDelete()
+      },
+    })
+    // Many other rooms are created while the read is in flight. (An idle-based eviction would drop
+    // `held` here, and a later writer would get a SECOND coordinator for the same room.)
+    for (let i = 0; i < 200; i++) getSessionCoordinator(`OTHER${i}`)
+    expect(getSessionCoordinator('ABCD')).toBe(held)
+    releaseRead(['other']) // roster lacks 'ghost': the view starts its clear...
+    await vi.waitFor(() => expect(clearStarted).toBe(true))
+    const save = room.write('P-new') // ...and a new writer saves while that clear is still running
+    releaseClear()
+    await view
+    await save
+    // Both went through the same instance, so the save ran after the clear and survived.
+    expect(room.store.session).toEqual({ playerId: 'P-new' })
+  })
+
+  it('one coordinator per stored session: toUpperCase only, matching the storage key', () => {
+    expect(getSessionCoordinator('abcd')).toBe(getSessionCoordinator('ABCD'))
+    expect(getSessionCoordinator('ABCD ')).not.toBe(getSessionCoordinator('ABCD')) // distinct storage keys stay distinct
   })
 })
