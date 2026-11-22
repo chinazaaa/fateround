@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { AnonymousMessage, Player } from '@/types'
 import { POLL_INTERVALS, ROOM_HEARTBEAT_MS, supabasePollOk, usePolling } from '@/hooks/usePolling'
-import { createLatestResultApplier } from '@/lib/player-realtime'
+import { createLatestResultApplier, createRosterReadGuard } from '@/lib/player-realtime'
 
 type RawAnonymousMessage = Omit<AnonymousMessage, 'player_name'> & {
   players?: { name: string } | { name: string }[] | null
@@ -66,22 +66,31 @@ export function useAnonymousMessages(
   const hostErrorRef = useRef(0)
   // Player-side reads overlap (poll, realtime event, mount); only the newest response may replace the feed.
   const [applyLatestMessages] = useState(createLatestResultApplier)
+  // Epoch of realtime merges and local removals. A snapshot read that started before one of them may
+  // predate it (a message committed after the read began, or one removed since), so it is re-fetched
+  // instead of replacing the feed.
+  const [feedGuard] = useState(createRosterReadGuard)
 
   const nameById = useCallback(() => new Map(players.map((p) => [p.id, p.name])), [players])
 
   const mergeMessage = useCallback(
     (message: RawAnonymousMessage) => {
       const normalized = normalizeMessage(message, nameById())
+      feedGuard.noteEvent()
       setMessages((prev) => (prev.some((m) => m.id === normalized.id) ? prev : [...prev, normalized]))
     },
-    [nameById]
+    [feedGuard, nameById]
   )
 
-  const removeMessage = useCallback((messageId: string) => {
-    // Drop host responses requested before this removal so they cannot restore the message.
-    hostAppliedRef.current = hostRequestRef.current
-    setMessages((prev) => prev.filter((m) => m.id !== messageId))
-  }, [])
+  const removeMessage = useCallback(
+    (messageId: string) => {
+      // Drop host responses requested before this removal so they cannot restore the message.
+      hostAppliedRef.current = hostRequestRef.current
+      feedGuard.noteEvent()
+      setMessages((prev) => prev.filter((m) => m.id !== messageId))
+    },
+    [feedGuard]
+  )
 
   const loadMessages = useCallback(async (): Promise<boolean> => {
     if (hostToken) {
@@ -117,23 +126,24 @@ export function useAnonymousMessages(
       }
     }
     const outcome = await applyLatestMessages(
-      async () => {
-        const res = await supabase
-          .from('anonymous_messages')
-          .select(
-            'id, game_id, player_id, text, created_at, reply_to_id, reply_to_text, message_type, media_url, players(name)'
-          )
-          .eq('game_id', gameCode)
-          // Descending + limit gives the NEWEST N rows; reversed below so the feed still
-          // renders oldest-first. Ascending + limit would return the OLDEST N and new
-          // messages would never appear.
-          .order('created_at', { ascending: false })
-          // Secondary order breaks created_at ties at the window boundary so membership
-          // in the N-row window is deterministic across polls.
-          .order('id', { ascending: false })
-          .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
-        return supabasePollOk(res) ? (res.data ?? []) : null
-      },
+      () =>
+        feedGuard.read(async () => {
+          const res = await supabase
+            .from('anonymous_messages')
+            .select(
+              'id, game_id, player_id, text, created_at, reply_to_id, reply_to_text, message_type, media_url, players(name)'
+            )
+            .eq('game_id', gameCode)
+            // Descending + limit gives the NEWEST N rows; reversed below so the feed still
+            // renders oldest-first. Ascending + limit would return the OLDEST N and new
+            // messages would never appear.
+            .order('created_at', { ascending: false })
+            // Secondary order breaks created_at ties at the window boundary so membership
+            // in the N-row window is deterministic across polls.
+            .order('id', { ascending: false })
+            .limit(ANONYMOUS_MESSAGES_HISTORY_LIMIT)
+          return supabasePollOk(res) ? (res.data ?? []) : null
+        }),
       (rows) => {
         const names = nameById()
         setMessages(rows.map((row) => normalizeMessage(row as RawAnonymousMessage, names)).reverse())
@@ -148,7 +158,7 @@ export function useAnonymousMessages(
       return false
     }
     return true
-  }, [applyLatestMessages, gameCode, hostToken, nameById])
+  }, [applyLatestMessages, feedGuard, gameCode, hostToken, nameById])
 
   // Host inbox: when the board closes the server clears it. Drop the cached messages and invalidate
   // reads still in flight from the closed period so only a read after reopening can fill the feed.

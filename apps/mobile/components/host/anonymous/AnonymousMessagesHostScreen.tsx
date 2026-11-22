@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import type { AnonymousMessage, Game, Player } from '@fateround/shared'
-import { createLatestResultApplier } from '@fateround/shared/player-realtime'
+import { createLatestResultApplier, createRosterReadGuard } from '@fateround/shared/player-realtime'
 import {
   anonymousSessionSecondsLeft,
   banSecondsLeft,
@@ -70,20 +70,23 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
 
   // Message reads overlap (mount, realtime events); only the newest response may replace the feed.
   const [applyLatestMessages] = useState(createLatestResultApplier)
+  // A delete the host just made must not be undone by a read that started before it.
+  const [feedGuard] = useState(createRosterReadGuard)
 
   const loadMessages = useCallback(async () => {
     await applyLatestMessages(
-      async () => {
-        const res = await getSupabase()
-          .from('anonymous_messages')
-          .select(ANONYMOUS_MESSAGE_SELECT)
-          .eq('game_id', code)
-          .order('created_at', { ascending: true })
-        return res.error ? null : ((res.data as AnonymousMessage[]) ?? [])
-      },
+      () =>
+        feedGuard.read(async () => {
+          const res = await getSupabase()
+            .from('anonymous_messages')
+            .select(ANONYMOUS_MESSAGE_SELECT)
+            .eq('game_id', code)
+            .order('created_at', { ascending: true })
+          return res.error ? null : ((res.data as AnonymousMessage[]) ?? [])
+        }),
       (rows) => setMessages(rows.map((row) => ({ ...row, player_name: nameById.get(row.player_id) ?? 'Unknown' })))
     )
-  }, [applyLatestMessages, code, nameById])
+  }, [applyLatestMessages, code, feedGuard, nameById])
 
   const loadBans = useCallback(async () => {
     const res = await getSupabase().from('anonymous_room_bans').select(ANONYMOUS_ROOM_BAN_SELECT).eq('game_id', code)
@@ -138,6 +141,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
     setRemovingMessageId(messageId)
     try {
       await deleteAnonymousMessage(code, messageId, hostToken)
+      feedGuard.noteEvent()
       setMessages((prev) => prev.filter((m) => m.id !== messageId))
       success('Message removed')
     } catch (err) {

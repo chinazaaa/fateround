@@ -120,12 +120,23 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
   // Plain message read. Overlap is prevented by `messageLoader` below (one read at a time), so an older
   // response can never replace a newer feed.
+  // False once the view unmounted: a read already running when the loader was stopped (or the room
+  // changed, which remounts via the router key) must not write into state it no longer owns.
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
+
   const loadMessages = useCallback(async (): Promise<boolean> => {
     const res = await getSupabase()
       .from('anonymous_messages')
       .select(ANONYMOUS_MESSAGE_SELECT)
       .eq('game_id', code)
       .order('created_at', { ascending: true })
+    if (!alive.current) return true
     if (res.error) return false
     const nameById = new Map(playersRef.current.map((p) => [p.id, p.name]))
     setMessages(
@@ -165,6 +176,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       ])
       return g.error || p.error ? null : { gameRes: g, playersRes: p }
     })
+    if (!alive.current) return true // unmounted while reading: nothing left to update
     if (!snapshot) return false
     const { gameRes, playersRes } = snapshot
     if (!gameRes.data) {
