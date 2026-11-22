@@ -200,6 +200,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           const roundFinished = roundData.status === 'finished'
           setRoundId(roundData.id as string)
           setRoundStartedAt(roundData.started_at as string)
+          flipTracker.enterRound(roundData.id as string)
 
           const [subRes, progRes] = await Promise.all([
             supabase
@@ -252,7 +253,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             const sameRound = boardRoundIdRef.current === roundData.id
             const selecting = sameRound && (boardRef.current?.firstFlipped != null || boardRef.current?.locked === true)
             const snapshotMayBeStale =
-              sameRound && (selecting || flipTracker.inFlight() || flipTracker.epoch() !== flipEpochAtStart)
+              sameRound &&
+              (selecting || flipTracker.inFlight(roundData.id as string) || flipTracker.epoch() !== flipEpochAtStart)
             if (snapshotMayBeStale) {
               // Mid-selection there may be no flip to wait for, so do not read again in a loop: the next flip
               // to settle will. Otherwise read again as soon as nothing is in flight.
@@ -597,7 +599,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         }
 
         // Submit to server (fire-and-forget for responsiveness; UI is optimistic).
-        flipTracker.begin()
+        // Scoped to the round of the board the flip was made on and settled by this very request.
+        const flipToken = flipTracker.begin(boardRoundIdRef.current ?? roundId)
         let flipFailed = false
         void fetch('/api/matching-pairs/flip', {
           method: 'POST',
@@ -616,6 +619,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               toastError(d.error ?? 'Submit error')
             } else {
               const d = await res.json()
+              // A late answer for a round the board has moved on from must not write its score into this one.
+              if (boardRoundIdRef.current !== flipToken.round) return
               if (d.finishRank) setFinishRank(d.finishRank)
               if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
               if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
@@ -633,6 +638,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                   .select(MEMORY_MATCH_SUBMISSION_SELECT)
                   .eq('round_id', roundId)
                   .order('submitted_at', { ascending: true })
+                if (boardRoundIdRef.current !== flipToken.round) return
                 const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
                 setAllSubmissions(nextSubmissions)
                 setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
@@ -642,7 +648,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .catch(() => {
             flipFailed = true
           })
-          .finally(() => flipTracker.end(flipFailed))
+          .finally(() => flipTracker.end(flipToken, flipFailed))
       } else {
         // Mismatch — flip back after delay.
         showFlash('miss')
@@ -660,7 +666,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         }, MATCHING_PAIRS_FLIP_BACK_MS)
 
         // Submit miss to server.
-        flipTracker.begin()
+        // Scoped to the round of the board the flip was made on and settled by this very request.
+        const flipToken = flipTracker.begin(boardRoundIdRef.current ?? roundId)
         let flipFailed = false
         void fetch('/api/matching-pairs/flip', {
           method: 'POST',
@@ -679,6 +686,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               toastError(d.error ?? 'Submit error')
             } else {
               const d = await res.json()
+              if (boardRoundIdRef.current !== flipToken.round) return
               if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
               if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
               // Refresh submissions to keep local state in sync
@@ -687,6 +695,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 .select(MEMORY_MATCH_SUBMISSION_SELECT)
                 .eq('round_id', roundId)
                 .order('submitted_at', { ascending: true })
+              if (boardRoundIdRef.current !== flipToken.round) return
               const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
               setAllSubmissions(nextSubmissions)
               setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
@@ -695,7 +704,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .catch(() => {
             flipFailed = true
           })
-          .finally(() => flipTracker.end(flipFailed))
+          .finally(() => flipTracker.end(flipToken, flipFailed))
       }
     },
     [

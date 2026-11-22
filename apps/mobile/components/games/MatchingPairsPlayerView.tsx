@@ -192,8 +192,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       const cardOrder = getPlayerBoard(parsedMeta, playerId)
       if (!cardOrder) {
         // No board for this round yet: do not keep showing (or submitting from) the previous round's board.
-        if (flipTracker.boardRound() !== null && flipTracker.boardRound() !== roundData.id) {
-          flipTracker.clearBoardRound()
+        const ownerRound = flipTracker.boardRound()
+        if (ownerRound !== null && ownerRound !== roundData.id) {
+          flipTracker.clearBoardRound(roundData.id)
           cancelFlipBack()
           setBoard(null)
         }
@@ -257,14 +258,16 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
    */
   const postFlip = (pairIndex: number, isMatch: boolean) => {
     if (!bootstrap.myResumeToken) return
-    flipTracker.begin()
+    // Scoped to the round whose board this flip was made on, and settled by this very request, so a request
+    // that outlives its round cannot hold up or decrement the next round's count.
+    const flipToken = flipTracker.begin(flipTracker.boardRound() ?? undefined)
     let flipFailed = false
     void postMatchingPairsFlip(bootstrap.code, bootstrap.myResumeToken, pairIndex, isMatch)
       .catch(() => {
         flipFailed = true
       })
       .then(() => {
-        flipTracker.end(flipFailed)
+        flipTracker.end(flipToken, flipFailed)
         // A clean accept still refreshes (points, progress); the tracker's own resync covers failures.
         if (!flipFailed) void Promise.resolve(bootstrap.load()).catch(() => {})
       })
