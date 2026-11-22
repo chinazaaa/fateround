@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRosterReadGuard, createSerialLoader } from '@fateround/shared/player-realtime'
+import { createSessionCoordinator, resolveSessionAgainstRoster } from '@fateround/shared/session-coordinator'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
 import { useAppActive, useOnAppResume } from '@/hooks/useAppActive'
@@ -157,27 +158,30 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return messageLoader.stop
   }, [messageLoader])
 
-  // Bumped whenever this device changes its own saved session (join, leave, stale drop), so a load
-  // that captured the session earlier can tell it is outdated and re-read it before applying.
-  const sessionEpoch = useRef(0)
+  // Serializes every save/clear of this device's saved session with the roster check that may drop it
+  // (see createSessionCoordinator): a stale roster can never delete a session join() just saved.
+  const [sessionCoordinator] = useState(createSessionCoordinator)
 
   const load = useCallback(async () => {
     const supabase = getSupabase()
-    const epochAtRead = sessionEpoch.current
-    // Read the saved session BEFORE the roster. join() inserts the player and only then saves the
-    // session, so a session read first can only name a player already in the roster read after it
-    // (unless that player was removed). Reading it after the roster could pair an old roster with a
-    // just-saved session.
-    const savedSession = await getPlayerSession(code)
-    const snapshot = await rosterGuard.read(async () => {
-      const [g, p] = await Promise.all([
-        supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
-        supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
-      ])
-      return g.error || p.error ? null : { gameRes: g, playersRes: p }
+    const resolved = await resolveSessionAgainstRoster(sessionCoordinator, {
+      readSession: () => getPlayerSession(code),
+      readRoster: () =>
+        rosterGuard.read(async () => {
+          const [g, p] = await Promise.all([
+            supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
+            supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
+          ])
+          return g.error || p.error ? null : { gameRes: g, playersRes: p }
+        }),
+      // A missing game row has an empty roster, which says nothing about the saved player.
+      rosterHasPlayer: (snap, id) =>
+        !snap.gameRes.data || ((snap.playersRes.data as Player[]) ?? []).some((p) => p.id === id),
+      clear: () => clearPlayerSession(code),
     })
     if (!alive.current) return true // unmounted while reading: nothing left to update
-    if (!snapshot) return false
+    if (!resolved) return false
+    const { session, roster: snapshot } = resolved
     const { gameRes, playersRes } = snapshot
     if (!gameRes.data) {
       setScreen('not_found')
@@ -188,32 +192,6 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setGame(gameData)
     playersRef.current = playerRows
     setPlayers(playerRows)
-    let session = savedSession
-    let seenEpoch = epochAtRead
-    // A local join/leave that finished while this load was in flight makes the captured session
-    // outdated: re-read until no local session change happened during the last read. The final check
-    // is synchronous with the state writes below, so nothing can slip in between.
-    const staleSession = () => sessionEpoch.current !== seenEpoch
-    while (staleSession()) {
-      seenEpoch = sessionEpoch.current
-      session = await getPlayerSession(code)
-    }
-    if (session && !playerRows.some((p) => p.id === session!.playerId)) {
-      // A successful roster read lacks the saved player: the host removed them. Drop the stale
-      // session (so resume/reconnect stop reusing it) unless join()/leave replaced it meanwhile.
-      const current = await getPlayerSession(code)
-      if (current?.playerId === session.playerId) {
-        await clearPlayerSession(code)
-        session = null
-      } else {
-        session = current
-      }
-    }
-    while (staleSession()) {
-      // the awaits above overlapped a local join/leave
-      seenEpoch = sessionEpoch.current
-      session = await getPlayerSession(code)
-    }
     const playerId = session?.playerId ?? null
     if (session) setMyPlayerId(session.playerId)
     else setMyPlayerId(null)
@@ -229,7 +207,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     }
     // The message read's outcome is the load's: a current failure must make the loader retry.
     return messageLoader.request({ fresh: true, retry: false })
-  }, [code, messageLoader, rosterGuard, syncScreen])
+  }, [code, messageLoader, rosterGuard, sessionCoordinator, syncScreen])
 
   // Single owner of loading: the first load and every event/resume/action-triggered refresh go
   // through one serial loader, so loads never overlap (a stale write cannot land after a newer one),
@@ -322,14 +300,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       const existing = await getPlayerSession(code)
       const data = await autoJoinGame(code, existing?.resumeToken)
-      await setPlayerSession(
-        code,
-        data.playerId,
-        data.playerName,
-        data.playerGender ?? 'both',
-        data.resumeToken ?? null
+      await sessionCoordinator.mutate(() =>
+        setPlayerSession(code, data.playerId, data.playerName, data.playerGender ?? 'both', data.resumeToken ?? null)
       )
-      sessionEpoch.current += 1
       setMyPlayerId(data.playerId)
       setCanChat(data.canChat !== false)
       // Through the serial loader (bounded retry), and awaited so the busy flag spans the refresh.
@@ -352,8 +325,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
    * picks the right destination for the game's current status.
    */
   const dropStaleSession = async () => {
-    await clearPlayerSession(code)
-    sessionEpoch.current += 1
+    await sessionCoordinator.mutate(() => clearPlayerSession(code))
     setMyPlayerId(null)
     if (game) syncScreen(game, null)
     else setScreen('join')
@@ -433,8 +405,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setLeaving(true)
     try {
       await leaveGame(code, myPlayerId, session.resumeToken)
-      await clearPlayerSession(code)
-      sessionEpoch.current += 1
+      await sessionCoordinator.mutate(() => clearPlayerSession(code))
       setMyPlayerId(null)
       setScreen('join')
     } catch (err) {
