@@ -33,8 +33,44 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
   }
 
   let epoch = 0
+  let boardRound: string | null = null
 
   return {
+    /** Round whose board the view currently shows (set by `evaluateSnapshot` when it says to apply). */
+    boardRound: () => boardRound,
+    /**
+     * Decide what to do with a snapshot of `roundId`. A selection, flip-back or unanswered flip belongs to
+     * the round that owns the board, so it is only preserved when the snapshot is for that same round. For
+     * another round the snapshot is applied outright ('new-round': the caller must also cancel pending
+     * flip-back work and start that round's memorize preview) and stale deferred work is dropped.
+     * Otherwise: 'apply', 'keep-dirty' (selecting; read again when it ends) or 'keep-resync'.
+     */
+    evaluateSnapshot(args: {
+      roundId: string
+      epochAtStart: number
+      selecting: boolean
+    }): 'apply' | 'new-round' | 'keep-dirty' | 'keep-resync' {
+      if (boardRound !== null && boardRound !== args.roundId) {
+        boardRound = args.roundId
+        deferred = false
+        return 'new-round'
+      }
+      if (pending > 0 || epoch !== args.epochAtStart || args.selecting) {
+        if (args.selecting) deferred = true
+        else {
+          failed = true
+          maybeResync()
+        }
+        return args.selecting ? 'keep-dirty' : 'keep-resync'
+      }
+      boardRound = args.roundId
+      return 'apply'
+    },
+    /** The view dropped its board (e.g. the new round has none yet): nothing is owned any more. */
+    clearBoardRound() {
+      boardRound = null
+      deferred = false
+    },
     begin() {
       pending += 1
       epoch += 1

@@ -95,6 +95,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [memorizeCountdown, setMemorizeCountdown] = useState<number | null>(null)
   const memorizeRoundRef = useRef<string | null>(null)
   const flipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelFlipBack = () => {
+    if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
+    flipTimeoutRef.current = null
+  }
   // Latest board for the snapshot guard in afterResolve (a closure over `board` would be stale).
   const boardRef = useRef<BoardState | null>(null)
   boardRef.current = board
@@ -186,7 +190,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       setFinishRank(myProg?.finish_rank ?? null)
 
       const cardOrder = getPlayerBoard(parsedMeta, playerId)
-      if (!cardOrder) return
+      if (!cardOrder) {
+        // No board for this round yet: do not keep showing (or submitting from) the previous round's board.
+        if (flipTracker.boardRound() !== null && flipTracker.boardRound() !== roundData.id) {
+          flipTracker.clearBoardRound()
+          cancelFlipBack()
+          setBoard(null)
+        }
+        return
+      }
 
       const cardStates: CardState[] = new Array(cardOrder.length).fill('hidden')
       const matchedPairs = new Set(mySubs.filter((s) => s.is_match).map((s) => s.pair_index))
@@ -196,13 +208,18 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
       // This snapshot may predate a flip the player already sees (one still unanswered, or started while the
       // read ran), or would drop a card selection / flip-back in progress. Keep the optimistic board, streak
-      // and points then, and read again once nothing is in the way.
+      // and points then, and read again once nothing is in the way. That only holds within the round that
+      // owns the board: a selection from a previous round must not block the new round's board.
       const cur = boardRef.current
-      const selecting = !!cur && (cur.firstFlipped !== null || cur.locked)
-      if (flipTracker.inFlight() || flipTracker.epoch() !== flipEpochAtStart || selecting) {
-        if (selecting) flipTracker.markDirty()
-        else flipTracker.requestResync()
-        return
+      const decision = flipTracker.evaluateSnapshot({
+        roundId: roundData.id,
+        epochAtStart: flipEpochAtStart,
+        selecting: !!cur && (cur.firstFlipped !== null || cur.locked),
+      })
+      if (decision === 'keep-dirty' || decision === 'keep-resync') return
+      if (decision === 'new-round') {
+        cancelFlipBack()
+        setMemorizeCountdown(null)
       }
 
       setBoard({ cardOrder, cardStates, firstFlipped: null, locked: false })
