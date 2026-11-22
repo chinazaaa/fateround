@@ -58,6 +58,9 @@ export function createSessionCoordinator() {
         if (args.proceed && !args.proceed()) return 'skipped'
         if (epoch !== args.readEpoch) return 'stale'
         const current = await args.readSession()
+        // The caller may have gone away (unmounted) while the read was in flight: re-check right before
+        // the irreversible clear. (Saves are serialized with this step, so the epoch cannot move here.)
+        if (args.proceed && !args.proceed()) return 'skipped'
         if (current?.playerId !== args.savedPlayerId) return 'replaced'
         epoch += 1
         try {
@@ -76,7 +79,9 @@ export type SessionCoordinator = ReturnType<typeof createSessionCoordinator>
 /**
  * Reads the saved session and the roster, and drops the session only if the SAME saved player is
  * absent from a roster read entirely after the session was last set. Returns null when the roster
- * read failed. Bounded: after `maxAttempts` overtaken reads it returns the freshest session without
+ * read failed. The result carries the `epoch` it was validated against: the caller re-checks
+ * `coordinator.epoch() === result.epoch` synchronously before applying it, so a save/leave that landed
+ * after validation is never overwritten by this (now outdated) result. Bounded: after `maxAttempts` overtaken reads it returns the freshest session without
  * clearing anything.
  */
 export async function resolveSessionAgainstRoster<S extends { playerId: string }, R>(
@@ -91,7 +96,7 @@ export async function resolveSessionAgainstRoster<S extends { playerId: string }
     proceed?: () => boolean
     maxAttempts?: number
   }
-): Promise<{ session: S | null; roster: R } | null> {
+): Promise<{ session: S | null; roster: R; epoch: number } | null> {
   const { readSession, readRoster, rosterHasPlayer, clear, proceed, maxAttempts = 3 } = args
   let lastRoster: R | null = null
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -102,7 +107,7 @@ export async function resolveSessionAgainstRoster<S extends { playerId: string }
     if (roster === null) return null
     lastRoster = roster
     if (coordinator.epoch() !== readEpoch) continue // a session change overlapped the read: re-read
-    if (!session || rosterHasPlayer(roster, session.playerId)) return { session, roster }
+    if (!session || rosterHasPlayer(roster, session.playerId)) return { session, roster, epoch: readEpoch }
     const outcome = await coordinator.clearIfStillMissing({
       readEpoch,
       savedPlayerId: session.playerId,
@@ -110,12 +115,16 @@ export async function resolveSessionAgainstRoster<S extends { playerId: string }
       clear,
       proceed,
     })
-    if (outcome === 'cleared') return { session: null, roster }
-    if (outcome === 'replaced' || outcome === 'skipped') return { session: await readSession(), roster }
+    if (outcome === 'cleared') return { session: null, roster, epoch: coordinator.epoch() }
+    if (outcome === 'replaced' || outcome === 'skipped') {
+      const epochAtRead = coordinator.epoch()
+      return { session: await readSession(), roster, epoch: epochAtRead }
+    }
     // 'stale': the epoch moved before the check; loop and read again
   }
   // Exhausted: keep whatever is stored now, never clear on an outdated roster.
-  return { session: await readSession(), roster: lastRoster as R }
+  const epochAtRead = coordinator.epoch()
+  return { session: await readSession(), roster: lastRoster as R, epoch: epochAtRead }
 }
 
 // One coordinator per room for the whole process lifetime, shared by every view instance and every

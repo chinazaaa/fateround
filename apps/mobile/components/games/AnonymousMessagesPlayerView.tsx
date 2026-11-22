@@ -185,6 +185,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     })
     if (!alive.current) return true // unmounted while reading: nothing left to update
     if (!resolved) return false
+    // A local join/leave landed after the session was validated (e.g. Leave finished while this load
+    // held a roster that still contained the player): applying it would resurrect the old state. Report
+    // failure so the loader re-reads instead.
+    if (sessionCoordinator.epoch() !== resolved.epoch) return false
     const { session, roster: snapshot } = resolved
     const { gameRes, playersRes } = snapshot
     if (!gameRes.data) {
@@ -237,7 +241,9 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const appActive = useAppActive()
   useEffect(() => {
     if (!appActive) return
-    const id = setInterval(() => void loader.request({ retry: false }), ROOM_HEARTBEAT_MS)
+    // retry: true — this view has no fallback poll, so a failed heartbeat (room, roster or message read)
+    // must retry with bounded backoff instead of waiting for the next heartbeat.
+    const id = setInterval(() => void loader.request(), ROOM_HEARTBEAT_MS)
     return () => clearInterval(id)
   }, [appActive, loader])
 

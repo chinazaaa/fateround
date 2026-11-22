@@ -35,7 +35,7 @@ describe('resolveSessionAgainstRoster', () => {
     reads[0](['other']) // the old roster arrives without P
     await vi.waitFor(() => expect(reads).toHaveLength(2)) // overtaken: a fresh roster is read
     reads[1](['other', 'P'])
-    await expect(result).resolves.toEqual({ session: { playerId: 'P' }, roster: ['other', 'P'] })
+    await expect(result).resolves.toMatchObject({ session: { playerId: 'P' }, roster: ['other', 'P'] })
     expect(clear).not.toHaveBeenCalled()
     expect(store.session).toEqual({ playerId: 'P' })
   })
@@ -103,7 +103,7 @@ describe('resolveSessionAgainstRoster', () => {
       rosterHasPlayer: has,
       clear,
     })
-    expect(result).toEqual({ session: null, roster: ['other'] })
+    expect(result).toMatchObject({ session: null, roster: ['other'] })
     expect(clear).toHaveBeenCalledTimes(1)
     expect(store.session).toBeNull()
   })
@@ -310,5 +310,63 @@ describe('per-room coordinator registry', () => {
   it('one coordinator per stored session: toUpperCase only, matching the storage key', () => {
     expect(getSessionCoordinator('abcd')).toBe(getSessionCoordinator('ABCD'))
     expect(getSessionCoordinator('ABCD ')).not.toBe(getSessionCoordinator('ABCD')) // distinct storage keys stay distinct
+  })
+})
+
+describe('unmount and epoch rechecks before an irreversible clear', () => {
+  beforeEach(() => resetSessionCoordinatorsForTests())
+
+  it('view unmounts while readSession is in flight and it returns the same player -> skipped, session kept', async () => {
+    const coordinator = createSessionCoordinator()
+    const store = { session: { playerId: 'ghost' } as Session | null }
+    let mounted = true
+    let releaseRead!: () => void
+    const gate = new Promise<void>((r) => (releaseRead = r))
+    let readStarted = false
+    const clear = vi.fn(async () => {
+      store.session = null
+    })
+    const outcome = coordinator.clearIfStillMissing({
+      readEpoch: coordinator.epoch(),
+      savedPlayerId: 'ghost',
+      readSession: async () => {
+        readStarted = true
+        await gate
+        return store.session
+      },
+      clear,
+      proceed: () => mounted,
+    })
+    await vi.waitFor(() => expect(readStarted).toBe(true)) // proceed() already passed once
+    mounted = false // the view unmounts while the stored session is being read
+    releaseRead()
+    await expect(outcome).resolves.toBe('skipped')
+    expect(clear).not.toHaveBeenCalled()
+    expect(store.session).toEqual({ playerId: 'ghost' })
+  })
+
+  it('a result is stamped with the epoch it was validated against', async () => {
+    const coordinator = createSessionCoordinator()
+    const store = { session: { playerId: 'P' } as Session | null }
+    const args = {
+      readSession: async () => store.session,
+      readRoster: async () => ['P'],
+      rosterHasPlayer: has,
+      clear: async () => {
+        store.session = null
+      },
+    }
+    const ok = await resolveSessionAgainstRoster(coordinator, args)
+    expect(ok?.epoch).toBe(coordinator.epoch())
+    // Leave finishes after validation: the stamped epoch no longer matches, so the caller must not apply it.
+    await coordinator.mutate(async () => {
+      store.session = null
+    })
+    expect(coordinator.epoch()).not.toBe(ok?.epoch)
+    // A clear performed by the resolution itself is stamped with the post-clear epoch.
+    store.session = { playerId: 'ghost' }
+    const cleared = await resolveSessionAgainstRoster(coordinator, { ...args, readRoster: async () => ['other'] })
+    expect(cleared?.session).toBeNull()
+    expect(cleared?.epoch).toBe(coordinator.epoch())
   })
 })
