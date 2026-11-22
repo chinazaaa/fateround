@@ -194,3 +194,13 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
     },
   }
 }
+
+/**
+ * True only when every Supabase read of a snapshot succeeded. A failed read comes back as `{ data: null,
+ * error }`; applying it as "no rows" would hide stored matches and reset points and streak. A snapshot with a
+ * failed read must not be applied or committed (`commitRead`): keep the current board and let a later event,
+ * poll or flip settle read again. A SUCCESSFUL empty result is real empty history and is still applied.
+ */
+export function snapshotReadsOk(...results: ReadonlyArray<{ error?: unknown } | null | undefined>): boolean {
+  return results.every((r) => !!r && !r.error)
+}

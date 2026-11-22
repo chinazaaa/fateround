@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createFlipResyncTracker } from './flip-resync'
+import { createFlipResyncTracker, snapshotReadsOk } from './flip-resync'
 
 // Mirrors how apps/mobile MatchingPairsPlayerView.postFlip drives the tracker around a flip request that
 // rejects on a refused / failed response (postMatchingPairsFlip throws on non-OK and on network errors).
@@ -365,5 +365,32 @@ describe('createFlipResyncTracker read tickets', () => {
     t.commitRead(b)
     expect(t.superseded(a)).toBe(true)
     expect(t.superseded(b)).toBe(false)
+  })
+})
+
+describe('snapshotReadsOk', () => {
+  it('rejects a snapshot whose submissions read failed (data null must not become empty history)', () => {
+    expect(snapshotReadsOk({ data: [], error: null }, { data: null, error: null })).toBe(true)
+    expect(snapshotReadsOk({ data: null, error: new Error('boom') }, { data: [], error: null })).toBe(false)
+  })
+
+  it('rejects a snapshot whose progress read failed', () => {
+    expect(snapshotReadsOk({ data: [], error: null }, { data: null, error: { message: 'x' } })).toBe(false)
+  })
+
+  it('accepts successful empty results as real empty history', () => {
+    expect(snapshotReadsOk({ data: [], error: null }, { data: [], error: null })).toBe(true)
+  })
+
+  it('a failed read leaves the tracker uncommitted so a later read still applies and an older one is not superseded', () => {
+    const t = createFlipResyncTracker(async () => {})
+    const failedRead = t.startRead()
+    const failedOk = snapshotReadsOk({ data: null, error: new Error('x') }, { data: [], error: null })
+    if (failedOk) t.commitRead(failedRead)
+    expect(failedOk).toBe(false)
+    expect(t.superseded(t.startRead())).toBe(false)
+    expect(t.superseded(failedRead)).toBe(false)
+    const retry = t.startRead()
+    expect(t.evaluateSnapshot({ roundId: 'r1', ticket: retry, selecting: false })).toBe('apply')
   })
 })

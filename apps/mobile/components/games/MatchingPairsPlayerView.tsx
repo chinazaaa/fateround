@@ -22,7 +22,7 @@ import {
 } from '@fateround/shared/memory-match'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
-import { createFlipResyncTracker } from '@fateround/shared/flip-resync'
+import { createFlipResyncTracker, snapshotReadsOk } from '@fateround/shared/flip-resync'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
@@ -164,16 +164,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       if (!playerId || !game) return
       const readTicket = flipTracker.startRead()
       const roundNumber = game.current_round_number ?? 1
-      const { data: roundData } = await getSupabase()
+      const { data: roundData, error: roundError } = await getSupabase()
         .from('rounds')
         .select(ROUND_SELECT)
         .eq('game_id', gameCode.toUpperCase())
         .eq('round_number', roundNumber)
         .maybeSingle()
+      // A failed round read is not "no round": keep what is on screen and let a later event read again.
+      if (roundError) {
+        flipTracker.markDirty()
+        return
+      }
       const parsedMeta = roundData ? parseMatchingPairsMetadata((roundData as Round).memory_match_metadata) : null
       if (!roundData || !parsedMeta) return
 
-      const [{ data: subs }, { data: prog }] = await Promise.all([
+      const [subsRes, progRes] = await Promise.all([
         getSupabase()
           .from('memory_match_submissions')
           .select(MEMORY_MATCH_SUBMISSION_SELECT)
@@ -184,6 +189,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
       // A newer read was applied while this one ran (e.g. a slow read of an older round): drop it entirely.
       if (flipTracker.superseded(readTicket)) return
+
+      // A failed read is not an empty history: applying it would hide stored matches and reset points and
+      // streak. Keep the current board, do not commit this read, and read again on the next event or flip.
+      if (!snapshotReadsOk(subsRes, progRes)) {
+        flipTracker.markDirty()
+        return
+      }
+      const subs = subsRes.data
+      const prog = progRes.data
 
       const mySubs = ((subs as MatchingPairsSubmission[]) ?? []).filter((s) => s.player_id === playerId)
       const roundProgress = (prog as MatchingPairsProgress[]) ?? []

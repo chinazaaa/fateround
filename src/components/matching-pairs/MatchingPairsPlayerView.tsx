@@ -184,12 +184,22 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
       if (gameData.status === 'active' || gameData.status === 'finished') {
         const currentRoundNumber = gameData.current_round_number ?? 1
-        const { data: roundData } = await supabase
+        const { data: roundData, error: roundError } = await supabase
           .from('rounds')
           .select(ROUND_SELECT)
           .eq('game_id', gameCode)
           .eq('round_number', currentRoundNumber)
           .maybeSingle()
+
+        // A failed round read is not "no round": clearing the board and scores would hide stored progress.
+        if (roundError) {
+          flipTracker.markDirty()
+          return {
+            hasBoard: boardRef.current !== null,
+            ownFinished: boardRef.current !== null && finishedRef.current,
+            roundFinished: false,
+          }
+        }
 
         // Superseded already (before any state is touched): see the same check after the submissions read.
         if (flipTracker.superseded(readTicket)) {
@@ -230,6 +240,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           // A failed read is not an empty history: treating it as one would reset the matched cards, streak
           // and points. Leave everything as it is; the next load will reconcile.
           if (!supabasePollOk(subRes, progRes)) {
+            flipTracker.markDirty()
             // Only for the round the board on screen was built for: another round's board must not stay up under
             // this round's metadata, so for a new round clear it and report no board until a read succeeds.
             const sameRoundBoard = boardRoundIdRef.current === roundData.id && boardRef.current !== null
@@ -652,12 +663,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 void load()
               } else {
                 // Non-finishing match: just refresh submission counts.
-                const { data } = await supabase
+                const { data, error: refreshError } = await supabase
                   .from('memory_match_submissions')
                   .select(MEMORY_MATCH_SUBMISSION_SELECT)
                   .eq('round_id', roundId)
                   .order('submitted_at', { ascending: true })
                 if (boardRoundIdRef.current !== flipToken.round) return
+                // A failed refresh is not an empty history: keep the submissions already shown.
+                if (refreshError) return
                 const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
                 setAllSubmissions(nextSubmissions)
                 setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
@@ -709,12 +722,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               if (d.currentStreak !== undefined) setCurrentStreak(d.currentStreak)
               if (d.pointsAfter !== undefined) setTotalPoints(d.pointsAfter)
               // Refresh submissions to keep local state in sync
-              const { data } = await supabase
+              const { data, error: refreshError } = await supabase
                 .from('memory_match_submissions')
                 .select(MEMORY_MATCH_SUBMISSION_SELECT)
                 .eq('round_id', roundId)
                 .order('submitted_at', { ascending: true })
               if (boardRoundIdRef.current !== flipToken.round) return
+              // A failed refresh is not an empty history: keep the submissions already shown.
+              if (refreshError) return
               const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
               setAllSubmissions(nextSubmissions)
               setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
