@@ -149,11 +149,23 @@ export async function resolvePlayerSession(
     // (network, 5xx, 429) must keep the session so the next load can retry.
     const exists = session.resumeToken ? await confirmPlayerExists(gameCode, session.resumeToken) : null
     if (exists === false) {
-      // The server positively reports this player gone — a host removed them (or they
-      // left). clearPlayerSession marks them kicked so room-link auto-join won't silently
-      // pull them back in; they must deliberately tap "join" to return.
-      clearPlayerSession(gameCode)
-      return null
+      // The check awaited the network: a join may have saved a NEW session meanwhile. Only clear
+      // (and mark kicked) when the stored session is still the checked player's; otherwise keep
+      // whatever is stored now.
+      const current = getPlayerSession(gameCode)
+      if (!current || current.playerId === session.playerId) {
+        // The server positively reports this player gone — a host removed them (or they
+        // left). clearPlayerSession marks them kicked so room-link auto-join won't silently
+        // pull them back in; they must deliberately tap "join" to return.
+        clearPlayerSession(gameCode)
+        return null
+      }
+      return {
+        playerId: current.playerId,
+        playerName: current.playerName,
+        playerGender: current.playerGender,
+        resumeToken: current.resumeToken ?? null,
+      }
     }
     // exists === true (confirmed) or null (unverifiable) — keep the local session.
   }

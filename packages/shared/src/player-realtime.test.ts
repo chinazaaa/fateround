@@ -304,6 +304,46 @@ describe('createSerialLoader state machine', () => {
     expect(m.calls()).toBe(4)
   })
 
+  it('a poll that replaces a pending retry inherits recovery: if it fails, retries continue within the bound', async () => {
+    vi.useFakeTimers()
+    const m = manualLoad()
+    const loader = createSerialLoader(m.load, { maxRetries: 2 })
+    void loader.request() // owner of recovery
+    m.finish(0, false) // retry #1 scheduled
+    await vi.advanceTimersByTimeAsync(0)
+    const poll = loader.request({ retry: false }) // visibility poll replaces the timer
+    expect(m.calls()).toBe(2)
+    m.finish(1, false) // the poll fails while realtime is healthy: recovery must NOT end
+    await expect(poll).resolves.toBe(false)
+    await vi.advanceTimersByTimeAsync(2000) // retry #2 (budget carried, not reset)
+    expect(m.calls()).toBe(3)
+    m.finish(2, false)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(m.calls()).toBe(3) // bound: initial + 2 retries in total, poll included
+  })
+
+  it('a poll that replaces a pending retry and succeeds ends recovery', async () => {
+    vi.useFakeTimers()
+    const m = manualLoad()
+    const loader = createSerialLoader(m.load)
+    void loader.request()
+    m.finish(0, false)
+    await vi.advanceTimersByTimeAsync(0)
+    const poll = loader.request({ retry: false })
+    m.finish(1, true)
+    await expect(poll).resolves.toBe(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(m.calls()).toBe(2)
+  })
+
+  it('a poll with no recovery pending still does not retry', async () => {
+    vi.useFakeTimers()
+    const load = vi.fn(async () => false)
+    await createSerialLoader(load).request({ retry: false })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
   it('timer-started retries still stop at the bound', async () => {
     vi.useFakeTimers()
     const load = vi.fn(async () => false)

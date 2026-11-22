@@ -37,7 +37,7 @@ import type { Game, Player } from '@/types'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { useToast } from '@/components/ui/Toast'
 import { applyPlayerChange, createRosterReadGuard, createSerialLoader } from '@/lib/player-realtime'
-import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { POLL_INTERVALS, ROOM_HEARTBEAT_MS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { useScrollHostViewToTop } from '@/hooks/useScrollHostViewToTop'
 import { useTurnNotifications } from '@/hooks/useTurnNotifications'
 import { useHostRemovePlayer } from '@/hooks/useHostRemovePlayer'
@@ -146,13 +146,13 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
           setGame((prev) => mergeRealtimeGame(prev, payload.new as Partial<Game>))
         }
       )
-      .on(
-        'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
-        () => {
-          void refresh()
-        }
-      )
+      // Supabase Realtime cannot filter DELETE events, and with the default replica identity the old
+      // row carries only its primary key, so a filtered DELETE never arrives. Subscribe unfiltered
+      // and match the id client-side. This is best effort: the heartbeat poll below is what
+      // guarantees a deleted room is noticed.
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'games' }, (payload) => {
+        if ((payload.old as { id?: string } | null)?.id === gameCode) void refresh()
+      })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
@@ -189,6 +189,16 @@ export function AnonymousMessagesHostView({ gameCode, hostToken }: { gameCode: s
 
   usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
     intervalMs: POLL_INTERVALS.realtimeFallback,
+  })
+
+  // Heartbeat. Realtime is a hint, not a guarantee: DELETE events (a deleted room, a removed or
+  // departed player, a deleted message) are not reliably delivered for filtered subscriptions, and
+  // the fallback poll above is suspended while realtime looks healthy. A slow, realtime-independent
+  // read confirms the room, roster and session; the loader shares it with any read in flight.
+  usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
+    intervalMs: ROOM_HEARTBEAT_MS,
+    runImmediately: false,
+    gateOnRealtime: false,
   })
 
   const startSession = async () => {

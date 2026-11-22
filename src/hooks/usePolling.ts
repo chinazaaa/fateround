@@ -53,6 +53,13 @@ export function supabasePollOk(...results: { error: unknown }[]): boolean {
   return true
 }
 
+/**
+ * Slow, realtime-independent confirmation read for rooms whose correctness depends on events Supabase
+ * Realtime does not reliably deliver (DELETE of a room/player/message). Pair with
+ * `gateOnRealtime: false` so a healthy channel does not suspend it.
+ */
+export const ROOM_HEARTBEAT_MS = 30_000
+
 type UsePollingOptions = {
   intervalMs: number
   enabled?: boolean

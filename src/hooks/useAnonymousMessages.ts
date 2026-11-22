@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { AnonymousMessage, Player } from '@/types'
-import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { POLL_INTERVALS, ROOM_HEARTBEAT_MS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { createLatestResultApplier } from '@/lib/player-realtime'
 
 type RawAnonymousMessage = Omit<AnonymousMessage, 'player_name'> & {
@@ -197,6 +197,16 @@ export function useAnonymousMessages(
   usePolling(() => loadMessages(), [gameCode, loadMessages], {
     intervalMs: hostToken ? POLL_INTERVALS.activeGame : POLL_INTERVALS.realtimeFallback,
     enabled,
+  })
+
+  // Player feed heartbeat: the fallback poll above is suspended while realtime looks healthy, but a
+  // filtered DELETE (a host removing a message) is not reliably delivered, so the removed message
+  // would linger. A slow ungated read reconciles it. (The host feed already polls ungated.)
+  usePolling(() => loadMessages(), [gameCode, loadMessages], {
+    intervalMs: ROOM_HEARTBEAT_MS,
+    enabled: enabled && !hostToken,
+    runImmediately: false,
+    gateOnRealtime: false,
   })
 
   useEffect(() => {

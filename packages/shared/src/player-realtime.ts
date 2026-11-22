@@ -76,7 +76,8 @@ export type SerialLoadRequest = {
  *   running   `active` = the attempt whose `load` call is in flight, with its own `waiters`.
  *   queued    `queued` = ONE follow-up attempt (own `waiters`) that starts as soon as `active` ends.
  *             Fresh requests, and requests from a newer start()/stop() generation, go here.
- *   retrying  a backoff `timer` is pending after a failed attempt; a request cancels it.
+ *   retrying  a backoff `timer` is pending after a failed attempt; a request replaces it with an
+ *             immediate attempt that inherits the retry ownership and the consumed budget.
  *   stopped   `gen` is bumped by `stop()`; waiters of every attempt are settled false at once, the
  *             in-flight callback is left to finish (callbacks stay serialized) and its result is
  *             ignored. `start()` re-arms; a request after it queues behind the still-running callback.
@@ -154,9 +155,13 @@ export function createSerialLoader(
       if (stopped) return Promise.resolve(false)
       return new Promise<boolean>((resolve) => {
         if (!active) {
+          // A pending backoff timer means an earlier requester owns recovery. The replacement attempt
+          // inherits that ownership AND the budget already consumed, so a poll (retry: false) that
+          // replaces the timer and fails does not end recovery, and the total stays bounded.
+          const recovering = timer !== null
           clearTimer()
-          retries = 0
-          active = { gen, waiters: [resolve], retry }
+          if (!recovering) retries = 0
+          active = { gen, waiters: [resolve], retry: retry || recovering }
           void pump()
           return
         }
