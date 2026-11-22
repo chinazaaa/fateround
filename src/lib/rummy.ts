@@ -637,6 +637,48 @@ export async function removeRummyPlayer(
 const REMOVE_PLAYER_ATTEMPTS = 3
 
 /**
+ * A leave commits the session claim (turn_order without the leaver, and for a two-player table
+ * phase 'finished' + games.status 'finished') BEFORE the hand and seat are deleted. If those
+ * deletes then fail on every attempt, the leaver keeps a seat on a finished game, and the DELETE
+ * players route's finished-game guard would answer a repeat leave "retained" without cleaning up.
+ *
+ * No schema change is needed to tell that case from a legitimate finisher: a seated (non-spectator)
+ * player is always in turn_order when the round is dealt, and nothing but a leave claim ever
+ * removes them from it. So "seated, session exists, not in turn_order" is exactly "left, cleanup
+ * pending"; a finisher (winner or loser) is still in turn_order and keeps their rows. Spectators
+ * are never in turn_order and are excluded by the `spectator` flag.
+ *
+ * Returns null when nothing is pending (the caller keeps the finished-game "retained" behaviour),
+ * else the outcome of completing the hand + seat removal (idempotent deletes).
+ */
+export async function completePendingRummyRemoval(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<RummyRemoveResult | null> {
+  const { data: sessionRaw, error: sessionError } = await supabase
+    .from(RUMMY_SESSIONS)
+    .select('turn_order')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (sessionError) return removalFailure(sessionError)
+  const session = sessionRaw as Pick<RummySession, 'turn_order'> | null
+  if (!session || (session.turn_order ?? []).includes(playerId)) return null
+
+  const { data: seat, error: seatError } = await supabase
+    .from('players')
+    .select('id, spectator')
+    .eq('id', playerId)
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (seatError) return removalFailure(seatError)
+  if (!seat || (seat as { spectator?: boolean | null }).spectator === true) return null
+
+  return removeRummyPlayer(supabase, gameId, playerId, playerName)
+}
+
+/**
  * `conflict: true` marks a retryable outcome (a turn action or another leave won the row, or the
  * database aborted the statement as a deadlock/serialization failure). The route answers it with a
  * 409; repeating the leave is idempotent because a leaver already dropped from turn_order falls

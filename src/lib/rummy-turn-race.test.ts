@@ -11,6 +11,7 @@ import {
   processRummyExpireTurn,
   finishExpiredRummyGame,
   removeRummyPlayer,
+  completePendingRummyRemoval,
   rummyVersionKey,
 } from './rummy'
 
@@ -592,6 +593,81 @@ describe('Rummy concurrent turn actions', () => {
     expect(tables.rummy_sessions[0].turn_order).toEqual(['p1', 'p2'])
     expect(tables.rummy_player_hands.some((h) => h.player_id === 'p3')).toBe(false)
     expect(tables.players.some((p) => p.id === 'p3')).toBe(false)
+  })
+
+  describe('two-player leave whose cleanup failed after the finish committed', () => {
+    const deadlock = { code: '40P01', message: 'deadlock detected' }
+
+    it('answers a retryable conflict, keeps the stalled seat and hand, and a repeat leave completes the cleanup', async () => {
+      const { client, tables } = makeDb([c('hearts', 5)], { handDeleteErrors: [deadlock, deadlock, deadlock] })
+
+      const res = await removeRummyPlayer(client, 'ABCD', 'p2', 'Ben')
+      expect(res.conflict).toBe(true)
+      expect(tables.rummy_sessions[0].phase).toBe('finished')
+      expect(tables.games[0].status).toBe('finished')
+      expect(tables.players.some((p) => p.id === 'p2')).toBe(true)
+      expect(tables.rummy_player_hands.some((h) => h.player_id === 'p2')).toBe(true)
+
+      // The route's finished-game guard calls this instead of answering "retained".
+      const again = await completePendingRummyRemoval(client, 'ABCD', 'p2', 'Ben')
+      expect(again).toEqual({ error: null })
+      expect(tables.players.some((p) => p.id === 'p2')).toBe(false)
+      expect(tables.rummy_player_hands.some((h) => h.player_id === 'p2')).toBe(false)
+      // The survivor keeps their seat, hand and the recorded win.
+      expect(tables.players.some((p) => p.id === 'p1')).toBe(true)
+      expect(tables.rummy_player_hands.some((h) => h.player_id === 'p1')).toBe(true)
+      expect(tables.rummy_sessions[0].winner_player_id).toBe('p1')
+
+      // Once cleaned up there is nothing pending any more.
+      expect(await completePendingRummyRemoval(client, 'ABCD', 'p2', 'Ben')).toBeNull()
+    })
+
+    it('reports a failing completion as an error and leaves it pending for the next repeat', async () => {
+      const { client, tables } = makeDb([c('hearts', 5)], {
+        handDeleteErrors: Array(6).fill(deadlock),
+      })
+      await removeRummyPlayer(client, 'ABCD', 'p2', 'Ben')
+      const failed = await completePendingRummyRemoval(client, 'ABCD', 'p2', 'Ben')
+      expect(failed?.conflict).toBe(true)
+      expect(tables.players.some((p) => p.id === 'p2')).toBe(true)
+      expect((await completePendingRummyRemoval(client, 'ABCD', 'p2', 'Ben'))?.error).toBeNull()
+      expect(tables.players.some((p) => p.id === 'p2')).toBe(false)
+    })
+
+    it('also finishes a seat whose hand was deleted but whose seat delete never ran', async () => {
+      const { client, tables } = makeDb([c('hearts', 5)])
+      await removeRummyPlayer(client, 'ABCD', 'p2', 'Ben')
+      tables.players.push({ id: 'p2', game_id: 'ABCD', name: 'Ben' }) // seat delete "failed"
+      expect((await completePendingRummyRemoval(client, 'ABCD', 'p2', 'Ben'))?.error).toBeNull()
+      expect(tables.players.some((p) => p.id === 'p2')).toBe(false)
+    })
+
+    it('leaves legitimate finishers (winner and loser of a go-out) and spectators untouched', async () => {
+      const { client, tables } = makeDb([c('hearts', 5)])
+      Object.assign(tables.rummy_sessions[0], { phase: 'finished', winner_player_id: 'p1' })
+      tables.games[0].status = 'finished'
+      tables.players.push({ id: 'p9', game_id: 'ABCD', name: 'Watcher', spectator: true })
+
+      for (const id of ['p1', 'p2', 'p9']) {
+        expect(await completePendingRummyRemoval(client, 'ABCD', id)).toBeNull()
+      }
+      expect(tables.players.map((p) => p.id).sort()).toEqual(['p1', 'p2', 'p9'])
+      expect(tables.rummy_player_hands).toHaveLength(2)
+    })
+
+    it('does not double-delete when two repeat leaves run concurrently', async () => {
+      const { client, tables } = makeDb([c('hearts', 5)], { handDeleteErrors: [deadlock, deadlock, deadlock] })
+      await removeRummyPlayer(client, 'ABCD', 'p2', 'Ben')
+
+      const [a, b] = await Promise.all([
+        completePendingRummyRemoval(client, 'ABCD', 'p2', 'Ben'),
+        completePendingRummyRemoval(client, 'ABCD', 'p2', 'Ben'),
+      ])
+      expect([a?.error ?? null, b?.error ?? null]).toEqual([null, null])
+      expect(tables.players.map((p) => p.id)).toEqual(['p1'])
+      expect(tables.rummy_player_hands.map((h) => h.player_id)).toEqual(['p1'])
+      expect(tables.rummy_sessions[0].winner_player_id).toBe('p1')
+    })
   })
 
   it('removes a leaving player normally when nothing raced', async () => {

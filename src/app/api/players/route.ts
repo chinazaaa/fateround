@@ -11,6 +11,7 @@ import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
 import { removeRummyPlayer } from '@/lib/rummy'
+import { completePendingFinishedLeave } from '@/lib/pending-leave'
 import { removeGoFishPlayer } from '@/lib/gofish-server'
 import { removeUnoPlayer } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
@@ -2007,6 +2008,23 @@ export async function DELETE(req: NextRequest) {
    * returns early, so a guard any lower would miss most of the games.
    */
   if ((game as { status?: string }).status === 'finished') {
+    /**
+     * Exception: a forfeiting leave (Rummy, Whot, Chess, Checkers, Draughts10) commits the finished
+     * session before it deletes the leaver's seat; if that cleanup failed, the leaver is gone from
+     * the session but still holds a seat. A repeat leave must finish the cleanup rather than be
+     * answered "retained". Finishers and spectators leave no such trace and fall through below.
+     */
+    const pending = await completePendingFinishedLeave(
+      getSupabaseAdmin(),
+      (game as { game_type?: string }).game_type,
+      id,
+      playerId,
+      player.name
+    )
+    if (pending) {
+      if (pending.error) return NextResponse.json({ error: pending.error }, { status: pending.status })
+      return NextResponse.json({ success: true })
+    }
     /**
      * Keep the row, but honour the leave in the one way that still has meaning: stop pushing
      * to them about this game.
