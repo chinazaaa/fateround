@@ -162,7 +162,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     },
     afterResolve: async (game, playerId) => {
       if (!playerId || !game) return
-      const flipEpochAtStart = flipTracker.epoch()
+      const readTicket = flipTracker.startRead()
       const roundNumber = game.current_round_number ?? 1
       const { data: roundData } = await getSupabase()
         .from('rounds')
@@ -182,6 +182,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         getSupabase().from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('round_id', roundData.id),
       ])
 
+      // A newer read was applied while this one ran (e.g. a slow read of an older round): drop it entirely.
+      if (flipTracker.superseded(readTicket)) return
+
       const mySubs = ((subs as MatchingPairsSubmission[]) ?? []).filter((s) => s.player_id === playerId)
       const roundProgress = (prog as MatchingPairsProgress[]) ?? []
       const myProg = roundProgress.find((p) => p.player_id === playerId) ?? null
@@ -192,6 +195,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       const cardOrder = getPlayerBoard(parsedMeta, playerId)
       if (!cardOrder) {
         // No board for this round yet: do not keep showing (or submitting from) the previous round's board.
+        // This outcome is as authoritative as an applied snapshot: an older read must not bring a board back.
+        flipTracker.commitRead(readTicket)
         const ownerRound = flipTracker.boardRound()
         if (ownerRound !== null && ownerRound !== roundData.id) {
           flipTracker.clearBoardRound(roundData.id)
@@ -214,10 +219,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       const cur = boardRef.current
       const decision = flipTracker.evaluateSnapshot({
         roundId: roundData.id,
-        epochAtStart: flipEpochAtStart,
+        ticket: readTicket,
         selecting: !!cur && (cur.firstFlipped !== null || cur.locked),
       })
-      if (decision === 'keep-dirty' || decision === 'keep-resync') return
+      if (decision === 'keep-dirty' || decision === 'keep-resync' || decision === 'discard') return
       if (decision === 'new-round') {
         cancelFlipBack()
         setMemorizeCountdown(null)

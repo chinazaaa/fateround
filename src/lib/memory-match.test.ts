@@ -914,16 +914,16 @@ describe('createFlipResyncTracker', () => {
     expect(resync).toHaveBeenCalledTimes(2)
   })
 
-  it('reports in-flight flips and bumps the epoch on every flip, so a snapshot can tell it may be stale', () => {
+  it('reports in-flight flips and marks earlier reads stale on every flip, so a snapshot can tell it may be stale', () => {
     const t = createFlipResyncTracker(vi.fn())
-    const readStartedAt = t.epoch()
+    const read = t.startRead()
     expect(t.inFlight()).toBe(false)
     const f0 = t.begin()
     expect(t.inFlight()).toBe(true)
     t.end(f0, false)
     // The flip is settled, but it started after the read did: that read may not contain it.
     expect(t.inFlight()).toBe(false)
-    expect(t.epoch()).not.toBe(readStartedAt)
+    expect(t.readMayBeStale(read, null)).toBe(true)
   })
 
   it('requestResync reads again straight away when idle, and after the last flip when one is in flight', async () => {

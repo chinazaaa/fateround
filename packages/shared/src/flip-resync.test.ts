@@ -51,7 +51,7 @@ describe('createFlipResyncTracker (mobile postFlip usage)', () => {
 
 describe('createFlipResyncTracker.evaluateSnapshot (round ownership)', () => {
   const snap = (t: ReturnType<typeof createFlipResyncTracker>, roundId: string, selecting = false) =>
-    t.evaluateSnapshot({ roundId, epochAtStart: t.epoch(), selecting })
+    t.evaluateSnapshot({ roundId, ticket: t.startRead(), selecting })
 
   it('applies the first snapshot and claims the round', () => {
     const t = createFlipResyncTracker(vi.fn())
@@ -133,7 +133,7 @@ describe('createFlipResyncTracker.evaluateSnapshot (round ownership)', () => {
 
 describe('createFlipResyncTracker pending flips are scoped to their round', () => {
   const snap = (t: ReturnType<typeof createFlipResyncTracker>, roundId: string, selecting = false) =>
-    t.evaluateSnapshot({ roundId, epochAtStart: t.epoch(), selecting })
+    t.evaluateSnapshot({ roundId, ticket: t.startRead(), selecting })
 
   it('an unanswered r1 flip does not hold back later r2 snapshots', () => {
     const resync = vi.fn(async () => {})
@@ -233,16 +233,17 @@ describe('createFlipResyncTracker pending flips are scoped to their round', () =
     expect(resync).not.toHaveBeenCalled()
   })
 
-  it('an r1 flip that begins during an r2 read makes that read be repeated, not stall', async () => {
+  it('an r1 flip that begins during an r2 read does not invalidate the r2 read', async () => {
     const resync = vi.fn(async () => {})
     const t = createFlipResyncTracker(resync)
     snap(t, 'r1')
     snap(t, 'r2')
-    const epochAtStart = t.epoch()
+    const ticket = t.startRead()
     t.begin('r1')
-    expect(t.evaluateSnapshot({ roundId: 'r2', epochAtStart, selecting: false })).toBe('keep-resync')
+    // A flip of another round cannot be missing from r2's snapshot, so it neither blocks nor repeats the read.
+    expect(t.evaluateSnapshot({ roundId: 'r2', ticket, selecting: false })).toBe('apply')
     await Promise.resolve()
-    expect(resync).toHaveBeenCalledTimes(1) // r2 has nothing pending, so the repeat read is not blocked by r1
+    expect(resync).not.toHaveBeenCalled()
   })
 
   it('a flip with no round given belongs to the round the view is on', () => {
@@ -264,5 +265,105 @@ describe('createFlipResyncTracker pending flips are scoped to their round', () =
     const f = t.begin('r2')
     t.end(f, true)
     expect(resync).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('createFlipResyncTracker read tickets', () => {
+  const ev = (
+    t: ReturnType<typeof createFlipResyncTracker>,
+    ticket: ReturnType<typeof t.startRead>,
+    roundId: string,
+    selecting = false
+  ) => t.evaluateSnapshot({ roundId, ticket, selecting })
+
+  it('rejects a read that started while a flip was pending and returns after it settled (success)', async () => {
+    const resync = vi.fn(async () => {})
+    const t = createFlipResyncTracker(resync)
+    ev(t, t.startRead(), 'r1')
+    const f = t.begin('r1')
+    const ticket = t.startRead() // read starts while the flip is pending...
+    t.end(f, false) // ...the flip settles before the read returns
+    expect(t.inFlight('r1')).toBe(false)
+    expect(ev(t, ticket, 'r1')).toBe('keep-resync')
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects the same read when the flip settles with a failure', async () => {
+    const resync = vi.fn(async () => {})
+    const t = createFlipResyncTracker(resync)
+    ev(t, t.startRead(), 'r1')
+    const f = t.begin('r1')
+    const ticket = t.startRead()
+    t.end(f, true)
+    expect(ev(t, ticket, 'r1')).toBe('keep-resync')
+  })
+
+  it('applies a read that started after the flip settled', () => {
+    const t = createFlipResyncTracker(vi.fn(async () => {}))
+    ev(t, t.startRead(), 'r1')
+    const f = t.begin('r1')
+    t.end(f, false)
+    expect(ev(t, t.startRead(), 'r1')).toBe('apply')
+  })
+
+  it('readMayBeStale mirrors the same rule for views that decide themselves', () => {
+    const t = createFlipResyncTracker(vi.fn(async () => {}))
+    t.enterRound('r1')
+    const f = t.begin('r1')
+    const ticket = t.startRead()
+    t.end(f, false)
+    expect(t.readMayBeStale(ticket, 'r1')).toBe(true)
+    expect(t.readMayBeStale(t.startRead(), 'r1')).toBe(false)
+  })
+
+  it('an old-round settlement does not invalidate a current-round read', () => {
+    const t = createFlipResyncTracker(vi.fn(async () => {}))
+    ev(t, t.startRead(), 'r1')
+    const old = t.begin('r1')
+    ev(t, t.startRead(), 'r2')
+    t.end(t.begin('r2'), false) // r2 has its own (settled) flip history
+    const ticket = t.startRead()
+    t.end(old, false)
+    expect(ev(t, ticket, 'r2')).toBe('apply')
+  })
+
+  it('discards an older read that resolves after a newer read was applied', () => {
+    const t = createFlipResyncTracker(vi.fn(async () => {}))
+    ev(t, t.startRead(), 'r1')
+    const slowOld = t.startRead() // read of r1, slow
+    const newer = t.startRead() // read of r2
+    expect(ev(t, newer, 'r2')).toBe('new-round')
+    expect(t.superseded(slowOld)).toBe(true)
+    expect(ev(t, slowOld, 'r1')).toBe('discard')
+    expect(t.boardRound()).toBe('r2')
+    // and it does not make the next r2 read look like a new round
+    expect(ev(t, t.startRead(), 'r2')).toBe('apply')
+  })
+
+  it('an older read that resolves first is still applied, and the newer one then applies on top', () => {
+    const t = createFlipResyncTracker(vi.fn(async () => {}))
+    const a = t.startRead()
+    const b = t.startRead()
+    expect(ev(t, a, 'r1')).toBe('apply')
+    expect(ev(t, b, 'r1')).toBe('apply')
+  })
+
+  it('discards an older read of the same round once a newer one was applied', () => {
+    const t = createFlipResyncTracker(vi.fn(async () => {}))
+    ev(t, t.startRead(), 'r1')
+    const a = t.startRead()
+    const b = t.startRead()
+    expect(ev(t, b, 'r1')).toBe('apply')
+    expect(ev(t, a, 'r1')).toBe('discard')
+  })
+
+  it('commitRead supersedes older reads for views that decide themselves', () => {
+    const t = createFlipResyncTracker(vi.fn(async () => {}))
+    const a = t.startRead()
+    const b = t.startRead()
+    t.commitRead(b)
+    expect(t.superseded(a)).toBe(true)
+    expect(t.superseded(b)).toBe(false)
   })
 })

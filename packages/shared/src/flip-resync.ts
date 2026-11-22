@@ -2,6 +2,12 @@
 export type FlipToken = { readonly round: string | null; ended: boolean }
 
 /**
+ * Handle for one snapshot read, from `startRead()`. `seq` orders it against every flip begin/settle and
+ * every applied snapshot.
+ */
+export type ReadTicket = { readonly seq: number }
+
+/**
  * Counts flip requests in flight, per round, and calls `resync` once the last flip of the current round
  * settles if any of them failed. A refused flip leaves the optimistic board ahead of what the server stored;
  * resyncing only after the others settle avoids rolling back a flip whose request has not been answered yet.
@@ -15,9 +21,13 @@ export type FlipToken = { readonly round: string | null; ended: boolean }
  * that read produces, so it marks another resync to run after that read has finished and the flip has
  * settled.
  *
- * Whoever applies a snapshot should skip the optimistic state (board, streak, points) when
- * `inFlight(roundId)` or when `epoch()` moved since its read started, and call `requestResync()` instead: that
- * read may predate a flip the player already sees, and the follow-up read is guaranteed to start after it.
+ * Whoever applies a snapshot calls `startRead()` before it reads and passes the ticket to `evaluateSnapshot`
+ * (or `superseded` / `readMayBeStale` / `commitRead`). A read is rejected when a flip of its round began OR
+ * SETTLED after the read started (it may have read before the flip committed, so it can lack a flip the
+ * player already sees even though nothing is pending any more), or while one is pending; the follow-up read
+ * is guaranteed to start after it. A read is also discarded outright when a newer read has been applied
+ * since it started, so a slow read for an older round cannot overwrite a newer board. Flips of other rounds
+ * do not invalidate a round's reads.
  */
 export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
   const pending = new Map<string | null, number>()
@@ -25,7 +35,12 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
   let failed = false
   let resyncing = false
   let deferred = false
-  let epoch = 0
+  /** Logical clock: advanced by every read start, flip begin/settle and applied snapshot. */
+  let clock = 0
+  /** Clock value of the last flip begin/settle of each round. */
+  const lastFlipEvent = new Map<string | null, number>()
+  /** `seq` of the newest read whose snapshot was applied. Older reads are superseded. */
+  let appliedSeq = 0
   /** Round the view is on: the latest one evaluated (or found boardless). Only its flips gate a resync. */
   let currentRound: string | null = null
   /** Round whose board the view currently shows. */
@@ -35,6 +50,9 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
    * board of a round that had none yet is still recognised as a new round.
    */
   let lastBoardRound: string | null = null
+
+  const readMayBeStale = (ticket: ReadTicket, round: string | null) =>
+    pendingIn(round) > 0 || (lastFlipEvent.get(round) ?? 0) > ticket.seq
 
   function maybeResync() {
     if (pendingIn(currentRound) !== 0 || !failed || resyncing) return
@@ -63,18 +81,21 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
      */
     evaluateSnapshot(args: {
       roundId: string
-      epochAtStart: number
+      ticket: ReadTicket
       selecting: boolean
-    }): 'apply' | 'new-round' | 'keep-dirty' | 'keep-resync' {
+    }): 'apply' | 'new-round' | 'keep-dirty' | 'keep-resync' | 'discard' {
+      // A newer read was applied since this one started: drop it without touching any state.
+      if (args.ticket.seq < appliedSeq) return 'discard'
       currentRound = args.roundId
       if (lastBoardRound !== null && lastBoardRound !== args.roundId) {
         boardRound = lastBoardRound = args.roundId
+        appliedSeq = args.ticket.seq
         // Work queued for the previous round (a deferred read, a failure to reload for) is moot now.
         deferred = false
         failed = false
         return 'new-round'
       }
-      if (pendingIn(args.roundId) > 0 || epoch !== args.epochAtStart || args.selecting) {
+      if (readMayBeStale(args.ticket, args.roundId) || args.selecting) {
         if (args.selecting) deferred = true
         else {
           failed = true
@@ -83,6 +104,7 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
         return args.selecting ? 'keep-dirty' : 'keep-resync'
       }
       boardRound = lastBoardRound = args.roundId
+      appliedSeq = args.ticket.seq
       return 'apply'
     },
     /**
@@ -108,12 +130,25 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
     begin(roundId?: string | null): FlipToken {
       const round = roundId === undefined ? currentRound : roundId
       pending.set(round, pendingIn(round) + 1)
-      epoch += 1
+      lastFlipEvent.set(round, ++clock)
       if (resyncing && round === currentRound) failed = true
       return { round, ended: false }
     },
-    /** Counts every flip started so far. A snapshot read that began at an older epoch may predate a flip. */
-    epoch: () => epoch,
+    /** Call right before a snapshot read starts; pass the ticket to `evaluateSnapshot`. */
+    startRead(): ReadTicket {
+      return { seq: ++clock }
+    },
+    /** True when a newer read was applied since this one started (apply nothing, change nothing). */
+    superseded: (ticket: ReadTicket) => ticket.seq < appliedSeq,
+    /**
+     * For a view that decides apply/skip itself: true while a flip of `roundId` is unanswered, or one began
+     * or settled after the read started, so the snapshot may lack a flip the player already sees.
+     */
+    readMayBeStale: (ticket: ReadTicket, roundId: string | null) => readMayBeStale(ticket, roundId),
+    /** For a view that decides apply/skip itself: the snapshot of this read was applied. */
+    commitRead(ticket: ReadTicket) {
+      if (ticket.seq > appliedSeq) appliedSeq = ticket.seq
+    },
     /**
      * True while a flip request of the round (default: the one the view is on) is unanswered, so a snapshot
      * may lack a flip the player already sees. Flips of other rounds do not count.
@@ -146,6 +181,8 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
     end(token: FlipToken, didFail: boolean) {
       if (token.ended) return
       token.ended = true
+      // A read that started before this settled may have read before the flip committed.
+      lastFlipEvent.set(token.round, ++clock)
       const left = pendingIn(token.round) - 1
       if (left > 0) pending.set(token.round, left)
       else pending.delete(token.round)

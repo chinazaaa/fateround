@@ -168,7 +168,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   const afterResolve = useCallback(
     async (gameData: Game, playerId: string | null): Promise<MatchingPairsGameState> => {
-      const flipEpochAtStart = flipTracker.epoch()
+      const readTicket = flipTracker.startRead()
       if (!playerId) {
         setRoundId(null)
         setRoundStartedAt(null)
@@ -191,6 +191,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .eq('round_number', currentRoundNumber)
           .maybeSingle()
 
+        // Superseded already (before any state is touched): see the same check after the submissions read.
+        if (flipTracker.superseded(readTicket)) {
+          return {
+            hasBoard: boardRef.current !== null,
+            ownFinished: boardRef.current !== null && finishedRef.current,
+            roundFinished: false,
+          }
+        }
+
         const parsedMeta = roundData
           ? parseMatchingPairsMetadata((roundData as Record<string, unknown>).memory_match_metadata)
           : null
@@ -210,6 +219,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               .order('submitted_at', { ascending: true }),
             supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('game_id', gameCode),
           ])
+          // A newer read was applied while this one ran (e.g. a slow read of an older round): drop it entirely.
+          if (flipTracker.superseded(readTicket)) {
+            return {
+              hasBoard: boardRef.current !== null,
+              ownFinished: boardRef.current !== null && finishedRef.current,
+              roundFinished: false,
+            }
+          }
           // A failed read is not an empty history: treating it as one would reset the matched cards, streak
           // and points. Leave everything as it is; the next load will reconcile.
           if (!supabasePollOk(subRes, progRes)) {
@@ -253,8 +270,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             const sameRound = boardRoundIdRef.current === roundData.id
             const selecting = sameRound && (boardRef.current?.firstFlipped != null || boardRef.current?.locked === true)
             const snapshotMayBeStale =
-              sameRound &&
-              (selecting || flipTracker.inFlight(roundData.id as string) || flipTracker.epoch() !== flipEpochAtStart)
+              sameRound && (selecting || flipTracker.readMayBeStale(readTicket, roundData.id as string))
             if (snapshotMayBeStale) {
               // Mid-selection there may be no flip to wait for, so do not read again in a loop: the next flip
               // to settle will. Otherwise read again as soon as nothing is in flight.
@@ -271,6 +287,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               flipTimeoutRef.current = null
             }
             boardRoundIdRef.current = roundData.id as string
+            flipTracker.commitRead(readTicket)
             setBoard(boardState)
 
             // Start memorization phase for fresh rounds (no submissions yet)
@@ -310,6 +327,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             return { hasBoard: true, ownFinished, roundFinished: false }
           } else {
             // Round is finished or no card order — show round_results
+            // This read's outcome (no board) is as authoritative as an applied one: an older read must not undo it.
+            flipTracker.commitRead(readTicket)
             setBoard(null)
             setFinished(false)
             setFinishRank(null)
