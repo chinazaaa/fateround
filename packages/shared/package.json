@@ -71,6 +71,7 @@
     "./anonymous-messages": "./src/anonymous-messages.ts",
     "./player-realtime": "./src/player-realtime.ts",
     "./session-coordinator": "./src/session-coordinator.ts",
+    "./load-settled": "./src/load-settled.ts",
     "./hot-seat": "./src/hot-seat.ts",
     "./custom-game": "./src/custom-game.ts",
     "./create-board-games": "./src/create-board-games.ts",

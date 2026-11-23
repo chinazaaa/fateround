@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createSessionCoordinator } from './session-coordinator'
 import { reconcileSession, type ReconcileProbe } from './session-reconcile'
 
 type S = { playerId: string; resumeToken: string | null }
@@ -17,8 +18,9 @@ function setup(initial: S | null, result: ReconcileProbe<S>, during?: (store: { 
     during?.(store)
     return result
   })
-  const deps = { read: async () => store.current, probe, write, clear }
-  return { store, write, clear, probe, deps }
+  const coordinator = createSessionCoordinator()
+  const deps = { coordinator, read: async () => store.current, probe, write, clear }
+  return { store, write, clear, probe, deps, coordinator }
 }
 
 describe('reconcileSession', () => {
@@ -75,5 +77,76 @@ describe('reconcileSession', () => {
     await reconcileSession([], { ...h.deps, isCurrent: () => current })
     expect(h.clear).not.toHaveBeenCalled()
     expect(h.store.current).toEqual(old)
+  })
+
+  describe('against a join save still in flight in the room coordinator', () => {
+    /** A save through the coordinator whose storage write is held open until `finish()`. */
+    function pendingJoinSave(h: ReturnType<typeof setup>) {
+      let finish!: () => void
+      const gate = new Promise<void>((r) => (finish = r))
+      const save = h.coordinator.mutate(async () => {
+        await gate
+        h.store.current = fresh
+      })
+      return { save, finish }
+    }
+
+    it('does not clear the new seat when the join save was not yet visible in storage', async () => {
+      const h = setup(old, { kind: 'gone' })
+      const join = pendingJoinSave(h) // running: storage still holds `old`
+      const reconciled = reconcileSession([], h.deps) // reads `old`, probes, then wants to clear
+      await Promise.resolve()
+      join.finish()
+      await join.save
+      expect(await reconciled).toEqual(fresh)
+      expect(h.clear).not.toHaveBeenCalled()
+      expect(h.store.current).toEqual(fresh)
+    })
+
+    it('does not overwrite the new seat with a re-key queued behind the join save', async () => {
+      const h = setup(old, { kind: 'row', session: { playerId: 'p-real', resumeToken: 'TOK-OLD' } })
+      const join = pendingJoinSave(h)
+      const reconciled = reconcileSession([], h.deps)
+      await Promise.resolve()
+      join.finish()
+      await join.save
+      expect(await reconciled).toEqual(fresh)
+      expect(h.write).not.toHaveBeenCalled()
+      expect(h.store.current).toEqual(fresh)
+    })
+
+    it('a save that completed between the read and the step (even one writing identical data) invalidates the run', async () => {
+      // The re-read alone would see the same id/token here; only the epoch shows a save happened.
+      const h = setup(old, { kind: 'gone' }, () => void h.coordinator.mutate(async () => {}))
+      expect(await reconcileSession([], h.deps)).toEqual(old)
+      expect(h.clear).not.toHaveBeenCalled()
+    })
+
+    it('still clears a confirmed-gone session when nothing else touched the room', async () => {
+      const h = setup(old, { kind: 'gone' })
+      expect(await reconcileSession([], h.deps)).toBeNull()
+      expect(h.clear).toHaveBeenCalledTimes(1)
+      expect(h.coordinator.epoch() % 2).toBe(0) // the commit bumped and settled the epoch
+    })
+
+    it('runs the clear inside the exclusive step: a save queued while it runs waits and lands after', async () => {
+      const order: string[] = []
+      const h = setup(old, { kind: 'gone' })
+      let later: Promise<void> | undefined
+      const clear = vi.fn(async () => {
+        order.push('clear-start')
+        later = h.coordinator.mutate(async () => {
+          order.push('save')
+          h.store.current = fresh
+        })
+        await Promise.resolve()
+        h.store.current = null
+        order.push('clear-end')
+      })
+      await reconcileSession([], { ...h.deps, clear })
+      await later
+      expect(order).toEqual(['clear-start', 'clear-end', 'save'])
+      expect(h.store.current).toEqual(fresh)
+    })
   })
 })

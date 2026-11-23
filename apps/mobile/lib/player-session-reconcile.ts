@@ -1,6 +1,7 @@
 import { apiUrl } from '@/lib/config'
-import { clearPlayerSession, getPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { deletePlayerSession, getPlayerSession, writePlayerSession, type PlayerSession } from '@/lib/secure-session'
 import type { PlayerGender } from '@fateround/shared'
+import { getSessionCoordinator } from '@fateround/shared/session-coordinator'
 import { reconcileSession } from '@fateround/shared/session-reconcile'
 
 type ProbeResult =
@@ -71,9 +72,12 @@ export async function reconcilePlayerSession(
   /** False once the calling load was superseded/unmounted: such a run must not write session state. */
   isCurrent?: () => boolean
 ): Promise<PlayerSession | null> {
-  // The decision logic and its race guards (superseded run, session saved after we read it) live in
-  // @fateround/shared so they are unit-tested; this file only supplies storage and the network probe.
+  // The decision logic and its race guards live in @fateround/shared so they are unit-tested; this file only
+  // supplies storage and the network probe. The clear/re-key decision runs INSIDE the room's coordinator (the
+  // one every setPlayerSession/clearPlayerSession goes through), so a join save still in flight is never
+  // overwritten or deleted. That is why write/clear below are the RAW storage operations.
   return reconcileSession<PlayerSession>(roster, {
+    coordinator: getSessionCoordinator(gameCode),
     read: () => getPlayerSession(gameCode),
     probe: async (token) => {
       const r = await probeResume(gameCode, token)
@@ -88,8 +92,8 @@ export async function reconcilePlayerSession(
         },
       }
     },
-    write: (s) => setPlayerSession(gameCode, s.playerId, s.playerName, s.playerGender, s.resumeToken),
-    clear: () => clearPlayerSession(gameCode),
+    write: (s) => writePlayerSession(gameCode, s.playerId, s.playerName, s.playerGender, s.resumeToken),
+    clear: () => deletePlayerSession(gameCode),
     isCurrent,
   })
 }

@@ -148,6 +148,10 @@ export function createFlipResyncTracker(
     /** Unmount: drop a pending backoff timer and the outcome of a resync still running. Reusable afterwards. */
     cancel() {
       epoch++
+      // Flips that began before this are no longer part of the recovery gate: one that never gets an answer
+      // would hold every later resync back forever, and one that settles late must not decrement the count of a
+      // flip started AFTER the cancel (the count is per round, not per flip). `end` ignores their decrement.
+      pending.clear()
       failed = false
       deferred = false
       failedAttempts = 0
@@ -171,6 +175,14 @@ export function createFlipResyncTracker(
       if (args.ticket.seq < appliedSeq) return 'discard'
       moveToRound(args.roundId)
       if (lastBoardRound !== null && lastBoardRound !== args.roundId) {
+        // The previous round's selection and unanswered flips are overridden, but the INCOMING round's own flips
+        // still count: one unanswered (or settled after this read began) means the snapshot may lack a flip the
+        // player already sees, so it must not be applied; read again once those have settled.
+        if (readMayBeStale(args.ticket, args.roundId)) {
+          failed = true
+          maybeResync()
+          return 'keep-resync'
+        }
         boardRound = lastBoardRound = args.roundId
         appliedSeq = args.ticket.seq
         // Work queued for the previous round (a deferred read, a failure to reload for) is moot now.
@@ -271,12 +283,13 @@ export function createFlipResyncTracker(
       token.ended = true
       // A read that started before this settled may have read before the flip committed.
       lastFlipEvent.set(token.round, ++clock)
+      // The view was cancelled (unmounted) after this flip began: `cancel()` already dropped it from the count
+      // (decrementing now would eat a replacement flip's), and a flip that settles that late must not start a
+      // load (which could arm a backoff timer after unmount).
+      if (token.epoch !== epoch) return
       const left = pendingIn(token.round) - 1
       if (left > 0) pending.set(token.round, left)
       else pending.delete(token.round)
-      // The view was cancelled (unmounted) after this flip began: its count is settled above, but a flip that
-      // settles that late must not start a load (which could arm a backoff timer after unmount).
-      if (token.epoch !== epoch) return
       // A flip of a round the view has left cannot have made the current board stale.
       if (token.round !== currentRound) return
       if (didFail || deferred) failed = true

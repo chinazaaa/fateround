@@ -106,7 +106,11 @@ export function setPlayerSession(
   )
 }
 
-async function writePlayerSession(
+/**
+ * The raw save, WITHOUT the coordinator. Only for a caller already inside the coordinator's exclusive step
+ * (`exclusiveStep`); everything else must call `setPlayerSession`.
+ */
+export async function writePlayerSession(
   gameCode: string,
   playerId: string,
   playerName: string,

@@ -64,6 +64,13 @@ const MEMORY_MATCH_PROGRESS_SELECT_TIMED = `${MEMORY_MATCH_PROGRESS_SELECT},fini
 type Screen = 'loading' | 'join' | 'waiting' | 'playing' | 'finished' | 'not_found'
 type CardState = 'hidden' | 'flipped' | 'matched'
 
+/**
+ * What loadGameState hands afterResolve: the round row whose metadata it published. afterResolve builds the
+ * board from THIS row (not a second read of the round), so the board and the round metadata on screen always
+ * come from the same row even if the round is replaced between the two reads.
+ */
+type RoundLoad = { round: Round | null }
+
 type BoardState = {
   cardOrder: number[]
   cardStates: CardState[]
@@ -137,12 +144,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       _players: Player[],
       _session: unknown,
       isCurrent: () => boolean
-    ): Promise<{ state: null; ok: boolean }> => {
+    ): Promise<{ state: RoundLoad | null; ok: boolean }> => {
       if (game.status !== 'active' && game.status !== 'finished') {
         if (flipTracker.boardRound() !== null) retireBoard(null)
         setRound(null)
         setMeta(null)
-        return { state: null, ok: true }
+        return { state: { round: null }, ok: true }
       }
 
       const roundNumber = game.current_round_number ?? 1
@@ -186,12 +193,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       const allSubs = (subsRes.data as MatchingPairsSubmission[]) ?? []
       setSubmissions(allSubs)
       setGameProgress((progRes.data as MatchingPairsProgressWithTiming[]) ?? [])
-      return { state: null, ok: true }
+      return { state: { round: roundData }, ok: true }
     },
     [gameCode, flipTracker, readRetry, retireBoard]
   )
 
-  const bootstrap = useGameViewBootstrap<Screen, null>({
+  const bootstrap = useGameViewBootstrap<Screen, RoundLoad | null>({
     gameCode,
     loadingScreen: 'loading',
     notFoundScreen: 'not_found',
@@ -207,29 +214,24 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       if (game.status === 'finished') return 'finished'
       return 'playing'
     },
-    afterResolve: async (game, playerId, _state, isCurrent) => {
+    afterResolve: async (game, playerId, loaded, isCurrent) => {
       if (!playerId || !game) return
+      // A superseded (or unmounted) load must not touch the tracker, the retry or the view, not even to take
+      // over a retry another load armed.
+      if (!isCurrent()) return
       const readTicket = flipTracker.startRead()
-      // A newer read supersedes a pending retry; it schedules its own if it fails too.
-      readRetry.cancel()
+      // A newer read supersedes a PENDING retry timer; it schedules its own if it fails too. Only the timer is
+      // taken over: a retry that is already running (and started this very load) keeps owning the outcome, so
+      // if this read stalls or fails, that retry still arms the next attempt instead of being silently
+      // invalidated (see createReadRetry.cancelPending).
+      readRetry.cancelPending()
       const roundNumber = game.current_round_number ?? 1
       // A new requested round gets the full retry budget, before any of its reads can fail.
       readRetry.scope(`round:${roundNumber}`)
-      const { data: roundData, error: roundError } = await getSupabase()
-        .from('rounds')
-        .select(ROUND_SELECT)
-        .eq('game_id', gameCode.toUpperCase())
-        .eq('round_number', roundNumber)
-        .maybeSingle()
-      // A superseded (or unmounted) load must not touch the tracker, the retry or the view.
-      if (!isCurrent()) return
-      // A failed round read is not "no round": keep what is on screen and let a later event read again.
-      if (roundError) {
-        flipTracker.markDirty()
-        if (!flipTracker.superseded(readTicket)) readRetry.schedule()
-        return
-      }
-      const parsedMeta = roundData ? parseMatchingPairsMetadata((roundData as Round).memory_match_metadata) : null
+      // The round row loadGameState published the metadata from. Never re-read here: a second read could return a
+      // replacement round, and a board built from it would sit under the first row's icons and colors.
+      const roundData = loaded?.round ?? null
+      const parsedMeta = roundData ? parseMatchingPairsMetadata(roundData.memory_match_metadata) : null
       if (!roundData || !parsedMeta) {
         readRetry.reset()
         return
@@ -344,7 +346,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     // that outlives its round cannot hold up or decrement the next round's count.
     const flipToken = flipTracker.begin(flipTracker.boardRound() ?? undefined)
     let flipFailed = false
-    void postMatchingPairsFlip(bootstrap.code, bootstrap.myResumeToken, pairIndex, isMatch)
+    // Also tells the server which round the board belongs to, so a request in transit when the round changed is
+    // refused instead of being scored against the new round.
+    void postMatchingPairsFlip(bootstrap.code, bootstrap.myResumeToken, pairIndex, isMatch, flipToken.round)
       .catch(() => {
         flipFailed = true
       })

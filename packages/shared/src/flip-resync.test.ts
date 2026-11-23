@@ -106,6 +106,31 @@ describe('createFlipResyncTracker.evaluateSnapshot (round ownership)', () => {
     expect(snap(t, 'r2')).toBe('keep-resync')
   })
 
+  it("does not apply an incoming round's snapshot while that round's own flip is unanswered", () => {
+    const resync = vi.fn(async () => {})
+    const t = createFlipResyncTracker(resync)
+    snap(t, 'r1')
+    snap(t, 'r2')
+    snap(t, 'r1') // back on r1 (e.g. a stale read), r2's board is no longer the latest...
+    const flipOfR2 = t.begin('r2') // ...while r2 still has a flip in flight
+    expect(snap(t, 'r2')).toBe('keep-resync')
+    expect(t.boardRound()).toBe('r1') // nothing applied
+    t.end(flipOfR2, false)
+    expect(snap(t, 'r2')).toBe('new-round') // once settled before the read began, the snapshot is fine
+  })
+
+  it("rejects an incoming round's snapshot that started before one of that round's flips settled", () => {
+    const t = createFlipResyncTracker(async () => {})
+    snap(t, 'r1')
+    snap(t, 'r2')
+    snap(t, 'r1')
+    const flipOfR2 = t.begin('r2')
+    const earlyRead = t.startRead()
+    t.end(flipOfR2, false) // settles after the read began: the read may predate its commit
+    expect(t.evaluateSnapshot({ roundId: 'r2', ticket: earlyRead, selecting: false })).toBe('keep-resync')
+    expect(snap(t, 'r2')).toBe('new-round')
+  })
+
   it('forgets the owner after clearBoardRound', () => {
     const t = createFlipResyncTracker(vi.fn())
     snap(t, 'r1')
@@ -384,16 +409,22 @@ describe('snapshotReadsOk', () => {
 
   it('a failed read leaves the tracker uncommitted so a later read still applies and an older one is not superseded', () => {
     const t = createFlipResyncTracker(async () => {})
+    const olderRead = t.startRead() // began before the failed read
     const failedRead = t.startRead()
     const failedOk = snapshotReadsOk({ data: null, error: new Error('x') }, { data: [], error: null })
     if (failedOk) t.commitRead(failedRead)
     expect(failedOk).toBe(false)
     expect(t.superseded(t.startRead())).toBe(false)
     expect(t.superseded(failedRead)).toBe(false)
+    expect(t.superseded(olderRead)).toBe(false) // the failure must not have advanced the fence over earlier reads
     const retry = t.startRead()
     expect(t.evaluateSnapshot({ roundId: 'r1', ticket: retry, selecting: false })).toBe('apply')
   })
 })
+
+function snap0(t: ReturnType<typeof createFlipResyncTracker>, roundId: string) {
+  return t.evaluateSnapshot({ roundId, ticket: t.startRead(), selecting: false })
+}
 
 describe('createFlipResyncTracker failed resync retry', () => {
   it('retries a resync that resolves false after a backoff, then stops once it succeeds', async () => {
@@ -521,6 +552,31 @@ describe('createFlipResyncTracker failed resync retry', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('a flip left unanswered before cancel() no longer gates resyncs of the remounted view', async () => {
+    const resync = vi.fn(async () => {})
+    const t = createFlipResyncTracker(resync)
+    snap0(t, 'r1')
+    t.begin('r1') // never answered
+    t.cancel()
+    expect(t.inFlight()).toBe(false)
+    await flip(t, Promise.reject(new Error('refused')))
+    expect(resync).toHaveBeenCalledTimes(1)
+  })
+
+  it('an old flip settling after cancel() does not decrement a replacement flip of the same round', async () => {
+    const resync = vi.fn(async () => {})
+    const t = createFlipResyncTracker(resync)
+    snap0(t, 'r1')
+    const oldFlip = t.begin('r1')
+    t.cancel()
+    const replacement = t.begin('r1')
+    t.end(oldFlip, true) // late answer of the pre-cancel request
+    expect(t.inFlight('r1')).toBe(true) // the replacement is still unanswered
+    expect(resync).not.toHaveBeenCalled()
+    t.end(replacement, false)
+    expect(t.inFlight('r1')).toBe(false)
   })
 
   it('cancel() drops a deferred read so flushDeferred cannot start a load after unmount', () => {

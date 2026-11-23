@@ -254,6 +254,78 @@ describe('useGameViewBootstrap', () => {
     errSpy.mockRestore()
   })
 
+  it('reports a throwing afterResolve as a failed read (false) while still showing the fallback screen', async () => {
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const afterResolve = vi.fn<() => Promise<void>>(async () => {
+      throw new Error('boom')
+    })
+    const { result } = setup({ afterResolve })
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+    await expect(result.current.loadSettled()).resolves.toBe(false)
+    // A completed afterResolve keeps the original ok result.
+    afterResolve.mockImplementation(async () => {})
+    await expect(result.current.loadSettled()).resolves.toBe(true)
+    errSpy.mockRestore()
+  })
+
+  it('a run that rejects still performs the trailing re-run queued while it ran', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    h.players = [{ id: 'p1' }]
+    let release!: () => void
+    h.gate = new Promise<void>((r) => (release = r))
+    const { result, loadGameState } = setup()
+    // The first (gated) run throws from loadGameState; a caller queues a re-run meanwhile.
+    loadGameState.mockRejectedValueOnce(new Error('boom'))
+    let settled: boolean | undefined
+    await act(async () => {
+      void result.current.loadSettled().then((v) => (settled = v))
+    })
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(settled).toBeDefined())
+    expect(loadGameState).toHaveBeenCalledTimes(2) // the queued re-run ran despite the rejection
+    expect(settled).toBe(true) // and it, not the rejected run, is what the chain reports
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+  })
+
+  it("loadSettled joined to a run keeps waiting through that run's trailing re-run window", async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      h.players = [{ id: 'p1' }]
+      let release!: () => void
+      h.gate = new Promise<void>((r) => (release = r))
+      const { result } = setup()
+      let settled: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (settled = v))
+      })
+      // First run finishes at 10s; the trailing re-run it queued starts then and has its own 12s window.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000)
+      })
+      h.hang = true // the trailing re-run's reads never answer
+      await act(async () => {
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      // Past the first run's 12s mark: the waiter must not give up on the first run's clock.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000)
+      })
+      expect(settled).toBeUndefined()
+      // The trailing run itself goes stale at 10s + 12s.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(7_000)
+      })
+      expect(settled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps a successful join successful when onJoinSuccess throws', async () => {
     h.gameRow = { id: 'ABCD', status: 'waiting' }
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})

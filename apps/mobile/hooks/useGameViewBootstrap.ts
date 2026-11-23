@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
+import { awaitLoadSettled } from '@fateround/shared/load-settled'
 import { Alert } from 'react-native'
 import { useRouter } from 'expo-router'
 import { JoinError, joinGame } from '@/lib/api'
@@ -274,31 +275,21 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // for actually succeeded (see createReadRetry). A run that never settles stops being waited for once stale.
   const loadSettled = useCallback((): Promise<boolean> => {
     const chain = chainRef.current
-    const age = Date.now() - loadStartedAtRef.current
     let waitFor: Promise<boolean>
-    let deadlineMs: number
-    if (loadingRef.current && chain && age < STALE_LOAD_MS) {
+    if (loadingRef.current && chain && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
       pendingRef.current = true
       waitFor = chain
-      deadlineMs = Math.max(0, STALE_LOAD_MS - age)
     } else {
       // Starting the load here: it gets the same deadline, or a games query that never settles would leave
       // the caller (the flip tracker's resync) waiting forever and never owing a retry.
       waitFor = load()
-      deadlineMs = STALE_LOAD_MS
     }
-    return new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), deadlineMs)
-      void waitFor.then(
-        (v) => {
-          clearTimeout(timer)
-          resolve(v)
-        },
-        () => {
-          clearTimeout(timer)
-          resolve(false)
-        }
-      )
+    // The deadline follows the run the chain is on NOW, not the one this caller arrived during: a trailing
+    // re-run gets its own STALE_LOAD_MS window (loadStartedAtRef is reset when it starts).
+    return awaitLoadSettled({
+      waitFor,
+      runStartedAt: () => (loadingRef.current ? loadStartedAtRef.current : null),
+      staleMs: STALE_LOAD_MS,
     })
   }, [load])
 

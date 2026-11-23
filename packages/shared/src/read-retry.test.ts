@@ -142,6 +142,67 @@ describe('createReadRetry', () => {
     expect(r.attempts()).toBe(0)
   })
 
+  describe('cancelPending (a newer read takes over)', () => {
+    it('clears a pending timer and keeps the budget, like cancel', () => {
+      const retry = vi.fn()
+      const r = createReadRetry(retry, [100, 200])
+      r.schedule()
+      r.cancelPending()
+      vi.advanceTimersByTime(10_000)
+      expect(retry).not.toHaveBeenCalled()
+      expect(r.attempts()).toBe(1)
+      expect(r.schedule()).toBe(true)
+    })
+
+    it('does not invalidate a retry that is already running: its failure still arms the next attempt', async () => {
+      // The running retry's read is what takes over (cancelPending is called from inside it) and then stalls, so
+      // the retry reports false at its deadline. With cancel() that outcome would be dropped and no error branch
+      // would ever run; with cancelPending() the next attempt is armed.
+      let resolve!: (v: boolean) => void
+      const retry = vi.fn(() => new Promise<boolean>((res) => (resolve = res)))
+      const r = createReadRetry(retry, [100, 100])
+      r.schedule()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(retry).toHaveBeenCalledTimes(1)
+      r.cancelPending() // the replacement read starts
+      resolve(false) // ...and stalls out at the deadline
+      await vi.advanceTimersByTimeAsync(100)
+      expect(retry).toHaveBeenCalledTimes(2) // the next attempt was armed and ran
+    })
+
+    it('the same takeover through cancel() loses the running retry (documents why cancelPending exists)', async () => {
+      let resolve!: (v: boolean) => void
+      const retry = vi.fn(() => new Promise<boolean>((res) => (resolve = res)))
+      const r = createReadRetry(retry, [100, 100])
+      r.schedule()
+      await vi.advanceTimersByTimeAsync(100)
+      r.cancel()
+      resolve(false)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(retry).toHaveBeenCalledTimes(1)
+    })
+
+    it('the running retry is still superseded by a success (reset), a round change (scope) and unmount (cancel)', async () => {
+      for (const supersede of [
+        (r: ReturnType<typeof createReadRetry>) => r.reset(),
+        (r: ReturnType<typeof createReadRetry>) => r.scope('next-round'),
+        (r: ReturnType<typeof createReadRetry>) => r.cancel(),
+      ]) {
+        let resolve!: (v: boolean) => void
+        const retry = vi.fn(() => new Promise<boolean>((res) => (resolve = res)))
+        const r = createReadRetry(retry, [100, 100])
+        r.scope('round')
+        r.schedule()
+        await vi.advanceTimersByTimeAsync(100)
+        r.cancelPending()
+        supersede(r)
+        resolve(false)
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(retry).toHaveBeenCalledTimes(1)
+      }
+    })
+  })
+
   describe('scope', () => {
     it('resets the budget once when the key changes, not on the same key', async () => {
       const retry = vi.fn(async () => false)

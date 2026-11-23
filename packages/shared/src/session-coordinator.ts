@@ -42,6 +42,32 @@ export function createSessionCoordinator() {
       })
     },
     /**
+     * One exclusive check-then-write step, for a caller that validated a session OUTSIDE the queue (e.g. after a
+     * network probe) and now wants to act on it. `fn` runs serialized with every `mutate` and conditional clear
+     * of this room, so every save queued before it has completed when `fn` starts, and none can start while it
+     * runs. Inside it `epoch()` is stable: compare it with the value read before the validation began; a
+     * difference means a save/clear happened (or was still in flight) since, so the validation is outdated.
+     * `commit(op)` runs a raw storage write/clear inside the step, bumping the epoch around it like `mutate`
+     * does; `op` must NOT call the coordinator-routed setters (they would wait on this step).
+     */
+    exclusiveStep<T>(
+      fn: (step: { epoch: () => number; commit: (op: () => Promise<void>) => Promise<void> }) => Promise<T>
+    ): Promise<T> {
+      return exclusive(() =>
+        fn({
+          epoch: () => epoch,
+          commit: async (op) => {
+            epoch += 1
+            try {
+              await op()
+            } finally {
+              epoch += 1
+            }
+          },
+        })
+      )
+    },
+    /**
      * Clear the stored session iff it is still `savedPlayerId` and no session change happened since
      * `readEpoch`. 'stale' = the epoch moved (the roster it was compared with is outdated),
      * 'replaced' = a different session is stored now, 'cleared' = cleared.

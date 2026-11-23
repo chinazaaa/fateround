@@ -4,6 +4,7 @@ export const READ_RETRY_DELAYS_MS: readonly number[] = [1000, 2000, 4000]
 export interface ReadRetry {
   schedule(): boolean
   cancel(): void
+  cancelPending(): void
   reset(): void
   scope(key: string | null): void
   attempts(): number
@@ -18,6 +19,11 @@ export interface ReadRetry {
  *   after the next backoff delay. Returns false, arming nothing, once the attempt limit is used up.
  * - `cancel()` clears a pending timer but keeps the attempt count: use it when a newer read starts (that read
  *   reschedules itself if it fails too) and on unmount.
+ * - `cancelPending()` clears only a pending timer. Use it when a newer read takes over: unlike `cancel()` it does
+ *   not invalidate a retry that is ALREADY RUNNING (its own read is the one that started this takeover), so if the
+ *   replacement read stalls or fails, that retry's failure handler still arms the next attempt. The running retry
+ *   stays the owner until a read succeeds (`reset()`), the requested round changes (`scope()`) or the view goes
+ *   away (`cancel()`).
  * - `reset()` cancels and restores the full budget: use it when a read succeeds.
  * - `scope(key)` resets the budget ONCE when `key` (the requested round) differs from the last one; call it
  *   before that round's reads can fail, so a budget used up on an old round never starves the new one. The
@@ -55,6 +61,12 @@ export function createReadRetry(
     handle = null
   }
 
+  const cancelPending = () => {
+    if (armed) timers.clear(handle)
+    armed = false
+    handle = null
+  }
+
   const api: ReadRetry = {
     schedule(): boolean {
       if (armed) return true
@@ -80,6 +92,7 @@ export function createReadRetry(
       return true
     },
     cancel,
+    cancelPending,
     reset() {
       cancel()
       attempts = 0

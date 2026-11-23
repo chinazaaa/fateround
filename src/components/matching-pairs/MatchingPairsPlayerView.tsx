@@ -161,6 +161,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const boardRef = useRef<LocalBoard | null>(null)
   const finishedRef = useRef(false)
   const boardRoundIdRef = useRef<string | null>(null)
+  // The round NUMBER the board on screen was built for, so a failed round lookup (which yields no round id) can
+  // still tell whether the board belongs to the round the game is on now.
+  const boardRoundNumberRef = useRef<number | null>(null)
   const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
   // A failed snapshot read keeps the board as it is; this reads again a few times (backoff) because no other
   // trigger is guaranteed to fire while the board sits idle. Full budget again when a read succeeds or the requested round changes.
@@ -182,9 +185,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       _state: unknown,
       isCurrent: () => boolean
     ): Promise<MatchingPairsGameState> => {
+      // A superseded (or unmounted) load must not touch the tracker, the retry or the view, not even to take
+      // over a retry another load armed.
+      if (!isCurrent()) {
+        return {
+          hasBoard: boardRef.current !== null,
+          ownFinished: boardRef.current !== null && finishedRef.current,
+          roundFinished: false,
+        }
+      }
       const readTicket = flipTracker.startRead()
-      // A newer read supersedes a pending retry; it schedules its own if it fails too.
-      readRetry.cancel()
+      // A newer read supersedes a PENDING retry timer; it schedules its own if it fails too. Only the timer is
+      // taken over: a retry that is already running (and started this very load) keeps owning the outcome, so if
+      // this read stalls or fails, that retry still arms the next attempt instead of being silently invalidated
+      // (see createReadRetry.cancelPending).
+      readRetry.cancelPending()
       if (!playerId) {
         readRetry.scope(null)
         setRoundId(null)
@@ -224,9 +239,27 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         if (roundError) {
           flipTracker.markDirty()
           if (!flipTracker.superseded(readTicket)) readRetry.schedule()
+          // Keep the board interactive only while it belongs to the round the game is on. After the game moved
+          // on, the old board would accept taps and send pair indices for a round that is over, so retire it
+          // (with its owner) and report no board until a read of the new round succeeds.
+          const sameRoundBoard =
+            boardRef.current !== null &&
+            boardRoundIdRef.current !== null &&
+            boardRoundNumberRef.current === currentRoundNumber
+          if (!sameRoundBoard && boardRoundIdRef.current !== null) {
+            if (flipTimeoutRef.current) {
+              clearTimeout(flipTimeoutRef.current)
+              flipTimeoutRef.current = null
+            }
+            boardRoundIdRef.current = null
+            boardRoundNumberRef.current = null
+            boardRef.current = null
+            flipTracker.clearBoardRound(undefined, readTicket)
+            setBoard(null)
+          }
           return {
-            hasBoard: boardRef.current !== null,
-            ownFinished: boardRef.current !== null && finishedRef.current,
+            hasBoard: sameRoundBoard,
+            ownFinished: sameRoundBoard && finishedRef.current,
             roundFinished: false,
           }
         }
@@ -355,6 +388,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               flipTimeoutRef.current = null
             }
             boardRoundIdRef.current = roundData.id as string
+            boardRoundNumberRef.current = currentRoundNumber
             flipTracker.commitRead(readTicket)
             setBoard(boardState)
 
@@ -707,6 +741,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             resumeToken: myResumeToken,
             pairIndex,
             isMatch: true,
+            // The round the board was built for: the server rejects the flip if the game has moved on, which
+            // also covers a request already in transit when the round changed.
+            ...(flipToken.round ? { roundId: flipToken.round } : {}),
           }),
         })
           .then(async (res) => {
@@ -780,6 +817,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             resumeToken: myResumeToken,
             pairIndex,
             isMatch: false,
+            // The round the board was built for: the server rejects the flip if the game has moved on, which
+            // also covers a request already in transit when the round changed.
+            ...(flipToken.round ? { roundId: flipToken.round } : {}),
           }),
         })
           .then(async (res) => {

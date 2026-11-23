@@ -65,12 +65,12 @@ vi.mock('@/lib/memory-match', async (orig) => ({
 
 import { POST } from './route'
 
-function send(pairIndex: number, isMatch = true) {
+function send(pairIndex: number, isMatch = true, roundId?: string) {
   return POST(
     new NextRequest('https://x.test/api/matching-pairs/flip', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ gameId: 'ABCD', resumeToken: 'TOKEN-1234', pairIndex, isMatch }),
+      body: JSON.stringify({ gameId: 'ABCD', resumeToken: 'TOKEN-1234', pairIndex, isMatch, roundId }),
     })
   )
 }
@@ -107,6 +107,17 @@ describe('POST /api/matching-pairs/flip hardening', () => {
   it('accepts a plausible match', async () => {
     expect((await send(0)).status).toBe(200)
     expect(insert).toHaveBeenCalledTimes(1)
+  })
+
+  it('records a flip whose roundId is the current round', async () => {
+    expect((await send(0, true, ROUND_ID)).status).toBe(200)
+    expect(insert).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a flip made on a previous round (in transit when the game moved on) without recording it', async () => {
+    const res = await send(0, true, '22222222-2222-4222-8222-222222222222')
+    expect(res.status).toBe(409)
+    expect(insert).not.toHaveBeenCalled()
   })
 
   it('keeps the liveness bump for accepted players only, not for rejected viewers', async () => {
