@@ -2849,7 +2849,8 @@ export async function processUnoChallenge(
     return { hand: [...handForPlayer(hands, targetId), ...drawn], drawPile, discardPile }
   }
 
-  if (!challenge) {
+  // A challenge needs a Wild Draw Four player whose hand can be revealed; if they left, it can only be accepted.
+  if (!challenge || !wd4PlayerId) {
     // Accept: challenger draws 4 and is skipped.
     if (!playerId) return { error: 'Player required' }
     const drawResult = await applyDrawTo(playerId)
@@ -3297,6 +3298,13 @@ async function removeUnoPlayerOnce(
         updated_at: new Date().toISOString(),
       }
 
+      // The Wild Draw Four player's hand is deleted below, so a pending challenge against them can no
+      // longer be adjudicated — drop the challenge evidence (the +4 itself still stands).
+      if (session.wd4_player_id === playerId) {
+        teamUpdate.wd4_player_id = null
+        teamUpdate.challenge_prev_color = null
+      }
+
       if (partnerActive) {
         // Pause the round; the remaining teammate decides via processUnoTeamLeaveDecision.
         teamUpdate.phase = 'team_leave_decision'
@@ -3345,6 +3353,16 @@ async function removeUnoPlayerOnce(
       // A removed player might have owed an UNO call — clear it so a ghost never penalises.
       uno_pending_player: session.uno_pending_player === playerId ? null : session.uno_pending_player,
       updated_at: new Date().toISOString(),
+    }
+
+    // If the leaver played the pending Wild Draw Four, their hand (the challenge evidence) is deleted
+    // below, so the challenge can no longer be adjudicated. Drop the challenge (wd4_player_id /
+    // challenge_prev_color) but keep the +4 penalty and the decision owner's turn: the target must
+    // still draw (processUnoChallenge treats any challenge without a Wild Draw Four player as an
+    // accept) rather than eat a bogus failed-challenge penalty.
+    if (session.wd4_player_id === playerId) {
+      update.wd4_player_id = null
+      update.challenge_prev_color = null
     }
 
     // Players who already went out (finish_order) or were knocked out (eliminated_player_ids)

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 
-import { removeUnoPlayer, processUnoExpireTurn, UNO_REMOVE_CONFLICT_ERROR } from './uno'
+import { removeUnoPlayer, processUnoExpireTurn, processUnoChallenge, UNO_REMOVE_CONFLICT_ERROR } from './uno'
 import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble'
 
 /**
@@ -337,5 +337,61 @@ describe('removeScrabblePlayer — races with concurrent writes', () => {
     expect(res.error).toBeNull()
     expect(t.scrabble_sessions[0].phase).toBe('finished')
     expect(t.scrabble_sessions[0].winner_player_id).toBe('B')
+  })
+})
+
+describe('removeUnoPlayer — Wild Draw Four challenge', () => {
+  // A (index 0) played a Wild Draw Four; B (index 1) owns the challenge window.
+  function wd4Tables(handOfA: Row[]) {
+    const t = unoTables()
+    const s = t.uno_sessions[0]
+    s.phase = 'challenge_window'
+    s.current_turn_index = 1
+    s.wd4_player_id = 'A'
+    s.challenge_prev_color = 'red'
+    s.draw_penalty = 4
+    s.draw_penalty_kind = 'wild_draw4'
+    s.draw_pile = Array.from({ length: 20 }, (_, i) => ({ id: `p${i}`, color: 'blue', value: '1' }))
+    s.discard_pile = []
+    t.uno_player_hands.find((h) => h.player_id === 'A')!.cards = handOfA
+    return t
+  }
+  const handCount = (t: Tables, id: string) =>
+    ((t.uno_player_hands.find((h) => h.player_id === id)?.cards as unknown[]) ?? []).length
+
+  it('drops the challenge when the +4 player leaves, so a later challenge is a plain accept (no failed-challenge penalty)', async () => {
+    // A held a red card (the challenge would have WON); either way B must not be punished.
+    const t = wd4Tables([{ id: 'A1', color: 'red', value: '5' }])
+    const db = makeDb(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    const s = t.uno_sessions[0]
+    expect(s.turn_order).toEqual(['B', 'C', 'D'])
+    expect(s.phase).toBe('challenge_window')
+    expect(s.wd4_player_id).toBeNull()
+    expect(s.challenge_prev_color).toBeNull()
+
+    const before = handCount(t, 'B')
+    const out = await processUnoChallenge(db.supabase, 'G', 'B', true)
+    expect(out.error).toBeUndefined()
+    // Exactly the +4, not +6 (failed-challenge extra).
+    expect(handCount(t, 'B') - before).toBe(4)
+    expect(t.uno_sessions[0].phase).toBe('playing')
+  })
+
+  it('keeps the challenge intact when an unrelated player leaves', async () => {
+    const t = wd4Tables([{ id: 'A1', color: 'red', value: '5' }])
+    const db = makeDb(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'D', 'D')
+    expect(res.error).toBeNull()
+    const s = t.uno_sessions[0]
+    expect(s.phase).toBe('challenge_window')
+    expect(s.wd4_player_id).toBe('A')
+    expect(s.challenge_prev_color).toBe('red')
+    const before = handCount(t, 'A')
+    const out = await processUnoChallenge(db.supabase, 'G', 'B', true)
+    expect(out.error).toBeUndefined()
+    // Challenge still adjudicated against A's real hand: A held red, so A draws 4.
+    expect(handCount(t, 'A') - before).toBe(4)
   })
 })
