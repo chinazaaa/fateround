@@ -1533,7 +1533,7 @@ export async function processUnoPlay(
   cardId: string,
   callUno = false,
   opts?: { jumpIn?: boolean }
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -1767,7 +1767,7 @@ export async function processUnoPlay(
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
   const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
   if (rotatedWrites) {
     // Rotation is the source of truth for every active hand (includes the mover + any
@@ -1838,7 +1838,7 @@ export async function processUnoJumpIn(
   playerId: string,
   cardId: string,
   callUno = false
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   return processUnoPlay(supabase, gameId, playerId, cardId, callUno, { jumpIn: true })
 }
 
@@ -1849,7 +1849,7 @@ export async function processUnoPlayMulti(
   playerId: string,
   cardIds: string[],
   callUno = false
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -2020,7 +2020,7 @@ export async function processUnoPlayMulti(
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
   const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
   await writeHand(supabase, gameId, playerId, newHand)
   // AUTO-resolve drew for the target (its hand already folds in any missed-UNO penalty for them).
@@ -2061,7 +2061,7 @@ export async function processUnoDraw(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -2288,7 +2288,7 @@ export async function processUnoDraw(
   }
 
   const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
   await writeHand(supabase, gameId, playerId, newHand)
   if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
@@ -2338,7 +2338,7 @@ export async function processUnoPass(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -2393,7 +2393,7 @@ export async function processUnoChoose(
   gameId: string,
   playerId: string,
   color: UnoColor
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -2591,7 +2591,7 @@ export async function processUnoColorRoulette(
   gameId: string,
   playerId: string,
   color: UnoColor
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -2629,7 +2629,7 @@ export async function processUnoColorRoulette(
     timerSeconds,
     session.updated_at
   )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
   return {}
 }
 
@@ -2648,7 +2648,7 @@ async function processUnoColorRouletteReveal(
   playerNames: Map<string, string>,
   rules: UnoRules,
   timerSeconds: number
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const color = session.required_color as UnoColor | null
   if (!color) return { error: 'Pick a colour first' }
 
@@ -2725,7 +2725,7 @@ async function processUnoColorRouletteReveal(
       timerSeconds,
       session.updated_at
     )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
     await writeHand(supabase, gameId, playerId, targetHand)
 
     // A long unlucky reveal streak can push the target past 25 mid-roulette — same Mercy
@@ -2760,7 +2760,7 @@ async function processUnoColorRouletteReveal(
     timerSeconds,
     session.updated_at
   )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
   await writeHand(supabase, gameId, playerId, targetHand)
 
   // High Stakes — record the largest single roulette reveal count on the CASTER's row
@@ -2787,7 +2787,7 @@ export async function processUnoChallenge(
   gameId: string,
   playerId: string,
   challenge: boolean
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -2865,7 +2865,7 @@ export async function processUnoChallenge(
       timerSeconds,
       session.updated_at
     )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
     await writeHand(supabase, gameId, playerId, drawResult.hand)
     return {}
   }
@@ -2894,7 +2894,7 @@ export async function processUnoChallenge(
       timerSeconds,
       session.updated_at
     )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
     await writeHand(supabase, gameId, wd4PlayerId, drawResult.hand)
     // The challenger correctly called the bluff — "Challenger".
     await writeUnoStats(
@@ -2931,7 +2931,7 @@ export async function processUnoChallenge(
     timerSeconds,
     session.updated_at
   )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
   await writeHand(supabase, gameId, playerId, failHand)
   // The Wild Draw Four was legal — the WD4 player survived a challenge on their own Draw Four.
   if (wd4PlayerId) {
@@ -2951,7 +2951,7 @@ export async function processUnoSwap(
   gameId: string,
   playerId: string,
   targetId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -3007,7 +3007,7 @@ export async function processUnoSwap(
     timerSeconds,
     session.updated_at
   )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
   await writeHand(supabase, gameId, playerId, theirCards)
   await writeHand(supabase, gameId, targetId, myCards)
@@ -3369,10 +3369,19 @@ async function removeUnoPlayerOnce(
         : `${removedName} left — game over.`
       update.turn_deadline_at = null
     } else {
-      // If we removed the player mid-decision (choose/challenge), fall back to plain play.
-      if (session.phase !== 'playing') update.phase = 'playing'
+      // Only cancel a pending decision (choose/challenge/swap/roulette) when the REMOVED player owns
+      // it, falling back to plain play. If someone else leaves while the current player is mid-decision
+      // (e.g. A just played a Wild and must still pick a colour), the phase and its status stay
+      // intact — resetting it to 'playing' would leave A unable to choose a colour.
+      const decisionOwnerId =
+        session.phase === 'team_leave_decision' ? session.team_decider_id : order[session.current_turn_index]
+      const cancelsDecision = session.phase !== 'playing' && decisionOwnerId === playerId
+      if (cancelsDecision) update.phase = 'playing'
       const nextPlayerId = turnOrder[currentTurnIndex]
-      update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
+      if (session.phase === 'playing' || cancelsDecision) {
+        update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
+        update.turn_deadline_at = unoTurnDeadline(timerSeconds)
+      }
       update.turn_deadline_at = unoTurnDeadline(timerSeconds)
     }
 

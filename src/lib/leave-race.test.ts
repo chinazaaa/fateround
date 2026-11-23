@@ -15,7 +15,10 @@ import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble
 type Row = Record<string, unknown>
 type Tables = Record<string, Row[]>
 
-function makeDb(tables: Tables, hooks: { afterSessionRead?: (table: string) => void } = {}) {
+function makeDb(
+  tables: Tables,
+  hooks: { afterSessionRead?: (table: string) => void; failSelect?: (table: string) => boolean } = {}
+) {
   function builder(table: string) {
     let op: 'select' | 'update' | 'delete' = 'select'
     let vals: Row = {}
@@ -23,7 +26,7 @@ function makeDb(tables: Tables, hooks: { afterSessionRead?: (table: string) => v
     let selectAfter = false
     let single = false
 
-    const exec = (): { data: unknown; error: null } => {
+    const exec = (): { data: unknown; error: unknown } => {
       const rows = (tables[table] ?? []).filter((r) => filters.every(([k, v]) => r[k] === v))
       if (op === 'update') {
         for (const r of rows) Object.assign(r, vals)
@@ -33,6 +36,7 @@ function makeDb(tables: Tables, hooks: { afterSessionRead?: (table: string) => v
         tables[table] = (tables[table] ?? []).filter((r) => !rows.includes(r))
         return { data: null, error: null }
       }
+      if (hooks.failSelect?.(table)) return { data: null, error: { message: 'boom', code: 'XX000' } }
       const copy = rows.map((r) => ({ ...r }))
       hooks.afterSessionRead?.(table)
       return { data: single ? (copy[0] ?? null) : copy, error: null }
@@ -139,6 +143,42 @@ describe('removeUnoPlayer — concurrent leaves', () => {
   })
 })
 
+describe('removeUnoPlayer — pending decisions', () => {
+  // C's leave reads phase 'playing'; A then plays a Wild (phase -> choose_color) before the write lands.
+  function raceToChooseColor(t: Tables) {
+    let raced = false
+    return makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || raced) return
+        raced = true
+        const s = t.uno_sessions[0]
+        s.phase = 'choose_color'
+        s.status_message = 'A played a Wild — choose a colour'
+        s.updated_at = '2026-01-01T00:00:01.000Z'
+      },
+    })
+  }
+
+  it("keeps another player's pending colour choice when someone else leaves", async () => {
+    const t = unoTables()
+    const db = raceToChooseColor(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].turn_order).toEqual(['A', 'B', 'D'])
+    expect(t.uno_sessions[0].phase).toBe('choose_color')
+    expect(t.uno_sessions[0].status_message).toBe('A played a Wild — choose a colour')
+  })
+
+  it('cancels the pending decision when the decision owner is the one who leaves', async () => {
+    const t = unoTables()
+    const db = raceToChooseColor(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('playing')
+    expect(t.uno_sessions[0].turn_order).toEqual(['B', 'C', 'D'])
+  })
+})
+
 describe('processUnoExpireTurn — concurrent expiry', () => {
   it('returns skipped (not an error) when another caller already handled the turn', async () => {
     const t = unoTables()
@@ -151,6 +191,28 @@ describe('processUnoExpireTurn — concurrent expiry', () => {
         // Read #1 is the expire handler's load; right after it, the winner auto-plays and advances.
         if (++reads !== 1) return
         s.current_turn_index = 1
+        s.updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.error).toBeUndefined()
+    expect(res.skipped).toBe(true)
+  })
+})
+
+describe('processUnoExpireTurn — lost CAS inside the delegated auto-play', () => {
+  it('returns skipped when a competing write lands after the delegated processor loaded', async () => {
+    const t = unoTables()
+    const s = t.uno_sessions[0]
+    s.turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions') return
+        // Read #1 is the expire handler's load, read #2 the delegated processUnoPlay's own load.
+        // The competing auto-play commits right after #2, so the delegated write loses its CAS
+        // without any database error.
+        if (++reads !== 2) return
         s.updated_at = '2026-01-01T00:00:05.000Z'
       },
     })
@@ -235,5 +297,45 @@ describe('removeScrabblePlayer — races with concurrent writes', () => {
     const res = await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
     expect(res.error).toBe(SCRABBLE_REMOVE_CONFLICT_ERROR)
     expect(t.players.map((p) => p.id)).toContain('C')
+  })
+
+  it('returns the session lookup error instead of deleting the player rows', async () => {
+    const t = scrabbleTables()
+    const db = makeDb(t, { failSelect: (table) => table === 'scrabble_sessions' })
+    const res = await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeTruthy()
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.scrabble_player_state.map((r) => r.player_id)).toContain('C')
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B', 'C'])
+  })
+
+  it('still cleans up when the lookup succeeds but there is no session row', async () => {
+    const t = scrabbleTables()
+    t.scrabble_sessions = []
+    const db = makeDb(t)
+    const res = await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeNull()
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+    expect(t.scrabble_player_state.map((r) => r.player_id)).not.toContain('C')
+  })
+
+  it('ignores a departed player whose state row outlives their committed session update', async () => {
+    const t = scrabbleTables()
+    t.scrabble_player_state.find((r) => r.player_id === 'A')!.score = 100
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'scrabble_sessions' || raced) return
+        raced = true
+        // A's leave commits turn_order [B, C] but has not yet deleted A's state row.
+        const s = t.scrabble_sessions[0]
+        s.turn_order = ['B', 'C']
+        s.updated_at = '2026-01-01T00:00:01.000Z'
+      },
+    })
+    const res = await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeNull()
+    expect(t.scrabble_sessions[0].phase).toBe('finished')
+    expect(t.scrabble_sessions[0].winner_player_id).toBe('B')
   })
 })
