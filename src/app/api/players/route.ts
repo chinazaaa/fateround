@@ -81,7 +81,7 @@ import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin
 import { isImportClaimMode, isJoinersPollMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import {
   assertHostGame,
-  assertHostPlayerRemove,
+  assertHostWith,
   assertPlayer,
   deleteJoinerPair,
   findJoinerParticipant,
@@ -1872,7 +1872,22 @@ export async function DELETE(req: NextRequest) {
       game = hostGame
       id = code
     } else {
-      const auth = await assertHostPlayerRemove(getSupabaseAdmin(), gameCode, hostToken)
+      // A finished game is let through for the forfeit-cleanup engines only: a host removal that
+      // finished the game and then failed to delete the seat must be repeatable, so the finished-game
+      // guard below can run `completePendingFinishedLeave` (retained vs pending cleanup). Every other
+      // game type keeps the 400 for a finished game.
+      const removeStatusError = 'Players can only be removed while the lobby or game is open'
+      const hostGameType = parseGameType(hostGame.game_type)
+      const forfeitCleanup =
+        isRummyGame(hostGameType) ||
+        isWhotGame(hostGameType) ||
+        isChessGame(hostGameType) ||
+        isCheckersGame(hostGameType) ||
+        isDraughts10Game(hostGameType)
+      const auth = await assertHostWith(getSupabaseAdmin(), gameCode, hostToken, {
+        allowedStatuses: forfeitCleanup ? ['waiting', 'active', 'finished'] : ['waiting', 'active'],
+        statusError: removeStatusError,
+      })
       if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
       game = auth.game
       id = auth.id
