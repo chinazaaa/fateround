@@ -107,8 +107,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const loadRef = useRef<() => Promise<unknown>>(async () => {})
   const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
   // A failed snapshot read keeps the board as it is; this reads again a few times (backoff) because no other
-  // trigger is guaranteed to fire while the board sits idle. Reset when a read succeeds or the round changes.
-  const [readRetry] = useState(() => createReadRetry(() => void Promise.resolve(loadRef.current()).catch(() => {})))
+  // trigger is guaranteed to fire while the board sits idle. Full budget again when a read succeeds or the requested round changes.
+  const [readRetry] = useState(() =>
+    createReadRetry(() => Promise.resolve(loadRef.current()).then((ok) => ok !== false))
+  )
 
   const loadGameState = useCallback(
     async (game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -170,6 +172,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       // A newer read supersedes a pending retry; it schedules its own if it fails too.
       readRetry.cancel()
       const roundNumber = game.current_round_number ?? 1
+      // A new requested round gets the full retry budget, before any of its reads can fail.
+      readRetry.scope(`round:${roundNumber}`)
       const { data: roundData, error: roundError } = await getSupabase()
         .from('rounds')
         .select(ROUND_SELECT)

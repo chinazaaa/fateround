@@ -163,8 +163,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const boardRoundIdRef = useRef<string | null>(null)
   const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
   // A failed snapshot read keeps the board as it is; this reads again a few times (backoff) because no other
-  // trigger is guaranteed to fire while the board sits idle. Reset when a read succeeds.
-  const [readRetry] = useState(() => createReadRetry(() => void Promise.resolve(loadRef.current()).catch(() => {})))
+  // trigger is guaranteed to fire while the board sits idle. Full budget again when a read succeeds or the requested round changes.
+  const [readRetry] = useState(() =>
+    createReadRetry(() => Promise.resolve(loadRef.current()).then((ok) => ok !== false))
+  )
 
   const loadGameState = useCallback(async (): Promise<{ state: MatchingPairsGameState; ok: boolean }> => {
     return { state: { hasBoard: false, ownFinished: false, roundFinished: false }, ok: true }
@@ -176,6 +178,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       // A newer read supersedes a pending retry; it schedules its own if it fails too.
       readRetry.cancel()
       if (!playerId) {
+        readRetry.scope(null)
         setRoundId(null)
         setRoundStartedAt(null)
         setMeta(null)
@@ -190,6 +193,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
       if (gameData.status === 'active' || gameData.status === 'finished') {
         const currentRoundNumber = gameData.current_round_number ?? 1
+        // A new requested round gets the full retry budget, before any of its reads can fail.
+        readRetry.scope(`round:${currentRoundNumber}`)
         const { data: roundData, error: roundError } = await supabase
           .from('rounds')
           .select(ROUND_SELECT)
@@ -368,6 +373,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           return { hasBoard: false, ownFinished: false, roundFinished: false }
         }
       } else {
+        readRetry.scope(null)
         setRoundId(null)
         setRoundStartedAt(null)
         setMeta(null)
