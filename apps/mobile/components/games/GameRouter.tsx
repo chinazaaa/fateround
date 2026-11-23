@@ -139,7 +139,9 @@ export function GameRouter({ gameCode, gameType }: { gameCode: string; gameType:
   return (
     <PlayerPreJoinGate gameCode={gameCode}>
       <Suspense fallback={<GameRouterFallback />}>
-        <PlayerView gameCode={gameCode} />
+        {/* Keyed by the normalized room code: a room change on the same mounted route remounts the view,
+            so no state or in-flight read from the previous room can leak into the new one. */}
+        <PlayerView key={gameCode.toUpperCase()} gameCode={gameCode} />
       </Suspense>
     </PlayerPreJoinGate>
   )

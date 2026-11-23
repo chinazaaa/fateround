@@ -16,6 +16,7 @@ vi.mock('@/lib/push', async (importOriginal) => ({
 let GAME: Record<string, unknown> = {}
 const inserts: Record<string, unknown>[] = []
 const spectatorFilters: unknown[] = []
+let PARTICIPANT_COUNT = 0
 
 function makeClient() {
   return {
@@ -41,7 +42,7 @@ function makeClient() {
             }),
           }
         },
-        then: (resolve: (v: unknown) => unknown) => resolve({ data: [], count: 0, error: null }),
+        then: (resolve: (v: unknown) => unknown) => resolve({ data: [], count: PARTICIPANT_COUNT, error: null }),
       }
       return chain
     },
@@ -69,6 +70,7 @@ beforeEach(async () => {
   POST ??= (await import('./route')).POST
   inserts.length = 0
   spectatorFilters.length = 0
+  PARTICIPANT_COUNT = 0
 })
 
 describe('POST /api/players — anonymous room', () => {
@@ -86,6 +88,39 @@ describe('POST /api/players — anonymous room', () => {
     expect(anonymousPlayerCanChat({ joined_at: joinedAt, spectator: inserts[0].spectator as boolean }, started)).toBe(
       true
     )
+  })
+
+  it('keeps an explicit watch-only join to a waiting room as a spectator', async () => {
+    GAME = { id: 'ABCD', status: 'waiting', game_type: 'anonymous_messages', session_started_at: null }
+    const res = await join({ joinAsViewer: true })
+    expect(res.status).toBe(200)
+    expect(inserts).toHaveLength(1)
+    expect(inserts[0].spectator).toBe(true)
+    // The join response must not tell the viewer they can chat.
+    await expect(res.json()).resolves.toMatchObject({ canChat: false })
+  })
+
+  it('reports canChat true for a normal lobby joiner', async () => {
+    GAME = { id: 'ABCD', status: 'waiting', game_type: 'anonymous_messages', session_started_at: null }
+    const res = await join()
+    await expect(res.json()).resolves.toMatchObject({ canChat: true })
+  })
+
+  it('admits an explicit viewer join when participant seats are full in a waiting room', async () => {
+    GAME = { id: 'ABCD', status: 'waiting', game_type: 'anonymous_messages', session_started_at: null }
+    PARTICIPANT_COUNT = 10_000
+    const res = await join({ joinAsViewer: true })
+    expect(res.status).toBe(200)
+    expect(inserts[0].spectator).toBe(true)
+  })
+
+  it('still rejects a normal join when participant seats are full in a waiting room', async () => {
+    GAME = { id: 'ABCD', status: 'waiting', game_type: 'anonymous_messages', session_started_at: null }
+    PARTICIPANT_COUNT = 10_000
+    const res = await join()
+    expect(res.status).toBe(400)
+    await expect(res.json()).resolves.toEqual({ error: 'This room is full' })
+    expect(inserts).toHaveLength(0)
   })
 
   it('seats a late joiner to an active room as a spectator who cannot chat', async () => {

@@ -85,12 +85,31 @@ describe('POST /api/gofish/hands', () => {
     expect(res.status).toBe(200)
     const { hands } = await res.json()
     expect(hands).toHaveLength(2)
-    expect(hands[0]).toMatchObject({ player_id: 'me', cards: MY_CARDS, card_count: 1, books: [2] })
-    expect(hands[1]).toMatchObject({ player_id: 'them', cards: null, card_count: 2, books: [] })
+    // Exact shapes (toEqual, not toMatchObject): an opponent row with `cards: null` that also
+    // carried the ranks in an extra field would still leak, and a subset match would not notice.
+    expect(hands[0]).toEqual({
+      id: 'h1',
+      game_id: 'ABCD',
+      player_id: 'me',
+      cards: MY_CARDS,
+      card_count: 1,
+      books: [2],
+      player_order: 0,
+    })
+    expect(hands[1]).toEqual({
+      id: 'h2',
+      game_id: 'ABCD',
+      player_id: 'them',
+      cards: null,
+      card_count: 2,
+      books: [],
+      player_order: 1,
+    })
   })
 
   it("never serialises another player's cards or the ocean", async () => {
     const res = await post({ gameCode: 'ABCD', resumeToken: MY_TOKEN })
+    expect(res.status).toBe(200)
     const text = JSON.stringify(await res.json())
     for (const c of THEIR_CARDS) expect(text).not.toContain(c.id)
     expect(text).not.toContain('secret-draw')

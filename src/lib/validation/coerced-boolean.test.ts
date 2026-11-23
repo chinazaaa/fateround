@@ -25,10 +25,12 @@ describe('coercedBoolean', () => {
 
   it('treats blank and null as not provided on an optional field', () => {
     const schema = z.object({ b: optionalCoercedBoolean() })
-    expect(schema.parse({})).toEqual({})
-    expect(schema.parse({ b: '' })).toEqual({})
-    expect(schema.parse({ b: null })).toEqual({})
-    expect(schema.parse({ b: 'false' })).toEqual({ b: false })
+    // toStrictEqual: an omitted key and a supplied-but-blank key (kept as an own `b: undefined`)
+    // must not look the same, because spreading them over a default behaves differently.
+    expect(schema.parse({})).toStrictEqual({})
+    expect(schema.parse({ b: '' })).toStrictEqual({ b: undefined })
+    expect(schema.parse({ b: null })).toStrictEqual({ b: undefined })
+    expect(schema.parse({ b: 'false' })).toStrictEqual({ b: false })
     expect(schema.safeParse({ b: 'maybe' }).success).toBe(false)
   })
 })

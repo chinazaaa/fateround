@@ -466,7 +466,9 @@ export async function POST(req: NextRequest) {
       .eq('game_id', gameId)
       .eq('spectator', false)
 
-    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers) {
+    // An explicit viewer join is inserted as spectator and consumes no participant seat, so a
+    // full lobby only turns away joins that would take one.
+    if (gameRow.status === 'waiting' && (playerCount ?? 0) >= maxPlayers && rawJoinAsViewer !== true) {
       return NextResponse.json({ error: 'This room is full' }, { status: 400 })
     }
 
@@ -482,7 +484,8 @@ export async function POST(req: NextRequest) {
         gender: 'both',
         identity_gender: null,
         participant_id: null,
-        spectator: spectatorForActiveJoin(gameRow as Game, true),
+        // An explicit watch-only join stays a spectator even while the room is still in the lobby.
+        spectator: rawJoinAsViewer === true || spectatorForActiveJoin(gameRow as Game, true),
       })
       .select()
       .single()

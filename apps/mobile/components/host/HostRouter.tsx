@@ -24,37 +24,19 @@ export function HostRouter({ gameCode, hostToken, game, players, onReload }: Pro
 
   if (type === 'bingo') {
     return (
-      <BingoHostScreen
-        gameCode={gameCode}
-        hostToken={hostToken}
-        game={game}
-        players={players}
-        onReload={onReload}
-      />
+      <BingoHostScreen gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload} />
     )
   }
 
   if (type === 'trivia') {
     return (
-      <TriviaHostScreen
-        gameCode={gameCode}
-        hostToken={hostToken}
-        game={game}
-        players={players}
-        onReload={onReload}
-      />
+      <TriviaHostScreen gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload} />
     )
   }
 
   if (type === 'mafia') {
     return (
-      <MafiaHostScreen
-        gameCode={gameCode}
-        hostToken={hostToken}
-        game={game}
-        players={players}
-        onReload={onReload}
-      />
+      <MafiaHostScreen gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload} />
     )
   }
 
@@ -85,6 +67,7 @@ export function HostRouter({ gameCode, hostToken, game, players, onReload }: Pro
   if (type === 'anonymous_messages') {
     return (
       <AnonymousMessagesHostScreen
+        key={gameCode.toUpperCase()}
         gameCode={gameCode}
         hostToken={hostToken}
         game={game}
@@ -107,12 +90,6 @@ export function HostRouter({ gameCode, hostToken, game, players, onReload }: Pro
   }
 
   return (
-    <GenericHostScreen
-      gameCode={gameCode}
-      hostToken={hostToken}
-      game={game}
-      players={players}
-      onReload={onReload}
-    />
+    <GenericHostScreen gameCode={gameCode} hostToken={hostToken} game={game} players={players} onReload={onReload} />
   )
 }
