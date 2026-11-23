@@ -42,6 +42,7 @@ import {
   MATCHING_PAIRS_WRONG_ATTEMPT_PENALTY,
   matchingPairsGridLayout,
   createFlipResyncTracker,
+  createReadRetry,
   MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsMetadata,
   type MatchingPairsSubmission,
@@ -161,6 +162,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const finishedRef = useRef(false)
   const boardRoundIdRef = useRef<string | null>(null)
   const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
+  // A failed snapshot read keeps the board as it is; this reads again a few times (backoff) because no other
+  // trigger is guaranteed to fire while the board sits idle. Reset when a read succeeds.
+  const [readRetry] = useState(() => createReadRetry(() => void Promise.resolve(loadRef.current()).catch(() => {})))
 
   const loadGameState = useCallback(async (): Promise<{ state: MatchingPairsGameState; ok: boolean }> => {
     return { state: { hasBoard: false, ownFinished: false, roundFinished: false }, ok: true }
@@ -169,6 +173,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const afterResolve = useCallback(
     async (gameData: Game, playerId: string | null): Promise<MatchingPairsGameState> => {
       const readTicket = flipTracker.startRead()
+      // A newer read supersedes a pending retry; it schedules its own if it fails too.
+      readRetry.cancel()
       if (!playerId) {
         setRoundId(null)
         setRoundStartedAt(null)
@@ -194,6 +200,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         // A failed round read is not "no round": clearing the board and scores would hide stored progress.
         if (roundError) {
           flipTracker.markDirty()
+          if (!flipTracker.superseded(readTicket)) readRetry.schedule()
           return {
             hasBoard: boardRef.current !== null,
             ownFinished: boardRef.current !== null && finishedRef.current,
@@ -241,6 +248,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           // and points. Leave everything as it is; the next load will reconcile.
           if (!supabasePollOk(subRes, progRes)) {
             flipTracker.markDirty()
+            readRetry.schedule()
             // Only for the round the board on screen was built for: another round's board must not stay up under
             // this round's metadata, so for a new round clear it and report no board until a read succeeds.
             const sameRoundBoard = boardRoundIdRef.current === roundData.id && boardRef.current !== null
@@ -251,6 +259,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               roundFinished: false,
             }
           }
+          readRetry.reset()
           const subData = subRes.data
           const progData = progRes.data
 
@@ -346,6 +355,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             return { hasBoard: false, ownFinished: false, roundFinished }
           }
         } else {
+          readRetry.reset()
           setRoundId(null)
           setRoundStartedAt(null)
           setMeta(null)
@@ -370,7 +380,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         return { hasBoard: false, ownFinished: false, roundFinished: false }
       }
     },
-    [gameCode, flipTracker]
+    [gameCode, flipTracker, readRetry]
   )
 
   const computeScreen = useCallback(
@@ -552,8 +562,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
       if (flashRef.current) clearTimeout(flashRef.current)
+      readRetry.cancel()
     }
-  }, [])
+  }, [readRetry])
 
   // ── Flip handler ───────────────────────────────────────────────────────────
 

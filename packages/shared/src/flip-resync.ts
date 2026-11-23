@@ -201,6 +201,8 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
  * failed read must not be applied or committed (`commitRead`): keep the current board and let a later event,
  * poll or flip settle read again. A SUCCESSFUL empty result is real empty history and is still applied.
  */
-export function snapshotReadsOk(...results: ReadonlyArray<{ error?: unknown } | null | undefined>): boolean {
+export function snapshotReadsOk(
+  ...results: ReadonlyArray<{ data?: unknown; error?: unknown } | null | undefined>
+): boolean {
   return results.every((r) => !!r && !r.error)
 }

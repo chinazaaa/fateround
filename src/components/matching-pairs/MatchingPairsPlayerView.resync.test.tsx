@@ -263,6 +263,26 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     expect(hiddenCount()).toBe(4)
   })
 
+  it('reads again by itself after a failed snapshot read, without touching the board meanwhile', async () => {
+    // No realtime event, poll or flip follows the failure: only the bounded retry can reconcile the board.
+    db.subs = [sub(0, true, 1, 100, 1)]
+    await mount()
+    expect(scoreValue()).toBe('100')
+
+    db.failReads = true
+    await act(async () => {
+      await boot.opts!.afterResolve(GAME, 'p1', {})
+    })
+    expect(scoreValue()).toBe('100')
+    expect(hiddenCount()).toBe(4)
+
+    // The server recovers (and holds one more match than the screen shows); nobody calls load().
+    db.subs = [sub(0, true, 1, 100, 1), sub(1, true, 2, 200, 2)]
+    db.failReads = false
+    await waitFor(() => expect(scoreValue()).toBe('200'), { timeout: 3000 })
+    expect(hiddenCount()).toBe(2)
+  })
+
   it('keeps the optimistic board while a flip is in flight, then reads again once it has settled', async () => {
     let answer: (v: unknown) => void = () => {}
     fetchMock.mockReturnValue(new Promise((r) => (answer = r)))

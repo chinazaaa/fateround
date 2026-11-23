@@ -23,6 +23,7 @@ import {
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { createFlipResyncTracker, snapshotReadsOk } from '@fateround/shared/flip-resync'
+import { createReadRetry } from '@fateround/shared/read-retry'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
@@ -105,6 +106,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // Reloads from the server after a refused/failed flip (same tracker the web view uses); see postFlip.
   const loadRef = useRef<() => Promise<unknown>>(async () => {})
   const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
+  // A failed snapshot read keeps the board as it is; this reads again a few times (backoff) because no other
+  // trigger is guaranteed to fire while the board sits idle. Reset when a read succeeds or the round changes.
+  const [readRetry] = useState(() => createReadRetry(() => void Promise.resolve(loadRef.current()).catch(() => {})))
 
   const loadGameState = useCallback(
     async (game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
@@ -163,6 +167,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     afterResolve: async (game, playerId) => {
       if (!playerId || !game) return
       const readTicket = flipTracker.startRead()
+      // A newer read supersedes a pending retry; it schedules its own if it fails too.
+      readRetry.cancel()
       const roundNumber = game.current_round_number ?? 1
       const { data: roundData, error: roundError } = await getSupabase()
         .from('rounds')
@@ -173,10 +179,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       // A failed round read is not "no round": keep what is on screen and let a later event read again.
       if (roundError) {
         flipTracker.markDirty()
+        if (!flipTracker.superseded(readTicket)) readRetry.schedule()
         return
       }
       const parsedMeta = roundData ? parseMatchingPairsMetadata((roundData as Round).memory_match_metadata) : null
-      if (!roundData || !parsedMeta) return
+      if (!roundData || !parsedMeta) {
+        readRetry.reset()
+        return
+      }
 
       const [subsRes, progRes] = await Promise.all([
         getSupabase()
@@ -194,8 +204,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       // streak. Keep the current board, do not commit this read, and read again on the next event or flip.
       if (!snapshotReadsOk(subsRes, progRes)) {
         flipTracker.markDirty()
+        readRetry.schedule()
         return
       }
+      readRetry.reset()
       const subs = subsRes.data
       const prog = progRes.data
 
@@ -238,6 +250,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       })
       if (decision === 'keep-dirty' || decision === 'keep-resync' || decision === 'discard') return
       if (decision === 'new-round') {
+        readRetry.reset()
         cancelFlipBack()
         setMemorizeCountdown(null)
       }
@@ -310,8 +323,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   useEffect(() => {
     return () => {
       if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
+      readRetry.cancel()
     }
-  }, [])
+  }, [readRetry])
 
   const mySubs = useMemo(
     () =>
