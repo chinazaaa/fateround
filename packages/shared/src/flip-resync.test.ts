@@ -460,6 +460,39 @@ describe('createFlipResyncTracker failed resync retry', () => {
     }
   })
 
+  it('a flip that fails while a retry backoff is pending resyncs at once instead of waiting it out', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => false)
+      const t = createFlipResyncTracker(resync, [60_000])
+      await flip(t, Promise.reject(new Error('refused')))
+      expect(resync).toHaveBeenCalledTimes(1) // failed read: backoff of 60s armed
+      await flip(t, Promise.reject(new Error('refused again')))
+      expect(resync).toHaveBeenCalledTimes(2) // fresh evidence: no waiting for the timer
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a failed resync arms no backoff once the view has moved to another round meanwhile', async () => {
+    vi.useFakeTimers()
+    try {
+      let finish!: (ok: boolean) => void
+      const resync = vi.fn(() => new Promise<boolean>((r) => (finish = r)))
+      const t = createFlipResyncTracker(resync, [10])
+      t.enterRound('a')
+      const token = t.begin()
+      t.end(token, true) // starts the resync for round a
+      expect(resync).toHaveBeenCalledTimes(1)
+      t.enterRound('b') // the view leaves round a while that read is still running
+      finish(false)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(resync).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('cancel() drops the pending retry', async () => {
     vi.useFakeTimers()
     try {

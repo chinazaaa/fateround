@@ -533,6 +533,26 @@ describe('useGameViewBootstrap', () => {
     }
   })
 
+  it('unmounting settles a loadSettled waiter on the stalled run with false at once, not after the stale deadline', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    let release!: () => void
+    const stall = new Promise<void>((r) => (release = r))
+    let started = false
+    const loadGameState = vi.fn(async () => {
+      started = true
+      await stall
+      return { state: 'STATE', ok: true }
+    })
+    const { result, unmount } = setup({ loadGameState })
+    await waitFor(() => expect(started).toBe(true))
+    let settled: boolean | undefined
+    void result.current.loadSettled().then((v) => (settled = v))
+    unmount()
+    // Real timers: the 12s stale deadline cannot be what resolved it.
+    await waitFor(() => expect(settled).toBe(false))
+    release()
+  })
+
   it('after unmount: load resolves false without reading, and an in-flight run reads as superseded', async () => {
     h.gameRow = { id: 'ABCD', status: 'waiting' }
     let release!: () => void

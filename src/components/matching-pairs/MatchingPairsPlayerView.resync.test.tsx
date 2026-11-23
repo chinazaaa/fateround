@@ -465,6 +465,49 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     await waitFor(() => expect(scoreValue()).toBe('200'), { timeout: 3000 })
   })
 
+  it('a flip that is refused after the view unmounted starts no resync', async () => {
+    let answer!: () => void
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = () => resolve(refused())
+        })
+    )
+    await mount()
+    fireEvent.click(cards()[0])
+    fireEvent.click(cards()[1]) // flip in flight
+    const settledBefore = boot.settledCalls
+    cleanup() // unmount
+    await act(async () => {
+      answer()
+      await new Promise((r) => setTimeout(r, 20))
+    })
+    expect(boot.settledCalls).toBe(settledBefore)
+  })
+
+  it('a newer read that takes over supersedes the pending retry timer instead of letting it fire a duplicate load', async () => {
+    db.subs = [sub(0, true, 1, 100, 1)]
+    await mount()
+    db.failReads = true
+    await act(async () => {
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true) // fails: arms the 1s retry
+    })
+    db.failReads = false
+    let open!: () => void
+    db.readGate = new Promise<void>((r) => (open = r)) // the newer read stalls
+    const settledBefore = boot.settledCalls
+    let newer!: Promise<unknown>
+    act(() => {
+      newer = boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
+    })
+    await new Promise((r) => setTimeout(r, 1300)) // past the first retry delay
+    expect(boot.settledCalls).toBe(settledBefore)
+    open()
+    await act(async () => {
+      await newer
+    })
+  })
+
   it("does not keep the previous round's board interactive when the round lookup fails after the game moved on", async () => {
     await mount()
     expect(cards()).toHaveLength(6)

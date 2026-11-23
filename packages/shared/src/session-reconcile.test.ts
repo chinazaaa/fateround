@@ -79,6 +79,21 @@ describe('reconcileSession', () => {
     expect(h.store.current).toEqual(old)
   })
 
+  it('a run superseded while the exclusive step re-reads the session writes nothing', async () => {
+    let current = true
+    const h = setup(old, { kind: 'gone' })
+    let reads = 0
+    const read = async () => {
+      reads += 1
+      // 1st read = the initial one; 2nd = the re-read inside the exclusive step.
+      if (reads === 2) current = false
+      return h.store.current
+    }
+    expect(await reconcileSession([], { ...h.deps, read, isCurrent: () => current })).toEqual(old)
+    expect(h.clear).not.toHaveBeenCalled()
+    expect(h.store.current).toEqual(old)
+  })
+
   describe('against a join save still in flight in the room coordinator', () => {
     /** A save through the coordinator whose storage write is held open until `finish()`. */
     function pendingJoinSave(h: ReturnType<typeof setup>) {
