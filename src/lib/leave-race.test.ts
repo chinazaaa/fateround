@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 
-import { removeUnoPlayer, processUnoExpireTurn, processUnoChallenge, UNO_REMOVE_CONFLICT_ERROR } from './uno'
+import {
+  removeUnoPlayer,
+  processUnoExpireTurn,
+  processUnoChallenge,
+  processUnoChoose,
+  UNO_REMOVE_CONFLICT_ERROR,
+} from './uno'
 import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble'
 
 /**
@@ -217,6 +223,99 @@ describe('processUnoExpireTurn — lost CAS inside the delegated auto-play', () 
       },
     })
     const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.error).toBeUndefined()
+    expect(res.skipped).toBe(true)
+  })
+})
+
+describe('removeUnoPlayer — stacked Wild Draw Four penalty (phase playing)', () => {
+  // Stacking on: A played +4, B stacked +4 (total 8) ... here C is the target holding the pending +8,
+  // played last by A. Penalty stays in phase 'playing' on the current player (index 2 = C).
+  function stackedTables() {
+    const t = unoTables()
+    t.games[0].uno_stacking = true
+    const s = t.uno_sessions[0]
+    s.phase = 'playing'
+    s.current_turn_index = 2
+    s.wd4_player_id = 'A'
+    s.challenge_prev_color = 'red'
+    s.draw_penalty = 8
+    s.draw_penalty_kind = 'wild_draw4'
+    s.draw_pile = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, color: 'blue', value: '1' }))
+    s.discard_pile = []
+    return t
+  }
+  const handCount = (t: Tables, id: string) =>
+    ((t.uno_player_hands.find((h) => h.player_id === id)?.cards as unknown[]) ?? []).length
+
+  it('a challenge after the +4 player leaves is a plain accept: target draws exactly the stack and is skipped', async () => {
+    const t = stackedTables()
+    const db = makeDb(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].wd4_player_id).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('playing')
+    expect(t.uno_sessions[0].draw_penalty).toBe(8)
+    // turn_order is now [B, C, D]; C (the target) sits at index 1.
+    expect(t.uno_sessions[0].turn_order).toEqual(['B', 'C', 'D'])
+    expect(t.uno_sessions[0].current_turn_index).toBe(1)
+
+    const before = handCount(t, 'C')
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBeUndefined()
+    // Exactly the pending stack (8): no failed-challenge extra.
+    expect(handCount(t, 'C') - before).toBe(8)
+    const s = t.uno_sessions[0]
+    expect(s.draw_penalty).toBe(0)
+    expect(s.draw_penalty_kind).toBeNull()
+    expect(s.current_turn_index).toBe(2) // skipped past C to D
+  })
+
+  it('still refuses a challenge from a player who is not the current player', async () => {
+    const t = stackedTables()
+    const db = makeDb(t)
+    await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    const out = await processUnoChallenge(db.supabase, 'G', 'D', true)
+    expect(out.error).toBe('Not your decision')
+    expect(t.uno_sessions[0].draw_penalty).toBe(8)
+  })
+
+  it('refuses a challenge when no stacked penalty is pending', async () => {
+    const t = stackedTables()
+    t.uno_sessions[0].draw_penalty = 0
+    t.uno_sessions[0].wd4_player_id = null
+    const db = makeDb(t)
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBe('No Wild Draw Four to challenge')
+  })
+
+  it('non-leaver case unchanged: challenge is adjudicated against the +4 player real hand', async () => {
+    const t = stackedTables()
+    t.uno_player_hands.find((h) => h.player_id === 'A')!.cards = [{ id: 'A1', color: 'red', value: '5' }]
+    const db = makeDb(t)
+    const beforeA = handCount(t, 'A')
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBeUndefined()
+    // A held red (prev colour): challenge succeeds, A draws the stack.
+    expect(handCount(t, 'A') - beforeA).toBe(8)
+  })
+})
+
+describe('processUnoChoose — lost CAS', () => {
+  it('reports skipped (not success) when a competing write lands after the load', async () => {
+    const t = unoTables()
+    const s = t.uno_sessions[0]
+    s.phase = 'choose_color'
+    s.pending_wild = 'wild'
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || raced) return
+        raced = true
+        s.updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+    const res = await processUnoChoose(db.supabase, 'G', 'A', 'red')
     expect(res.error).toBeUndefined()
     expect(res.skipped).toBe(true)
   })

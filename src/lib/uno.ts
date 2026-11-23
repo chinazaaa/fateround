@@ -2469,8 +2469,8 @@ export async function processUnoChoose(
       timerSeconds,
       session.updated_at
     )
-    if (persisted.error) return { error: persisted.error }
-    if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+    await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
     return {}
   }
 
@@ -2494,8 +2494,8 @@ export async function processUnoChoose(
       timerSeconds,
       session.updated_at
     )
-    if (persisted.error) return { error: persisted.error }
-    if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+    await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
     return {}
   }
 
@@ -2520,9 +2520,8 @@ export async function processUnoChoose(
         timerSeconds,
         session.updated_at
       )
-      if (persisted.error) return { error: persisted.error }
-      if (persisted.won)
-        await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+      if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+      await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
       return {}
     }
     // Stacking (or challenge disabled): the penalty passes to the next player, who may stack
@@ -2552,8 +2551,8 @@ export async function processUnoChoose(
       timerSeconds,
       session.updated_at
     )
-    if (persisted.error) return { error: persisted.error }
-    if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+    await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
     return {}
   }
 
@@ -2573,8 +2572,8 @@ export async function processUnoChoose(
     timerSeconds,
     session.updated_at
   )
-  if (persisted.error) return { error: persisted.error }
-  if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+  await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
   return {}
 }
 
@@ -2808,11 +2807,14 @@ export async function processUnoChallenge(
   }
 
   // Challengeable either in the dedicated window (challenge-only games) or, when stacking is on,
-  // while a Wild Draw Four penalty sits pending on the current player in normal play.
+  // while a Wild Draw Four penalty sits pending on the current player in normal play. The +4
+  // player may have left (wd4_player_id cleared); the penalty is then still pending and the
+  // challenge degrades to a plain accept below, so wd4_player_id is deliberately not required.
   const inChallengeWindow = session.phase === 'challenge_window'
   const inStackedPenalty =
     session.phase === 'playing' &&
-    !!session.wd4_player_id &&
+    rules.wd4Challenge &&
+    rules.stacking &&
     (session.draw_penalty ?? 0) > 0 &&
     session.draw_penalty_kind === 'wild_draw4'
   if (!inChallengeWindow && !inStackedPenalty) return { error: 'No Wild Draw Four to challenge' }
