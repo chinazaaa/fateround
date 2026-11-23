@@ -31,10 +31,29 @@ export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   loadGameState: (
     game: Game,
     players: Player[],
-    session: PlayerSession | null
+    session: PlayerSession | null,
+    /**
+     * True while this load is still the current one. A callback that publishes game-specific state of its own
+     * (setState, refs, trackers) must check it after every await and stop publishing once it turns false: the
+     * hook drops a superseded run's results, but not what the callback already wrote itself.
+     */
+    isCurrent: () => boolean
   ) => Promise<{ state: GameState; ok: boolean }>
   computeScreen: (game: Game, playerId: string | null, state: GameState) => Screen
-  afterResolve?: (game: Game, playerId: string | null, state: GameState) => void | Promise<void>
+  afterResolve?: (
+    game: Game,
+    playerId: string | null,
+    state: GameState,
+    /** See `loadGameState`. */
+    isCurrent: () => boolean
+  ) => void | Promise<void>
+  /**
+   * When `loadGameState` reports `ok: false`, resolve the load as failed WITHOUT publishing the new game,
+   * players or screen (and without running `afterResolve`): the view's own state was left as it was, so
+   * showing the new game over it would pair e.g. a new round's board with the previous round's metadata. The
+   * caller owns retrying. Off by default: other games render with a null state on a failed read.
+   */
+  holdOnLoadStateFailure?: boolean
 }
 
 export function useGameViewBootstrap<Screen extends string, GameState>(
@@ -49,6 +68,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     loadGameState,
     computeScreen,
     afterResolve,
+    holdOnLoadStateFailure,
   } = opts
 
   const router = useRouter()
@@ -76,6 +96,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   computeScreenRef.current = computeScreen
   const afterResolveRef = useRef(afterResolve)
   afterResolveRef.current = afterResolve
+  const holdOnFailureRef = useRef(holdOnLoadStateFailure)
+  holdOnFailureRef.current = holdOnLoadStateFailure
 
   // Singleflight: overlapping load() calls (mount + realtime + submit) must not interleave
   // their setStates, which is what makes the finished screen flicker. While one load runs,
@@ -94,6 +116,23 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // SAME session as 'active' can only be read-replica lag — ignore it so results never bounce
   // back to the board. A real replay passes through 'waiting' (which clears the latch).
   const finishedSessionRef = useRef<string | null | undefined>(undefined)
+
+  // False between unmount and the next mount. Unmounting also bumps the generation, so a run still in flight
+  // counts as superseded: its callbacks (`isCurrent`) and its own writes stop, and nobody keeps waiting on it.
+  const mountedRef = useRef(true)
+  const invalidateLoads = useCallback(() => {
+    mountedRef.current = false
+    loadGenRef.current++
+    loadingRef.current = false
+    pendingRef.current = false
+    abandonChainRef.current?.()
+    abandonChainRef.current = null
+    chainRef.current = null
+  }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    return invalidateLoads
+  }, [invalidateLoads])
 
   const runLoad = useCallback(
     async (gen: number): Promise<boolean> => {
@@ -159,15 +198,21 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           setMyResumeToken(null)
         }
 
-        const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session)
+        const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session, () => !superseded())
         if (superseded()) return ok
+        if (!ok && holdOnFailureRef.current) return false
 
         setGame(gameData)
         setPlayers(playerRows)
         setGameState(ok ? state : null)
 
         const resolvedState = ok ? state : (null as GameState)
-        if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)
+        if (afterResolveRef.current) {
+          await afterResolveRef.current(gameData, playerId, resolvedState, () => !superseded())
+          // A fresher load can overtake this one while afterResolve runs (e.g. it finished the game):
+          // switching the screen now would put this older game snapshot back on top.
+          if (superseded()) return true
+        }
         setScreen(computeScreenRef.current(gameData, playerId, resolvedState))
         return true
       } catch {
@@ -178,6 +223,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   )
 
   const load = useCallback(async (): Promise<boolean> => {
+    // Unmounted: a late caller (a flip answer, a retry timer) must not start a load that publishes into nothing.
+    if (!mountedRef.current) return false
     if (loadingRef.current && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
       pendingRef.current = true
       return true
@@ -217,23 +264,31 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const loadSettled = useCallback((): Promise<boolean> => {
     const chain = chainRef.current
     const age = Date.now() - loadStartedAtRef.current
+    let waitFor: Promise<boolean>
+    let deadlineMs: number
     if (loadingRef.current && chain && age < STALE_LOAD_MS) {
       pendingRef.current = true
-      return new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), Math.max(0, STALE_LOAD_MS - age))
-        void chain.then(
-          (v) => {
-            clearTimeout(timer)
-            resolve(v)
-          },
-          () => {
-            clearTimeout(timer)
-            resolve(false)
-          }
-        )
-      })
+      waitFor = chain
+      deadlineMs = Math.max(0, STALE_LOAD_MS - age)
+    } else {
+      // Starting the load here: it gets the same deadline, or a games query that never settles would leave
+      // the caller (the flip tracker's resync) waiting forever and never owing a retry.
+      waitFor = load()
+      deadlineMs = STALE_LOAD_MS
     }
-    return load()
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), deadlineMs)
+      void waitFor.then(
+        (v) => {
+          clearTimeout(timer)
+          resolve(v)
+        },
+        () => {
+          clearTimeout(timer)
+          resolve(false)
+        }
+      )
+    })
   }, [load])
 
   const join = useCallback(

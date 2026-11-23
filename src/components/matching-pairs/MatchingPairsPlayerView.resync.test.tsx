@@ -61,12 +61,14 @@ const db = vi.hoisted(() => ({
 }))
 const boot = vi.hoisted(() => ({
   opts: null as null | {
-    afterResolve: (g: unknown, playerId: string | null, state: unknown) => Promise<unknown>
+    afterResolve: (g: unknown, playerId: string | null, state: unknown, isCurrent: () => boolean) => Promise<unknown>
   },
   loadCalls: 0,
   settledCalls: 0,
   /** The next N loads fail before reading a snapshot (a games/players query error): they resolve false. */
   failNext: 0,
+  /** What the hook's `isCurrent` reports to afterResolve (false models a superseded / unmounted load). */
+  current: true,
   /** Controls when the fake load() finishes, to interleave it with flips. */
   gate: null as null | Promise<void>,
 }))
@@ -122,7 +124,12 @@ vi.mock('@/hooks/useGameViewBootstrap', async () => {
           boot.failNext -= 1
           return false
         }
-        await boot.opts!.afterResolve(GAME, 'p1', { hasBoard: false, ownFinished: false, roundFinished: false })
+        await boot.opts!.afterResolve(
+          GAME,
+          'p1',
+          { hasBoard: false, ownFinished: false, roundFinished: false },
+          () => boot.current
+        )
         return true
       }, [])
       const loadSettled = React.useCallback(async () => {
@@ -231,6 +238,7 @@ beforeEach(() => {
   boot.settledCalls = 0
   boot.failNext = 0
   boot.gate = null
+  boot.current = true
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
 })
@@ -287,7 +295,7 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
 
     db.failReads = true
     await act(async () => {
-      await boot.opts!.afterResolve(GAME, 'p1', {})
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
     })
     expect(scoreValue()).toBe('100')
     expect(hiddenCount()).toBe(4)
@@ -301,7 +309,7 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
 
     db.failReads = true
     await act(async () => {
-      await boot.opts!.afterResolve(GAME, 'p1', {})
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
     })
     expect(scoreValue()).toBe('100')
     expect(hiddenCount()).toBe(4)
@@ -324,7 +332,7 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
 
     // A load that completes now holds a snapshot without this flip: it must not hide the match.
     await act(async () => {
-      await boot.opts!.afterResolve(GAME, 'p1', {})
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
     })
     expect(scoreValue()).not.toBe('0')
     expect(hiddenCount()).toBe(4)
@@ -340,8 +348,8 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     const readsBefore = db.reads
 
     await act(async () => {
-      await boot.opts!.afterResolve(GAME, 'p1', {})
-      await boot.opts!.afterResolve(GAME, 'p1', {})
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
     })
     expect(cards()[0].getAttribute('aria-label')).not.toBe('Hidden card')
     // Only the two reads this test made itself: nothing re-armed a read.
@@ -357,10 +365,82 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     db.failReads = true
     let state: unknown
     await act(async () => {
-      state = await boot.opts!.afterResolve(GAME, 'p1', {})
+      state = await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
     })
     expect((state as { hasBoard: boolean }).hasBoard).toBe(false)
     await waitFor(() => expect(screen.queryAllByRole('button', { name: /card/i })).toHaveLength(0))
+  })
+
+  it("hides the previous round's board as soon as the new round's metadata is published, not only when history fails", async () => {
+    await mount()
+    db.roundId = 'r2'
+    let release!: () => void
+    db.readGate = new Promise<void>((r) => (release = r)) // the new round's history read stays pending
+    let pending!: Promise<unknown>
+    act(() => {
+      pending = boot.opts!.afterResolve(GAME, 'p1', {}, () => true) as Promise<unknown>
+    })
+    // Round 2's metadata is published; round 1's board must not stay tappable under it meanwhile.
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /card/i })).toHaveLength(0))
+    await act(async () => {
+      release()
+      await pending
+    })
+    await waitFor(() => expect(cards()).toHaveLength(6))
+  })
+
+  it("a late answer for the previous round's flip cannot write its score once that round's board was dropped", async () => {
+    await mount()
+    let answer!: () => void
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = () =>
+            resolve({ ok: true, json: async () => ({ currentStreak: 7, pointsAfter: 999, finished: false }) })
+        })
+    )
+    fireEvent.click(cards()[0])
+    fireEvent.click(cards()[1])
+
+    db.roundId = 'r2'
+    db.failReads = true // round 2's history read fails: its board is dropped, and so is its owner
+    await act(async () => {
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
+    })
+    await act(async () => {
+      answer()
+      await Promise.resolve()
+    })
+    expect(scoreValue()).not.toBe('999')
+    expect(streakValue()).not.toBe('7🔥')
+  })
+
+  it('a superseded load publishes nothing: no tracker, retry or view writes', async () => {
+    await mount()
+    const reads = db.reads
+    db.roundId = 'r2'
+    db.failReads = true
+    const settledBefore = boot.settledCalls
+    await act(async () => {
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => false)
+    })
+    expect(cards()).toHaveLength(6) // round 1's board was not touched by the dead load
+    expect(db.reads).toBe(reads)
+    await new Promise((r) => setTimeout(r, 1200))
+    expect(boot.settledCalls).toBe(settledBefore) // and it armed no retry
+  })
+
+  it('reconciles by itself when the read after an accepted flip fails', async () => {
+    await mount()
+    fetchMock.mockImplementation(async () => {
+      db.subs = [sub(0, true, 1, 100, 1)]
+      db.failReads = true // the submissions refresh after the accepted flip fails
+      return { ok: true, json: async () => ({ currentStreak: 1, pointsAfter: 100, finished: false }) }
+    })
+    const settledBefore = boot.settledCalls
+    fireEvent.click(cards()[0])
+    fireEvent.click(cards()[1])
+    await waitFor(() => expect(boot.settledCalls).toBeGreaterThan(settledBefore))
   })
 
   // Cards 0,1 are pair 0 (stored as matched, streak 1, 100 points); a miss is cards 2 (pair 1) and 4 (pair 2).
@@ -413,7 +493,7 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     try {
       vi.advanceTimersByTime(900) // the timer unlocks the board: setBoard is scheduled but not rendered yet
       // A read completing in this gap: microtasks run before React's scheduler task.
-      await boot.opts!.afterResolve(GAME, 'p1', {})
+      await boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
       vi.useRealTimers()
       await waitFor(() => expect(scoreValue()).toBe('100'), { timeout: 3000 })
     } finally {
@@ -447,7 +527,7 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     const readsBefore = db.reads
     let inFlightRead: Promise<unknown> = Promise.resolve()
     act(() => {
-      inFlightRead = boot.opts!.afterResolve(GAME, 'p1', {})
+      inFlightRead = boot.opts!.afterResolve(GAME, 'p1', {}, () => true)
     })
     // Wait until the submissions query has started, so its snapshot predates the miss.
     await waitFor(() => expect(db.reads).toBe(readsBefore + 1))

@@ -22,7 +22,7 @@ import {
 } from '@fateround/shared/memory-match'
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
-import { createFlipResyncTracker, snapshotReadsOk } from '@fateround/shared/flip-resync'
+import { createFlipResyncTracker, snapshotReadsOk, type ReadTicket } from '@fateround/shared/flip-resync'
 import { createReadRetry } from '@fateround/shared/read-retry'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
@@ -105,6 +105,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   boardRef.current = board
   // Reloads from the server after a refused/failed flip (same tracker the web view uses); see postFlip.
   const loadRef = useRef<() => Promise<unknown>>(async () => {})
+  // False once unmounted: a flip answer that arrives later must not start reads or timers.
+  const aliveRef = useRef(true)
   const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
   // A failed snapshot read keeps the board as it is; this reads again a few times (backoff) because no other
   // trigger is guaranteed to fire while the board sits idle. Full budget again when a read succeeds or the requested round changes.
@@ -115,9 +117,29 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     createReadRetry(() => Promise.resolve(retryLoadRef.current()).then((ok) => ok !== false))
   )
 
+  // Drops the board the view is showing together with its owner round, and fences older reads (a stalled read
+  // of the round the board belonged to must not rebuild it later). With `ticket`, that read itself stays valid.
+  const retireBoard = useCallback(
+    (roundId: string | null, ticket?: ReadTicket) => {
+      flipTracker.clearBoardRound(roundId, ticket)
+      if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
+      flipTimeoutRef.current = null
+      boardRef.current = null
+      setBoard(null)
+      setMemorizeCountdown(null)
+    },
+    [flipTracker]
+  )
+
   const loadGameState = useCallback(
-    async (game: Game, _players: Player[]): Promise<{ state: null; ok: boolean }> => {
+    async (
+      game: Game,
+      _players: Player[],
+      _session: unknown,
+      isCurrent: () => boolean
+    ): Promise<{ state: null; ok: boolean }> => {
       if (game.status !== 'active' && game.status !== 'finished') {
+        if (flipTracker.boardRound() !== null) retireBoard(null)
         setRound(null)
         setMeta(null)
         return { state: null, ok: true }
@@ -141,10 +163,23 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .eq('game_id', gameCode.toUpperCase()),
       ])
 
-      if (roundRes.error || subsRes.error || progRes.error) return { state: null, ok: false }
+      // A load that was superseded (or unmounted) while these reads ran must not publish anything.
+      if (!isCurrent()) return { state: null, ok: true }
+
+      if (roundRes.error || subsRes.error || progRes.error) {
+        // Nothing was published: the hook holds the screen (holdOnLoadStateFailure), so this reads again.
+        readRetry.scope(`round:${roundNumber}`)
+        flipTracker.markDirty()
+        readRetry.schedule()
+        return { state: null, ok: false }
+      }
 
       const roundData = roundRes.data as Round | null
       const parsedMeta = roundData ? parseMatchingPairsMetadata(roundData.memory_match_metadata) : null
+      // Another round's board must be gone BEFORE this round's metadata is published: until its history is read
+      // the old cardOrder would accept taps and send pair indices under the new round's icons and colors.
+      const ownerRound = flipTracker.boardRound()
+      if (ownerRound !== null && ownerRound !== (roundData?.id ?? null)) retireBoard(roundData?.id ?? null)
       setRound(roundData)
       setMeta(parsedMeta)
 
@@ -153,7 +188,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       setGameProgress((progRes.data as MatchingPairsProgressWithTiming[]) ?? [])
       return { state: null, ok: true }
     },
-    [gameCode]
+    [gameCode, flipTracker, readRetry, retireBoard]
   )
 
   const bootstrap = useGameViewBootstrap<Screen, null>({
@@ -163,13 +198,16 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     joinScreen: 'join',
     waitingScreen: 'waiting',
     loadGameState,
+    // A failed round/history read leaves the previous round's metadata in place: do not publish the new game
+    // (and its screen) over it; the retry above reads again.
+    holdOnLoadStateFailure: true,
     computeScreen: (game, playerId) => {
       if (!playerId) return 'join'
       if (game.status === 'waiting') return 'waiting'
       if (game.status === 'finished') return 'finished'
       return 'playing'
     },
-    afterResolve: async (game, playerId) => {
+    afterResolve: async (game, playerId, _state, isCurrent) => {
       if (!playerId || !game) return
       const readTicket = flipTracker.startRead()
       // A newer read supersedes a pending retry; it schedules its own if it fails too.
@@ -183,6 +221,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         .eq('game_id', gameCode.toUpperCase())
         .eq('round_number', roundNumber)
         .maybeSingle()
+      // A superseded (or unmounted) load must not touch the tracker, the retry or the view.
+      if (!isCurrent()) return
       // A failed round read is not "no round": keep what is on screen and let a later event read again.
       if (roundError) {
         flipTracker.markDirty()
@@ -204,8 +244,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         getSupabase().from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('round_id', roundData.id),
       ])
 
-      // A newer read was applied while this one ran (e.g. a slow read of an older round): drop it entirely.
-      if (flipTracker.superseded(readTicket)) return
+      // A newer read was applied while this one ran (e.g. a slow read of an older round), or a newer load took
+      // over: drop it entirely.
+      if (!isCurrent() || flipTracker.superseded(readTicket)) return
 
       // A failed read is not an empty history: applying it would hide stored matches and reset points and
       // streak. Keep the current board, do not commit this read, and read again on the next event or flip.
@@ -213,11 +254,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         // loadGameState already applied THIS round's metadata. Keep the board only if it belongs to this round:
         // another round's cardOrder under this round's icons/colors would accept taps and send wrong pair indices.
         const ownerRound = flipTracker.boardRound()
-        if (ownerRound !== null && ownerRound !== roundData.id) {
-          flipTracker.clearBoardRound(roundData.id)
-          cancelFlipBack()
-          setBoard(null)
-        }
+        if (ownerRound !== null && ownerRound !== roundData.id) retireBoard(roundData.id, readTicket)
         flipTracker.markDirty()
         readRetry.schedule()
         return
@@ -239,11 +276,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         // This outcome is as authoritative as an applied snapshot: an older read must not bring a board back.
         flipTracker.commitRead(readTicket)
         const ownerRound = flipTracker.boardRound()
-        if (ownerRound !== null && ownerRound !== roundData.id) {
-          flipTracker.clearBoardRound(roundData.id)
-          cancelFlipBack()
-          setBoard(null)
-        }
+        if (ownerRound !== null && ownerRound !== roundData.id) retireBoard(roundData.id, readTicket)
         return
       }
 
@@ -315,10 +348,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       .catch(() => {
         flipFailed = true
       })
-      .then(() => {
+      .then(async () => {
         flipTracker.end(flipToken, flipFailed)
-        // A clean accept still refreshes (points, progress); the tracker's own resync covers failures.
-        if (!flipFailed) void Promise.resolve(bootstrap.load()).catch(() => {})
+        if (flipFailed || !aliveRef.current) return
+        // A clean accept still refreshes (points, progress); the tracker's own resync covers failed flips. A
+        // failed refresh read leaves the counts behind the accepted flip, so owe a (bounded, retried) resync.
+        const refreshed = await Promise.resolve(bootstrap.loadSettled()).catch(() => false)
+        if (refreshed === false && aliveRef.current) flipTracker.requestResync()
       })
   }
 
@@ -338,7 +374,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   }, [memorizeCountdown])
 
   useEffect(() => {
+    aliveRef.current = true
     return () => {
+      aliveRef.current = false
       if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
       readRetry.cancel()
       flipTracker.cancel()
@@ -388,6 +426,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   const onCardPress = async (index: number) => {
     if (!board || !meta || !bootstrap.myResumeToken || finished || board.locked || memorizing) return
+    // The board must belong to the round whose metadata is on screen; otherwise its cardOrder indexes the wrong pairs.
+    if (!round || flipTracker.boardRound() !== round.id) return
     if (board.cardStates[index] === 'matched' || board.cardStates[index] === 'flipped') return
 
     if (board.firstFlipped === null) {

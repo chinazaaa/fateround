@@ -37,7 +37,16 @@ export interface UseGameViewBootstrapOptions<Screen extends string, GameState> {
   notFoundScreen: Screen
   /** Fetch + set the game-specific session/state; return the slice for `computeScreen`
    *  and whether the read succeeded (for poll back-off). */
-  loadGameState: (game: Game, players: Player[]) => Promise<{ state: GameState; ok: boolean }>
+  loadGameState: (
+    game: Game,
+    players: Player[],
+    /**
+     * True while this load is still the current one. A callback that publishes view state of its own (setState,
+     * refs, trackers) must check it after every await and stop publishing once it turns false: the hook drops a
+     * superseded run's results, but not what the callback already wrote itself.
+     */
+    isCurrent: () => boolean
+  ) => Promise<{ state: GameState; ok: boolean }>
   /** Map game status (+ resolved player + game state) to a screen. */
   computeScreen: (game: Game, playerId: string | null, state: GameState) => Screen
   /** Run playerId-dependent side effects after the session resolves but before the
@@ -46,7 +55,13 @@ export interface UseGameViewBootstrapOptions<Screen extends string, GameState> {
    *  so lacks `playerId`; this seam fills that gap. Return an enriched `GameState` to
    *  hand `computeScreen` (for screens that depend on data only fetchable once the
    *  player is known); return nothing to keep the `loadGameState` state unchanged. */
-  afterResolve?: (game: Game, playerId: string | null, state: GameState) => void | GameState | Promise<void | GameState>
+  afterResolve?: (
+    game: Game,
+    playerId: string | null,
+    state: GameState,
+    /** See `loadGameState`. */
+    isCurrent: () => boolean
+  ) => void | GameState | Promise<void | GameState>
   /** Extra fields merged into the join POST body (e.g. room-member identity). */
   joinExtras?: Record<string, unknown>
   /** Called with the API error message when a join fails. */
@@ -150,16 +165,33 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // only be replica lag — ignore it. A real replay passes through 'waiting' (clears the latch).
   const finishedSessionRef = useRef<string | null | undefined>(undefined)
 
+  // False between unmount and the next mount. Unmounting also bumps the generation, so a run still in flight
+  // counts as superseded: its callbacks (`isCurrent`) and its own writes stop, and nobody keeps waiting on it.
+  const mountedRef = useRef(true)
+  const invalidateLoads = useCallback(() => {
+    mountedRef.current = false
+    loadGenRef.current++
+    loadingRef.current = false
+    pendingRef.current = false
+    abandonChainRef.current?.()
+    abandonChainRef.current = null
+    chainRef.current = null
+  }, [])
+  useEffect(() => {
+    mountedRef.current = true
+    return invalidateLoads
+  }, [invalidateLoads])
+
   const runLoad = useCallback(
     async (gen: number): Promise<boolean> => {
       // True once this run has been superseded by a fresher one (see loadGenRef). A zombie
       // fetch that finally settles must not write its stale snapshot over newer state.
       const superseded = () => gen !== loadGenRef.current
 
-      // NOTE: `loadGameState` is the view's own fetch and sets the view's own state, so a run
-      // already inside it can still commit late — guarding that would mean threading the
-      // generation through all ~17 views. Everything this hook owns is guarded below, which
-      // bounds the stale window to that one call.
+      // NOTE: `loadGameState` / `afterResolve` are the view's own fetches and set the view's own state, so a
+      // run already inside one can still commit late unless the view checks the `isCurrent` it is handed (the
+      // Matching Pairs view does). Everything this hook owns is guarded below.
+      const isCurrent = () => !superseded()
 
       const [gameRes, plrsRes] = await Promise.all([
         supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
@@ -196,7 +228,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       setGame(gameData)
       setPlayers(plrs)
 
-      const { state, ok } = await loadGameState(gameData, plrs)
+      const { state, ok } = await loadGameState(gameData, plrs, isCurrent)
       // Every await below is a point where a fresher load can overtake this one, so re-check
       // before each commit rather than only before setScreen: a zombie that resolves late
       // would otherwise leave its stale session behind the newer run's screen.
@@ -213,7 +245,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       let effectiveState = state
       if (afterResolve) {
         try {
-          const patched = await afterResolve(gameData, playerId, state)
+          const patched = await afterResolve(gameData, playerId, state, isCurrent)
           if (patched !== undefined) effectiveState = patched
         } catch (err) {
           // A throwing afterResolve must not leave the hook stuck on the loading screen
@@ -231,6 +263,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   )
 
   const load = useCallback(async (): Promise<boolean> => {
+    // Unmounted: a late caller (a flip answer, a retry timer) must not start a load that publishes into nothing.
+    if (!mountedRef.current) return false
     // Coalesce overlapping calls: while one runs, extra callers flag a single trailing re-run
     // so we still settle on the freshest snapshot instead of racing N interleaved loads.
     if (loadingRef.current && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
@@ -274,24 +308,31 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const loadSettled = useCallback((): Promise<boolean> => {
     const chain = chainRef.current
     const age = Date.now() - loadStartedAtRef.current
+    let waitFor: Promise<boolean>
+    let deadlineMs: number
     if (loadingRef.current && chain && age < STALE_LOAD_MS) {
       pendingRef.current = true
-      // If the run never settles, stop waiting for it once it counts as stale (a later load() supersedes it).
-      return new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), Math.max(0, STALE_LOAD_MS - age))
-        void chain.then(
-          (v) => {
-            clearTimeout(timer)
-            resolve(v)
-          },
-          () => {
-            clearTimeout(timer)
-            resolve(false)
-          }
-        )
-      })
+      waitFor = chain
+      deadlineMs = Math.max(0, STALE_LOAD_MS - age)
+    } else {
+      // Starting the load here: it gets the same deadline, or a games query that never settles would leave
+      // the caller (the flip tracker's resync) waiting forever and never owing a retry.
+      waitFor = load()
+      deadlineMs = STALE_LOAD_MS
     }
-    return load()
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => resolve(false), deadlineMs)
+      void waitFor.then(
+        (v) => {
+          clearTimeout(timer)
+          resolve(v)
+        },
+        () => {
+          clearTimeout(timer)
+          resolve(false)
+        }
+      )
+    })
   }, [load])
 
   useEffect(() => {

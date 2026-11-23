@@ -1,7 +1,12 @@
 import { READ_RETRY_DELAYS_MS } from './read-retry'
 
 /** Handle for one flip request: `end` settles exactly the request (and round) that `begin` counted. */
-export type FlipToken = { readonly round: string | null; ended: boolean }
+export type FlipToken = {
+  readonly round: string | null
+  /** `cancel()` epoch the flip began in: a flip that settles after a later `cancel()` never starts a resync. */
+  readonly epoch: number
+  ended: boolean
+}
 
 /**
  * Handle for one snapshot read, from `startRead()`. `seq` orders it against every flip begin/settle and
@@ -80,6 +85,22 @@ export function createFlipResyncTracker(
     backoff = null
   }
 
+  /**
+   * The view moved to another round: retry debt owed for the previous round (a failed flip, a deferred read, a
+   * backoff timer) is moot. Left set, the timer would fire and `maybeResync()` would start a pointless load of
+   * the new round, and the debt would survive a successful snapshot of it.
+   */
+  const dropRetryDebt = () => {
+    deferred = false
+    failed = false
+    failedAttempts = 0
+    clearBackoff()
+  }
+  const moveToRound = (roundId: string | null) => {
+    if (roundId !== currentRound) dropRetryDebt()
+    currentRound = roundId
+  }
+
   const readMayBeStale = (ticket: ReadTicket, round: string | null) =>
     pendingIn(round) > 0 || (lastFlipEvent.get(round) ?? 0) > ticket.seq
 
@@ -128,6 +149,7 @@ export function createFlipResyncTracker(
     cancel() {
       epoch++
       failed = false
+      deferred = false
       failedAttempts = 0
       clearBackoff()
     },
@@ -147,15 +169,12 @@ export function createFlipResyncTracker(
     }): 'apply' | 'new-round' | 'keep-dirty' | 'keep-resync' | 'discard' {
       // A newer read was applied since this one started: drop it without touching any state.
       if (args.ticket.seq < appliedSeq) return 'discard'
-      currentRound = args.roundId
+      moveToRound(args.roundId)
       if (lastBoardRound !== null && lastBoardRound !== args.roundId) {
         boardRound = lastBoardRound = args.roundId
         appliedSeq = args.ticket.seq
         // Work queued for the previous round (a deferred read, a failure to reload for) is moot now.
-        deferred = false
-        failed = false
-        failedAttempts = 0
-        clearBackoff()
+        dropRetryDebt()
         return 'new-round'
       }
       if (readMayBeStale(args.ticket, args.roundId) || args.selecting) {
@@ -175,16 +194,22 @@ export function createFlipResyncTracker(
      * round a snapshot is for, so only that round's flips gate resyncs.
      */
     enterRound(roundId: string | null) {
-      currentRound = roundId
+      moveToRound(roundId)
     },
     /**
      * The view dropped its board (e.g. `roundId`, the new round, has none yet): nothing is owned any more.
      * The last applied round is remembered so that round's first board still counts as 'new-round'.
+     *
+     * Retiring a board also advances the read fence: a read that started earlier (a stalled read of the round
+     * the board belonged to) must not come back later and rebuild it. With `ticket` (the read that retires
+     * the board) that read itself stays valid; without one, every read started so far is fenced.
      */
-    clearBoardRound(roundId?: string | null) {
+    clearBoardRound(roundId?: string | null, ticket?: ReadTicket) {
       boardRound = null
       deferred = false
-      if (roundId !== undefined) currentRound = roundId
+      if (roundId !== undefined) moveToRound(roundId)
+      const fence = ticket ? ticket.seq : ++clock
+      if (fence > appliedSeq) appliedSeq = fence
     },
     /**
      * Count a flip request of `roundId` (default: the round the view is on). Pass the returned token to
@@ -195,7 +220,7 @@ export function createFlipResyncTracker(
       pending.set(round, pendingIn(round) + 1)
       lastFlipEvent.set(round, ++clock)
       if (resyncing && round === currentRound) failed = true
-      return { round, ended: false }
+      return { round, epoch, ended: false }
     },
     /** Call right before a snapshot read starts; pass the ticket to `evaluateSnapshot`. */
     startRead(): ReadTicket {
@@ -249,6 +274,9 @@ export function createFlipResyncTracker(
       const left = pendingIn(token.round) - 1
       if (left > 0) pending.set(token.round, left)
       else pending.delete(token.round)
+      // The view was cancelled (unmounted) after this flip began: its count is settled above, but a flip that
+      // settles that late must not start a load (which could arm a backoff timer after unmount).
+      if (token.epoch !== epoch) return
       // A flip of a round the view has left cannot have made the current board stale.
       if (token.round !== currentRound) return
       if (didFail || deferred) failed = true

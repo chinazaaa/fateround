@@ -96,7 +96,7 @@ describe('useGameViewBootstrap', () => {
     const { computeScreen } = setup({ afterResolve })
     await waitFor(() => expect(afterResolve).toHaveBeenCalled())
     // seam receives the resolved playerId (null via the mocked session) + the loadGameState state
-    expect(afterResolve).toHaveBeenCalledWith({ id: 'ABCD', status: 'active' }, null, 'STATE')
+    expect(afterResolve).toHaveBeenCalledWith({ id: 'ABCD', status: 'active' }, null, 'STATE', expect.any(Function))
     // the enriched return value — not the original 'STATE' — is what computeScreen sees
     expect(computeScreen).toHaveBeenLastCalledWith({ id: 'ABCD', status: 'active' }, null, 'ENRICHED')
   })
@@ -362,5 +362,125 @@ describe('useGameViewBootstrap', () => {
     const { result } = setup()
     await waitFor(() => expect(result.current.screen).toBe('waiting'))
     await expect(result.current.loadSettled()).resolves.toBe(true)
+  })
+
+  it('loadSettled that starts the load itself gives up with false when the games query never settles', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      const { result } = setup()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      h.hang = true
+      let settled: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (settled = v))
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_999)
+      })
+      expect(settled).toBeUndefined()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(settled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hands loadGameState/afterResolve an isCurrent that turns false once a fresher load supersedes the run', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      let release!: () => void
+      const stall = new Promise<void>((r) => (release = r))
+      const seen: Array<() => boolean> = []
+      let calls = 0
+      const loadGameState = vi.fn(async (_g: unknown, _p: unknown, isCurrent: () => boolean) => {
+        seen.push(isCurrent)
+        if (++calls === 1) await stall
+        return { state: 'STATE', ok: true }
+      })
+      const { result } = setup({ loadGameState })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(seen).toHaveLength(1)
+      expect(seen[0]!()).toBe(true)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_000)
+      })
+      await act(async () => {
+        void result.current.load()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(seen[0]!()).toBe(false) // the stalled round-1 callback must stop publishing
+      expect(seen[1]!()).toBe(true)
+      await act(async () => {
+        release()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a stalled afterResolve of an older load does not switch the screen back after a newer load finished', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'active' }
+      let release!: () => void
+      const stall = new Promise<void>((r) => (release = r))
+      let calls = 0
+      const afterResolve = vi.fn(async () => {
+        if (++calls === 1) await stall
+      })
+      const computeScreen = vi.fn((g: { status?: string }) => (g.status === 'finished' ? 'results' : 'playing'))
+      const { result } = setup({ afterResolve, computeScreen })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_000)
+      })
+      h.gameRow = { id: 'ABCD', status: 'finished', session_started_at: 's1' }
+      await act(async () => {
+        void result.current.load()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.screen).toBe('results')
+      h.gameRow = { id: 'ABCD', status: 'active' }
+      await act(async () => {
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.screen).toBe('results')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('after unmount: load resolves false without reading, and an in-flight run reads as superseded', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    let release!: () => void
+    const stall = new Promise<void>((r) => (release = r))
+    let current: (() => boolean) | undefined
+    const loadGameState = vi.fn(async (_g: unknown, _p: unknown, isCurrent: () => boolean) => {
+      current = isCurrent
+      await stall
+      return { state: 'STATE', ok: true }
+    })
+    const { result, unmount, computeScreen } = setup({ loadGameState })
+    await waitFor(() => expect(current).toBeDefined())
+    const settle = result.current.loadSettled
+    unmount()
+    expect(current!()).toBe(false)
+    await expect(settle()).resolves.toBe(false)
+    release()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(computeScreen).not.toHaveBeenCalled()
   })
 })

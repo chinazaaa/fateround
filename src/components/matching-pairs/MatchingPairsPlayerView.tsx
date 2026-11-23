@@ -176,7 +176,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   }, [])
 
   const afterResolve = useCallback(
-    async (gameData: Game, playerId: string | null): Promise<MatchingPairsGameState> => {
+    async (
+      gameData: Game,
+      playerId: string | null,
+      _state: unknown,
+      isCurrent: () => boolean
+    ): Promise<MatchingPairsGameState> => {
       const readTicket = flipTracker.startRead()
       // A newer read supersedes a pending retry; it schedules its own if it fails too.
       readRetry.cancel()
@@ -188,6 +193,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         setMySubmissions([])
         setAllSubmissions([])
         setAllProgress([])
+        boardRoundIdRef.current = null
         setBoard(null)
         setFinished(false)
         setFinishRank(null)
@@ -204,6 +210,15 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           .eq('game_id', gameCode)
           .eq('round_number', currentRoundNumber)
           .maybeSingle()
+
+        // A load that was superseded (or unmounted) while the read ran must not publish or touch the tracker.
+        if (!isCurrent()) {
+          return {
+            hasBoard: boardRef.current !== null,
+            ownFinished: boardRef.current !== null && finishedRef.current,
+            roundFinished: false,
+          }
+        }
 
         // A failed round read is not "no round": clearing the board and scores would hide stored progress.
         if (roundError) {
@@ -228,6 +243,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         const parsedMeta = roundData
           ? parseMatchingPairsMetadata((roundData as Record<string, unknown>).memory_match_metadata)
           : null
+        // Another round's board must be gone BEFORE this round's metadata is published: until its history is read,
+        // the old cardOrder would accept taps under the new round's icons and colors.
+        if (
+          boardRoundIdRef.current !== null &&
+          boardRoundIdRef.current !== ((roundData?.id as string | undefined) ?? null)
+        ) {
+          if (flipTimeoutRef.current) {
+            clearTimeout(flipTimeoutRef.current)
+            flipTimeoutRef.current = null
+          }
+          boardRoundIdRef.current = null
+          boardRef.current = null
+          flipTracker.clearBoardRound((roundData?.id as string | undefined) ?? null, readTicket)
+          setBoard(null)
+        }
         setMeta(parsedMeta)
 
         if (roundData && parsedMeta) {
@@ -245,7 +275,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             supabase.from('memory_match_progress').select(MEMORY_MATCH_PROGRESS_SELECT).eq('game_id', gameCode),
           ])
           // A newer read was applied while this one ran (e.g. a slow read of an older round): drop it entirely.
-          if (flipTracker.superseded(readTicket)) {
+          if (!isCurrent() || flipTracker.superseded(readTicket)) {
             return {
               hasBoard: boardRef.current !== null,
               ownFinished: boardRef.current !== null && finishedRef.current,
@@ -265,6 +295,10 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 clearTimeout(flipTimeoutRef.current)
                 flipTimeoutRef.current = null
               }
+              // The board goes together with its owner: a late flip answer for the old round must not pass the
+              // round check and write that round's score and counts into this one. Older reads are fenced too.
+              boardRoundIdRef.current = null
+              flipTracker.clearBoardRound(roundData.id as string, readTicket)
               setBoard(null)
             }
             return {
@@ -363,6 +397,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             // Round is finished or no card order — show round_results
             // This read's outcome (no board) is as authoritative as an applied one: an older read must not undo it.
             flipTracker.commitRead(readTicket)
+            boardRoundIdRef.current = null
             setBoard(null)
             setFinished(false)
             setFinishRank(null)
@@ -376,6 +411,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           setMySubmissions([])
           setAllSubmissions([])
           setAllProgress([])
+          boardRoundIdRef.current = null
           setBoard(null)
           setFinished(false)
           setFinishRank(null)
@@ -389,6 +425,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         setMySubmissions([])
         setAllSubmissions([])
         setAllProgress([])
+        boardRoundIdRef.current = null
         setBoard(null)
         setFinished(false)
         setFinishRank(null)
@@ -699,8 +736,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                   .eq('round_id', roundId)
                   .order('submitted_at', { ascending: true })
                 if (boardRoundIdRef.current !== flipToken.round) return
-                // A failed refresh is not an empty history: keep the submissions already shown.
-                if (refreshError) return
+                // A failed refresh is not an empty history: keep the submissions already shown, and owe a
+                // reconciling resync (the flip itself was accepted, but the counts are behind it).
+                if (refreshError) {
+                  flipFailed = true
+                  return
+                }
                 const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
                 setAllSubmissions(nextSubmissions)
                 setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))
@@ -758,8 +799,12 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 .eq('round_id', roundId)
                 .order('submitted_at', { ascending: true })
               if (boardRoundIdRef.current !== flipToken.round) return
-              // A failed refresh is not an empty history: keep the submissions already shown.
-              if (refreshError) return
+              // A failed refresh is not an empty history: keep the submissions already shown, and owe a
+              // reconciling resync (the flip itself was accepted, but the counts are behind it).
+              if (refreshError) {
+                flipFailed = true
+                return
+              }
               const nextSubmissions = (data ?? []) as MatchingPairsSubmission[]
               setAllSubmissions(nextSubmissions)
               setMySubmissions(nextSubmissions.filter((s) => s.player_id === myPlayerId))

@@ -457,4 +457,98 @@ describe('createFlipResyncTracker failed resync retry', () => {
       vi.useRealTimers()
     }
   })
+
+  it('enterRound to another round drops the failed/backoff debt of the previous round', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => false)
+      const t = createFlipResyncTracker(resync, [10])
+      t.enterRound('a')
+      await flip(t, Promise.reject(new Error('refused')))
+      expect(resync).toHaveBeenCalledTimes(1) // A's retry timer is now armed
+      t.enterRound('b')
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(resync).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('enterRound for the round already shown keeps the retry owed', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => false)
+      const t = createFlipResyncTracker(resync, [10])
+      t.enterRound('a')
+      await flip(t, Promise.reject(new Error('refused')))
+      t.enterRound('a')
+      await vi.advanceTimersByTimeAsync(10)
+      expect(resync).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('clearBoardRound to another round drops the previous round retry debt', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => false)
+      const t = createFlipResyncTracker(resync, [10])
+      t.evaluateSnapshot({ roundId: 'a', ticket: t.startRead(), selecting: false })
+      await flip(t, Promise.reject(new Error('refused')))
+      t.clearBoardRound('b')
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(resync).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a flip that settles after cancel() starts no resync and arms no timer', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => false)
+      const t = createFlipResyncTracker(resync, [10])
+      const token = t.begin()
+      t.cancel()
+      t.end(token, true)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(resync).not.toHaveBeenCalled()
+      expect(t.inFlight()).toBe(false)
+      // Reusable afterwards (strict-mode remount): a flip begun after cancel() behaves normally.
+      await flip(t, Promise.reject(new Error('refused')))
+      expect(resync).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancel() drops a deferred read so flushDeferred cannot start a load after unmount', () => {
+    const resync = vi.fn(async () => {})
+    const t = createFlipResyncTracker(resync)
+    t.markDirty()
+    t.cancel()
+    t.flushDeferred()
+    expect(resync).not.toHaveBeenCalled()
+  })
+
+  it('retiring a board fences older reads: a stalled read of the old round cannot apply later', () => {
+    const t = createFlipResyncTracker(async () => {})
+    const stalled = t.startRead()
+    t.evaluateSnapshot({ roundId: 'a', ticket: t.startRead(), selecting: false })
+    const retiring = t.startRead()
+    t.clearBoardRound('b', retiring)
+    expect(t.evaluateSnapshot({ roundId: 'a', ticket: stalled, selecting: false })).toBe('discard')
+    // The read that retired the board is itself still valid.
+    expect(t.superseded(retiring)).toBe(false)
+  })
+
+  it('clearBoardRound without a ticket fences every read started before it', () => {
+    const t = createFlipResyncTracker(async () => {})
+    t.evaluateSnapshot({ roundId: 'a', ticket: t.startRead(), selecting: false })
+    const stalled = t.startRead()
+    t.clearBoardRound('b')
+    expect(t.superseded(stalled)).toBe(true)
+    expect(t.superseded(t.startRead())).toBe(false)
+  })
 })
