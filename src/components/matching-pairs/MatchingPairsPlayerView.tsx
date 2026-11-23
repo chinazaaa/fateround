@@ -164,8 +164,11 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   const [flipTracker] = useState(() => createFlipResyncTracker(() => loadRef.current()))
   // A failed snapshot read keeps the board as it is; this reads again a few times (backoff) because no other
   // trigger is guaranteed to fire while the board sits idle. Full budget again when a read succeeds or the requested round changes.
+  // The retry reads through loadSettled: a retry that joins a load already in flight must wait for that load's
+  // real outcome, or a failure in the queued re-run would end the retry chain unnoticed.
+  const retryLoadRef = useRef<() => Promise<unknown>>(async () => true)
   const [readRetry] = useState(() =>
-    createReadRetry(() => Promise.resolve(loadRef.current()).then((ok) => ok !== false))
+    createReadRetry(() => Promise.resolve(retryLoadRef.current()).then((ok) => ok !== false))
   )
 
   const loadGameState = useCallback(async (): Promise<{ state: MatchingPairsGameState; ok: boolean }> => {
@@ -424,6 +427,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     setJoinName,
     joining,
     load,
+    loadSettled,
     lobbyFull,
     join,
   } = useGameViewBootstrap<Screen, MatchingPairsGameState>({
@@ -575,6 +579,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // ── Flip handler ───────────────────────────────────────────────────────────
 
   loadRef.current = load
+  retryLoadRef.current = loadSettled
   boardRef.current = board
   finishedRef.current = finished
 

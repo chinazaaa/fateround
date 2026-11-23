@@ -64,6 +64,7 @@ const boot = vi.hoisted(() => ({
     afterResolve: (g: unknown, playerId: string | null, state: unknown) => Promise<unknown>
   },
   loadCalls: 0,
+  settledCalls: 0,
   /** Controls when the fake load() finishes, to interleave it with flips. */
   gate: null as null | Promise<void>,
 }))
@@ -118,6 +119,10 @@ vi.mock('@/hooks/useGameViewBootstrap', async () => {
         await boot.opts!.afterResolve(GAME, 'p1', { hasBoard: false, ownFinished: false, roundFinished: false })
         return true
       }, [])
+      const loadSettled = React.useCallback(async () => {
+        boot.settledCalls += 1
+        return load()
+      }, [load])
       React.useEffect(() => {
         void load()
       }, [load])
@@ -135,6 +140,7 @@ vi.mock('@/hooks/useGameViewBootstrap', async () => {
         setJoinName: () => {},
         joining: false,
         load,
+        loadSettled,
         lobbyFull: false,
         join: () => {},
       }
@@ -216,6 +222,7 @@ beforeEach(() => {
   db.reads = 0
   db.readGate = null
   boot.loadCalls = 0
+  boot.settledCalls = 0
   boot.gate = null
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
@@ -281,6 +288,8 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     db.failReads = false
     await waitFor(() => expect(scoreValue()).toBe('200'), { timeout: 3000 })
     expect(hiddenCount()).toBe(2)
+    // The retry reads through loadSettled, so one that joins a load in flight waits for its real outcome.
+    expect(boot.settledCalls).toBeGreaterThan(0)
   })
 
   it('keeps the optimistic board while a flip is in flight, then reads again once it has settled', async () => {

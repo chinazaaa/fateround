@@ -7,6 +7,11 @@ const h = vi.hoisted(() => ({
   players: [] as unknown[],
   /** When true, reads never settle — models an iOS-suspended fetch. */
   hang: false,
+  /** Reads of the players table made so far, and from which one on they report an error. */
+  playerReads: 0,
+  failPlayersFrom: Infinity,
+  /** When set, the first players read waits for it. */
+  gate: null as Promise<void> | null,
 }))
 
 vi.mock('@/lib/supabase', () => {
@@ -15,7 +20,12 @@ vi.mock('@/lib/supabase', () => {
       select: () => o,
       eq: () => o,
       maybeSingle: () => (h.hang ? new Promise(() => {}) : Promise.resolve(result)),
-      order: () => (h.hang ? new Promise(() => {}) : Promise.resolve(result)),
+      order: () => {
+        if (h.hang) return new Promise(() => {})
+        const n = ++h.playerReads
+        const res = n >= h.failPlayersFrom ? { data: null, error: { message: 'boom' } } : result
+        return n === 1 && h.gate ? h.gate.then(() => res) : Promise.resolve(res)
+      },
     }
     return o
   }
@@ -34,6 +44,9 @@ beforeEach(() => {
   h.gameRow = null
   h.players = []
   h.hang = false
+  h.playerReads = 0
+  h.failPlayersFrom = Infinity
+  h.gate = null
 })
 
 function setup(extra: Record<string, unknown> = {}) {
@@ -264,5 +277,34 @@ describe('useGameViewBootstrap', () => {
     expect(loadGameState).toHaveBeenCalledTimes(2) // the post-join load() still ran despite the throw
     errSpy.mockRestore()
     vi.unstubAllGlobals()
+  })
+
+  it('loadSettled joined to a run in flight resolves with the queued re-run outcome, not an early true', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    h.players = [{ id: 'p1' }]
+    let release!: () => void
+    h.gate = new Promise<void>((r) => (release = r))
+    h.failPlayersFrom = 2 // the first (gated) run succeeds, the queued re-run fails
+    const { result } = setup()
+    let settled: boolean | undefined
+    let plain: boolean | undefined
+    await act(async () => {
+      void result.current.loadSettled().then((v) => (settled = v))
+      void result.current.load().then((v) => (plain = v))
+    })
+    // plain load() acknowledges the queued run immediately; loadSettled waits for the real result
+    expect(plain).toBe(true)
+    expect(settled).toBeUndefined()
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(settled).toBe(false))
+  })
+
+  it('loadSettled with nothing in flight behaves like load', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    await expect(result.current.loadSettled()).resolves.toBe(true)
   })
 })

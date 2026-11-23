@@ -86,6 +86,8 @@ export interface UseGameViewBootstrapResult<Screen extends string> {
   lobbyFull: boolean
   /** Re-fetch everything and recompute the screen. Returns false if a read failed. */
   load: () => Promise<boolean>
+  /** Like `load`, but a call joining a run in flight resolves with the queued re-run's real outcome. */
+  loadSettled: () => Promise<boolean>
   /** Join the game with `name` (defaults to `joinName`); on active games joins as a viewer
    *  unless `joinAsViewer` is overridden. */
   join: (opts?: { joinAsViewer?: boolean; name?: string }) => Promise<void>
@@ -136,6 +138,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // bumped (so the zombie can no longer release the latch or set state) and a fresh load
   // starts.
   const loadStartedAtRef = useRef(0)
+  // Settles with the final result of the load chain now running (its trailing re-runs included), so
+  // `loadSettled` can hand a coalesced caller the real outcome instead of the queued-run acknowledgement.
+  const chainRef = useRef<Promise<boolean> | null>(null)
   const loadGenRef = useRef(0)
   // Keyed on the session that finished. `start` only moves a game to 'active' from 'waiting'
   // with a NEW session_started_at, so a later read showing the SAME session as 'active' can
@@ -235,18 +240,33 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     const gen = ++loadGenRef.current
     loadingRef.current = true
     loadStartedAtRef.current = Date.now()
-    try {
-      let ok = await runLoad(gen)
-      while (pendingRef.current && gen === loadGenRef.current) {
-        pendingRef.current = false
-        loadStartedAtRef.current = Date.now()
-        ok = await runLoad(gen)
+    const chain = (async (): Promise<boolean> => {
+      try {
+        let ok = await runLoad(gen)
+        while (pendingRef.current && gen === loadGenRef.current) {
+          pendingRef.current = false
+          loadStartedAtRef.current = Date.now()
+          ok = await runLoad(gen)
+        }
+        return ok
+      } finally {
+        if (gen === loadGenRef.current) loadingRef.current = false
       }
-      return ok
-    } finally {
-      if (gen === loadGenRef.current) loadingRef.current = false
-    }
+    })()
+    chainRef.current = chain
+    return chain
   }, [runLoad])
+
+  // Like `load`, but a call that joins a run already in flight resolves with the queued run's real outcome
+  // rather than `true` straight away. For a caller that owns a retry and must know whether the read it asked
+  // for actually succeeded (see createReadRetry).
+  const loadSettled = useCallback((): Promise<boolean> => {
+    if (loadingRef.current && chainRef.current && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
+      pendingRef.current = true
+      return chainRef.current
+    }
+    return load()
+  }, [load])
 
   useEffect(() => {
     void load()
@@ -390,6 +410,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     joining,
     lobbyFull,
     load,
+    loadSettled,
     join,
   }
 }

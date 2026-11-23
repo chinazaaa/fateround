@@ -79,6 +79,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // extra calls just flag a single trailing re-run so we still end on the freshest data.
   const loadingRef = useRef(false)
   const pendingRef = useRef(false)
+  // Settles with the final result of the load chain now running (trailing re-runs included); see loadSettled.
+  const chainRef = useRef<Promise<boolean> | null>(null)
   // Finished latch, keyed on the session that finished. `start` only moves a game to
   // 'active' from 'waiting' with a *new* session_started_at, so a later read that shows the
   // SAME session as 'active' can only be read-replica lag — ignore it so results never bounce
@@ -165,17 +167,32 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       return true
     }
     loadingRef.current = true
-    try {
-      let ok = await runLoad()
-      while (pendingRef.current) {
-        pendingRef.current = false
-        ok = await runLoad()
+    const chain = (async (): Promise<boolean> => {
+      try {
+        let ok = await runLoad()
+        while (pendingRef.current) {
+          pendingRef.current = false
+          ok = await runLoad()
+        }
+        return ok
+      } finally {
+        loadingRef.current = false
       }
-      return ok
-    } finally {
-      loadingRef.current = false
-    }
+    })()
+    chainRef.current = chain
+    return chain
   }, [runLoad])
+
+  // Like `load`, but a call that joins a run already in flight resolves with the queued run's real outcome
+  // rather than `true` straight away. For a caller that owns a retry and must know whether the read it asked
+  // for actually succeeded (see createReadRetry).
+  const loadSettled = useCallback((): Promise<boolean> => {
+    if (loadingRef.current && chainRef.current) {
+      pendingRef.current = true
+      return chainRef.current
+    }
+    return load()
+  }, [load])
 
   const join = useCallback(
     async (
@@ -329,6 +346,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     error,
     lobbyFull,
     load,
+    loadSettled,
     join,
     joinScreen,
     waitingScreen,
