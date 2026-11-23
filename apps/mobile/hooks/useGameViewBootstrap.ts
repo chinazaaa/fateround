@@ -188,7 +188,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         // REDACTED view of a live game — a spymaster staring at an operative's grid until
         // some later event happens to reload (review on PR #787). Reading SecureStore
         // directly inside loadGameState has the same flaw and one extra keychain read.
-        const session = await reconcilePlayerSession(code, playerRows)
+        const session = await reconcilePlayerSession(code, playerRows, () => !superseded())
         if (superseded()) return true
         const playerId = session?.playerId ?? null
         if (session) {

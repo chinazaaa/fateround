@@ -1,6 +1,7 @@
 import { apiUrl } from '@/lib/config'
 import { clearPlayerSession, getPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
 import type { PlayerGender } from '@fateround/shared'
+import { reconcileSession } from '@fateround/shared/session-reconcile'
 
 type ProbeResult =
   | { kind: 'row'; playerId: string; playerName: string; playerGender: PlayerGender; resumeToken: string | null }
@@ -66,32 +67,29 @@ async function probeResume(gameCode: string, resumeToken: string): Promise<Probe
  */
 export async function reconcilePlayerSession(
   gameCode: string,
-  roster: { id: string }[]
+  roster: { id: string }[],
+  /** False once the calling load was superseded/unmounted: such a run must not write session state. */
+  isCurrent?: () => boolean
 ): Promise<PlayerSession | null> {
-  const session = await getPlayerSession(gameCode)
-  if (!session) return null
-  // Stored id is in the roster → trust it. The common case; no network call.
-  if (roster.some((p) => p.id === session.playerId)) return session
-  // Absent could just be a stale snapshot (a load that raced the join replicating),
-  // so never clear on that alone — confirm with the server first.
-  if (!session.resumeToken) return session
-
-  const result = await probeResume(gameCode, session.resumeToken)
-  if (result.kind === 'row') {
-    if (result.playerId !== session.playerId) {
-      await setPlayerSession(gameCode, result.playerId, result.playerName, result.playerGender, result.resumeToken)
-    }
-    return {
-      playerId: result.playerId,
-      playerName: result.playerName,
-      playerGender: result.playerGender,
-      resumeToken: result.resumeToken,
-    }
-  }
-  if (result.kind === 'gone') {
-    await clearPlayerSession(gameCode)
-    return null
-  }
-  // Unverifiable — keep the local session so the next load can retry.
-  return session
+  // The decision logic and its race guards (superseded run, session saved after we read it) live in
+  // @fateround/shared so they are unit-tested; this file only supplies storage and the network probe.
+  return reconcileSession<PlayerSession>(roster, {
+    read: () => getPlayerSession(gameCode),
+    probe: async (token) => {
+      const r = await probeResume(gameCode, token)
+      if (r.kind !== 'row') return r
+      return {
+        kind: 'row',
+        session: {
+          playerId: r.playerId,
+          playerName: r.playerName,
+          playerGender: r.playerGender,
+          resumeToken: r.resumeToken,
+        },
+      }
+    },
+    write: (s) => setPlayerSession(gameCode, s.playerId, s.playerName, s.playerGender, s.resumeToken),
+    clear: () => clearPlayerSession(gameCode),
+    isCurrent,
+  })
 }
