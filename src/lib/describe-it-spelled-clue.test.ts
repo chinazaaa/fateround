@@ -24,6 +24,12 @@ describe('clueContainsWord — spelled-out words', () => {
     expect(clueContainsWord('e l e', 'elephant')).toBe(false)
   })
 
+  it('does not join ordinary adjacent words into a spelled-out match', () => {
+    expect(clueContainsWord('the atmosphere', 'heat')).toBe(false)
+    expect(clueContainsWord('a nice cat', 'anic')).toBe(false)
+    expect(clueContainsWord('i can tell', 'ican')).toBe(false)
+  })
+
   it('does not apply the squashed check to short words', () => {
     expect(clueContainsWord('i can', 'ant')).toBe(false)
     expect(clueContainsWord('a nice at', 'cat')).toBe(false)

@@ -1,5 +1,5 @@
 import type { Game, Player } from '@fateround/shared'
-import { anonymousPlayerCanChat } from '@fateround/shared/anonymous-messages'
+import { countAnonymousRoomPresence } from '@fateround/shared/anonymous-messages'
 
 // Colocated mobile mirror of the web-only constants/helpers in
 // src/lib/anonymous-messages.ts that are not exported from @fateround/shared.
@@ -20,18 +20,5 @@ export function anonymousRoomMaxPlayers(game: Pick<Game, 'max_players'>): number
   return clampAnonymousRoomMaxPlayers(game.max_players)
 }
 
-export function countAnonymousRoomPresence(
-  players: Pick<Player, 'joined_at' | 'spectator'>[],
-  game: Pick<Game, 'status' | 'session_started_at'>
-): { total: number; participants: number; viewers: number } {
-  if (game.status !== 'active') {
-    return { total: players.length, participants: players.length, viewers: 0 }
-  }
-  let participants = 0
-  let viewers = 0
-  for (const player of players) {
-    if (anonymousPlayerCanChat(player, game)) participants++
-    else viewers++
-  }
-  return { total: players.length, participants, viewers }
-}
+// Participant/viewer split lives in @fateround/shared (one tested implementation for web + mobile).
+export { countAnonymousRoomPresence }

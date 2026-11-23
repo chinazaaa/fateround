@@ -79,39 +79,50 @@ export async function POST(req: NextRequest) {
   const alreadyFound = playerFoundWords((existingFound ?? []) as { player_id: string; word: string }[], auth.player.id)
 
   let placement: WordSearchPlacement | null
-  if (hint) {
+  const pickHint = () => {
     // Reveal a random still-unfound word for this player.
     const remaining = placements.filter((p) => !alreadyFound.has(p.word))
-    if (remaining.length === 0) return NextResponse.json({ found: false, complete: true })
-    placement = remaining[Math.floor(Math.random() * remaining.length)]
+    return remaining.length === 0 ? null : remaining[Math.floor(Math.random() * remaining.length)]
+  }
+  if (hint) {
+    placement = pickHint()
+    if (!placement) return NextResponse.json({ found: false, complete: true })
   } else {
     placement = matchSelectionToPlacement(placements, [startRow, startCol], [endRow, endCol])
     if (!placement) return NextResponse.json({ found: false })
   }
 
-  const end = placementEnd(placement)
   if (alreadyFound.has(placement.word)) {
     return NextResponse.json({ found: true, word: placement.word, alreadyFound: true })
   }
 
-  const { error: insertError } = await supabase.from('word_search_found').insert({
-    game_id: code,
-    round_id: round.id,
-    player_id: auth.player.id,
-    word: placement.word,
-    start_row: placement.row,
-    start_col: placement.col,
-    end_row: end[0],
-    end_col: end[1],
-    via_hint: hint,
-  })
-  if (insertError) {
-    // A concurrent identical find won the race (unique index on player/round/word): answer
-    // exactly like the sequential duplicate above. The winner already ran the finish check.
-    if (insertError.code === '23505') {
-      return NextResponse.json({ found: true, word: placement.word, alreadyFound: true })
+  let end = placementEnd(placement)
+  for (;;) {
+    const { error: insertError } = await supabase.from('word_search_found').insert({
+      game_id: code,
+      round_id: round.id,
+      player_id: auth.player.id,
+      word: placement.word,
+      start_row: placement.row,
+      start_col: placement.col,
+      end_row: end[0],
+      end_col: end[1],
+      via_hint: hint,
+    })
+    if (!insertError) break
+    if (insertError.code !== '23505') {
+      return NextResponse.json({ error: internalErrorMessage('word-search/found', insertError) }, { status: 500 })
     }
-    return NextResponse.json({ error: internalErrorMessage('word-search/found', insertError) }, { status: 500 })
+    // A concurrent find of the same word won the race (unique index on player/round/word).
+    // A normal find answers exactly like the sequential duplicate; the winner already ran the
+    // finish check. A hint, though, must reveal a word the player did not already have, so it
+    // moves on to another unfound word rather than reporting a no-op success.
+    if (!hint) return NextResponse.json({ found: true, word: placement.word, alreadyFound: true })
+    alreadyFound.add(placement.word)
+    const next = pickHint()
+    if (!next) return NextResponse.json({ found: false, complete: true })
+    placement = next
+    end = placementEnd(placement)
   }
 
   // A new find can complete the hunt — re-check the race win condition.

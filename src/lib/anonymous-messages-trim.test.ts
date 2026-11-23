@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   ANONYMOUS_ROOM_MAX_MESSAGES,
@@ -18,9 +18,18 @@ function makeFake({
   deleteFails = false,
   onDelete,
   rpcDeleted,
-}: { messageCount?: number; deleteFails?: boolean; rpcDeleted?: number; onDelete?: (game: GameRow) => void } = {}) {
+  releaseErrors = 0,
+}: {
+  messageCount?: number
+  deleteFails?: boolean
+  rpcDeleted?: number
+  onDelete?: (game: GameRow) => void
+  /** How many claim-release updates fail with a database error before one succeeds. */
+  releaseErrors?: number
+} = {}) {
   const game: GameRow = { anonymous_messages_trimmed_at: null }
-  const state = { deletes: 0, rpcCalls: [] as { fn: string; args: unknown }[] }
+  const state = { deletes: 0, releaseAttempts: 0, rpcCalls: [] as { fn: string; args: unknown }[] }
+  let releaseErrorsLeft = releaseErrors
 
   const client = {
     rpc: async (fn: string, args: unknown) => {
@@ -66,6 +75,12 @@ function makeFake({
               },
               // Awaited directly when the caller does not chain .select() (the release path).
               then: (resolve: (v: unknown) => void) => {
+                state.releaseAttempts += 1
+                if (releaseErrorsLeft > 0) {
+                  releaseErrorsLeft -= 1
+                  resolve({ data: null, error: { message: 'release failed' } })
+                  return
+                }
                 if (conds.every((c) => c(game))) Object.assign(game, patch)
                 resolve({ data: null, error: null })
               },
@@ -123,6 +138,27 @@ describe('trimAnonymousMessagesIfDue', () => {
     expect(result.trimmed).toBe(0)
     expect(state.deletes).toBe(1)
     expect(game.anonymous_messages_trimmed_at).toBeNull()
+  })
+
+  it('retries a failed claim release so the window is handed back', async () => {
+    const { client, game, state } = makeFake({ deleteFails: true, releaseErrors: 2 })
+    const result = await trimAnonymousMessagesIfDue(client, 'ABC123')
+    expect(result.trimmed).toBe(0)
+    expect(state.releaseAttempts).toBe(3)
+    expect(game.anonymous_messages_trimmed_at).toBeNull()
+  })
+
+  it('logs and stops after repeated release failures instead of ignoring them', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const { client, state } = makeFake({ deleteFails: true, releaseErrors: 10 })
+      const result = await trimAnonymousMessagesIfDue(client, 'ABC123')
+      expect(result.trimmed).toBe(0)
+      expect(state.releaseAttempts).toBe(3)
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('does not overwrite a newer claim when a slow trim fails after its window expired', async () => {

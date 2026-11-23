@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { AnonymousMessageFeed } from '@/components/anonymous-messages/AnonymousMessageFeed'
 import { AnonymousBanCountdownBar } from '@/components/anonymous-messages/AnonymousBanCountdownBar'
@@ -18,6 +18,7 @@ import {
   anonymousPlayerCanChat,
   anonymousPlayerCanPost,
   anonymousRoomMaxPlayers,
+  countAnonymousRoomPresence,
   isPlayerBanned,
 } from '@/lib/anonymous-messages'
 import { useAnonymousRoomBans } from '@/hooks/useAnonymousRoomBans'
@@ -30,7 +31,8 @@ import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
 import { gameIcon } from '@/lib/game-glyphs'
 import { Glyph } from '@/components/icons/Glyph'
 import { useToast } from '@/components/ui/Toast'
-import { POLL_INTERVALS, supabasePollOk, usePolling } from '@/hooks/usePolling'
+import { applyPlayerChange, createRosterReadGuard, createSerialLoader } from '@/lib/player-realtime'
+import { POLL_INTERVALS, ROOM_HEARTBEAT_MS, supabasePollOk, usePolling } from '@/hooks/usePolling'
 import { GameStartedWaiting } from '@/components/GameStartedWaiting'
 import { GameEndedScreen } from '@/components/GameEndedScreen'
 import { ShareGameLinkCard } from '@/components/ShareGameLinkCard'
@@ -63,6 +65,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // Latest game applied by either the load or a realtime update, so a load that resumes after an
+  // await selects the screen from the CURRENT game, not the snapshot it started with.
+  const gameRef = useRef<Game | null>(null)
+  // Rejects a roster read that an INSERT/UPDATE/DELETE overtook while it was in flight.
+  const [rosterGuard] = useState(createRosterReadGuard)
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [myPlayerName, setMyPlayerName] = useState('')
   const [joining, setJoining] = useState(false)
@@ -97,20 +104,24 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   }, [])
 
   const load = useCallback(async (): Promise<boolean> => {
-    const [gameRes, plrsRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
-    ])
-    if (!supabasePollOk(gameRes, plrsRes)) return false
+    const snapshot = await rosterGuard.read(async () => {
+      const [gameRes, plrsRes] = await Promise.all([
+        supabase.from('games').select(GAME_SELECT).eq('id', gameCode).maybeSingle(),
+        supabase.from('players').select(PLAYER_SELECT).eq('game_id', gameCode).order('joined_at'),
+      ])
+      return supabasePollOk(gameRes, plrsRes) ? { gameRes, plrsRes } : null
+    })
+    if (!snapshot) return false
 
-    const gameData = gameRes.data
-    const plrs = plrsRes.data
+    const gameData = snapshot.gameRes.data
+    const plrs = snapshot.plrsRes.data
 
     if (!gameData) {
       setScreen('not_found')
       return true
     }
 
+    gameRef.current = gameData
     setGame(gameData)
     setPlayers(plrs ?? [])
 
@@ -123,13 +134,22 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       setMyPlayerId(null)
       setMyPlayerName('')
     }
-    syncScreen(gameData, playerId)
+    // A realtime update (e.g. the host starting the room) may have landed while the session resolved.
+    syncScreen(gameRef.current ?? gameData, playerId)
     return true
-  }, [gameCode, syncScreen])
+  }, [gameCode, rosterGuard, syncScreen])
 
+  // Single owner of loading: the first load, polls, realtime-triggered and action-triggered refreshes
+  // all go through one serial loader, so loads never overlap (no stale write can land after a newer
+  // one), a failed initial load retries with bounded backoff even while realtime is healthy, and a
+  // load that is shared by several callers reports its real outcome to each.
+  const loader = useMemo(() => createSerialLoader(load), [load])
+  const refresh = useCallback(() => loader.request({ fresh: true }), [loader])
   useEffect(() => {
-    load()
-  }, [load])
+    loader.start()
+    void loader.request()
+    return loader.stop
+  }, [loader])
 
   useEffect(() => {
     const channel = supabase
@@ -139,16 +159,37 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameCode}` },
         (payload) => {
           const next = payload.new as Game
-          setGame((prev) => mergeRealtimeGame(prev, next))
+          // A read already in flight predates this update; the guard re-fetches it.
+          rosterGuard.noteEvent()
+          const merged = mergeRealtimeGame(gameRef.current, next)
+          gameRef.current = merged
+          setGame(merged)
           syncScreen(next, myPlayerId)
         }
       )
+      // Supabase Realtime cannot filter DELETE events, and with the default replica identity the old
+      // row carries only its primary key, so a filtered DELETE never arrives. Subscribe unfiltered
+      // and match the id client-side. This is best effort: the heartbeat poll below is what
+      // guarantees a deleted room is noticed.
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'games' }, (payload) => {
+        if ((payload.old as { id?: string } | null)?.id === gameCode) void refresh()
+      })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.new as Player
-          setPlayers((prev) => (prev.some((p) => p.id === player.id) ? prev : [...prev, player]))
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'INSERT', new: player }))
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
+        (payload) => {
+          const player = payload.new as Player
+          rosterGuard.noteEvent()
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'UPDATE', new: player }))
         }
       )
       .on(
@@ -156,6 +197,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         { event: 'DELETE', schema: 'public', table: 'players', filter: `game_id=eq.${gameCode}` },
         (payload) => {
           const player = payload.old as Player
+          rosterGuard.noteEvent()
           if (player.id === myPlayerId) {
             clearPlayerSession(gameCode)
             setMyPlayerId(null)
@@ -163,7 +205,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
             setScreen('join')
             toastError('You were removed from the room')
           }
-          setPlayers((prev) => prev.filter((p) => p.id !== player.id))
+          setPlayers((prev) => applyPlayerChange(prev, { eventType: 'DELETE', old: { id: player.id } }))
         }
       )
       .subscribe()
@@ -171,17 +213,29 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [gameCode, myPlayerId, syncScreen, toastError])
+  }, [gameCode, refresh, myPlayerId, rosterGuard, syncScreen, toastError])
 
-  usePolling(() => load(), [gameCode, load], { intervalMs: POLL_INTERVALS.realtimeFallback })
+  usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
+    intervalMs: POLL_INTERVALS.realtimeFallback,
+  })
+
+  // Heartbeat. Realtime is a hint, not a guarantee: DELETE events (a deleted room, a removed or
+  // departed player, a deleted message) are not reliably delivered for filtered subscriptions, and
+  // the fallback poll above is suspended while realtime looks healthy. A slow, realtime-independent
+  // read confirms the room, roster and session; the loader shares it with any read in flight.
+  usePolling(() => loader.request({ retry: false }), [gameCode, loader], {
+    intervalMs: ROOM_HEARTBEAT_MS,
+    runImmediately: false,
+    gateOnRealtime: false,
+  })
 
   const openLobbyJoin = useCallback(() => {
     setScreen('join')
-    void load()
-  }, [load])
+    void refresh()
+  }, [refresh])
 
   useLobbyOpenNotification(game?.status, () => {
-    if (screen === 'game_started_waiting' || screen === 'finished') void load()
+    if (screen === 'game_started_waiting' || screen === 'finished') void refresh()
   })
 
   const join = useCallback(async () => {
@@ -198,14 +252,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       setPlayerSession(gameCode, data.playerId, data.playerName, data.playerGender, data.resumeToken)
       setMyPlayerId(data.playerId)
       setMyPlayerName(data.playerName)
-      await load()
+      await refresh()
       success(data.canChat === false ? `Joined as ${data.playerName} — view only` : `Joined as ${data.playerName}`)
     } catch (err) {
       toastError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
       setJoining(false)
     }
-  }, [gameCode, joinExtras, load, success, toastError])
+  }, [gameCode, joinExtras, refresh, success, toastError])
 
   useRoomMemberAutoJoin({
     gameCode,
@@ -358,7 +412,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
 
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
-    const lobbyFull = game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
+    const lobbyFull =
+      game?.status === 'waiting' &&
+      roomCapacity != null &&
+      countAnonymousRoomPresence(players, game).participants >= roomCapacity
     return (
       <CenteredShell>
         <Header game={game} />
@@ -413,7 +470,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
                 const resumeToken = getPlayerSession(gameCode)?.resumeToken
                 if (!resumeToken) return
                 await markPlayerReady(gameCode, resumeToken)
-                await load()
+                await refresh()
               }}
               className="btn-primary w-full py-3 text-base font-bold"
             >
@@ -543,12 +600,14 @@ function PlayerBar({ name, subtitle }: { name: string; subtitle?: string }) {
 
 function LobbyPlayers({ players, game }: { players: Player[]; game: Game | null }) {
   const capacity = game ? anonymousRoomMaxPlayers(game) : null
+  // Watch-only viewers hold no seat, so the seat counter counts participants only.
+  const seated = game ? countAnonymousRoomPresence(players, game).participants : players.length
   return (
     <div className="glass-card p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-muted text-xs uppercase tracking-wider">Lobby names</p>
         <span className="text-faint text-xs tabular-nums">
-          {players.length}
+          {seated}
           {capacity != null ? ` / ${capacity}` : ''}
         </span>
       </div>

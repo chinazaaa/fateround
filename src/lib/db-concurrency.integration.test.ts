@@ -149,7 +149,12 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
 
   afterAll(async () => {
     // Every child table references games with ON DELETE CASCADE.
-    if (service && createdGames.length) await service.from('games').delete().in('id', createdGames)
+    if (service && createdGames.length) {
+      const { error } = await service.from('games').delete().in('id', createdGames)
+      // A silent failure here would leave fixtures behind in the developer's database while the
+      // run reports green, so name them.
+      if (error) throw new Error(`could not delete fixture games ${createdGames.join(', ')}: ${error.message}`)
+    }
   })
 
   // -------------------------------------------------------------------------------------------
@@ -317,9 +322,32 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
       noErrors(results)
 
       expect(count(outcomes(results), 'round_not_active')).toBe(3)
+      // No vote either: a function that inserted one and only then answered round_not_active
+      // would still return the right status.
+      const votes = must('read votes', await service.from('votes').select('id').eq('round_id', roundId))
+      expect(votes).toHaveLength(0)
       const round = must<{ mlt_question: string | null }>(
         'read round',
         await service.from('rounds').select('mlt_question').eq('id', roundId).single()
+      )
+      expect(round.mlt_question).toBeNull()
+    })
+
+    it('refuses a round that belongs to a different game, and writes nothing', async () => {
+      const gameA = await makeGame('pick_a_number')
+      const gameB = await makeGame('pick_a_number')
+      const roundOfB = await makeRound(gameB)
+      const playerId = await makePlayer(gameA, 'picker')
+
+      // Game A is active, but the round it names is game B's: the round lock must be scoped to the game.
+      const res = await pick(gameA, roundOfB, playerId, 3)
+      expect(res.error?.message).toMatch(/not found/)
+
+      const votes = must('read votes', await service.from('votes').select('id').eq('round_id', roundOfB))
+      expect(votes).toHaveLength(0)
+      const round = must<{ mlt_question: string | null }>(
+        'read round',
+        await service.from('rounds').select('mlt_question').eq('id', roundOfB).single()
       )
       expect(round.mlt_question).toBeNull()
     })
@@ -514,11 +542,15 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
     it('lets exactly one of many concurrent transitions win, and only its writes land', async () => {
       await repeatRace(async () => {
         const f = await fixture()
+        const untouched = await Promise.all(f.childIds.map(readChild))
 
-        // Ten writers all believe the session is still at the version they read.
+        // Ten writers all believe the session is still at the version they read. Each writer has
+        // its OWN field values and alternates between the two child rows, so a losing request that
+        // wrote its patch before checking the version leaves a trace the winner cannot overwrite:
+        // the winner only ever writes one of the two rows.
         const results = await inParallel(10, (i) =>
           transition(f.gameId, f.updatedAt, { status_message: `writer-${i}` }, [
-            { id: f.childIds[0], patch: { [t.childColumn]: [`value-${i}`] } },
+            { id: f.childIds[i % 2], patch: { [t.childColumn]: [`value-${i}`] } },
           ])
         )
         noErrors(results)
@@ -529,7 +561,9 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
         const winner = out.findIndex((o) => o.status === 'ok')
 
         expect((await readSession(f.gameId)).status_message).toBe(`writer-${winner}`)
-        expect(await readChild(f.childIds[0])).toEqual([`value-${winner}`])
+        expect(await readChild(f.childIds[winner % 2])).toEqual([`value-${winner}`])
+        // The row the winner did not write is exactly as it was: no loser got a write in.
+        expect(await readChild(f.childIds[(winner + 1) % 2])).toEqual(untouched[(winner + 1) % 2])
       })
     })
 
@@ -794,7 +828,12 @@ describe.skipIf(!enabled)('database functions under concurrent callers', () => {
       expect(res.data).toBeNull()
       // 42501 is "permission denied for function"; PGRST202 is PostgREST not exposing it at all.
       // Either way the call did not run.
-      expect(['42501', 'PGRST202']).toContain(res.error?.code)
+      if (res.error?.code === 'PGRST202') return
+      expect(res.error?.code).toBe('42501')
+      // 42501 alone does not prove the body never ran: a function that DOES have an EXECUTE grant
+      // can raise the same code from an internal permission check. The EXECUTE denial has its own
+      // message naming the function, so require that.
+      expect(res.error?.message).toContain(`permission denied for function ${name}`)
     })
   })
 })

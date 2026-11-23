@@ -15,12 +15,25 @@ import {
 // Bingo (POST /api/bingo/*)
 // ---------------------------------------------------------------------------
 
-export const bingoCallSchema = z.object({
+const bingoCallBodySchema = z.object({
   gameId: gameCodeString(),
   hostToken: hostTokenString(),
   number: optionalCoercedNumber((n) => n.int().min(1).max(75)),
   random: z.boolean().optional(),
 })
+
+// A manual call (random is not true) that supplies a blank `number` key (null or "") is a
+// malformed call, not a request for a random ball: optionalCoercedNumber would otherwise turn
+// it into "omitted" and the route would draw a random uncalled number. Leaving the key out
+// entirely still means "draw one" (existing clients rely on it).
+export const bingoCallSchema = z.preprocess((raw) => {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const body = raw as Record<string, unknown>
+    const blank = body.number === null || (typeof body.number === 'string' && body.number.trim() === '')
+    if (blank && body.random !== true) return { ...body, number: Number.NaN }
+  }
+  return raw
+}, bingoCallBodySchema)
 
 export const bingoMarkSchema = z.object({
   gameId: gameCodeString(),

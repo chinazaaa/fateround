@@ -6,22 +6,23 @@ import { anonymousRoomMaxPlayers, countAnonymousRoomPresence } from './anonymous
 
 /**
  * Mirrors web AnonymousRoomHeadcount: a dedicated card showing
- * "In the lobby N / capacity" before start, and
+ * "In the lobby N / capacity · M viewing" before start (participants only count toward seats), and
  * "N players · M viewing / Players can chat · viewers are read-only" while active.
  */
 export function AnonymousRoomHeadcount({ game, players }: { game: Game; players: Player[] }) {
   const styles = useThemedStyles(makeStyles)
   const inLobby = game.status === 'waiting'
   const capacity = anonymousRoomMaxPlayers(game)
-  const { total, participants, viewers } = countAnonymousRoomPresence(players, game)
+  const { participants, viewers } = countAnonymousRoomPresence(players, game)
 
   return (
     <View style={styles.card}>
       <Text style={styles.label}>{inLobby ? 'In the lobby' : 'In the room'}</Text>
       {inLobby ? (
         <Text style={styles.count}>
-          {total}
+          {participants}
           <Text style={styles.countFaint}> / {capacity}</Text>
+          {viewers > 0 ? <Text style={styles.countFaint}> · {viewers} viewing</Text> : null}
         </Text>
       ) : (
         <View style={styles.right}>

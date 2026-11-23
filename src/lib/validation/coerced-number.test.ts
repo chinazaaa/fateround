@@ -33,10 +33,12 @@ describe('coercedNumber', () => {
 
   it('treats blank and null as not provided on an optional field', () => {
     const optional = z.object({ n: optionalCoercedNumber((x) => x.int().min(0)) })
-    expect(optional.parse({})).toEqual({})
-    expect(optional.parse({ n: '' })).toEqual({})
-    expect(optional.parse({ n: null })).toEqual({})
-    expect(optional.parse({ n: '4' })).toEqual({ n: 4 })
+    // toStrictEqual: an omitted key and a supplied-but-blank key (kept as an own `n: undefined`)
+    // differ when spread over a default, e.g. `{ n: 4, ...parsed }`.
+    expect(optional.parse({})).toStrictEqual({})
+    expect(optional.parse({ n: '' })).toStrictEqual({ n: undefined })
+    expect(optional.parse({ n: null })).toStrictEqual({ n: undefined })
+    expect(optional.parse({ n: '4' })).toStrictEqual({ n: 4 })
     expect(optional.safeParse({ n: false }).success).toBe(false)
   })
 })

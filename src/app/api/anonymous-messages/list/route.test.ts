@@ -11,6 +11,7 @@ vi.mock('@/lib/rate-limit', async (importOriginal) => {
 
 let game: Record<string, unknown> | null = null
 const selects: unknown[] = []
+let gameLookups = 0
 
 // The stored rows include player_id on purpose: the route must never return it.
 const rows = [
@@ -35,7 +36,10 @@ const rows = [
 ]
 
 const supabase = makeSupabaseStub({
-  games: () => ({ data: game, error: null }),
+  games: () => {
+    gameLookups += 1
+    return { data: game, error: null }
+  },
   anonymous_messages: ({ selects: s }) => {
     selects.push(...s)
     return { data: rows.map((r) => ({ ...r })), error: null }
@@ -52,6 +56,7 @@ beforeAll(async () => {
 beforeEach(() => {
   game = gameRow({ status: 'active', game_type: 'secret_message' })
   selects.length = 0
+  gameLookups = 0
   rateLimit.mockReset()
   rateLimit.mockResolvedValue(null)
 })
@@ -71,6 +76,8 @@ describe('POST /api/anonymous-messages/list', () => {
     const res = await call(valid())
     expect(res.status).toBe(429)
     expect(selects).toHaveLength(0)
+    // Neither the messages table nor the games (host auth) lookup may run before the limiter.
+    expect(gameLookups).toBe(0)
   })
 
   it('rejects a wrong hostToken with 403', async () => {
