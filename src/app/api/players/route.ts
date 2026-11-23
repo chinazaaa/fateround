@@ -11,6 +11,7 @@ import { removeScrabblePlayer } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
 import { removeRummyPlayer } from '@/lib/rummy'
+import { completePendingFinishedLeave } from '@/lib/pending-leave'
 import { removeGoFishPlayer } from '@/lib/gofish-server'
 import { removeUnoPlayer } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
@@ -80,7 +81,7 @@ import { isGenderFreeImportJoin, isGenderFreeJoinersJoin, isGenderFreeVotersJoin
 import { isImportClaimMode, isJoinersPollMode, isVoterOnlyMode } from '@/lib/participant-mode'
 import {
   assertHostGame,
-  assertHostPlayerRemove,
+  assertHostWith,
   assertPlayer,
   deleteJoinerPair,
   findJoinerParticipant,
@@ -1874,7 +1875,22 @@ export async function DELETE(req: NextRequest) {
       game = hostGame
       id = code
     } else {
-      const auth = await assertHostPlayerRemove(getSupabaseAdmin(), gameCode, hostToken)
+      // A finished game is let through for the forfeit-cleanup engines only: a host removal that
+      // finished the game and then failed to delete the seat must be repeatable, so the finished-game
+      // guard below can run `completePendingFinishedLeave` (retained vs pending cleanup). Every other
+      // game type keeps the 400 for a finished game.
+      const removeStatusError = 'Players can only be removed while the lobby or game is open'
+      const hostGameType = parseGameType(hostGame.game_type)
+      const forfeitCleanup =
+        isRummyGame(hostGameType) ||
+        isWhotGame(hostGameType) ||
+        isChessGame(hostGameType) ||
+        isCheckersGame(hostGameType) ||
+        isDraughts10Game(hostGameType)
+      const auth = await assertHostWith(getSupabaseAdmin(), gameCode, hostToken, {
+        allowedStatuses: forfeitCleanup ? ['waiting', 'active', 'finished'] : ['waiting', 'active'],
+        statusError: removeStatusError,
+      })
       if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
       game = auth.game
       id = auth.id
@@ -2011,6 +2027,23 @@ export async function DELETE(req: NextRequest) {
    */
   if ((game as { status?: string }).status === 'finished') {
     /**
+     * Exception: a forfeiting leave (Rummy, Whot, Chess, Checkers, Draughts10) commits the finished
+     * session before it deletes the leaver's seat; if that cleanup failed, the leaver is gone from
+     * the session but still holds a seat. A repeat leave must finish the cleanup rather than be
+     * answered "retained". Finishers and spectators leave no such trace and fall through below.
+     */
+    const pending = await completePendingFinishedLeave(
+      getSupabaseAdmin(),
+      (game as { game_type?: string }).game_type,
+      id,
+      playerId,
+      player.name
+    )
+    if (pending) {
+      if (pending.error) return NextResponse.json({ error: pending.error }, { status: pending.status })
+      return NextResponse.json({ success: true })
+    }
+    /**
      * Keep the row, but honour the leave in the one way that still has meaning: stop pushing
      * to them about this game.
      *
@@ -2087,8 +2120,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (isRummyGame(gameType)) {
-    const { error } = await removeRummyPlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
+    const { error, conflict } = await removeRummyPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    // A lost race / deadlock after retries is retryable: repeating the leave completes it.
+    if (error) return NextResponse.json({ error }, { status: conflict ? 409 : 500 })
     return NextResponse.json({ success: true })
   }
 

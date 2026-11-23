@@ -239,8 +239,8 @@ async function persistSession(
   patch: Partial<SnakeLadderSession>,
   timerSeconds: number,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('snake_ladder_sessions')
     .update({
       ...patch,
@@ -250,7 +250,9 @@ async function persistSession(
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: reporting it as one would answer 200 for a write that never landed.
+  if (error) return { won: false, error: internalErrorMessage('snake-and-ladder', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 interface RollOutcome {
@@ -381,7 +383,7 @@ export async function processSnakeAndLadderRoll(
 
   // Claim the turn via CAS FIRST. If another request already advanced the game
   // from this exact state, we lose the CAS and bail without moving the token.
-  const claimed = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -399,7 +401,7 @@ export async function processSnakeAndLadderRoll(
     timerSeconds,
     session.updated_at
   )
-  if (!claimed) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   // Accumulate per-game counters for the trophy engine (same CAS window).
   const counters = buildRollCounters(playerRow, outcome)
