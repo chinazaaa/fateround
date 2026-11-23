@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native'
 import { Image } from 'expo-image'
 import type { AnonymousMessage, Game, Player } from '@fateround/shared'
-import { createLatestResultApplier, createRosterReadGuard } from '@fateround/shared/player-realtime'
+import { createLatestResultApplier, createRosterReadGuard, createSerialLoader } from '@fateround/shared/player-realtime'
 import {
   anonymousSessionSecondsLeft,
   banSecondsLeft,
@@ -23,6 +23,7 @@ import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supab
 import { uniqueTopic } from '@/lib/realtime'
 import { HostChrome } from '@/components/host/HostChrome'
 import { GameFinishedActions } from '@/components/lifecycle/GameFinishedActions'
+import { useOnAppResume } from '@/hooks/useAppActive'
 import { useToast } from '@/components/ui/Toast'
 import {
   ANONYMOUS_ROOM_BAN_MINUTE_OPTIONS,
@@ -73,8 +74,9 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
   // A delete the host just made must not be undone by a read that started before it.
   const [feedGuard] = useState(createRosterReadGuard)
 
-  const loadMessages = useCallback(async () => {
-    await applyLatestMessages(
+  // Resolves false on a current read error so the serial loader below retries it.
+  const loadMessages = useCallback(async (): Promise<boolean> => {
+    const outcome = await applyLatestMessages(
       () =>
         feedGuard.read(async () => {
           const res = await getSupabase()
@@ -86,6 +88,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
         }),
       (rows) => setMessages(rows.map((row) => ({ ...row, player_name: nameById.get(row.player_id) ?? 'Unknown' })))
     )
+    return outcome !== 'failed'
   }, [applyLatestMessages, code, feedGuard, nameById])
 
   const loadBans = useCallback(async () => {
@@ -94,10 +97,23 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
     setBans((res.data as BanRow[]) ?? [])
   }, [code])
 
+  // Every message read (mount, realtime event) goes through one serial loader: a failed read retries
+  // with bounded backoff, since this screen has no fallback poll and would otherwise stay stale.
+  const messageLoader = useMemo(() => createSerialLoader(loadMessages), [loadMessages])
   useEffect(() => {
-    void loadMessages()
+    messageLoader.start()
+    void messageLoader.request()
+    return messageLoader.stop
+  }, [messageLoader])
+
+  useEffect(() => {
     void loadBans()
-  }, [loadMessages, loadBans])
+  }, [loadBans])
+
+  // Backgrounded apps lose their sockets; events sent meanwhile are gone, so resync on return.
+  useOnAppResume(() => {
+    void messageLoader.request({ fresh: true })
+  })
 
   // Live message + ban feed while the session is running.
   useEffect(() => {
@@ -109,7 +125,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
         'postgres_changes',
         { event: '*', schema: 'public', table: 'anonymous_messages', filter: `game_id=eq.${code}` },
         () => {
-          void loadMessages()
+          void messageLoader.request({ fresh: true })
         }
       )
       .on(
@@ -126,7 +142,7 @@ export function AnonymousMessagesHostScreen({ gameCode, hostToken, game, players
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [active, code, loadMessages, loadBans, onReload])
+  }, [active, code, messageLoader, loadBans, onReload])
 
   // 1s tick keeps mute + session countdowns fresh.
   useEffect(() => {

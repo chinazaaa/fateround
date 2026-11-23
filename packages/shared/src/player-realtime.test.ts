@@ -488,3 +488,45 @@ describe('createLatestResultApplier', () => {
     ).resolves.toBe('failed')
   })
 })
+
+describe('message feed read through createLatestResultApplier + createSerialLoader', () => {
+  afterEach(() => vi.useRealTimers())
+
+  // Mirrors the mobile host/player feed: a read whose fetch yields null is 'failed'; the loader callback
+  // maps that to false so a bounded backoff retry is scheduled (these views have no fallback poll).
+  function makeFeed(results: Array<string[] | null>) {
+    const run = createLatestResultApplier()
+    let feed: string[] = []
+    let calls = 0
+    const loader = createSerialLoader(async () => {
+      const next = results[Math.min(calls++, results.length - 1)]
+      const outcome = await run(
+        async () => next,
+        (rows) => {
+          feed = rows
+        }
+      )
+      return outcome !== 'failed'
+    })
+    loader.start()
+    return { loader, feed: () => feed, calls: () => calls }
+  }
+
+  it('retries a failed read and recovers the feed without another event', async () => {
+    vi.useFakeTimers()
+    const f = makeFeed([null, ['m1']])
+    await expect(f.loader.request({ fresh: true })).resolves.toBe(false)
+    expect(f.feed()).toEqual([])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(f.calls()).toBe(2)
+    expect(f.feed()).toEqual(['m1'])
+  })
+
+  it('stops retrying after the bounded budget', async () => {
+    vi.useFakeTimers()
+    const f = makeFeed([null])
+    await f.loader.request({ fresh: true })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(f.calls()).toBe(5)
+  })
+})
