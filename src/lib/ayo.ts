@@ -901,14 +901,16 @@ async function persistSession(
   gameId: string,
   patch: Partial<AyoSession>,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('ayo_sessions')
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: reporting it as one would answer 200 for a write that never landed.
+  if (error) return { won: false, error: internalErrorMessage('ayo', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 function finishStreaks(
@@ -1065,7 +1067,7 @@ export async function processAyoMove(
     capturedB: result.capturedB,
   })
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1093,7 +1095,7 @@ export async function processAyoMove(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   if (finished) {
     await markGameFinished(supabase, gameId)
@@ -1117,7 +1119,7 @@ export async function processAyoExpireTurn(supabase: SupabaseClient, gameId: str
   const winnerName = names.get(winnerPlayerId) ?? sideLabel(winnerSide)
   const streaks = finishStreaks(session, winnerSide, false)
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1134,7 +1136,7 @@ export async function processAyoExpireTurn(supabase: SupabaseClient, gameId: str
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await markGameFinished(supabase, gameId)
   return {}
@@ -1160,7 +1162,7 @@ export async function processAyoResign(
   const winnerName = names.get(winnerPlayerId) ?? sideLabel(winnerSide)
   const streaks = finishStreaks(session, winnerSide, false)
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1174,7 +1176,7 @@ export async function processAyoResign(
     },
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await markGameFinished(supabase, gameId)
   return {}

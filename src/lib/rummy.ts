@@ -624,9 +624,11 @@ export async function removeRummyPlayer(
   gameId: string,
   playerId: string,
   playerName?: string
-): Promise<{ error: string | null }> {
+): Promise<RummyRemoveResult> {
   let result = await removeRummyPlayerOnce(supabase, gameId, playerId, playerName)
-  for (let attempt = 1; attempt < REMOVE_PLAYER_ATTEMPTS && result.error === RUMMY_CONFLICT_ERROR; attempt++) {
+  for (let attempt = 1; attempt < REMOVE_PLAYER_ATTEMPTS && result.conflict; attempt++) {
+    // Small jittered pause so two concurrent leavers stop colliding on the same rows.
+    await new Promise((resolve) => setTimeout(resolve, 15 * attempt + Math.random() * 25))
     result = await removeRummyPlayerOnce(supabase, gameId, playerId, playerName)
   }
   return result
@@ -634,12 +636,80 @@ export async function removeRummyPlayer(
 
 const REMOVE_PLAYER_ATTEMPTS = 3
 
+/**
+ * A leave commits the session claim (turn_order without the leaver, and for a two-player table
+ * phase 'finished' + games.status 'finished') BEFORE the hand and seat are deleted. If those
+ * deletes then fail on every attempt, the leaver keeps a seat on a finished game, and the DELETE
+ * players route's finished-game guard would answer a repeat leave "retained" without cleaning up.
+ *
+ * No schema change is needed to tell that case from a legitimate finisher: a seated (non-spectator)
+ * player is always in turn_order when the round is dealt, and nothing but a leave claim ever
+ * removes them from it. So "seated, session exists, not in turn_order" is exactly "left, cleanup
+ * pending"; a finisher (winner or loser) is still in turn_order and keeps their rows. Spectators
+ * are never in turn_order and are excluded by the `spectator` flag.
+ *
+ * Returns null when nothing is pending (the caller keeps the finished-game "retained" behaviour),
+ * else the outcome of completing the hand + seat removal (idempotent deletes).
+ */
+export async function completePendingRummyRemoval(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  playerName?: string
+): Promise<RummyRemoveResult | null> {
+  const { data: sessionRaw, error: sessionError } = await supabase
+    .from(RUMMY_SESSIONS)
+    .select('turn_order')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (sessionError) return removalFailure(sessionError)
+  const session = sessionRaw as Pick<RummySession, 'turn_order'> | null
+  if (!session || (session.turn_order ?? []).includes(playerId)) return null
+
+  const { data: seat, error: seatError } = await supabase
+    .from('players')
+    .select('id, spectator')
+    .eq('id', playerId)
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (seatError) return removalFailure(seatError)
+  if (!seat || (seat as { spectator?: boolean | null }).spectator === true) return null
+
+  return removeRummyPlayer(supabase, gameId, playerId, playerName)
+}
+
+/**
+ * `conflict: true` marks a retryable outcome (a turn action or another leave won the row, or the
+ * database aborted the statement as a deadlock/serialization failure). The route answers it with a
+ * 409; repeating the leave is idempotent because a leaver already dropped from turn_order falls
+ * through to the hand + seat cleanup below.
+ */
+type RummyRemoveResult = { error: string | null; conflict?: boolean }
+
+/** Postgres deadlock_detected / serialization_failure: the statement was aborted, not rejected. */
+function isRetryableDbError(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === '40P01' ||
+    error.code === '40001' ||
+    /deadlock detected|could not serialize/i.test(error.message ?? '')
+  )
+}
+
+function removalFailure(error: { code?: string; message?: string }): RummyRemoveResult {
+  // Never hand the raw database text (table names, lock details) to the caller.
+  if (isRetryableDbError(error)) {
+    console.error('[rummy] retryable database failure while removing a player', error)
+    return { error: RUMMY_CONFLICT_ERROR, conflict: true }
+  }
+  return { error: internalErrorMessage('rummy', error) }
+}
+
 async function removeRummyPlayerOnce(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
   playerName?: string
-): Promise<{ error: string | null }> {
+): Promise<RummyRemoveResult> {
   const { data: sessionRaw, error: sessionReadError } = await supabase
     .from(RUMMY_SESSIONS)
     .select('*')
@@ -647,7 +717,7 @@ async function removeRummyPlayerOnce(
     .maybeSingle()
   // A failed read is not an absent session: falling through would delete the player and their hand
   // while the session still lists them in turn_order.
-  if (sessionReadError) return { error: internalErrorMessage('rummy', sessionReadError) }
+  if (sessionReadError) return removalFailure(sessionReadError)
   const session = sessionRaw as RummySession | null
 
   const order = session ? [...(session.turn_order ?? [])] : []
@@ -687,6 +757,11 @@ async function removeRummyPlayerOnce(
       const nextPlayerId = turnOrder[currentTurnIndex]
       update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
       update.turn_deadline_at = rummyTurnDeadline(timerSeconds)
+      // The successor starts a fresh turn. If the leaver was on the move and had already drawn
+      // (turn_step 'discard'), the step would otherwise carry over: the successor could discard
+      // without drawing and their own draw would be rejected. (The leaver's hand, drawn card
+      // included, is deleted below exactly as for any other leaver.)
+      if (removedIndex === session.current_turn_index) update.turn_step = 'draw'
     }
 
     // Version-check against the session we computed the new turn state from: if a discard (or any
@@ -698,18 +773,26 @@ async function removeRummyPlayerOnce(
       .eq('game_id', gameId)
       .eq('updated_at', session.updated_at)
       .select('game_id')
-    if (sessionError) return { error: internalErrorMessage('rummy', sessionError) }
-    if (!claimed || claimed.length === 0) return { error: RUMMY_CONFLICT_ERROR }
+    if (sessionError) return removalFailure(sessionError)
+    if (!claimed || claimed.length === 0) return { error: RUMMY_CONFLICT_ERROR, conflict: true }
 
-    await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
+    const { error: handError } = await supabase
+      .from(RUMMY_HANDS)
+      .delete()
+      .eq('game_id', gameId)
+      .eq('player_id', playerId)
     if (finishing) await finishRummyRound(supabase, gameId, session)
+    // The claim above already dropped the leaver from turn_order, so a retry takes the cleanup
+    // branch below and finishes the hand + seat removal.
+    if (handError) return removalFailure(handError)
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-    return { error: error?.message ?? null }
+    return error ? removalFailure(error) : { error: null }
   }
 
-  await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
+  const { error: handError } = await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
+  if (handError) return removalFailure(handError)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: error?.message ?? null }
+  return error ? removalFailure(error) : { error: null }
 }
 
 // Reads the session, hands, player names, and game-clock fields together. If any of the three
