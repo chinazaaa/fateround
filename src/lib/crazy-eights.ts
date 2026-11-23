@@ -957,8 +957,8 @@ async function persistSession(
   patch: Partial<CrazyEightsSession>,
   timerSeconds: number,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('crazy_eights_sessions')
     .update({
       ...patch,
@@ -968,7 +968,9 @@ async function persistSession(
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: reporting it as one would answer 200 for a write that never landed.
+  if (error) return { won: false, error: internalErrorMessage('crazy-eights', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 export async function processCrazyEightsPlay(
@@ -1060,8 +1062,8 @@ export async function processCrazyEightsPlay(
 
   // Claim the turn. If another request already moved the game from this exact
   // state we lose the CAS and bail — no hands touched.
-  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!won) return {}
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   // CAS won: fold this player's trophy counters into the same hand write that persists their
   // new cards. Counting only — the card, turn and scoring above are already decided.
@@ -1168,7 +1170,7 @@ export async function processCrazyEightsDraw(
         : `${playerName(playerNames, playerId)} drew 1 card`
 
   // Claim the turn before crediting the cards, so a lost race never grows a hand.
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1182,7 +1184,7 @@ export async function processCrazyEightsDraw(
     timerSeconds,
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   // CAS won: fold the draw counters into the same hand write that credits the drawn cards.
   const nextStats = foldDrawStats(currentRoundStats(hands, playerId), drawn.length, newHand.length, pickTwo > 0)
@@ -1233,7 +1235,7 @@ export async function processCrazyEightsChoose(
   let status = `${playerName(playerNames, nextPlayerId)}'s turn — match ${CRAZY8_SUIT_LABELS[suit]} ${CRAZY8_SUIT_SYMBOLS[suit]}`
   if (jokerPenalty > 0) status = `${status} · draw ${jokerPenalty} (Joker)`
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1250,7 +1252,8 @@ export async function processCrazyEightsChoose(
 
   // CAS won: naming a suit is a suit change. Gated on the win so a lost race never double-counts;
   // this writes only the accumulator (choose changes no cards). Nothing else here is altered.
-  if (won) {
+  if (persisted.error) return { error: persisted.error }
+  if (persisted.won) {
     const nextStats = foldChooseStats(currentRoundStats(hands, playerId))
     await supabase
       .from('crazy_eights_player_hands')
