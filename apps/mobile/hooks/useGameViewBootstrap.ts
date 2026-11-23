@@ -116,6 +116,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // SAME session as 'active' can only be read-replica lag — ignore it so results never bounce
   // back to the board. A real replay passes through 'waiting' (which clears the latch).
   const finishedSessionRef = useRef<string | null | undefined>(undefined)
+  // True while a finished read latched the session above but its load failed under holdOnLoadStateFailure, so the
+  // finished state was never published. A stale-active read of that same session must then report failure (so the
+  // caller retries) instead of success, without publishing the stale active board.
+  const finishedUnpublishedRef = useRef(false)
 
   // False between unmount and the next mount. Unmounting also bumps the generation, so a run still in flight
   // counts as superseded: its callbacks (`isCurrent`) and its own writes stop, and nobody keeps waiting on it.
@@ -164,10 +168,13 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
           gameData.status === 'active' &&
           (gameData.session_started_at ?? null) === finishedSessionRef.current
         ) {
-          return true
+          return !finishedUnpublishedRef.current
         }
         if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
-        else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
+        else if (gameData.status === 'waiting') {
+          finishedSessionRef.current = undefined
+          finishedUnpublishedRef.current = false
+        }
 
         // Reconcile the stored session against the roster we just fetched: a drifted/
         // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
@@ -200,7 +207,11 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
 
         const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session, () => !superseded())
         if (superseded()) return ok
-        if (!ok && holdOnFailureRef.current) return false
+        if (!ok && holdOnFailureRef.current) {
+          if (gameData.status === 'finished') finishedUnpublishedRef.current = true
+          return false
+        }
+        finishedUnpublishedRef.current = false
 
         setGame(gameData)
         setPlayers(playerRows)

@@ -534,8 +534,9 @@ describe('createFlipResyncTracker failed resync retry', () => {
 
   it('retiring a board fences older reads: a stalled read of the old round cannot apply later', () => {
     const t = createFlipResyncTracker(async () => {})
-    const stalled = t.startRead()
+    // Round A's board is applied first, so the later stalled read is not already superseded by it.
     t.evaluateSnapshot({ roundId: 'a', ticket: t.startRead(), selecting: false })
+    const stalled = t.startRead()
     const retiring = t.startRead()
     t.clearBoardRound('b', retiring)
     expect(t.evaluateSnapshot({ roundId: 'a', ticket: stalled, selecting: false })).toBe('discard')
