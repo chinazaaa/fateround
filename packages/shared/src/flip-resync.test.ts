@@ -394,3 +394,67 @@ describe('snapshotReadsOk', () => {
     expect(t.evaluateSnapshot({ roundId: 'r1', ticket: retry, selecting: false })).toBe('apply')
   })
 })
+
+describe('createFlipResyncTracker failed resync retry', () => {
+  it('retries a resync that resolves false after a backoff, then stops once it succeeds', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn<() => Promise<boolean>>().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+      const t = createFlipResyncTracker(resync)
+      await flip(t, Promise.reject(new Error('refused')))
+      expect(resync).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(999)
+      expect(resync).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(resync).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(resync).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('treats a rejected resync as failed and keeps the retry bounded', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => {
+        throw new Error('down')
+      })
+      const t = createFlipResyncTracker(resync, [10, 20])
+      await flip(t, Promise.reject(new Error('refused')))
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(resync).toHaveBeenCalledTimes(3) // first run + the two bounded retries
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancel() drops the pending retry', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => false)
+      const t = createFlipResyncTracker(resync, [10])
+      await flip(t, Promise.reject(new Error('refused')))
+      t.cancel()
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(resync).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a new round drops the retry owed for the previous one', async () => {
+    vi.useFakeTimers()
+    try {
+      const resync = vi.fn(async () => false)
+      const t = createFlipResyncTracker(resync, [10])
+      t.evaluateSnapshot({ roundId: 'a', ticket: t.startRead(), selecting: false })
+      await flip(t, Promise.reject(new Error('refused')))
+      expect(t.evaluateSnapshot({ roundId: 'b', ticket: t.startRead(), selecting: false })).toBe('new-round')
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(resync).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

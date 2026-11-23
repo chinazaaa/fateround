@@ -260,7 +260,13 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
             // Only for the round the board on screen was built for: another round's board must not stay up under
             // this round's metadata, so for a new round clear it and report no board until a read succeeds.
             const sameRoundBoard = boardRoundIdRef.current === roundData.id && boardRef.current !== null
-            if (!sameRoundBoard) setBoard(null)
+            if (!sameRoundBoard) {
+              if (flipTimeoutRef.current) {
+                clearTimeout(flipTimeoutRef.current)
+                flipTimeoutRef.current = null
+              }
+              setBoard(null)
+            }
             return {
               hasBoard: sameRoundBoard,
               ownFinished: sameRoundBoard && finishedRef.current,
@@ -573,12 +579,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
       if (flashRef.current) clearTimeout(flashRef.current)
       readRetry.cancel()
+      flipTracker.cancel()
     }
-  }, [readRetry])
+  }, [readRetry, flipTracker])
 
   // ── Flip handler ───────────────────────────────────────────────────────────
 
-  loadRef.current = load
+  // The tracker's resync waits for the real outcome of the load (a failure triggers its bounded retry).
+  loadRef.current = loadSettled
   retryLoadRef.current = loadSettled
   boardRef.current = board
   finishedRef.current = finished

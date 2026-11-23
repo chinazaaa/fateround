@@ -14,6 +14,9 @@ import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { uniqueTopic } from '@/lib/realtime'
 import { useProfileAttribution } from '@/hooks/useProfileAttribution'
 
+/** How long an in-flight load may run before a new caller supersedes it (a fetch that never settles). */
+const STALE_LOAD_MS = 12_000
+
 export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   gameCode: string
   loadingScreen: Screen
@@ -81,115 +84,154 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   const pendingRef = useRef(false)
   // Settles with the final result of the load chain now running (trailing re-runs included); see loadSettled.
   const chainRef = useRef<Promise<boolean> | null>(null)
+  // When the running load started, its generation, and a way to settle its chain with `false` once it is
+  // superseded: a read that never settles must not leave a waiting retry hanging forever (see loadSettled).
+  const loadStartedAtRef = useRef(0)
+  const loadGenRef = useRef(0)
+  const abandonChainRef = useRef<(() => void) | null>(null)
   // Finished latch, keyed on the session that finished. `start` only moves a game to
   // 'active' from 'waiting' with a *new* session_started_at, so a later read that shows the
   // SAME session as 'active' can only be read-replica lag — ignore it so results never bounce
   // back to the board. A real replay passes through 'waiting' (which clears the latch).
   const finishedSessionRef = useRef<string | null | undefined>(undefined)
 
-  const runLoad = useCallback(async (): Promise<boolean> => {
-    try {
-      const supabase = getSupabase()
-      const [gameRes, playersRes] = await Promise.all([
-        supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
-        supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
-      ])
+  const runLoad = useCallback(
+    async (gen: number): Promise<boolean> => {
+      // True once a fresher load has superseded this run: a zombie that settles late must not write over it.
+      const superseded = () => gen !== loadGenRef.current
+      try {
+        const supabase = getSupabase()
+        const [gameRes, playersRes] = await Promise.all([
+          supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
+          supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
+        ])
 
-      if (gameRes.error || playersRes.error) return false
+        if (superseded()) return true
+        if (gameRes.error || playersRes.error) return false
 
-      const gameData = gameRes.data as Game | null
-      const playerRows = (playersRes.data ?? []) as Player[]
+        const gameData = gameRes.data as Game | null
+        const playerRows = (playersRes.data ?? []) as Player[]
 
-      if (!gameData) {
-        setGame(null)
-        setPlayers([])
-        setScreen(notFoundScreen)
+        if (!gameData) {
+          setGame(null)
+          setPlayers([])
+          setScreen(notFoundScreen)
+          return true
+        }
+
+        // Stale-replica guard (see finishedSessionRef above).
+        if (
+          finishedSessionRef.current !== undefined &&
+          gameData.status === 'active' &&
+          (gameData.session_started_at ?? null) === finishedSessionRef.current
+        ) {
+          return true
+        }
+        if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
+        else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
+
+        // Reconcile the stored session against the roster we just fetched: a drifted/
+        // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
+        // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
+        // the server's token-keyed resume, clears only on a confirmed 404. Web does
+        // this via resolvePlayerSession; mobile never had it.
+        //
+        // BEFORE loadGameState, and handed to it: game state that is fetched per-player
+        // through a server route (the Codewords key card, a card hand) authenticates with
+        // the resume token, so loading it against the pre-reconciliation token yields a
+        // REDACTED view of a live game — a spymaster staring at an operative's grid until
+        // some later event happens to reload (review on PR #787). Reading SecureStore
+        // directly inside loadGameState has the same flaw and one extra keychain read.
+        const session = await reconcilePlayerSession(code, playerRows)
+        if (superseded()) return true
+        const playerId = session?.playerId ?? null
+        if (session) {
+          setMyPlayerId(session.playerId)
+          setMyResumeToken(session.resumeToken)
+          setJoinName(session.playerName)
+          void recordRecentGame({
+            code,
+            title: gameData.title,
+            gameType: gameData.game_type,
+          })
+        } else {
+          setMyPlayerId(null)
+          setMyResumeToken(null)
+        }
+
+        const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session)
+        if (superseded()) return ok
+
+        setGame(gameData)
+        setPlayers(playerRows)
+        setGameState(ok ? state : null)
+
+        const resolvedState = ok ? state : (null as GameState)
+        if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)
+        setScreen(computeScreenRef.current(gameData, playerId, resolvedState))
         return true
+      } catch {
+        return false
       }
-
-      // Stale-replica guard (see finishedSessionRef above).
-      if (
-        finishedSessionRef.current !== undefined &&
-        gameData.status === 'active' &&
-        (gameData.session_started_at ?? null) === finishedSessionRef.current
-      ) {
-        return true
-      }
-      if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
-      else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
-
-      // Reconcile the stored session against the roster we just fetched: a drifted/
-      // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
-      // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
-      // the server's token-keyed resume, clears only on a confirmed 404. Web does
-      // this via resolvePlayerSession; mobile never had it.
-      //
-      // BEFORE loadGameState, and handed to it: game state that is fetched per-player
-      // through a server route (the Codewords key card, a card hand) authenticates with
-      // the resume token, so loading it against the pre-reconciliation token yields a
-      // REDACTED view of a live game — a spymaster staring at an operative's grid until
-      // some later event happens to reload (review on PR #787). Reading SecureStore
-      // directly inside loadGameState has the same flaw and one extra keychain read.
-      const session = await reconcilePlayerSession(code, playerRows)
-      const playerId = session?.playerId ?? null
-      if (session) {
-        setMyPlayerId(session.playerId)
-        setMyResumeToken(session.resumeToken)
-        setJoinName(session.playerName)
-        void recordRecentGame({
-          code,
-          title: gameData.title,
-          gameType: gameData.game_type,
-        })
-      } else {
-        setMyPlayerId(null)
-        setMyResumeToken(null)
-      }
-
-      const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session)
-
-      setGame(gameData)
-      setPlayers(playerRows)
-      setGameState(ok ? state : null)
-
-      const resolvedState = ok ? state : (null as GameState)
-      if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)
-      setScreen(computeScreenRef.current(gameData, playerId, resolvedState))
-      return true
-    } catch {
-      return false
-    }
-  }, [code, notFoundScreen])
+    },
+    [code, notFoundScreen]
+  )
 
   const load = useCallback(async (): Promise<boolean> => {
-    if (loadingRef.current) {
+    if (loadingRef.current && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
       pendingRef.current = true
       return true
     }
+    // Nothing is running, or what is running is stuck past the deadline: orphan it (its latch release and
+    // state writes are dropped) and tell whoever waits on it that it failed.
+    abandonChainRef.current?.()
+    const gen = ++loadGenRef.current
     loadingRef.current = true
-    const chain = (async (): Promise<boolean> => {
+    loadStartedAtRef.current = Date.now()
+    let abandon: () => void = () => {}
+    const abandoned = new Promise<boolean>((resolve) => {
+      abandon = () => resolve(false)
+    })
+    const run = (async (): Promise<boolean> => {
       try {
-        let ok = await runLoad()
-        while (pendingRef.current) {
+        let ok = await runLoad(gen)
+        while (pendingRef.current && gen === loadGenRef.current) {
           pendingRef.current = false
-          ok = await runLoad()
+          loadStartedAtRef.current = Date.now()
+          ok = await runLoad(gen)
         }
         return ok
       } finally {
-        loadingRef.current = false
+        if (gen === loadGenRef.current) loadingRef.current = false
       }
     })()
+    const chain = Promise.race([run, abandoned])
+    abandonChainRef.current = abandon
     chainRef.current = chain
     return chain
   }, [runLoad])
 
   // Like `load`, but a call that joins a run already in flight resolves with the queued run's real outcome
   // rather than `true` straight away. For a caller that owns a retry and must know whether the read it asked
-  // for actually succeeded (see createReadRetry).
+  // for actually succeeded (see createReadRetry). A run that never settles stops being waited for once stale.
   const loadSettled = useCallback((): Promise<boolean> => {
-    if (loadingRef.current && chainRef.current) {
+    const chain = chainRef.current
+    const age = Date.now() - loadStartedAtRef.current
+    if (loadingRef.current && chain && age < STALE_LOAD_MS) {
       pendingRef.current = true
-      return chainRef.current
+      return new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), Math.max(0, STALE_LOAD_MS - age))
+        void chain.then(
+          (v) => {
+            clearTimeout(timer)
+            resolve(v)
+          },
+          () => {
+            clearTimeout(timer)
+            resolve(false)
+          }
+        )
+      })
     }
     return load()
   }, [load])

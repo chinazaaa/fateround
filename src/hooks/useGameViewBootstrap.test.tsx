@@ -301,6 +301,62 @@ describe('useGameViewBootstrap', () => {
     await waitFor(() => expect(settled).toBe(false))
   })
 
+  it('loadSettled joined to a read that never settles gives up with false once the run is stale', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      h.hang = true // models an iOS-suspended fetch: the mount load never settles
+      const { result } = setup()
+      let settled: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (settled = v))
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_999)
+      })
+      expect(settled).toBeUndefined()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(settled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a load that supersedes a stuck one settles the abandoned chain with false instead of leaving it pending', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      const { result } = setup()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      // This load starts the chain and its read never settles.
+      h.hang = true
+      let stuck: boolean | undefined
+      await act(async () => {
+        void result.current.load().then((v) => (stuck = v))
+      })
+      expect(stuck).toBeUndefined()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_000)
+      })
+      expect(stuck).toBeUndefined() // nothing superseded it yet
+      // Past the stale bound a new load() starts a new generation; the old chain must be settled.
+      h.hang = false
+      let fresh: boolean | undefined
+      await act(async () => {
+        void result.current.load().then((v) => (fresh = v))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(stuck).toBe(false)
+      expect(fresh).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('loadSettled with nothing in flight behaves like load', async () => {
     h.gameRow = { id: 'ABCD', status: 'waiting' }
     const { result } = setup()

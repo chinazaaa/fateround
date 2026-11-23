@@ -141,6 +141,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // Settles with the final result of the load chain now running (its trailing re-runs included), so
   // `loadSettled` can hand a coalesced caller the real outcome instead of the queued-run acknowledgement.
   const chainRef = useRef<Promise<boolean> | null>(null)
+  // Settles the chain above with `false` when it is superseded or abandoned, so nobody waiting on a read that
+  // never settles waits forever (see loadSettled).
+  const abandonChainRef = useRef<(() => void) | null>(null)
   const loadGenRef = useRef(0)
   // Keyed on the session that finished. `start` only moves a game to 'active' from 'waiting'
   // with a NEW session_started_at, so a later read showing the SAME session as 'active' can
@@ -236,11 +239,17 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     }
     // Either nothing is running, or what's running has been stuck past the deadline and is
     // abandoned. Bumping the generation orphans the stuck run: its `finally` can no longer
-    // clear the latch out from under this one, and its state writes are dropped.
+    // clear the latch out from under this one, and its state writes are dropped. Whoever waits on
+    // the abandoned chain (a retry that joined it) is told it failed rather than left hanging.
+    abandonChainRef.current?.()
     const gen = ++loadGenRef.current
     loadingRef.current = true
     loadStartedAtRef.current = Date.now()
-    const chain = (async (): Promise<boolean> => {
+    let abandon: () => void = () => {}
+    const abandoned = new Promise<boolean>((resolve) => {
+      abandon = () => resolve(false)
+    })
+    const run = (async (): Promise<boolean> => {
       try {
         let ok = await runLoad(gen)
         while (pendingRef.current && gen === loadGenRef.current) {
@@ -253,6 +262,8 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         if (gen === loadGenRef.current) loadingRef.current = false
       }
     })()
+    const chain = Promise.race([run, abandoned])
+    abandonChainRef.current = abandon
     chainRef.current = chain
     return chain
   }, [runLoad])
@@ -261,9 +272,24 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // rather than `true` straight away. For a caller that owns a retry and must know whether the read it asked
   // for actually succeeded (see createReadRetry).
   const loadSettled = useCallback((): Promise<boolean> => {
-    if (loadingRef.current && chainRef.current && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
+    const chain = chainRef.current
+    const age = Date.now() - loadStartedAtRef.current
+    if (loadingRef.current && chain && age < STALE_LOAD_MS) {
       pendingRef.current = true
-      return chainRef.current
+      // If the run never settles, stop waiting for it once it counts as stale (a later load() supersedes it).
+      return new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), Math.max(0, STALE_LOAD_MS - age))
+        void chain.then(
+          (v) => {
+            clearTimeout(timer)
+            resolve(v)
+          },
+          () => {
+            clearTimeout(timer)
+            resolve(false)
+          }
+        )
+      })
     }
     return load()
   }, [load])

@@ -65,6 +65,8 @@ const boot = vi.hoisted(() => ({
   },
   loadCalls: 0,
   settledCalls: 0,
+  /** The next N loads fail before reading a snapshot (a games/players query error): they resolve false. */
+  failNext: 0,
   /** Controls when the fake load() finishes, to interleave it with flips. */
   gate: null as null | Promise<void>,
 }))
@@ -116,6 +118,10 @@ vi.mock('@/hooks/useGameViewBootstrap', async () => {
       const load = React.useCallback(async () => {
         boot.loadCalls += 1
         if (boot.gate) await boot.gate
+        if (boot.failNext > 0) {
+          boot.failNext -= 1
+          return false
+        }
         await boot.opts!.afterResolve(GAME, 'p1', { hasBoard: false, ownFinished: false, roundFinished: false })
         return true
       }, [])
@@ -223,6 +229,7 @@ beforeEach(() => {
   db.readGate = null
   boot.loadCalls = 0
   boot.settledCalls = 0
+  boot.failNext = 0
   boot.gate = null
   fetchMock = vi.fn()
   vi.stubGlobal('fetch', fetchMock)
@@ -249,6 +256,22 @@ describe('Matching Pairs player view: reconciling after a refused flip', () => {
     expect(streakValue()).toBe('0🔥')
     expect(hiddenCount()).toBe(6)
     expect(boot.loadCalls).toBe(loadsBefore + 1)
+  })
+
+  it('retries a failed flip resync by itself when the load fails before reading any snapshot', async () => {
+    fetchMock.mockResolvedValue(refused())
+    await mount()
+    boot.failNext = 1 // the resync load hits a games/players query error and resolves false
+    const settledBefore = boot.settledCalls
+
+    fireEvent.click(cards()[0])
+    fireEvent.click(cards()[1]) // optimistic match, refused by the server
+    await waitFor(() => expect(boot.settledCalls).toBe(settledBefore + 1))
+    expect(scoreValue()).not.toBe('0') // the failed resync could not roll the board back yet
+
+    // Nobody calls load() again: only the tracker's bounded retry can reconcile.
+    await waitFor(() => expect(scoreValue()).toBe('0'), { timeout: 3000 })
+    expect(boot.settledCalls).toBe(settledBefore + 2)
   })
 
   it('does not reset the board when the snapshot read fails', async () => {

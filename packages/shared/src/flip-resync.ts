@@ -1,3 +1,5 @@
+import { READ_RETRY_DELAYS_MS } from './read-retry'
+
 /** Handle for one flip request: `end` settles exactly the request (and round) that `begin` counted. */
 export type FlipToken = { readonly round: string | null; ended: boolean }
 
@@ -17,6 +19,12 @@ export type ReadTicket = { readonly seq: number }
  * timeout) and must neither block the new round's snapshots nor have its completion decrement the new round's
  * count. A failure of a previous round's flip cannot make the current board stale, so it does not resync.
  *
+ * `resync` may be async and reports its outcome: a resolved `false` or a rejection means the read behind it
+ * failed (e.g. the game/players query errored before any snapshot was evaluated), so the tracker keeps the
+ * resync owed and runs it again after the next backoff delay (`retryDelaysMs`, bounded; the budget is
+ * restored by a successful resync, a new round or `cancel()`). Pass a resync that reads the real outcome of
+ * the load it waits for (a read that joins one already in flight must not report an early `true`).
+ *
  * `resync` may be async. A flip that starts while a resync is still reading would be hidden by the snapshot
  * that read produces, so it marks another resync to run after that read has finished and the flip has
  * settled.
@@ -29,7 +37,17 @@ export type ReadTicket = { readonly seq: number }
  * since it started, so a slow read for an older round cannot overwrite a newer board. Flips of other rounds
  * do not invalidate a round's reads.
  */
-export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
+export function createFlipResyncTracker(
+  resync: () => Promise<unknown> | void,
+  retryDelaysMs: readonly number[] = READ_RETRY_DELAYS_MS,
+  timers: {
+    set: (fn: () => void, ms: number) => unknown
+    clear: (handle: unknown) => void
+  } = {
+    set: (fn, ms) => setTimeout(fn, ms),
+    clear: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
+  }
+) {
   const pending = new Map<string | null, number>()
   const pendingIn = (round: string | null) => pending.get(round) ?? 0
   let failed = false
@@ -51,25 +69,68 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
    */
   let lastBoardRound: string | null = null
 
+  /** Failed resyncs since the last success, and the pending backoff timer (no resync runs before it fires). */
+  let failedAttempts = 0
+  let backoff: { handle: unknown } | null = null
+  /** Bumped by `cancel()`: the outcome of a resync that started before it is ignored. */
+  let epoch = 0
+
+  const clearBackoff = () => {
+    if (backoff) timers.clear(backoff.handle)
+    backoff = null
+  }
+
   const readMayBeStale = (ticket: ReadTicket, round: string | null) =>
     pendingIn(round) > 0 || (lastFlipEvent.get(round) ?? 0) > ticket.seq
 
   function maybeResync() {
-    if (pendingIn(currentRound) !== 0 || !failed || resyncing) return
+    if (pendingIn(currentRound) !== 0 || !failed || resyncing || backoff) return
     failed = false
     resyncing = true
-    const done = () => {
+    const round = currentRound
+    const started = epoch
+    const done = (ok: boolean) => {
       resyncing = false
+      if (epoch === started) {
+        if (ok) {
+          failedAttempts = 0
+        } else if (round === currentRound) {
+          if (failedAttempts < retryDelaysMs.length) {
+            // The read itself failed, so the board is still stale: owe another resync after a backoff.
+            failed = true
+            const mine: { handle: unknown } = { handle: null }
+            mine.handle = timers.set(() => {
+              if (backoff === mine) backoff = null
+              maybeResync()
+            }, retryDelaysMs[failedAttempts]!)
+            backoff = mine
+            failedAttempts++
+          } else {
+            // Budget used up: stop; the next flip failure or snapshot request starts afresh.
+            failedAttempts = 0
+          }
+        }
+      }
       maybeResync()
     }
     try {
-      void Promise.resolve(resync()).then(done, done)
+      void Promise.resolve(resync()).then(
+        (v) => done(v !== false),
+        () => done(false)
+      )
     } catch {
-      done()
+      done(false)
     }
   }
 
   return {
+    /** Unmount: drop a pending backoff timer and the outcome of a resync still running. Reusable afterwards. */
+    cancel() {
+      epoch++
+      failed = false
+      failedAttempts = 0
+      clearBackoff()
+    },
     /** Round whose board the view currently shows (set by `evaluateSnapshot` when it says to apply). */
     boardRound: () => boardRound,
     /**
@@ -93,6 +154,8 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
         // Work queued for the previous round (a deferred read, a failure to reload for) is moot now.
         deferred = false
         failed = false
+        failedAttempts = 0
+        clearBackoff()
         return 'new-round'
       }
       if (readMayBeStale(args.ticket, args.roundId) || args.selecting) {
@@ -189,6 +252,8 @@ export function createFlipResyncTracker(resync: () => Promise<unknown> | void) {
       // A flip of a round the view has left cannot have made the current board stale.
       if (token.round !== currentRound) return
       if (didFail || deferred) failed = true
+      // A flip that just failed is fresh evidence the board is stale: do not wait out a backoff for it.
+      if (didFail) clearBackoff()
       deferred = false
       maybeResync()
     },

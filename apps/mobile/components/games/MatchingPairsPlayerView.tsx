@@ -210,6 +210,14 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       // A failed read is not an empty history: applying it would hide stored matches and reset points and
       // streak. Keep the current board, do not commit this read, and read again on the next event or flip.
       if (!snapshotReadsOk(subsRes, progRes)) {
+        // loadGameState already applied THIS round's metadata. Keep the board only if it belongs to this round:
+        // another round's cardOrder under this round's icons/colors would accept taps and send wrong pair indices.
+        const ownerRound = flipTracker.boardRound()
+        if (ownerRound !== null && ownerRound !== roundData.id) {
+          flipTracker.clearBoardRound(roundData.id)
+          cancelFlipBack()
+          setBoard(null)
+        }
         flipTracker.markDirty()
         readRetry.schedule()
         return
@@ -282,7 +290,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       }
     },
   })
-  loadRef.current = () => bootstrap.load()
+  // The tracker's resync waits for the real outcome of the load (a failure triggers its bounded retry).
+  loadRef.current = () => bootstrap.loadSettled()
   retryLoadRef.current = () => bootstrap.loadSettled()
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 
@@ -332,8 +341,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     return () => {
       if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
       readRetry.cancel()
+      flipTracker.cancel()
     }
-  }, [readRetry])
+  }, [readRetry, flipTracker])
 
   const mySubs = useMemo(
     () =>
