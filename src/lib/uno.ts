@@ -961,7 +961,7 @@ async function finishByLowestHand(
   playerNames: Map<string, string>,
   reasonPrefix: string,
   teamMode = false
-): Promise<boolean> {
+): Promise<{ won: boolean; error?: string }> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
   // No Mercy: knocked-out seats must never rank as the winner on a timed finish. Pass
@@ -991,7 +991,7 @@ async function finishByLowestHand(
     statusMessage = `${reasonPrefix} ${winnerName} wins — ${detail}.`
   }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('uno_sessions')
     .update({
       phase: 'finished',
@@ -1004,10 +1004,17 @@ async function finishByLowestHand(
     .eq('updated_at', session.updated_at)
     .select('game_id')
 
-  if ((data?.length ?? 0) === 0) return false
+  // A database failure is not a lost race — surface it instead of reporting a quiet skip.
+  if (error) return { won: false, error: internalErrorMessage('uno', error) }
+  if ((data?.length ?? 0) === 0) return { won: false }
   if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
   await markGameFinished(supabase, gameId)
-  return true
+  return { won: true }
+}
+
+/** Result for a delegated write that did not land: a database error is surfaced, a lost CAS is a skip. */
+function lostWrite(persisted: { error?: string }): { error?: string; skipped?: boolean } {
+  return persisted.error ? { error: persisted.error } : { skipped: true }
 }
 
 async function finalizeIfGameExpired(
@@ -1022,7 +1029,7 @@ async function finalizeIfGameExpired(
 ): Promise<boolean> {
   if (session.phase === 'finished') return false
   if (!unoGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
-  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", teamMode)
+  return (await finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", teamMode)).won
 }
 
 /**
@@ -2129,14 +2136,22 @@ export async function processUnoDraw(
       return { error: 'Draw pile is empty — play a card from your hand' }
     }
     if (!anyPlayerCanPlay(hands, session)) {
-      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody can play —', rules.teamMode)
-      return {}
+      const finished = await finishByLowestHand(
+        supabase,
+        gameId,
+        session,
+        hands,
+        playerNames,
+        'Nobody can play —',
+        rules.teamMode
+      )
+      return finished.won ? {} : lostWrite(finished)
     }
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-    await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -2150,6 +2165,7 @@ export async function processUnoDraw(
       timerSeconds,
       session.updated_at
     )
+    if (!persisted.won) return lostWrite(persisted)
     if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
     return {}
   }
@@ -2169,10 +2185,7 @@ export async function processUnoDraw(
     // total. Only in No Mercy — Classic keeps the existing "draw what you can" beat,
     // which is fine for smaller +2/+4 penalties.
     if (rules.mode === 'no_mercy' && drawn.length < penalty) {
-      // Persist what was drawn so hands reflect the partial payout in the standings.
-      await writeHand(supabase, gameId, playerId, newHand)
-      if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
-      await finishByLowestHand(
+      const finished = await finishByLowestHand(
         supabase,
         gameId,
         { ...session, draw_pile: drawPile, discard_pile: discardPile } as UnoSession,
@@ -2181,6 +2194,11 @@ export async function processUnoDraw(
         `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
         rules.teamMode
       )
+      // A lost CAS (or DB error) must not leave this stale snapshot's hands behind: persist what was
+      // drawn so hands reflect the partial payout in the standings only after the finish write won.
+      if (!finished.won) return lostWrite(finished)
+      await writeHand(supabase, gameId, playerId, newHand)
+      if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
       return {}
     }
     // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
@@ -2369,7 +2387,7 @@ export async function processUnoPass(
   const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
   const nextPlayerId = session.turn_order[nextIndex]
 
-  await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -2380,6 +2398,7 @@ export async function processUnoPass(
     timerSeconds,
     session.updated_at
   )
+  if (!persisted.won) return lostWrite(persisted)
   return {}
 }
 
@@ -2664,7 +2683,7 @@ async function processUnoColorRouletteReveal(
     // On No Mercy the round can't meaningfully continue from here, so end it via
     // lowest-hand-wins. Classic falls back to "no colour found, next player's turn".
     if (rules.mode === 'no_mercy') {
-      await finishByLowestHand(
+      const finished = await finishByLowestHand(
         supabase,
         gameId,
         { ...session, draw_pile: pile, discard_pile: discard } as UnoSession,
@@ -2673,13 +2692,13 @@ async function processUnoColorRouletteReveal(
         `Deck ran out mid-Roulette (no ${UNO_COLOR_LABELS[color]}) —`,
         rules.teamMode
       )
-      return {}
+      return finished.won ? {} : lostWrite(finished)
     }
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
     const status = `${playerName(playerNames, playerId)} — pile ran out, no ${UNO_COLOR_LABELS[color]} · ${playerName(playerNames, nextPlayerId)}'s turn`
-    await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -2695,7 +2714,7 @@ async function processUnoColorRouletteReveal(
       timerSeconds,
       session.updated_at
     )
-    return {}
+    return persisted.won ? {} : lostWrite(persisted)
   }
 
   const card = pile.pop()!
@@ -3116,12 +3135,20 @@ export async function processUnoExpireTurn(
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextId = session.turn_order[nextIndex]
     if (!nextId || unoHandCount(hands, nextId) === 0) {
-      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody left —', rules.teamMode)
-      return {}
+      const finished = await finishByLowestHand(
+        supabase,
+        gameId,
+        session,
+        hands,
+        playerNames,
+        'Nobody left —',
+        rules.teamMode
+      )
+      return finished.won ? {} : lostWrite(finished)
     }
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-    await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -3132,7 +3159,7 @@ export async function processUnoExpireTurn(
       timerSeconds,
       session.updated_at
     )
-    return {}
+    return persisted.won ? {} : lostWrite(persisted)
   }
 
   if (session.phase === 'choose_color') {
@@ -3151,7 +3178,7 @@ export async function processUnoExpireTurn(
     // No one to swap with — just resume play.
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
-    await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -3162,7 +3189,7 @@ export async function processUnoExpireTurn(
       timerSeconds,
       session.updated_at
     )
-    return {}
+    return persisted.won ? {} : lostWrite(persisted)
   }
 
   // Already drew this turn and idled — keep the card (auto-pass), the safe default.
@@ -3505,6 +3532,8 @@ export async function processUnoTeamLeaveDecision(
     patch.draw_penalty = 0
     patch.draw_penalty_kind = null
   }
-  await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  // A lost CAS means another writer already moved the session on; only a database error is the caller's problem.
+  if (persisted.error) return { error: persisted.error }
   return {}
 }

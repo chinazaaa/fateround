@@ -23,7 +23,11 @@ type Tables = Record<string, Row[]>
 
 function makeDb(
   tables: Tables,
-  hooks: { afterSessionRead?: (table: string) => void; failSelect?: (table: string) => boolean } = {}
+  hooks: {
+    afterSessionRead?: (table: string) => void
+    failSelect?: (table: string) => boolean
+    failUpdate?: (table: string) => boolean
+  } = {}
 ) {
   function builder(table: string) {
     let op: 'select' | 'update' | 'delete' = 'select'
@@ -35,6 +39,7 @@ function makeDb(
     const exec = (): { data: unknown; error: unknown } => {
       const rows = (tables[table] ?? []).filter((r) => filters.every(([k, v]) => r[k] === v))
       if (op === 'update') {
+        if (hooks.failUpdate?.(table)) return { data: null, error: { message: 'boom', code: 'XX000' } }
         for (const r of rows) Object.assign(r, vals)
         return { data: selectAfter ? rows.map((r) => ({ ...r })) : null, error: null }
       }
@@ -225,6 +230,54 @@ describe('processUnoExpireTurn — lost CAS inside the delegated auto-play', () 
     const res = await processUnoExpireTurn(db.supabase, 'G')
     expect(res.error).toBeUndefined()
     expect(res.skipped).toBe(true)
+  })
+})
+
+describe('processUnoExpireTurn — auto-pass (delegated processUnoPass) write outcomes', () => {
+  function idledAfterDraw() {
+    const t = unoTables()
+    const s = t.uno_sessions[0]
+    s.turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    s.drawn_card_id = 'A1'
+    return t
+  }
+
+  it('returns skipped when a competing write lands after the delegated pass loaded', async () => {
+    const t = idledAfterDraw()
+    const s = t.uno_sessions[0]
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions') return
+        // Read #1 is the expire handler's load, read #2 the delegated processUnoPass's own load.
+        if (++reads !== 2) return
+        s.updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.error).toBeUndefined()
+    expect(res.skipped).toBe(true)
+    // The losing pass wrote nothing.
+    expect(s.drawn_card_id).toBe('A1')
+    expect(s.current_turn_index).toBe(0)
+  })
+
+  it('propagates a database error from the delegated pass instead of reporting success', async () => {
+    const t = idledAfterDraw()
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_sessions' })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.error).toBeTruthy()
+    expect(res.skipped).toBeUndefined()
+    expect(t.uno_sessions[0].drawn_card_id).toBe('A1')
+  })
+
+  it('a winning pass still advances the turn', async () => {
+    const t = idledAfterDraw()
+    const db = makeDb(t)
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res).toEqual({})
+    expect(t.uno_sessions[0].drawn_card_id).toBeNull()
+    expect(t.uno_sessions[0].current_turn_index).toBe(1)
   })
 })
 
