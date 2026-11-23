@@ -67,6 +67,13 @@ REST; the realtime dependency then disappears. That is a separate, safe PR.
 (write-side), `apps/mobile/lib/game-api.ts` (POST body), and `realtime-merge.ts`'s `TOAST_PRONE`
 list (a name in an array, not a read).
 
+> **Correction:** web `HOST_GAME_SELECT` _did_ name these three columns
+> (`${GAME_SELECT},ai_questions_enabled,ai_questions_config,ai_generated_questions`), so after the
+> revoke every anon host-page read failed with `42501`. `HOST_GAME_SELECT` is now just
+> `GAME_SELECT` (no client reads these fields; the PATCH route and start route use the service
+> role). `src/lib/supabase-selects-revoked.test.ts` now replays the migrations' column
+> `revoke`/`grant` statements and fails if any curated games select names a revoked column.
+
 **Push bookkeeping (1)** — `last_host_join_push_at`. Sole reference is `src/lib/push.ts`, server.
 
 **Mafia role toggles (23)** — `mafia_alpha_wolf_enabled`, `mafia_arsonist_enabled`,
