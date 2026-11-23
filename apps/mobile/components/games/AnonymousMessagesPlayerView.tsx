@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createRosterReadGuard, createSerialLoader } from '@fateround/shared/player-realtime'
+import { getSessionCoordinator, resolveSessionAgainstRoster } from '@fateround/shared/session-coordinator'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { uniqueTopic } from '@/lib/realtime'
+import { useAppActive, useOnAppResume } from '@/hooks/useAppActive'
 import {
   ActivityIndicator,
   Alert,
@@ -32,19 +35,21 @@ import { AnonymousLobbyDetail } from '@/components/games/anonymous/AnonymousLobb
 import { AnonymousRoomHeadcount } from '@/components/games/anonymous/AnonymousRoomHeadcount'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { AnonymousBanCountdownBar } from '@/components/games/anonymous/AnonymousBanCountdownBar'
-import { anonymousRoomMaxPlayers } from '@/components/games/anonymous/anonymous-room-helpers'
+import {
+  anonymousRoomMaxPlayers,
+  countAnonymousRoomPresence,
+} from '@/components/games/anonymous/anonymous-room-helpers'
 import { ShareGameSheet } from '@/components/session/ShareGameSheet'
 import { useStickyTimer } from '@/components/session/StickyTimerContext'
 import { autoJoinGame } from '@/lib/api'
 import { leaveGame, postAnonymousGif, postAnonymousMessage, postExpireSession, postPlayerReady } from '@/lib/game-api'
 import { useTurnExpiryTimer } from '@/hooks/useTurnExpiryTimer'
 import { useAnonymousReactions } from '@/hooks/useAnonymousReactions'
-import { clearPlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
+import { clearPlayerSession, deletePlayerSession, getPlayerSession, setPlayerSession } from '@/lib/secure-session'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { ANONYMOUS_MESSAGE_SELECT, ANONYMOUS_ROOM_BAN_SELECT } from '@/lib/supabase-selects'
 import type { Theme } from '@/constants/theme'
 import { useTheme, useThemedStyles } from '@/constants/theme-context'
-import { mergeRealtimeGame } from '@/lib/realtime-merge'
 
 type Screen =
   | 'loading'
@@ -57,6 +62,8 @@ type Screen =
   | 'not_found'
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥']
+// Slow realtime-independent confirmation read (see the heartbeat effect); matches the web ROOM_HEARTBEAT_MS.
+const ROOM_HEARTBEAT_MS = 30_000
 
 export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) {
   const code = gameCode.toUpperCase()
@@ -65,6 +72,11 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   const [screen, setScreen] = useState<Screen>('loading')
   const [game, setGame] = useState<Game | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  // Latest roster for name lookups, so `loadMessages` (and therefore `load` and the roster
+  // subscription) does not change identity on every roster update.
+  const playersRef = useRef<Player[]>([])
+  // Rejects a roster read that a players event overtook while it was in flight.
+  const [rosterGuard] = useState(createRosterReadGuard)
   const [messages, setMessages] = useState<AnonymousMessage[]>([])
   const [myPlayerId, setMyPlayerId] = useState<string | null>(null)
   const [canChat, setCanChat] = useState(true)
@@ -107,14 +119,27 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     setScreen(playerId ? 'finished' : 'game_ended')
   }, [])
 
-  const loadMessages = useCallback(async () => {
+  // Plain message read. Overlap is prevented by `messageLoader` below (one read at a time), so an older
+  // response can never replace a newer feed.
+  // False once the view unmounted: a read already running when the loader was stopped (or the room
+  // changed, which remounts via the router key) must not write into state it no longer owns.
+  const alive = useRef(true)
+  useEffect(() => {
+    alive.current = true
+    return () => {
+      alive.current = false
+    }
+  }, [])
+
+  const loadMessages = useCallback(async (): Promise<boolean> => {
     const res = await getSupabase()
       .from('anonymous_messages')
       .select(ANONYMOUS_MESSAGE_SELECT)
       .eq('game_id', code)
       .order('created_at', { ascending: true })
+    if (!alive.current) return true
     if (res.error) return false
-    const nameById = new Map(players.map((p) => [p.id, p.name]))
+    const nameById = new Map(playersRef.current.map((p) => [p.id, p.name]))
     setMessages(
       ((res.data as AnonymousMessage[]) ?? []).map((row) => ({
         ...row,
@@ -122,15 +147,50 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       }))
     )
     return true
-  }, [code, players])
+  }, [code])
+
+  // Every message read (realtime event, post-send refresh, the room load) goes through this serial
+  // loader: one read at a time, and a failed read retries with bounded backoff when the requester
+  // asked for it (events and sends do; the room load passes retry:false because its own loader retries).
+  const messageLoader = useMemo(() => createSerialLoader(loadMessages), [loadMessages])
+  useEffect(() => {
+    messageLoader.start()
+    return messageLoader.stop
+  }, [messageLoader])
+
+  // The room's shared coordinator: the same instance for every view and every session writer of this
+  // room (setPlayerSession/clearPlayerSession serialize through it), so an old unmounting view's pending
+  // clear cannot delete a session a new view or the join flow saved.
+  const sessionCoordinator = getSessionCoordinator(code)
 
   const load = useCallback(async () => {
     const supabase = getSupabase()
-    const [gameRes, playersRes] = await Promise.all([
-      supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
-      supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
-    ])
-    if (gameRes.error || playersRes.error) return false
+    const resolved = await resolveSessionAgainstRoster(sessionCoordinator, {
+      readSession: () => getPlayerSession(code),
+      readRoster: () =>
+        rosterGuard.read(async () => {
+          const [g, p] = await Promise.all([
+            supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
+            supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
+          ])
+          return g.error || p.error ? null : { gameRes: g, playersRes: p }
+        }),
+      // A missing game row has an empty roster, which says nothing about the saved player.
+      rosterHasPlayer: (snap, id) =>
+        !snap.gameRes.data || ((snap.playersRes.data as Player[]) ?? []).some((p) => p.id === id),
+      // Already inside the coordinator's exclusive step: use the raw delete.
+      clear: () => deletePlayerSession(code),
+      // An unmounted view must not start a clear.
+      proceed: () => alive.current,
+    })
+    if (!alive.current) return true // unmounted while reading: nothing left to update
+    if (!resolved) return false
+    // A local join/leave landed after the session was validated (e.g. Leave finished while this load
+    // held a roster that still contained the player): applying it would resurrect the old state. Report
+    // failure so the loader re-reads instead.
+    if (sessionCoordinator.epoch() !== resolved.epoch) return false
+    const { session, roster: snapshot } = resolved
+    const { gameRes, playersRes } = snapshot
     if (!gameRes.data) {
       setScreen('not_found')
       return true
@@ -138,8 +198,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     const gameData = gameRes.data as Game
     const playerRows = (playersRes.data as Player[]) ?? []
     setGame(gameData)
+    playersRef.current = playerRows
     setPlayers(playerRows)
-    const session = await getPlayerSession(code)
     const playerId = session?.playerId ?? null
     if (session) setMyPlayerId(session.playerId)
     else setMyPlayerId(null)
@@ -153,18 +213,74 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         .maybeSingle()
       setBanUntil((banRes.data as { banned_until?: string } | null)?.banned_until ?? null)
     }
-    await loadMessages()
-    return true
-  }, [code, loadMessages, syncScreen])
+    // The message read's outcome is the load's: a current failure must make the loader retry.
+    return messageLoader.request({ fresh: true, retry: false })
+  }, [code, messageLoader, rosterGuard, sessionCoordinator, syncScreen])
 
+  // Single owner of loading: the first load and every event/resume/action-triggered refresh go
+  // through one serial loader, so loads never overlap (a stale write cannot land after a newer one),
+  // a failed load retries with bounded backoff (this view has no fallback poll), and a load shared by
+  // several callers reports its real outcome to each.
+  const loader = useMemo(() => createSerialLoader(load), [load])
+  // Awaitable refresh for actions (join, ready-up, session expiry) that need the new state.
+  const refresh = useCallback(() => loader.request({ fresh: true }), [loader])
+  const reload = useCallback(() => {
+    void refresh()
+  }, [refresh])
   useEffect(() => {
-    void load()
-  }, [load])
+    loader.start()
+    void loader.request()
+    return loader.stop
+  }, [loader])
+
+  // Backgrounded apps lose their sockets and timers; reconcile on return to the foreground.
+  useOnAppResume(reload)
+
+  // Heartbeat: realtime DELETE events (deleted room, removed player or message) are not reliably
+  // delivered, and this view has no fallback poll. A slow read confirms room, roster and session.
+  const appActive = useAppActive()
+  useEffect(() => {
+    if (!appActive) return
+    // retry: true — this view has no fallback poll, so a failed heartbeat (room, roster or message read)
+    // must retry with bounded backoff instead of waiting for the next heartbeat.
+    const id = setInterval(() => void loader.request(), ROOM_HEARTBEAT_MS)
+    return () => clearInterval(id)
+  }, [appActive, loader])
 
   useEffect(() => {
     const id = setInterval(() => setTimerTick((t) => t + 1), 1000)
     return () => clearInterval(id)
   }, [])
+
+  // Live roster + game row in every screen: lobby counters, `lobbyFull` and the headcount depend on
+  // who is seated (INSERT, DELETE, and UPDATE when a viewer readies up), and the screen follows the
+  // game status (the host's start writes only the `games` row). This is the single `games`
+  // listener; the active-screen channel below only carries messages.
+  useEffect(() => {
+    const supabase = getSupabase()
+    const channel = supabase
+      .channel(uniqueTopic(`anon-mobile-players-${code}`))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${code}` }, () => {
+        // An in-flight read that started before this event is now stale; the guard re-fetches it.
+        rosterGuard.noteEvent()
+        reload()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'games', filter: `id=eq.${code}` }, () => {
+        reload()
+      })
+      // DELETE cannot be filtered (and carries only the primary key): subscribe unfiltered and match the
+      // id here. Best effort; the heartbeat below is what guarantees a deleted room is noticed.
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'games' }, (payload) => {
+        if ((payload.old as { id?: string } | null)?.id === code) reload()
+      })
+      .subscribe((status) => {
+        // (Re)connected: events sent while the socket was down are gone, so resync.
+        if (status === 'SUBSCRIBED') reload()
+      })
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [code, reload, rosterGuard])
 
   useEffect(() => {
     if (screen !== 'active') return
@@ -175,23 +291,14 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         'postgres_changes',
         { event: '*', schema: 'public', table: 'anonymous_messages', filter: `game_id=eq.${code}` },
         () => {
-          void loadMessages()
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${code}` },
-        (payload) => {
-          const next = payload.new as Game
-          setGame((prev) => mergeRealtimeGame(prev, next))
-          syncScreen(next, myPlayerId)
+          void messageLoader.request({ fresh: true })
         }
       )
       .subscribe()
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [code, loadMessages, myPlayerId, screen, syncScreen])
+  }, [code, messageLoader, screen])
 
   const myPlayer = players.find((p) => p.id === myPlayerId)
   const canPost =
@@ -203,6 +310,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       const existing = await getPlayerSession(code)
       const data = await autoJoinGame(code, existing?.resumeToken)
+      // setPlayerSession serializes through the room's coordinator itself.
       await setPlayerSession(
         code,
         data.playerId,
@@ -212,7 +320,8 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       )
       setMyPlayerId(data.playerId)
       setCanChat(data.canChat !== false)
-      await load()
+      // Through the serial loader (bounded retry), and awaited so the busy flag spans the refresh.
+      await refresh()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to join')
     } finally {
@@ -253,7 +362,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       await postAnonymousMessage(code, session.resumeToken, text, replyTo?.id ?? null)
       setMessageInput('')
       setReplyTo(null)
-      await loadMessages()
+      await messageLoader.request({ fresh: true })
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to send')
     } finally {
@@ -272,7 +381,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
       }
       await postAnonymousGif(code, session.resumeToken, mediaUrl, replyTo?.id ?? null)
       setReplyTo(null)
-      await loadMessages()
+      await messageLoader.request({ fresh: true })
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to send GIF')
     }
@@ -332,7 +441,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
     try {
       await postPlayerReady(code, session.resumeToken, true)
       setReady(true)
-      await load()
+      await refresh()
     } catch (err) {
       setJoinError(err instanceof Error ? err.message : 'Failed to ready up')
     } finally {
@@ -377,7 +486,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   useTurnExpiryTimer({
     deadlineAt: anonSessionDeadlineAt,
     enabled: game?.status === 'active',
-    onExpire: () => postExpireSession(code).then(() => load()),
+    onExpire: () => postExpireSession(code).then(() => refresh()),
   })
 
   // Pinned countdowns — session bar (+ ban bar when banned) stay visible under
@@ -402,7 +511,7 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
         game={game}
         onLobbyOpen={() => {
           setScreen('join')
-          void load()
+          reload()
         }}
       />
     )
@@ -415,7 +524,10 @@ export function AnonymousMessagesPlayerView({ gameCode }: { gameCode: string }) 
   if (screen === 'join') {
     const sessionInProgress = game?.status === 'active'
     const roomCapacity = game ? anonymousRoomMaxPlayers(game) : null
-    const lobbyFull = game?.status === 'waiting' && roomCapacity != null && players.length >= roomCapacity
+    const lobbyFull =
+      game?.status === 'waiting' &&
+      roomCapacity != null &&
+      countAnonymousRoomPresence(players, game).participants >= roomCapacity
     const joinLabel = joining
       ? 'Joining…'
       : lobbyFull

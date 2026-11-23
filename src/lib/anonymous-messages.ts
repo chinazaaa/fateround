@@ -63,13 +63,17 @@ export function formatBanCountdown(secondsLeft: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-/** Players who join after the session starts may watch but not post. */
+// The web app does not wire the `@fateround/shared` alias, so these two stay a copy of
+// packages/shared/src/anonymous-messages.ts (used by both mobile helpers). The parity test in
+// anonymous-messages-chat.test.ts fails if the copies drift.
+/** Players who join after the session starts, or explicitly as watch-only viewers, may not post. */
 export function anonymousPlayerCanChat(
   player: Pick<Player, 'joined_at' | 'spectator'>,
   game: Pick<Game, 'status' | 'session_started_at'>
 ): boolean {
-  if (game.status === 'waiting') return true
+  // An explicit watch-only join is a spectator even in the lobby, so check it first.
   if (player.spectator) return false
+  if (game.status === 'waiting') return true
   if (!game.session_started_at) return false
   return new Date(player.joined_at).getTime() < new Date(game.session_started_at).getTime()
 }
@@ -78,17 +82,16 @@ export function countAnonymousRoomPresence(
   players: Pick<Player, 'joined_at' | 'spectator'>[],
   game: Pick<Game, 'status' | 'session_started_at'>
 ): { total: number; participants: number; viewers: number } {
-  if (game.status !== 'active') {
+  // Waiting rooms hold explicit watch-only viewers too; only other states skip the split.
+  if (game.status !== 'active' && game.status !== 'waiting') {
     return { total: players.length, participants: players.length, viewers: 0 }
   }
-
   let participants = 0
   let viewers = 0
   for (const player of players) {
     if (anonymousPlayerCanChat(player, game)) participants++
     else viewers++
   }
-
   return { total: players.length, participants, viewers }
 }
 
@@ -157,12 +160,21 @@ export async function trimAnonymousMessagesIfDue(
   // If anything below fails, hand the window back so a later call can retry — but only while the
   // row still holds OUR claim. If this trim ran past the interval and another caller has since
   // claimed a newer window, restoring the old value would overwrite theirs.
-  const releaseClaim = () =>
-    supabase
-      .from('games')
-      .update({ anonymous_messages_trimmed_at: lastTrimAt })
-      .eq('id', gameId)
-      .eq('anonymous_messages_trimmed_at', claimedAt)
+  // A failed release would leave our claim in place and silence trimming until the interval
+  // lapses, so a transient error is retried before giving up (and logged when it persists).
+  const releaseClaim = async () => {
+    let lastError: unknown = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await supabase
+        .from('games')
+        .update({ anonymous_messages_trimmed_at: lastTrimAt })
+        .eq('id', gameId)
+        .eq('anonymous_messages_trimmed_at', claimedAt)
+      if (!error) return
+      lastError = error
+    }
+    console.error('trimAnonymousMessagesIfDue: could not release the trim claim', gameId, lastError)
+  }
 
   // The threshold is rechecked and the batch deleted in one SQL statement under a row lock, so a
   // message deleted since the count above (e.g. by the host) cannot cause an over-trim.

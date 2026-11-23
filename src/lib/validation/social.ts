@@ -53,7 +53,21 @@ export type CreateConfessionInput = z.infer<typeof createConfessionSchema>
 // Anonymous messages (POST /api/anonymous-messages)
 // ---------------------------------------------------------------------------
 
-const INVISIBLE_CHARS = /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]/g
+// Every Unicode default-ignorable code point (soft hyphen, zero-width spaces, bidi marks, the
+// whole U+2060-U+206F block, variation selectors, Hangul fillers, tag characters, BOM ...) plus
+// the remaining format characters. A hand-written range list kept missing members (U+206A).
+const INVISIBLE_CHARS = /[\p{Default_Ignorable_Code_Point}\p{Cf}]/gu
+
+// https only (no javascript:/http trackers) and no userinfo (`https://user:pw@host`). An `@` in
+// the path or query (`clip@2x.gif`) is legitimate, so check the parsed URL instead of the text.
+function isHttpsUrlWithoutCredentials(raw: string): boolean {
+  try {
+    const u = new URL(raw)
+    return u.protocol === 'https:' && u.username === '' && u.password === ''
+  } catch {
+    return false
+  }
+}
 
 export const createAnonymousMessageSchema = z.object({
   gameId: gameCodeString(),
@@ -79,7 +93,7 @@ export const createAnonymousMessageSchema = z.object({
     .string()
     .url()
     .max(2000)
-    .refine((u) => u.startsWith('https://') && !u.includes('@'), 'mediaUrl must be an https URL')
+    .refine(isHttpsUrlWithoutCredentials, 'mediaUrl must be an https URL')
     .optional()
     .nullable(),
 })
