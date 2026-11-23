@@ -345,6 +345,52 @@ describe('unmount and epoch rechecks before an irreversible clear', () => {
     expect(store.session).toEqual({ playerId: 'ghost' })
   })
 
+  it('a leave DURING the exhausted-attempts fallback session read leaves a stale stamp, so nothing is applied', async () => {
+    const coordinator = createSessionCoordinator()
+    const store = { session: { playerId: 'P' } as Session | null }
+    const clear = vi.fn(async () => {
+      store.session = null
+    })
+    let reads = 0
+    let releaseFallback!: () => void
+    const gate = new Promise<void>((r) => (releaseFallback = r))
+    let fallbackStarted = false
+    const MAX = 3
+    const result = resolveSessionAgainstRoster(coordinator, {
+      maxAttempts: MAX,
+      readSession: async () => {
+        reads += 1
+        if (reads <= MAX) return store.session // the bounded attempts read normally
+        // The FALLBACK read (after every attempt was overtaken): it captured the old saved session
+        // and is still in flight when the leave lands.
+        const captured = store.session
+        fallbackStarted = true
+        await gate
+        return captured
+      },
+      // Every attempt is overtaken by a session change, so all MAX attempts are exhausted.
+      readRoster: async () => {
+        await coordinator.mutate(async () => {})
+        return ['other']
+      },
+      rosterHasPlayer: has,
+      clear,
+    })
+    await vi.waitFor(() => expect(fallbackStarted).toBe(true))
+    // Local leave while the fallback read is in flight: clears the session and bumps the epoch.
+    await coordinator.mutate(async () => {
+      store.session = null
+    })
+    releaseFallback()
+    const resolved = await result
+    // The fallback returned the OLD saved session, but its stamp predates the leave, so the caller's
+    // `coordinator.epoch() === resolved.epoch` check fails and load() refuses to apply it.
+    expect(resolved?.session).toEqual({ playerId: 'P' })
+    expect(resolved?.epoch).not.toBe(coordinator.epoch())
+    expect(store.session).toBeNull() // nothing was restored
+    expect(clear).not.toHaveBeenCalled() // and the exhausted path never clears on its own
+  })
+
   it('a result is stamped with the epoch it was validated against', async () => {
     const coordinator = createSessionCoordinator()
     const store = { session: { playerId: 'P' } as Session | null }
