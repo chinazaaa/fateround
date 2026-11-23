@@ -732,7 +732,8 @@ export async function processCheckersExpireTurn(supabase: SupabaseClient, gameId
     },
     session.updated_at
   )
-  if (!persisted.won) return { error: persisted.error ?? LOST_RACE_MESSAGE }
+  // Lost CAS = the player moved in time (or another poller already finished it): not an error.
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await markGameFinished(supabase, gameId)
   return {}

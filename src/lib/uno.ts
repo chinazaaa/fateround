@@ -1306,8 +1306,8 @@ async function persistSession(
   patch: Partial<UnoSession>,
   timerSeconds: number,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('uno_sessions')
     .update({
       ...patch,
@@ -1317,7 +1317,9 @@ async function persistSession(
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: reporting it as one would answer 200 for a write that never landed.
+  if (error) return { won: false, error: internalErrorMessage('uno', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 async function writeHand(supabase: SupabaseClient, gameId: string, playerId: string, cards: UnoCard[]) {
@@ -1764,8 +1766,8 @@ export async function processUnoPlay(
   // Surface a missed-UNO penalty in the status so the whole room sees the catch.
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
-  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!won) return {}
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   if (rotatedWrites) {
     // Rotation is the source of truth for every active hand (includes the mover + any
@@ -2017,8 +2019,8 @@ export async function processUnoPlayMulti(
 
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
-  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!won) return {}
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await writeHand(supabase, gameId, playerId, newHand)
   // AUTO-resolve drew for the target (its hand already folds in any missed-UNO penalty for them).
@@ -2285,8 +2287,8 @@ export async function processUnoDraw(
     newHand = finalHand
   }
 
-  const won = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  if (!won) return {}
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await writeHand(supabase, gameId, playerId, newHand)
   if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
@@ -2449,7 +2451,7 @@ export async function processUnoChoose(
     const kindLabel =
       session.pending_wild === 'draw6' ? 'Draw 6' : session.pending_wild === 'draw10' ? 'Draw 10' : 'Reverse Draw 4'
     const status = `${playerName(playerNames, nextPlayerId)} must draw ${accumulated} — colour ${UNO_COLOR_LABELS[color]} (${kindLabel})`
-    const won = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -2467,7 +2469,8 @@ export async function processUnoChoose(
       timerSeconds,
       session.updated_at
     )
-    if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+    if (persisted.error) return { error: persisted.error }
+    if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
     return {}
   }
 
@@ -2476,7 +2479,7 @@ export async function processUnoChoose(
   // which shouldn't happen (roulette should transition to phase 'color_roulette' on the play).
   // Handled below in processUnoColorRoulette. If we somehow reach it, just advance the turn.
   if (session.pending_wild === 'wild_color_roulette') {
-    const won = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -2491,7 +2494,8 @@ export async function processUnoChoose(
       timerSeconds,
       session.updated_at
     )
-    if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+    if (persisted.error) return { error: persisted.error }
+    if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
     return {}
   }
 
@@ -2501,7 +2505,7 @@ export async function processUnoChoose(
     // The challenge window only applies to a lone Draw Four — stacking replaces it.
     if (rules.wd4Challenge && !rules.stacking) {
       const status = `${playerName(playerNames, nextPlayerId)} — accept Draw 4 or challenge (colour: ${UNO_COLOR_LABELS[color]})`
-      const won = await persistSession(
+      const persisted = await persistSession(
         supabase,
         gameId,
         {
@@ -2516,7 +2520,9 @@ export async function processUnoChoose(
         timerSeconds,
         session.updated_at
       )
-      if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+      if (persisted.error) return { error: persisted.error }
+      if (persisted.won)
+        await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
       return {}
     }
     // Stacking (or challenge disabled): the penalty passes to the next player, who may stack
@@ -2529,7 +2535,7 @@ export async function processUnoChoose(
     )
     const optionNote = options.length ? ` or ${options.join(' / ')}` : ''
     const status = `${playerName(playerNames, nextPlayerId)} must draw ${accumulated}${optionNote} — colour ${UNO_COLOR_LABELS[color]}`
-    const won = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -2546,12 +2552,13 @@ export async function processUnoChoose(
       timerSeconds,
       session.updated_at
     )
-    if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+    if (persisted.error) return { error: persisted.error }
+    if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
     return {}
   }
 
   // Plain Wild: colour set, play passes on.
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -2566,7 +2573,8 @@ export async function processUnoChoose(
     timerSeconds,
     session.updated_at
   )
-  if (won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
+  if (persisted.error) return { error: persisted.error }
+  if (persisted.won) await writeUnoStats(supabase, gameId, playerId, foldUnoChoose(currentUnoStats(hands, playerId)))
   return {}
 }
 
@@ -2611,7 +2619,7 @@ export async function processUnoColorRoulette(
   // reveals happen. See processUnoDraw's color_roulette branch for the reveal loop.
   const status = `${playerName(playerNames, playerId)} picked ${UNO_COLOR_LABELS[color]} — click Draw until you hit it`
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -2621,7 +2629,7 @@ export async function processUnoColorRoulette(
     timerSeconds,
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
   return {}
 }
 
@@ -2705,7 +2713,7 @@ async function processUnoColorRouletteReveal(
   if (!matched) {
     // Keep revealing — same seat, same phase; the card lands in the hand and the player
     // clicks Draw again for the next reveal.
-    const won = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -2717,7 +2725,7 @@ async function processUnoColorRouletteReveal(
       timerSeconds,
       session.updated_at
     )
-    if (!won) return {}
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
     await writeHand(supabase, gameId, playerId, targetHand)
 
     // A long unlucky reveal streak can push the target past 25 mid-roulette — same Mercy
@@ -2736,7 +2744,7 @@ async function processUnoColorRouletteReveal(
   const nextPlayerId = session.turn_order[nextIndex]
   const status = `${playerName(playerNames, playerId)} hit ${UNO_COLOR_LABELS[color]} — ${playerName(playerNames, nextPlayerId)}'s turn`
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -2752,7 +2760,7 @@ async function processUnoColorRouletteReveal(
     timerSeconds,
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
   await writeHand(supabase, gameId, playerId, targetHand)
 
   // High Stakes — record the largest single roulette reveal count on the CASTER's row
@@ -2845,7 +2853,7 @@ export async function processUnoChallenge(
     // Accept: challenger draws 4 and is skipped.
     if (!playerId) return { error: 'Player required' }
     const drawResult = await applyDrawTo(playerId)
-    const won = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       clearBoard({
@@ -2857,7 +2865,7 @@ export async function processUnoChallenge(
       timerSeconds,
       session.updated_at
     )
-    if (!won) return {}
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
     await writeHand(supabase, gameId, playerId, drawResult.hand)
     return {}
   }
@@ -2874,7 +2882,7 @@ export async function processUnoChallenge(
     const colorHint = session.required_color ? ` — match ${UNO_COLOR_LABELS[session.required_color as UnoColor]}` : ''
     // Spell out WHY the challenge won — the bluffer was caught holding the previous colour.
     const prevLabel = prevColor ? UNO_COLOR_LABELS[prevColor] : 'the colour'
-    const won = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       clearBoard({
@@ -2886,7 +2894,7 @@ export async function processUnoChallenge(
       timerSeconds,
       session.updated_at
     )
-    if (!won) return {}
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
     await writeHand(supabase, gameId, wd4PlayerId, drawResult.hand)
     // The challenger correctly called the bluff — "Challenger".
     await writeUnoStats(
@@ -2911,7 +2919,7 @@ export async function processUnoChallenge(
   // Spell out WHY the challenge lost — the Wild Draw Four was legal (no card of the prev colour).
   const failLabel = prevColor ? UNO_COLOR_LABELS[prevColor] : 'that colour'
   const wd4Name = wd4PlayerId ? playerName(playerNames, wd4PlayerId) : 'They'
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     clearBoard({
@@ -2923,7 +2931,7 @@ export async function processUnoChallenge(
     timerSeconds,
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
   await writeHand(supabase, gameId, playerId, failHand)
   // The Wild Draw Four was legal — the WD4 player survived a challenge on their own Draw Four.
   if (wd4PlayerId) {
@@ -2986,7 +2994,7 @@ export async function processUnoSwap(
   // A swap can leave a player on exactly one card — they now owe an "UNO" call.
   const swapPending = theirCards.length === 1 ? playerId : myCards.length === 1 ? targetId : null
 
-  const won = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -2999,7 +3007,7 @@ export async function processUnoSwap(
     timerSeconds,
     session.updated_at
   )
-  if (!won) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await writeHand(supabase, gameId, playerId, theirCards)
   await writeHand(supabase, gameId, targetId, myCards)
@@ -3420,7 +3428,7 @@ export async function processUnoTeamLeaveDecision(
     const winNames = [winnerId, winnerMate]
       .filter((id): id is string => !!id && !leftIds.includes(id))
       .map((id) => playerName(playerNames, id))
-    const won = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -3435,7 +3443,8 @@ export async function processUnoTeamLeaveDecision(
       timerSeconds,
       session.updated_at
     )
-    if (won) await markGameFinished(supabase, gameId)
+    if (persisted.error) return { error: persisted.error }
+    if (persisted.won) await markGameFinished(supabase, gameId)
     return {}
   }
 

@@ -720,8 +720,8 @@ async function persistSession(
   patch: Partial<LudoSession>,
   timerSeconds: number,
   expectedUpdatedAt: string
-): Promise<boolean> {
-  const { data } = await supabase
+): Promise<{ won: boolean; error?: string }> {
+  const { data, error } = await supabase
     .from('ludo_sessions')
     .update({
       ...patch,
@@ -731,7 +731,9 @@ async function persistSession(
     .eq('game_id', gameId)
     .eq('updated_at', expectedUpdatedAt)
     .select('game_id')
-  return (data?.length ?? 0) > 0
+  // A database failure is not a lost race: reporting it as one would answer 200 for a write that never landed.
+  if (error) return { won: false, error: internalErrorMessage('ludo', error) }
+  return { won: (data?.length ?? 0) > 0 }
 }
 
 async function persistMove(
@@ -900,7 +902,7 @@ async function persistMove(
   // Claim the turn via CAS FIRST. If another request already moved the game from
   // this exact state (e.g. the loser of two concurrent auto-rolls), we lose the
   // CAS and bail — discarding our non-deterministic roll without touching pieces.
-  const claimed = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -916,7 +918,7 @@ async function persistMove(
     timerSeconds,
     session.updated_at
   )
-  if (!claimed) return {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   // We hold the claim — now safe to write piece state and finalize.
   const writeResults = await Promise.all(
@@ -967,7 +969,7 @@ export async function processLudoRoll(
     else consecutiveSixes = 0
 
     if (ludoGrantsExtraRoll(dice) && consecutiveSixes < 3) {
-      const claimed = await persistSession(
+      const persisted = await persistSession(
         supabase,
         gameId,
         {
@@ -980,14 +982,15 @@ export async function processLudoRoll(
         timerSeconds,
         session.updated_at
       )
-      if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
+      if (persisted.error) return { error: persisted.error }
+      if (persisted.won) await bumpRollCounters(supabase, gameId, playerRow, dice)
       return { dice }
     }
 
     if (consecutiveSixes >= 3) {
       const nextIndex = advanceTurnIndex(session)
       const nextId = session.turn_order[nextIndex]
-      const claimed = await persistSession(
+      const persisted = await persistSession(
         supabase,
         gameId,
         {
@@ -1001,13 +1004,14 @@ export async function processLudoRoll(
         timerSeconds,
         session.updated_at
       )
-      if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
+      if (persisted.error) return { error: persisted.error }
+      if (persisted.won) await bumpRollCounters(supabase, gameId, playerRow, dice)
       return { dice }
     }
 
     const nextIndex = advanceTurnIndex(session)
     const nextId = session.turn_order[nextIndex]
-    const claimed = await persistSession(
+    const persisted = await persistSession(
       supabase,
       gameId,
       {
@@ -1021,11 +1025,12 @@ export async function processLudoRoll(
       timerSeconds,
       session.updated_at
     )
-    if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
+    if (persisted.error) return { error: persisted.error }
+    if (persisted.won) await bumpRollCounters(supabase, gameId, playerRow, dice)
     return { dice }
   }
 
-  const claimed = await persistSession(
+  const persisted = await persistSession(
     supabase,
     gameId,
     {
@@ -1039,7 +1044,8 @@ export async function processLudoRoll(
     timerSeconds,
     session.updated_at
   )
-  if (claimed) await bumpRollCounters(supabase, gameId, playerRow, dice)
+  if (persisted.error) return { error: persisted.error }
+  if (persisted.won) await bumpRollCounters(supabase, gameId, playerRow, dice)
   return { dice }
 }
 

@@ -11,13 +11,14 @@ export const GAME_SELECT =
 export const PLAYER_SELECT =
   'id,game_id,name,gender,identity_gender,participant_id,joined_at,spectator,monopoly_token,is_eliminated,eliminated_at,lives_remaining,is_bot'
 
-/** Host-side game read: GAME_SELECT plus the host-only AI-questions fields (the host
- *  settings panel reads them). Still excludes host_token — the host page validates its
- *  token via /api/games/[code]/verify-host instead of reading it.
- *  The ai_questions_* columns are guaranteed to exist + be anon-readable by migration 0123,
- *  which MUST be applied with this code (an explicit select on a missing/ungranted column
- *  errors). */
-export const HOST_GAME_SELECT = `${GAME_SELECT},ai_questions_enabled,ai_questions_config,ai_generated_questions`
+/** Host-side game read. Identical to GAME_SELECT on purpose: the host-only AI-questions
+ *  columns (ai_questions_enabled / ai_questions_config / ai_generated_questions) are REVOKED
+ *  from anon (migration 20261122120000), and PostgREST fails an ENTIRE select with 42501 if
+ *  any requested column is revoked. Those fields are written via PATCH /api/games/[code] and
+ *  read only server-side (service role, e.g. the start route); no client reads them.
+ *  Still excludes host_token — the host page validates its token via
+ *  /api/games/[code]/verify-host. Guarded by supabase-selects-revoked.test.ts. */
+export const HOST_GAME_SELECT = GAME_SELECT
 
 export const PARTICIPANT_SELECT =
   'id,game_id,name,gender,photo_url,description,display_order,in_mlt_poll,submitted_by_player_id'

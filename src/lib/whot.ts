@@ -1164,7 +1164,8 @@ export async function processWhotPlay(
   // state we lose the CAS and bail — no hands touched.
   const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   if (persisted.error) return { error: persisted.error }
-  if (!persisted.won) return {}
+  // Same wording as draw: a play that lost the claim was NOT applied, so it must not read as success.
+  if (!persisted.won) return { error: WHOT_LOST_RACE_MESSAGE }
 
   // We hold the claim — now safe to write hands and finalize. Fold this play's trophy counters
   // forward into the same atomic hand write (pre-write `session` reads the pick stack this 2/5
@@ -1408,7 +1409,8 @@ export async function processWhotChoose(
   // Naming a shape after a WHOT is the "Shape Shifter" event. Stats-only write (the choose
   // changes no cards) folded once we hold the claim, so a lost race never double-counts.
   if (persisted.error) return { error: persisted.error }
-  if (persisted.won && hasShape) {
+  if (!persisted.won) return { error: WHOT_LOST_RACE_MESSAGE }
+  if (hasShape) {
     const nextStats = foldWhotChooseStats(currentWhotStats(hands, playerId), hasShape)
     await supabase
       .from('whot_player_hands')
@@ -1476,21 +1478,33 @@ export async function processWhotExpireTurn(
     return skippedTurn.error ? { error: skippedTurn.error } : {}
   }
 
+  // The play/choose/draw below each re-read state on their own, so a burst of expiry pokes (or a
+  // poke racing a real draw) can read a stale session against fresh hands, or the reverse, and fail
+  // with 'Card not in hand' / 'Choose WHOT shape or number first'. Those are artefacts of losing the
+  // race, not problems for the poller: if the turn already moved on, report skipped instead.
+  const settle = async (res: { error?: string }): Promise<{ error?: string; skipped?: boolean }> => {
+    if (!res.error) return res
+    if (res.error === WHOT_LOST_RACE_MESSAGE) return { skipped: true }
+    const { data: latest } = await supabase
+      .from('whot_sessions')
+      .select('updated_at')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    if (latest && (latest as { updated_at: string }).updated_at !== session.updated_at) return { skipped: true }
+    return res
+  }
+
   if (session.phase === 'choose_whot') {
-    return processWhotChoose(supabase, gameId, currentId, { shape: 'circle' })
+    return settle(await processWhotChoose(supabase, gameId, currentId, { shape: 'circle' }))
   }
 
   if (hasPlayableCard(hand, session, rules)) {
     const playable = hand.filter((c) => canPlayCard(c, session, rules))
     const card = pickAutoPlayCard(playable)
-    return processWhotPlay(supabase, gameId, currentId, card.id)
+    return settle(await processWhotPlay(supabase, gameId, currentId, card.id))
   }
 
-  const drawn = await processWhotDraw(supabase, gameId, currentId)
-  // Two expiry requests racing for one turn: the loser's claim fails, which is a normal outcome
-  // for a timer poke (the winner already advanced the turn), not an error worth surfacing.
-  if (drawn.error === WHOT_LOST_RACE_MESSAGE) return { skipped: true }
-  return drawn
+  return settle(await processWhotDraw(supabase, gameId, currentId))
 }
 
 export async function finishExpiredWhotGame(
