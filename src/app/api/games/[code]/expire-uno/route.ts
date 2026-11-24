@@ -26,8 +26,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ expired: false, finished: false })
   }
 
-  const finished = await finishExpiredUnoGame(supabase, game)
-  if (!finished) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
+  const outcome = await finishExpiredUnoGame(supabase, game)
+  if (outcome === 'conflict') {
+    return NextResponse.json({ error: 'The game changed while ending it — try again' }, { status: 409 })
+  }
+  if (outcome === 'error') return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
 
   return NextResponse.json({ expired: true, finished: true })
 }

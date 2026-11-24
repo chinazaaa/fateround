@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
+import { INTERNAL_ERROR_MESSAGE } from './api-errors'
 
 vi.mock('server-only', () => ({}))
 
@@ -654,6 +655,7 @@ describe('processUnoDraw — No Mercy deck runs out mid forced penalty', () => {
   }
 
   it('writes the drawn cards only after the finish wins, before room-point bookkeeping reads hands', async () => {
+    finishProbe.calls = []
     const t = noMercyTables()
     const seen: number[] = []
     finishProbe.onFinished = () => {
@@ -668,6 +670,8 @@ describe('processUnoDraw — No Mercy deck runs out mid forced penalty', () => {
     // B, C and D each hold one 5-point card; the placement tie breaks by player id, so B wins.
     expect(t.uno_sessions[0].winner_player_id).toBe('B')
     expect(seen).toEqual([3])
+    // The games-row flip is a single-winner CAS, so a racing recovery flip cannot double the side effects.
+    expect(finishProbe.calls).toEqual([{ onlyIfActive: true }])
   })
 
   it('a lost finish race never overwrites the hands or runs bookkeeping', async () => {
@@ -785,9 +789,25 @@ describe('finishExpiredUnoGame — session already finished', () => {
       uno_team_mode: false,
     } as Parameters<typeof finishExpiredUnoGame>[1]
     const db = makeDb(t, { afterUpdate: () => expect.fail('a second finish wrote the session') })
-    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(true)
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('finished')
     expect(t.uno_sessions[0].winner_player_id).toBe('B')
     expect(t.uno_sessions[0].updated_at).toBe(T0)
+  })
+
+  it('leaves a just-finished session to its original finisher (its hand writes may still be pending)', async () => {
+    finishProbe.calls = []
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished', updated_at: new Date().toISOString() })
+    const db = makeDb(t)
+    const game = {
+      id: 'G',
+      status: 'active',
+      session_started_at: '2020-01-01T00:00:00.000Z',
+      game_duration_seconds: 60,
+      uno_team_mode: false,
+    } as Parameters<typeof finishExpiredUnoGame>[1]
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('conflict')
+    expect(finishProbe.calls).toEqual([])
   })
 })
 
@@ -809,7 +829,7 @@ describe('finishExpiredUnoGame — games.status flip failures', () => {
     const t = unoTables()
     const db = makeDb(t)
     finishProbe.failWith = { message: 'boom' }
-    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(false)
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('error')
     reset()
     expect(t.uno_sessions[0].phase).toBe('finished')
   })
@@ -820,14 +840,29 @@ describe('finishExpiredUnoGame — games.status flip failures', () => {
     Object.assign(t.uno_sessions[0], { phase: 'finished', winner_player_id: 'B' })
     const db = makeDb(t, { afterUpdate: () => expect.fail('the retry rewrote the session') })
     finishProbe.failWith = { message: 'boom' }
-    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(false)
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('error')
     finishProbe.failWith = null
-    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(true)
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('finished')
     // Both attempts were single-winner CAS flips, never a plain (side-effect repeating) finish.
     expect(finishProbe.calls).toEqual([{ onlyIfActive: true }, { onlyIfActive: true }])
     expect(t.uno_sessions[0].winner_player_id).toBe('B')
     expect(t.uno_sessions[0].updated_at).toBe(T0)
     reset()
+  })
+
+  it('reports a conflict, not a finish, when the expiry session CAS loses', async () => {
+    reset()
+    const t = unoTables()
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || ++reads !== 1) return
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('conflict')
+    expect(t.uno_sessions[0].phase).not.toBe('finished')
+    expect(finishProbe.calls).toEqual([])
   })
 
   it('surfaces a failed games-row flip on a mid-round expiry as an error, not a clean finish', async () => {
@@ -926,9 +961,12 @@ describe('processUnoDraw — partial-draw finish surfaces hand-write failures', 
   it('does not report success when the hand never persists', async () => {
     const t = noMercyTables()
     const db = makeDb(t, { failUpdate: (table) => table === 'uno_player_hands' })
+    finishProbe.calls = []
     const res = await processUnoDraw(db.supabase, 'G', 'A')
     expect(res.error).toBeTruthy()
     expect(t.uno_sessions[0].phase).toBe('finished')
+    // Not published while its hands are unstored; the expiry recovery flips it later.
+    expect(finishProbe.calls).toEqual([])
   })
 
   // A real active leave changes the session token before it deletes the hand, which would make the finish
@@ -947,7 +985,7 @@ describe('processUnoDraw — partial-draw finish surfaces hand-write failures', 
     const t = noMercyTables()
     const db = makeDb(t, { afterUpdate: deleteAHandAfterFinish(t) })
     const res = await processUnoDraw(db.supabase, 'G', 'A')
-    expect(res.error).toBe('Hand not found')
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
     expect(t.uno_sessions[0].phase).toBe('finished')
   })
 
@@ -959,7 +997,7 @@ describe('processUnoDraw — partial-draw finish surfaces hand-write failures', 
     const db = makeDb(t, { afterUpdate: deleteAHandAfterFinish(t) })
     const res = await processUnoExpireTurn(db.supabase, 'G')
     expect(t.uno_sessions[0].phase).toBe('finished')
-    expect(res.error).toBe('Hand not found')
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
     expect(res.skipped).toBeUndefined()
   })
 

@@ -1016,11 +1016,17 @@ async function finishByLowestHand(
   if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
   // The session is already `finished` here, so a failed games-row flip must be reported (and retried by the
   // expiry path) rather than dropped: the round is over but `games.status` would stay `active`.
-  const flipped = await markGameFinished(supabase, gameId)
-  const flipError = flipped.error ? internalErrorMessage('uno', flipped.error) : undefined
-  const finishError = handsWritten.error ?? flipError
-  return finishError ? { won: true, error: finishError } : { won: true }
+  // Publish only once the finish's hands are stored: a failed hand write leaves the row `active`, so the
+  // expiry recovery (which waits out UNO_FINISH_RECOVERY_GRACE_MS) publishes it instead of this request.
+  // The flip is a single-winner CAS: if the recovery path got there first it already ran the side effects,
+  // so losing it is not an error and must not repeat them.
+  if (handsWritten.error) return { won: true, error: handsWritten.error }
+  const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+  return flipped.error ? { won: true, error: internalErrorMessage('uno', flipped.error) } : { won: true }
 }
+
+/** How long a `finished` session may sit with `games.status` still active before expiry recovery flips it. */
+const UNO_FINISH_RECOVERY_GRACE_MS = 30_000
 
 /** Result for a delegated write that did not land: a database error is surfaced, a lost CAS is a skip. */
 function lostWrite(persisted: { error?: string }): { error?: string; skipped?: boolean } {
@@ -1374,8 +1380,9 @@ async function writeHand(
     .eq('player_id', playerId)
     .select('player_id')
   if (error) return { error: internalErrorMessage('uno', error) }
-  // Zero rows: the hand row is gone (the player left), so nothing was persisted.
-  if (!data || data.length === 0) return { error: 'Hand not found' }
+  // Zero rows: the hand row is gone (the player left) after the finish already committed. The request was
+  // valid, so this is a server failure (500); the specific reason stays in the server log.
+  if (!data || data.length === 0) return { error: internalErrorMessage('uno', 'hand row missing after finish commit') }
   return { error: null }
 }
 
@@ -3284,9 +3291,9 @@ export async function processUnoExpireTurn(
 export async function finishExpiredUnoGame(
   supabase: SupabaseClient,
   game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds' | 'uno_team_mode'>
-): Promise<boolean> {
-  if (game.status !== 'active') return false
-  if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
+): Promise<'finished' | 'conflict' | 'error'> {
+  if (game.status !== 'active') return 'error'
+  if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return 'error'
 
   const gameId = game.id
   const [sessionRes, handsRes, playersRes] = await Promise.all([
@@ -3296,19 +3303,21 @@ export async function finishExpiredUnoGame(
   ])
 
   const session = sessionRes.data as UnoSession | null
-  if (!session) return false
+  if (!session) return 'error'
   // A finish is already in flight or done (finishByLowestHand flips the phase before games.status):
   // a second one would re-pick the winner from pre-draw hands and award series points twice. But if that
   // finish committed the session and then failed the games-row flip, the row is still `active` and nothing
   // else would ever correct it — retry ONLY that flip, as a single-winner CAS (no second session finish,
   // no series points; the room-point bookkeeping runs only for the request that actually flips the row).
   if (session.phase === 'finished') {
+    // The original finisher publishes after its hand writes; only recover once it has had time to do so.
+    if (Date.now() - new Date(session.updated_at).getTime() < UNO_FINISH_RECOVERY_GRACE_MS) return 'conflict'
     const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
     if (flipped.error) {
       internalErrorMessage('uno', flipped.error)
-      return false
+      return 'error'
     }
-    return true
+    return 'finished'
   }
 
   const playerNames = new Map<string, string>()
@@ -3326,7 +3335,9 @@ export async function finishExpiredUnoGame(
   )
   // A failed session write or games-row flip is a failed expiry (the route answers 500, clients retry, and the
   // retry lands in the already-finished branch above), never a quiet success.
-  return !finished.error
+  if (finished.error) return 'error'
+  // A lost session CAS means a competing write moved the round: not finished, not a server failure.
+  return finished.won ? 'finished' : 'conflict'
 }
 
 // ── Host mode ─────────────────────────────────────────────────────────────────
