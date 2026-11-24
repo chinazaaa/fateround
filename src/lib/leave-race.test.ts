@@ -708,8 +708,12 @@ describe('round-timer finish outcome is not treated as a live round', () => {
 
   it('a failed finish write returns the error from the play path and plays nothing', async () => {
     const t = expiredRound()
-    const db = makeDb(t, { failUpdate: (table) => table === 'uno_sessions' })
+    // Fail ONLY the finish write: if the ordinary play were attempted afterwards it would be a second
+    // session update (which would succeed and mask the finish error).
+    let sessionUpdates = 0
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_sessions' && sessionUpdates++ === 0 })
     const res = await processUnoPlay(db.supabase, 'G', 'A', 'A1')
+    expect(sessionUpdates).toBe(1)
     expect(res.error).toBeTruthy()
     expect(res.error).not.toMatch(/Time's up/)
     expect(t.uno_sessions[0].current_turn_index).toBe(0)
@@ -840,6 +844,21 @@ describe('processUnoDraw — partial-draw finish surfaces hand-write failures', 
     const res = await processUnoDraw(db.supabase, 'G', 'A')
     expect(res.error).toBeTruthy()
     expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('does not report success when the hand row is gone (zero rows updated)', async () => {
+    const t = noMercyTables()
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        // The leave deletes A's hand right after the draw loaded it.
+        if (table === 'uno_player_hands' && ++reads === 1) {
+          t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id !== 'A')
+        }
+      },
+    })
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    expect(res.error).toBeTruthy()
   })
 
   it('retries a transient hand-write failure and reports success with the hand persisted', async () => {

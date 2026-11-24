@@ -25,8 +25,10 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error } = await processUnoPass(supabase, code, auth.player.id)
+  const { error, skipped } = await processUnoPass(supabase, code, auth.player.id)
   if (error) return NextResponse.json({ error }, { status: 400 })
+  // The write lost a race (the game moved, e.g. a leave): nothing changed, so no success and no notification.
+  if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
 
   scheduleTurnNotification(code, game)
 

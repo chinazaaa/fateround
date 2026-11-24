@@ -1362,12 +1362,16 @@ async function writeHand(
   playerId: string,
   cards: UnoCard[]
 ): Promise<{ error: string | null }> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('uno_player_hands')
     .update({ cards })
     .eq('game_id', gameId)
     .eq('player_id', playerId)
-  return { error: error ? internalErrorMessage('uno', error) : null }
+    .select('player_id')
+  if (error) return { error: internalErrorMessage('uno', error) }
+  // Zero rows: the hand row is gone (the player left), so nothing was persisted.
+  if (!data || data.length === 0) return { error: 'Hand not found' }
+  return { error: null }
 }
 
 /** Idempotent (fixed-value) hand writes, retried: a finished round must not keep a pre-draw hand over a blip. */
