@@ -218,10 +218,15 @@ export async function clearAnonymousRoomSessionData(
 async function finishAndClearSession(
   supabase: SupabaseClient,
   gameId: string,
-  options: { onlyIfActive?: boolean; finishGuard?: FinishGuard }
+  options: { onlyIfActive?: boolean; finishGuard?: FinishGuard; finishedAt?: string }
 ): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, options)
+  const { finishedAt, ...finishOptions } = options
+  const {
+    error: gameError,
+    won,
+    finishedAt: wroteFinishedAt,
+  } = await markGameFinished(supabase, gameId, finishedAt, finishOptions)
   if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
   if (!won) {
@@ -235,24 +240,32 @@ async function finishAndClearSession(
     if (current?.status !== 'finished') return { error: null, won, cleanupError: null }
   }
   const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
-  return { error: null, won, cleanupError: clearError }
+  return { error: null, won, cleanupError: clearError, ...(wroteFinishedAt ? { finishedAt: wroteFinishedAt } : {}) }
 }
 
 export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false, finishGuard }: { onlyIfActive?: boolean; finishGuard?: FinishGuard } = {}
+  {
+    onlyIfActive = false,
+    finishGuard,
+    finishedAt,
+  }: { onlyIfActive?: boolean; finishGuard?: FinishGuard; finishedAt?: string } = {}
 ): Promise<FinishGameResult> {
-  return finishAndClearSession(supabase, gameId, { onlyIfActive, finishGuard })
+  return finishAndClearSession(supabase, gameId, { onlyIfActive, finishGuard, finishedAt })
 }
 
 /** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
 export async function finishSecretMessageBoard(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false, finishGuard }: { onlyIfActive?: boolean; finishGuard?: FinishGuard } = {}
+  {
+    onlyIfActive = false,
+    finishGuard,
+    finishedAt,
+  }: { onlyIfActive?: boolean; finishGuard?: FinishGuard; finishedAt?: string } = {}
 ): Promise<FinishGameResult> {
-  return finishAndClearSession(supabase, gameId, { onlyIfActive, finishGuard })
+  return finishAndClearSession(supabase, gameId, { onlyIfActive, finishGuard, finishedAt })
 }
 
 /** Clear inbox and reopen a secret message board. */

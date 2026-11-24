@@ -76,7 +76,7 @@ async function finishGameRounds(
   // BEFORE the game flip (a failure leaves the game endable); a guarded finish runs it after, and recovers via
   // completeFinishedGameRoundCleanup.
   if (isTwoTruthsGame(gameType)) {
-    const revealed = await revealFinishedTtlRounds(supabase, gameId)
+    const revealed = await revealFinishedTtlRounds(supabase, gameId, startedNoLaterThan)
     if (!revealed) return 'Could not reveal every Two Truths round — game left endable; retry.'
   }
   return null
@@ -118,7 +118,8 @@ export async function adminEndGame(
   const now = new Date().toISOString()
   const gameType = parseGameType(game.game_type)
 
-  const finishRounds = () => finishGameRounds(supabase, gameId, gameType, now)
+  const finishRounds = (startedNoLaterThan?: string) =>
+    finishGameRounds(supabase, gameId, gameType, startedNoLaterThan ?? now, startedNoLaterThan)
 
   // Unguarded: rounds first, so a failure leaves the game endable for a retry. With a `finishGuard` the
   // guarded games update must decide first — it can lose (another finisher, or a player who claimed host),
@@ -133,9 +134,13 @@ export async function adminEndGame(
     // The game is already finished, so a failure here cannot be retried through adminEndGame (it rejects a
     // finished game). Both writes are idempotent, so retry a few times before giving up; the caller can still
     // recover later with `completeFinishedGameRoundCleanup`, bound to this finish.
-    let roundsError: string | null = null
-    for (let attempt = 0; attempt < ROUND_CLEANUP_ATTEMPTS; attempt++) {
-      roundsError = await finishRounds()
+    // Bound every attempt to the session this finish ended, using the finished_at it actually wrote: the finish
+    // side effects ran first, and Play Again can start a NEW session (new active round) under the same game id in
+    // that window, which an unbounded retry would finish.
+    const finishedAt = result.finishedAt
+    let roundsError: string | null = finishedAt ? null : 'Finished session timestamp unavailable for round cleanup'
+    for (let attempt = 0; finishedAt && attempt < ROUND_CLEANUP_ATTEMPTS; attempt++) {
+      roundsError = await finishRounds(finishedAt)
       if (!roundsError) break
     }
     if (roundsError) {
@@ -147,18 +152,18 @@ export async function adminEndGame(
 
   async function finishGame(): Promise<FinishGameResult> {
     if (isAnonymousMessagesGame(gameType)) {
-      return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive, finishGuard })
+      return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive, finishGuard, finishedAt: now })
     }
     if (isSecretMessageGame(gameType)) {
-      return finishSecretMessageBoard(supabase, gameId, { onlyIfActive, finishGuard })
+      return finishSecretMessageBoard(supabase, gameId, { onlyIfActive, finishGuard, finishedAt: now })
     }
     if (isCodewordsGame(gameType)) {
-      return finishCodewordsGame(supabase, gameId, { onlyIfActive, finishGuard })
+      return finishCodewordsGame(supabase, gameId, { onlyIfActive, finishGuard, finishedAt: now })
     }
 
     // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so its bookkeeping is made
     // durable and recoverable (see markGameFinished's `trackBookkeeping`) on this path too.
-    const { error, won } = await markGameFinished(supabase, gameId, now, {
+    const { error, won, finishedAt } = await markGameFinished(supabase, gameId, now, {
       onlyIfActive,
       finishGuard,
       trackBookkeeping: isWordRushGame(gameType),
@@ -181,7 +186,7 @@ export async function adminEndGame(
       .eq('id', gameId)
       .is('result_reason', null)
     if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
-    return { error: null, won: true }
+    return { error: null, won: true, ...(finishedAt ? { finishedAt } : {}) }
   }
 }
 

@@ -29,6 +29,8 @@ export type FinishGameResult = {
   cleanupError?: string | null
   /** Only for `trackBookkeeping` finishes that won the flip: how the post-finish bookkeeping ended. */
   bookkeeping?: FinishBookkeepingState
+  /** The `finished_at` this call wrote, present only when it won the flip: binds later round cleanup to that session. */
+  finishedAt?: string
 }
 
 export type RoundGuard = { rpc: string; params: Record<string, unknown> }
@@ -365,5 +367,5 @@ export async function markGameFinished(
   // both cases, so without this a racer that changed nothing looks like a success and
   // gets counted/stamped as if it had finished the game. Always true when `onlyIfActive`
   // is not set, which keeps every unguarded caller's behaviour unchanged.
-  return { ...result, won, ...(bookkeeping ? { bookkeeping } : {}) }
+  return { ...result, won, ...(bookkeeping ? { bookkeeping } : {}), ...(won && !result.error ? { finishedAt } : {}) }
 }

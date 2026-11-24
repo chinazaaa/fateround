@@ -589,9 +589,14 @@ export async function finishCodewordsGame(
     onlyIfActive = false,
     onlySessionStartedAt,
     finishGuard,
-  }: { onlyIfActive?: boolean; onlySessionStartedAt?: string | null; finishGuard?: FinishGuard } = {}
+    finishedAt = new Date().toISOString(),
+  }: {
+    onlyIfActive?: boolean
+    onlySessionStartedAt?: string | null
+    finishGuard?: FinishGuard
+    finishedAt?: string
+  } = {}
 ): Promise<FinishGameResult> {
-  const finishedAt = new Date().toISOString()
   const { error: gameError, won } = await markGameFinished(supabase, gameId, finishedAt, {
     onlyIfActive,
     onlySessionStartedAt,
@@ -628,7 +633,7 @@ export async function finishCodewordsGame(
     }
   }
   const { error: chatError } = await clearCodewordsChat(supabase, gameId, wipeUpTo)
-  return { error: null, won, cleanupError: chatError }
+  return { error: null, won, cleanupError: chatError, ...(won ? { finishedAt } : {}) }
 }
 
 /**

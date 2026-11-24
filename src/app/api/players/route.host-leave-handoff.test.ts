@@ -36,6 +36,10 @@ function removed(r: { error: string | null; onCall: (() => void) | null }) {
   r.onCall?.()
   return { error: r.error }
 }
+/** Number of upcoming nomination writes (games updates setting pending_host_player_id) that return an error. */
+let nominationFailBudget = 0
+/** The errored nomination write still committed (an ambiguous failure). */
+let nominationCommitsOnError = false
 let failSuccessorLookup = false
 /** Number of upcoming successor lookups that fail (the deferred, post-removal ones). */
 let lookupFailBudget = 0
@@ -58,6 +62,11 @@ function builder(table: string) {
       return { data: null, error: null }
     }
     if (patch) {
+      if (table === 'games' && 'pending_host_player_id' in patch && nominationFailBudget > 0) {
+        nominationFailBudget--
+        if (nominationCommitsOnError) for (const r of match()) Object.assign(r, patch)
+        return { data: null, error: { message: 'boom' } }
+      }
       const rows = match()
       for (const r of rows) Object.assign(r, patch)
       return { data: rows.map((r) => ({ ...r })), error: null }
@@ -154,6 +163,8 @@ beforeEach(async () => {
   DELETE ??= (await import('./route')).DELETE
   failSuccessorLookup = false
   lookupFailBudget = 0
+  nominationFailBudget = 0
+  nominationCommitsOnError = false
   keepSeat = false
   removal.reconcileError = null
   removal.uno.error = null
@@ -275,6 +286,54 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     expect(res.status).toBe(200)
     expect(tables.games[0].status).toBe('finished')
     // The finish ran after the seat was gone, so nothing else clears the linkage Continue routes by.
+    expect(tables.games[0].host_user_id).toBeNull()
+  })
+
+  it('a transient nomination write error after the seat delete is retried and the nominee is still set', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      nominationFailBudget = 1
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+    expect(tables.games[0].status).toBe('active')
+  })
+
+  it('a persistent nomination write error ends the game rather than leaving it host-less and unrecoverable', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      nominationFailBudget = 2
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('finished')
+    expect(tables.games[0].result_reason).toBe('host_ended')
+    expect(tables.games[0].host_user_id).toBeNull()
+  })
+
+  it('an errored nomination write that actually committed keeps the game live with its nominee', async () => {
+    setup('uno')
+    nominationCommitsOnError = true
+    removal.uno.onCall = () => {
+      nominationFailBudget = 2
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('active')
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+    expect(tables.games[0].host_user_id).toBeNull()
+  })
+
+  it('a nomination that matches no row (concurrent nomination) is not an error and keeps the game live', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      tables.games[0].pending_host_player_id = 'someone-else'
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('active')
+    expect(tables.games[0].pending_host_player_id).toBe('someone-else')
     expect(tables.games[0].host_user_id).toBeNull()
   })
 
@@ -442,6 +501,19 @@ describe('DELETE /api/players: host-left round cleanup recovery', () => {
     tables.rounds = [
       { id: 'old', game_id: 'ABCD', status: 'active', started_at: '2025-12-31T23:59:00.000Z' },
       { id: 'newer', game_id: 'ABCD', status: 'active', started_at: '2026-01-02T00:00:00.000Z' },
+    ]
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.rounds.find((r) => r.id === 'old')?.status).toBe('finished')
+    expect(tables.rounds.find((r) => r.id === 'newer')?.status).toBe('active')
+  })
+
+  it('a no-successor host-left finish never finishes a round of a newer session', async () => {
+    setup('trivia')
+    tables.players = tables.players.filter((p) => p.id === HOST_PID)
+    tables.rounds = [
+      { id: 'old', game_id: 'ABCD', status: 'active', started_at: '2000-01-01T00:00:00.000Z' },
+      { id: 'newer', game_id: 'ABCD', status: 'active', started_at: '2999-01-01T00:00:00.000Z' },
     ]
     const res = await leave()
     expect(res.status).toBe(200)

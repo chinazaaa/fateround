@@ -1865,12 +1865,16 @@ type HostHandoff = { apply: (() => Promise<void>) | null; seatRemoved: boolean }
  * touching a host who claimed in between.
  */
 async function clearOutgoingHostUser(gameId: string, playerId: string) {
-  const { error } = await getSupabaseAdmin()
-    .from('games')
-    .update({ host_user_id: null })
-    .eq('id', gameId)
-    .or(`host_player_id.is.null,host_player_id.eq.${playerId}`)
-  if (error) console.error('players: clearing host_user_id after host leave failed', error)
+  // The seat is already gone, so a failed write cannot be recovered by a repeat leave: retry once before logging.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { error } = await getSupabaseAdmin()
+      .from('games')
+      .update({ host_user_id: null })
+      .eq('id', gameId)
+      .or(`host_player_id.is.null,host_player_id.eq.${playerId}`)
+    if (!error) return
+    if (attempt === 1) console.error('players: clearing host_user_id after host leave failed', error)
+  }
 }
 
 /**
@@ -1883,8 +1887,9 @@ async function clearOutgoingHostUser(gameId: string, playerId: string) {
 async function endGameHostLeft(
   game: { id: string; status: string; game_type: string },
   outgoingPlayerId: string
-): Promise<boolean> {
-  const ended = await adminEndGame(getSupabaseAdmin(), game, {
+): Promise<'finished' | 'live' | 'error'> {
+  const admin = getSupabaseAdmin()
+  const ended = await adminEndGame(admin, game, {
     finishGuard: { statuses: ['waiting', 'active'], hostPlayerNullOr: outgoingPlayerId },
   })
   // The game IS finished; a failed post-finish wipe does not un-finish it, so the
@@ -1895,20 +1900,41 @@ async function endGameHostLeft(
       ended.cleanupError
     )
   }
-  if (ended.error) return false
+  if (ended.error) return 'error'
   if (ended.won) {
     // adminEndGame tags its own finish `admin_ended`; this call knows the real reason, so relabel that
-    // (and an unlabelled finish) but nothing another finisher wrote.
-    await getSupabaseAdmin()
-      .from('games')
-      .update({ result_reason: 'host_ended' })
-      .eq('id', game.id)
-      .or('result_reason.is.null,result_reason.eq.admin_ended')
-    return true
+    // (and an unlabelled finish) but nothing another finisher wrote. The round-cleanup recovery keys on
+    // `host_ended`, so a failed relabel is retried once and reported rather than ignored.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { error } = await admin
+        .from('games')
+        .update({ result_reason: 'host_ended' })
+        .eq('id', game.id)
+        .or('result_reason.is.null,result_reason.eq.admin_ended')
+      if (!error) break
+      if (attempt === 1) console.error(`players: host_ended stamp failed for ${game.id}`, error)
+    }
+    return 'finished'
   }
   // Lost the guard: finished by someone else (fine) or taken over by a new host (still live).
-  const { data } = await getSupabaseAdmin().from('games').select('status').eq('id', game.id).maybeSingle()
-  return data?.status === 'finished'
+  const { data, error } = await admin.from('games').select('status').eq('id', game.id).maybeSingle()
+  if (error) return 'error'
+  return data?.status === 'finished' ? 'finished' : 'live'
+}
+
+/**
+ * Ends the game for a host who has already left, retrying once on a failed end: the seat is gone, so a repeat
+ * leave cannot recover, and a live game must not stay with no host and no nominee.
+ */
+async function endGameHostLeftWithRetry(
+  game: { id: string; status: string; game_type: string },
+  outgoingPlayerId: string
+) {
+  const first = await endGameHostLeft(game, outgoingPlayerId)
+  if (first !== 'error') return first
+  const second = await endGameHostLeft(game, outgoingPlayerId)
+  if (second === 'error') console.error(`players: ending game ${game.id} after host left failed twice`)
+  return second
 }
 
 async function removePlayer(req: NextRequest, handoff: HostHandoff) {
@@ -2061,14 +2087,14 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
             if (nextError) {
               // The seat is already gone: never leave a live game with no host and no nominee. End it instead.
               console.error('players: host successor lookup after leave failed', nextError)
-              await endGameHostLeft(endedGame, playerId)
+              await endGameHostLeftWithRetry(endedGame, playerId)
               // The seat is gone and nothing else clears the linkage after this point.
               await clearOutgoingHostUser(id, playerId)
               return
             }
             if (!next?.id) {
               // Everyone else left in the meantime: same outcome as having no successor to begin with.
-              await endGameHostLeft(endedGame, playerId)
+              await endGameHostLeftWithRetry(endedGame, playerId)
               // The seat is gone and nothing else clears the linkage after this point.
               await clearOutgoingHostUser(id, playerId)
               return
@@ -2076,20 +2102,35 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
             // Guarded like claim-host: only while nobody is nominated, the game is live, and nobody else
             // has become host (a host-made nomination that was already claimed leaves host_player_id on
             // the claimant, which this must not overwrite).
-            const { data: nominated, error } = await getSupabaseAdmin()
-              .from('games')
-              .update({
-                pending_host_player_id: next.id,
-                pending_host_nominated_at: new Date().toISOString(),
-                host_user_id: null,
-              })
-              .eq('id', id)
-              .is('pending_host_player_id', null)
-              .or(`host_player_id.is.null,host_player_id.eq.${playerId}`)
-              .in('status', ['waiting', 'active'])
-              .select('id')
+            const nominate = () =>
+              getSupabaseAdmin()
+                .from('games')
+                .update({
+                  pending_host_player_id: next.id,
+                  pending_host_nominated_at: new Date().toISOString(),
+                  host_user_id: null,
+                })
+                .eq('id', id)
+                .is('pending_host_player_id', null)
+                .or(`host_player_id.is.null,host_player_id.eq.${playerId}`)
+                .in('status', ['waiting', 'active'])
+                .select('id')
+            let { data: nominated, error } = await nominate()
+            if (error) ({ data: nominated, error } = await nominate())
             if (error) {
+              // The seat is gone, so the host cannot repeat the leave (their resume token no longer resolves):
+              // a swallowed error would leave a live game with no host and no nominee. Same fallback as a failed
+              // lookup. But an errored write may still have committed, so check before ending a game that has
+              // a nominee, and never end one a new host has since taken over (the end is itself guarded).
               console.error('players: host successor nomination after leave failed', error)
+              const { data: after, error: afterError } = await getSupabaseAdmin()
+                .from('games')
+                .select('status, pending_host_player_id')
+                .eq('id', id)
+                .maybeSingle()
+              const landed = !afterError && (after?.pending_host_player_id || after?.status === 'finished')
+              if (!landed) await endGameHostLeftWithRetry(endedGame, playerId)
+              await clearOutgoingHostUser(id, playerId)
               return
             }
             // Lost the guard (host nominated someone meanwhile, or the game moved on): still stop routing the
@@ -2098,9 +2139,12 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
           }
         } else {
           // Fall through to the "finished game" branch below (row retained) once the game is ended.
-          if (await endGameHostLeft(endedGame, playerId)) {
-            ;(game as { status?: string }).status = 'finished'
+          const ended = await endGameHostLeft(endedGame, playerId)
+          // Nothing is removed yet: a failed end must not fall through and delete the host from a live game.
+          if (ended === 'error') {
+            return NextResponse.json({ error: 'Could not end the game — try again' }, { status: 500 })
           }
+          if (ended === 'finished') (game as { status?: string }).status = 'finished'
         }
       }
     }

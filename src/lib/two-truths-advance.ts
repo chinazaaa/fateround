@@ -206,12 +206,16 @@ async function reconcileRevealedGuesses(supabase: SupabaseClient, roundId: strin
  * no results, because both now live outside the anon-readable metadata (`ttl_round_lies` and
  * the redacted `ttl_guesses` columns).
  */
-export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: string): Promise<boolean> {
-  const { data: rounds, error: roundsError } = await supabase
-    .from('rounds')
-    .select('id, ttl_metadata')
-    .eq('game_id', gameId)
-    .eq('status', 'finished')
+export async function revealFinishedTtlRounds(
+  supabase: SupabaseClient,
+  gameId: string,
+  // Bound to rounds of an already-finished session (see adminEndGame): a new session's finished round under the
+  // same game id must not be revealed by a late cleanup of the old one.
+  startedNoLaterThan?: string
+): Promise<boolean> {
+  let roundsQuery = supabase.from('rounds').select('id, ttl_metadata').eq('game_id', gameId).eq('status', 'finished')
+  if (startedNoLaterThan) roundsQuery = roundsQuery.lte('started_at', startedNoLaterThan)
+  const { data: rounds, error: roundsError } = await roundsQuery
 
   // A failed select yields no rows, which is indistinguishable from "nothing to reveal" once it
   // reaches `rounds ?? []` — the loop would not run and this would report success, letting the
