@@ -1014,8 +1014,12 @@ async function finishByLowestHand(
   if ((data?.length ?? 0) === 0) return { won: false }
   const handsWritten = handWrites?.length ? await writeHandsWithRetry(supabase, gameId, handWrites) : { error: null }
   if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
-  await markGameFinished(supabase, gameId)
-  return handsWritten.error ? { won: true, error: handsWritten.error } : { won: true }
+  // The session is already `finished` here, so a failed games-row flip must be reported (and retried by the
+  // expiry path) rather than dropped: the round is over but `games.status` would stay `active`.
+  const flipped = await markGameFinished(supabase, gameId)
+  const flipError = flipped.error ? internalErrorMessage('uno', flipped.error) : undefined
+  const finishError = handsWritten.error ?? flipError
+  return finishError ? { won: true, error: finishError } : { won: true }
 }
 
 /** Result for a delegated write that did not land: a database error is surfaced, a lost CAS is a skip. */
@@ -2201,7 +2205,8 @@ export async function processUnoDraw(
         'Nobody can play —',
         rules.teamMode
       )
-      return finished.won ? {} : lostWrite(finished)
+      if (finished.won) return finished.error ? { error: finished.error, committed: true } : {}
+      return lostWrite(finished)
     }
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
@@ -2749,7 +2754,8 @@ async function processUnoColorRouletteReveal(
         `Deck ran out mid-Roulette (no ${UNO_COLOR_LABELS[color]}) —`,
         rules.teamMode
       )
-      return finished.won ? {} : lostWrite(finished)
+      if (finished.won) return finished.error ? { error: finished.error } : {}
+      return lostWrite(finished)
     }
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -3207,7 +3213,8 @@ export async function processUnoExpireTurn(
         'Nobody left —',
         rules.teamMode
       )
-      return finished.won ? {} : lostWrite(finished)
+      if (finished.won) return finished.error ? { error: finished.error } : {}
+      return lostWrite(finished)
     }
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
@@ -3291,15 +3298,35 @@ export async function finishExpiredUnoGame(
   const session = sessionRes.data as UnoSession | null
   if (!session) return false
   // A finish is already in flight or done (finishByLowestHand flips the phase before games.status):
-  // a second one would re-pick the winner from pre-draw hands and award series points twice.
-  if (session.phase === 'finished') return true
+  // a second one would re-pick the winner from pre-draw hands and award series points twice. But if that
+  // finish committed the session and then failed the games-row flip, the row is still `active` and nothing
+  // else would ever correct it — retry ONLY that flip, as a single-winner CAS (no second session finish,
+  // no series points; the room-point bookkeeping runs only for the request that actually flips the row).
+  if (session.phase === 'finished') {
+    const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    if (flipped.error) {
+      internalErrorMessage('uno', flipped.error)
+      return false
+    }
+    return true
+  }
 
   const playerNames = new Map<string, string>()
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)
 
   const hands = (handsRes.data as UnoPlayerHand[]) ?? []
-  await finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", game.uno_team_mode === true)
-  return true
+  const finished = await finishByLowestHand(
+    supabase,
+    gameId,
+    session,
+    hands,
+    playerNames,
+    "Time's up!",
+    game.uno_team_mode === true
+  )
+  // A failed session write or games-row flip is a failed expiry (the route answers 500, clients retry, and the
+  // retry lands in the already-finished branch above), never a quiet success.
+  return !finished.error
 }
 
 // ── Host mode ─────────────────────────────────────────────────────────────────

@@ -3,10 +3,20 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('server-only', () => ({}))
 
 // Record the stored hands at the moment the post-finish bookkeeping (room points) would read them.
-const finishProbe = vi.hoisted(() => ({ onFinished: null as null | (() => void) }))
+const finishProbe = vi.hoisted(() => ({
+  onFinished: null as null | (() => void),
+  /** When set, the games-row flip reports this database error. */
+  failWith: null as null | { message: string },
+  /** Options each markGameFinished call was made with. */
+  calls: [] as unknown[],
+}))
 vi.mock('./game-finish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./game-finish')>()),
-  markGameFinished: async () => finishProbe.onFinished?.(),
+  markGameFinished: async (_s: unknown, _g: unknown, _at: unknown, opts: unknown) => {
+    finishProbe.calls.push(opts)
+    finishProbe.onFinished?.()
+    return finishProbe.failWith ? { error: finishProbe.failWith, won: false } : { error: null, won: true }
+  },
 }))
 
 import {
@@ -655,7 +665,8 @@ describe('processUnoDraw — No Mercy deck runs out mid forced penalty', () => {
     expect(res.error).toBeUndefined()
     expect(t.uno_sessions[0].phase).toBe('finished')
     // Standings were computed on the post-draw hand (A holds 1 + 2 wilds), so A no longer wins.
-    expect(t.uno_sessions[0].winner_player_id).not.toBe('A')
+    // B, C and D each hold one 5-point card; the placement tie breaks by player id, so B wins.
+    expect(t.uno_sessions[0].winner_player_id).toBe('B')
     expect(seen).toEqual([3])
   })
 
@@ -777,6 +788,57 @@ describe('finishExpiredUnoGame — session already finished', () => {
     expect(await finishExpiredUnoGame(db.supabase, game)).toBe(true)
     expect(t.uno_sessions[0].winner_player_id).toBe('B')
     expect(t.uno_sessions[0].updated_at).toBe(T0)
+  })
+})
+
+describe('finishExpiredUnoGame — games.status flip failures', () => {
+  const game = {
+    id: 'G',
+    status: 'active',
+    session_started_at: '2020-01-01T00:00:00.000Z',
+    game_duration_seconds: 60,
+    uno_team_mode: false,
+  } as Parameters<typeof finishExpiredUnoGame>[1]
+  const reset = () => {
+    finishProbe.failWith = null
+    finishProbe.calls = []
+  }
+
+  it('reports failure when the games-row flip fails after the session finish committed', async () => {
+    reset()
+    const t = unoTables()
+    const db = makeDb(t)
+    finishProbe.failWith = { message: 'boom' }
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(false)
+    reset()
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('retries only the games.status flip once the session is finished, without a second finish', async () => {
+    reset()
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished', winner_player_id: 'B' })
+    const db = makeDb(t, { afterUpdate: () => expect.fail('the retry rewrote the session') })
+    finishProbe.failWith = { message: 'boom' }
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(false)
+    finishProbe.failWith = null
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(true)
+    // Both attempts were single-winner CAS flips, never a plain (side-effect repeating) finish.
+    expect(finishProbe.calls).toEqual([{ onlyIfActive: true }, { onlyIfActive: true }])
+    expect(t.uno_sessions[0].winner_player_id).toBe('B')
+    expect(t.uno_sessions[0].updated_at).toBe(T0)
+    reset()
+  })
+
+  it('surfaces a failed games-row flip on a mid-round expiry as an error, not a clean finish', async () => {
+    reset()
+    const t = unoTables()
+    Object.assign(t.games[0], { session_started_at: '2020-01-01T00:00:00.000Z', game_duration_seconds: 60 })
+    const db = makeDb(t)
+    finishProbe.failWith = { message: 'boom' }
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    reset()
+    expect(res.error).toBeTruthy()
   })
 })
 

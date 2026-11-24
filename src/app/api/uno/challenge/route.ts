@@ -1,3 +1,4 @@
+import { engineErrorStatus } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isUnoGame } from '@/lib/game-types'
 import { processUnoChallenge } from '@/lib/uno'
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const { error, skipped } = await processUnoChallenge(supabase, code, auth.player.id, challenge === true)
-  if (error) return NextResponse.json({ error }, { status: 400 })
+  if (error) return NextResponse.json({ error }, { status: engineErrorStatus(error) })
   // The write lost a race (the game moved, e.g. a leave): nothing changed, so no success and no notification.
   if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
 

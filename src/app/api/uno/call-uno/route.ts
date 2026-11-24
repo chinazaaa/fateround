@@ -1,3 +1,4 @@
+import { engineErrorStatus } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isUnoGame } from '@/lib/game-types'
 import { processUnoCall } from '@/lib/uno'
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const { error } = await processUnoCall(supabase, code, auth.player.id)
-  if (error) return NextResponse.json({ error }, { status: 400 })
+  if (error) return NextResponse.json({ error }, { status: engineErrorStatus(error) })
 
   return NextResponse.json({ success: true })
 }

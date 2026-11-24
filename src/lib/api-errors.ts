@@ -29,3 +29,11 @@ export function internalErrorMessage(context: string, error: unknown, fallback =
 export function internalFailure(context: string, error: unknown, fallback?: string): { error: string; internal: true } {
   return { error: internalErrorMessage(context, error, fallback), internal: true }
 }
+
+/**
+ * HTTP status for an engine result's `error` string: the generic {@link INTERNAL_ERROR_MESSAGE} marks an
+ * unexpected (database) failure and maps to 500; any other message is a validation error and keeps `clientStatus`.
+ */
+export function engineErrorStatus(error: string, clientStatus = 400): number {
+  return error === INTERNAL_ERROR_MESSAGE ? 500 : clientStatus
+}
