@@ -1835,7 +1835,27 @@ export async function PATCH(req: NextRequest) {
   })
 }
 
+/**
+ * DELETE runs the removal first; the host handoff (nominating a successor / clearing host_user_id) is
+ * a single post-success step. Nothing about the handoff is written before the leave has committed, so a
+ * failed or retryable-conflict leave has nothing to roll back, and a successor can never claim host over a
+ * host who is still seated.
+ */
 export async function DELETE(req: NextRequest) {
+  const handoff: { apply: (() => Promise<void>) | null } = { apply: null }
+  const res = await removePlayer(req, handoff)
+  if (res.status >= 200 && res.status < 300 && handoff.apply) {
+    try {
+      await handoff.apply()
+    } catch (err) {
+      // The leave itself committed; the handoff is best-effort (the reaper / manual transfer recover it).
+      console.error('players: host handoff after leave failed', err)
+    }
+  }
+  return res
+}
+
+async function removePlayer(req: NextRequest, handoff: { apply: (() => Promise<void>) | null }) {
   const { data: body, error: bodyError } = await parseJsonBody(req, deletePlayerSchema)
   if (bodyError) return bodyError
 
@@ -1947,30 +1967,20 @@ export async function DELETE(req: NextRequest) {
    *     handling. The finished-game branch below then retains the leaving player's row
    *     for leaderboard integrity.
    */
-  // Set when the host-leave handoff below nominated a successor / cleared host_user_id. A leave that then
-  // fails retryably (UNO / Scrabble exhaust their CAS retries) leaves the host seated, so the handoff is
-  // rolled back instead of letting the successor claim host over a host who never left.
-  let undoHostHandoff: (() => Promise<void>) | null = null
   if (!hostToken) {
     const { data: gameRow } = await getSupabaseAdmin()
       .from('games')
-      .select('status, game_type, host_player_id, host_user_id, pending_host_player_id, pending_host_nominated_at')
+      .select('status, game_type, host_player_id, pending_host_player_id')
       .eq('id', id)
       .maybeSingle()
     const isHostLeaving = !!gameRow && gameRow.host_player_id === playerId
     const isLive = gameRow?.status === 'waiting' || gameRow?.status === 'active'
     if (isHostLeaving && isLive) {
       if (gameRow.pending_host_player_id) {
-        await getSupabaseAdmin().from('games').update({ host_user_id: null }).eq('id', id)
-        const pendingId = gameRow.pending_host_player_id
-        undoHostHandoff = async () => {
-          // Only undo our own clear: a claim that already landed has moved the host on.
-          await getSupabaseAdmin()
-            .from('games')
-            .update({ host_user_id: gameRow.host_user_id })
-            .eq('id', id)
-            .eq('pending_host_player_id', pendingId)
-            .is('host_user_id', null)
+        // A nominee's banner is already live: once the leave commits, just stop routing the outgoing host back.
+        handoff.apply = async () => {
+          const { error } = await getSupabaseAdmin().from('games').update({ host_user_id: null }).eq('id', id)
+          if (error) console.error('players: clearing host_user_id after host leave failed', error)
         }
       } else {
         const { data: successor } = await getSupabaseAdmin()
@@ -1984,28 +1994,30 @@ export async function DELETE(req: NextRequest) {
           .limit(1)
           .maybeSingle()
         if (successor?.id) {
-          await getSupabaseAdmin()
-            .from('games')
-            .update({
-              pending_host_player_id: successor.id,
-              pending_host_nominated_at: new Date().toISOString(),
-              host_user_id: null,
-            })
-            .eq('id', id)
-          const successorId = successor.id as string
-          undoHostHandoff = async () => {
-            // Compare-and-set on OUR nomination: if the successor already claimed (pending cleared) or
-            // the nomination changed, there is nothing of ours left to undo.
-            await getSupabaseAdmin()
+          // Nominate only after the removal succeeded; re-pick the successor then, as the roster may have moved.
+          handoff.apply = async () => {
+            const { data: next } = await getSupabaseAdmin()
+              .from('players')
+              .select('id')
+              .eq('game_id', id)
+              .eq('is_bot', false)
+              .eq('spectator', false)
+              .neq('id', playerId)
+              .order('joined_at', { ascending: true })
+              .limit(1)
+              .maybeSingle()
+            if (!next?.id) return
+            const { error } = await getSupabaseAdmin()
               .from('games')
               .update({
-                pending_host_player_id: gameRow.pending_host_player_id,
-                pending_host_nominated_at: gameRow.pending_host_nominated_at,
-                host_user_id: gameRow.host_user_id,
+                pending_host_player_id: next.id,
+                pending_host_nominated_at: new Date().toISOString(),
+                host_user_id: null,
               })
               .eq('id', id)
-              .eq('pending_host_player_id', successorId)
-              .is('host_user_id', null)
+              .is('pending_host_player_id', null)
+              .in('status', ['waiting', 'active'])
+            if (error) console.error('players: host successor nomination after leave failed', error)
           }
         } else {
           const ended = await adminEndGame(getSupabaseAdmin(), {
@@ -2127,7 +2139,6 @@ export async function DELETE(req: NextRequest) {
   if (isScrabbleGame(gameType)) {
     const { error } = await removeScrabblePlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) {
-      await undoHostHandoff?.()
       return NextResponse.json({ error }, { status: error === SCRABBLE_REMOVE_CONFLICT_ERROR ? 409 : 500 })
     }
     return NextResponse.json({ success: true })
@@ -2160,7 +2171,6 @@ export async function DELETE(req: NextRequest) {
 
   if (isUnoGame(gameType)) {
     const { error } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) await undoHostHandoff?.()
     if (error) return NextResponse.json({ error }, { status: error === UNO_REMOVE_CONFLICT_ERROR ? 409 : 500 })
     return NextResponse.json({ success: true })
   }

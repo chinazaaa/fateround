@@ -15,6 +15,8 @@ import {
   processUnoChallenge,
   processUnoChoose,
   processUnoDraw,
+  processUnoPlay,
+  processUnoTeamLeaveDecision,
   UNO_REMOVE_CONFLICT_ERROR,
 } from './uno'
 import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble'
@@ -672,5 +674,195 @@ describe('processUnoDraw — No Mercy deck runs out mid forced penalty', () => {
     expect(bookkeeping).toBe(0)
     expect((t.uno_player_hands.find((h) => h.player_id === 'A')!.cards as unknown[]).length).toBe(1)
     expect(t.uno_sessions[0].phase).toBe('playing')
+  })
+})
+
+describe('processUnoExpireTurn — delegated auto-play is bound to the expired version', () => {
+  it('skips (and writes nothing) when the session moved between the expiry check and the delegate load', async () => {
+    const t = unoTables()
+    const s = t.uno_sessions[0]
+    s.turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || ++reads !== 1) return
+        // Right after the expiry handler's load, an unrelated write bumps the version (A's turn is
+        // otherwise untouched, so an unbound delegate would happily play A's card on the fresh version).
+        s.updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.error).toBeUndefined()
+    expect(res.skipped).toBe(true)
+    expect(s.current_turn_index).toBe(0)
+    expect(t.uno_player_hands.find((h) => h.player_id === 'A')!.cards).toHaveLength(1)
+  })
+})
+
+describe('round-timer finish outcome is not treated as a live round', () => {
+  function expiredRound() {
+    const t = unoTables()
+    Object.assign(t.games[0], { session_started_at: '2020-01-01T00:00:00.000Z', game_duration_seconds: 60 })
+    return t
+  }
+
+  it('a failed finish write returns the error from the play path and plays nothing', async () => {
+    const t = expiredRound()
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_sessions' })
+    const res = await processUnoPlay(db.supabase, 'G', 'A', 'A1')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toMatch(/Time's up/)
+    expect(t.uno_sessions[0].current_turn_index).toBe(0)
+    expect(t.uno_player_hands.find((h) => h.player_id === 'A')!.cards).toHaveLength(1)
+  })
+
+  it('a failed finish write returns the error from the expiry handler', async () => {
+    const t = expiredRound()
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_sessions' })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.error).toBeTruthy()
+    expect(res.skipped).toBeUndefined()
+  })
+
+  it('a lost finish CAS stops the play (conflict) and the expiry handler skips', async () => {
+    for (const run of ['play', 'expire'] as const) {
+      const t = expiredRound()
+      let reads = 0
+      const db = makeDb(t, {
+        afterSessionRead: (table) => {
+          if (table !== 'uno_sessions' || ++reads !== 1) return
+          t.uno_sessions[0].updated_at = '2026-01-01T00:00:05.000Z'
+        },
+      })
+      const res =
+        run === 'play'
+          ? await processUnoPlay(db.supabase, 'G', 'A', 'A1')
+          : await processUnoExpireTurn(db.supabase, 'G')
+      if (run === 'play') expect(res.error).toBe('Game changed, please try again.')
+      else expect(res.skipped).toBe(true)
+      expect(t.uno_sessions[0].current_turn_index).toBe(0)
+    }
+  })
+
+  it('a successful finish still reports the round as ended', async () => {
+    const t = expiredRound()
+    const db = makeDb(t)
+    const res = await processUnoPlay(db.supabase, 'G', 'A', 'A1')
+    expect(res.error).toMatch(/Time's up/)
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+})
+
+describe('processUnoTeamLeaveDecision — lost CAS is not success', () => {
+  function teamTables() {
+    const t = unoTables()
+    t.games[0].uno_team_mode = true
+    Object.assign(t.uno_sessions[0], { phase: 'team_leave_decision', team_decider_id: 'D' })
+    return t
+  }
+  const bumpAfterFirstRead = (t: Tables) => {
+    let reads = 0
+    return makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || ++reads !== 1) return
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+  }
+
+  it.each(['continue', 'forfeit'] as const)(
+    '%s reports skipped and commits nothing when the CAS is lost',
+    async (d) => {
+      const t = teamTables()
+      const db = bumpAfterFirstRead(t)
+      const res = await processUnoTeamLeaveDecision(db.supabase, 'G', 'D', d)
+      expect(res.skipped).toBe(true)
+      expect(res.error).toBeUndefined()
+      expect(t.uno_sessions[0].phase).toBe('team_leave_decision')
+    }
+  )
+
+  it('continue still commits when nothing raced', async () => {
+    const t = teamTables()
+    const res = await processUnoTeamLeaveDecision(makeDb(t).supabase, 'G', 'D', 'continue')
+    expect(res).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('playing')
+  })
+})
+
+describe('removeUnoPlayer — pending decision keeps its deadline', () => {
+  const DEADLINE = '2030-01-01T00:00:00.000Z'
+  it("another player's leave does not restart the decision owner's timer", async () => {
+    const t = unoTables()
+    t.games[0].timer_seconds = 30
+    Object.assign(t.uno_sessions[0], { phase: 'choose_color', turn_deadline_at: DEADLINE })
+    const res = await removeUnoPlayer(makeDb(t).supabase, 'G', 'C', 'C')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('choose_color')
+    expect(t.uno_sessions[0].turn_deadline_at).toBe(DEADLINE)
+  })
+
+  it("the decision owner's own leave starts the next player's timer", async () => {
+    const t = unoTables()
+    t.games[0].timer_seconds = 30
+    Object.assign(t.uno_sessions[0], { phase: 'choose_color', turn_deadline_at: DEADLINE })
+    const res = await removeUnoPlayer(makeDb(t).supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].turn_deadline_at).not.toBe(DEADLINE)
+    expect(t.uno_sessions[0].turn_deadline_at).toBeTruthy()
+  })
+})
+
+describe('processUnoDraw — partial-draw finish surfaces hand-write failures', () => {
+  const heavy = (id: string) => ({ id, color: 'wild', kind: 'wild' })
+  const light = (id: string, value: number) => ({ id, color: 'red', kind: 'number', value })
+  function noMercyTables(): Tables {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    t.uno_player_hands.forEach((h, i) => {
+      h.cards = [i === 0 ? light('A1', 1) : light(`${h.player_id}1`, 5)]
+    })
+    Object.assign(t.uno_sessions[0], {
+      top_card: light('top', 3),
+      draw_pile: [heavy('w1'), heavy('w2')],
+      discard_pile: [],
+      draw_penalty: 6,
+      draw_penalty_kind: 'draw2',
+      draw_stack_chain: 0,
+    })
+    return t
+  }
+  const handLen = (t: Tables) => (t.uno_player_hands.find((h) => h.player_id === 'A')!.cards as unknown[]).length
+
+  it('does not report success when the hand never persists', async () => {
+    const t = noMercyTables()
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_player_hands' })
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    expect(res.error).toBeTruthy()
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('retries a transient hand-write failure and reports success with the hand persisted', async () => {
+    const t = noMercyTables()
+    let failures = 1
+    const db = makeDb(t, {
+      failUpdate: (table) => table === 'uno_player_hands' && failures-- > 0,
+    })
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    expect(res.error).toBeUndefined()
+    expect(handLen(t)).toBe(3)
+  })
+})
+
+describe('removeScrabblePlayer — player-state read failure', () => {
+  it('stops before any write when the state read fails (no wrongful chess-clock finish)', async () => {
+    const t = scrabbleTables()
+    t.scrabble_sessions[0].clock_mode = 'chess'
+    const db = makeDb(t, { failSelect: (table) => table === 'scrabble_player_state' })
+    const res = await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeTruthy()
+    expect(t.scrabble_sessions[0].phase).toBe('playing')
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B', 'C'])
+    expect(t.players.map((p) => p.id)).toContain('C')
   })
 })

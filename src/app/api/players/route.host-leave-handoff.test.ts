@@ -9,16 +9,16 @@ vi.mock('@/lib/rate-limit', async (importOriginal) => ({
 vi.mock('@/lib/identity-server', () => ({ getProfileFromRequest: async () => null }))
 
 const removal = vi.hoisted(() => ({
-  uno: { error: null as string | null },
-  scrabble: { error: null as string | null },
+  uno: { error: null as string | null, onCall: null as (() => void) | null },
+  scrabble: { error: null as string | null, onCall: null as (() => void) | null },
 }))
 vi.mock('@/lib/uno', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/uno')>()),
-  removeUnoPlayer: async () => ({ error: removal.uno.error }),
+  removeUnoPlayer: async () => (removal.uno.onCall?.(), { error: removal.uno.error }),
 }))
 vi.mock('@/lib/scrabble', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/scrabble')>()),
-  removeScrabblePlayer: async () => ({ error: removal.scrabble.error }),
+  removeScrabblePlayer: async () => (removal.scrabble.onCall?.(), { error: removal.scrabble.error }),
 }))
 
 type Row = Record<string, unknown>
@@ -51,6 +51,7 @@ function builder(table: string) {
     eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), api),
     neq: (k: string, v: unknown) => (filters.push((r) => r[k] !== v), api),
     is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), api),
+    in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), api),
     update: (p: Row) => ((patch = p), api),
     delete: () => ((deleting = true), api),
     maybeSingle: async () => {
@@ -122,6 +123,8 @@ beforeEach(async () => {
   DELETE ??= (await import('./route')).DELETE
   removal.uno.error = null
   removal.scrabble.error = null
+  removal.uno.onCall = null
+  removal.scrabble.onCall = null
 })
 
 describe.each(['uno', 'scrabble'] as const)('DELETE /api/players: host leave handoff (%s)', (gameType) => {
@@ -129,7 +132,7 @@ describe.each(['uno', 'scrabble'] as const)('DELETE /api/players: host leave han
     removal[gameType].error = 'Game changed, please try again.'
   }
 
-  it('a failed (conflicting) leave does not leave a nominated successor behind', async () => {
+  it('a failed (conflicting) leave never nominates a successor (nothing to roll back)', async () => {
     setup(gameType)
     fail()
     const res = await leave()
@@ -140,13 +143,47 @@ describe.each(['uno', 'scrabble'] as const)('DELETE /api/players: host leave han
     expect(g.host_user_id).toBe('user-host')
   })
 
-  it('a failed leave restores host_user_id when a nomination was already pending', async () => {
+  it('a failed leave leaves a pending nomination and host_user_id untouched', async () => {
     setup(gameType, { pending_host_player_id: OTHER_PID, pending_host_nominated_at: 'T' })
     fail()
     await leave()
     const g = tables.games[0]
     expect(g.host_user_id).toBe('user-host')
     expect(g.pending_host_player_id).toBe(OTHER_PID)
+    expect(g.pending_host_nominated_at).toBe('T')
+  })
+
+  it('a renewed nomination during a failed leave is not clobbered', async () => {
+    setup(gameType, { pending_host_player_id: OTHER_PID, pending_host_nominated_at: 'T' })
+    removal[gameType].onCall = () => {
+      tables.games[0].pending_host_nominated_at = 'RENEWED'
+    }
+    fail()
+    await leave()
+    expect(tables.games[0].pending_host_nominated_at).toBe('RENEWED')
+  })
+
+  it('the nomination is written only after the removal ran', async () => {
+    setup(gameType)
+    let seenDuringRemoval: unknown = 'unset'
+    removal[gameType].onCall = () => {
+      seenDuringRemoval = tables.games[0].pending_host_player_id
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(seenDuringRemoval).toBeNull()
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+
+  it('a pending nomination is only claimable-routed (host_user_id cleared) after a successful leave', async () => {
+    setup(gameType, { pending_host_player_id: OTHER_PID, pending_host_nominated_at: 'T' })
+    let during: unknown = 'unset'
+    removal[gameType].onCall = () => {
+      during = tables.games[0].host_user_id
+    }
+    await leave()
+    expect(during).toBe('user-host')
+    expect(tables.games[0].host_user_id).toBeNull()
   })
 
   it('a successful leave keeps the handoff', async () => {

@@ -27,8 +27,10 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error } = await processUnoTeamLeaveDecision(supabase, code, auth.player.id, decision)
+  const { error, skipped } = await processUnoTeamLeaveDecision(supabase, code, auth.player.id, decision)
   if (error) return NextResponse.json({ error }, { status: 400 })
+  // The decision lost its race and did not commit: not a success, and no turn notification.
+  if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
 
   if (decision === 'continue') scheduleTurnNotification(code, game)
 

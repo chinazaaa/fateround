@@ -1038,7 +1038,13 @@ async function removeScrabblePlayerOnce(
     if (turnOrder.length === 0) currentTurnIndex = 0
 
     const removedName = playerName ?? 'A player'
-    const { data: statesRaw } = await supabase.from('scrabble_player_state').select('*').eq('game_id', gameId)
+    const { data: statesRaw, error: statesError } = await supabase
+      .from('scrabble_player_state')
+      .select('*')
+      .eq('game_id', gameId)
+    // A failed read is not "no seats": states = [] would let a chess-clock game finish with no winner.
+    // Stop before any write — the session and the player stay untouched, so the leave can be retried.
+    if (statesError) return { error: internalErrorMessage('scrabble', statesError) }
     // Only seats still in the (freshly read) turn order count: a concurrent leave that has already
     // shrunk turn_order but not yet deleted its state row must not be treated as a winner/active seat.
     const remaining = new Set(turnOrder)
