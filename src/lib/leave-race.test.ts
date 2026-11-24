@@ -2,11 +2,19 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 
+// Record the stored hands at the moment the post-finish bookkeeping (room points) would read them.
+const finishProbe = vi.hoisted(() => ({ onFinished: null as null | (() => void) }))
+vi.mock('./game-finish', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./game-finish')>()),
+  markGameFinished: async () => finishProbe.onFinished?.(),
+}))
+
 import {
   removeUnoPlayer,
   processUnoExpireTurn,
   processUnoChallenge,
   processUnoChoose,
+  processUnoDraw,
   UNO_REMOVE_CONFLICT_ERROR,
 } from './uno'
 import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble'
@@ -154,6 +162,46 @@ describe('removeUnoPlayer — concurrent leaves', () => {
   })
 })
 
+describe('removeUnoPlayer — session lookup errors', () => {
+  it('returns the lookup error instead of deleting the hand and player (first attempt)', async () => {
+    const t = unoTables()
+    const db = makeDb(t, { failSelect: (table) => table === 'uno_sessions' })
+    const res = await removeUnoPlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toBe(UNO_REMOVE_CONFLICT_ERROR)
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.uno_player_hands.map((h) => h.player_id)).toContain('C')
+    expect(t.uno_sessions[0].turn_order).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  it('returns the lookup error when the re-read after a lost CAS fails (no dead seat left behind)', async () => {
+    const t = unoTables()
+    let sessionReads = 0
+    const db = makeDb(t, {
+      // Attempt 1 reads fine, then a competing write makes its CAS lose; attempt 2's lookup fails.
+      afterSessionRead: (table) => {
+        if (table === 'uno_sessions' && sessionReads === 1) t.uno_sessions[0].updated_at = '2026-01-01T00:00:09.000Z'
+      },
+      failSelect: (table) => table === 'uno_sessions' && ++sessionReads > 1,
+    })
+    const res = await removeUnoPlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeTruthy()
+    expect(res.error).not.toBe(UNO_REMOVE_CONFLICT_ERROR)
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.uno_player_hands.map((h) => h.player_id)).toContain('C')
+  })
+
+  it('still cleans up when the lookup succeeds but there is no session row', async () => {
+    const t = unoTables()
+    t.uno_sessions = []
+    const db = makeDb(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeNull()
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+    expect(t.uno_player_hands.map((h) => h.player_id)).not.toContain('C')
+  })
+})
+
 describe('removeUnoPlayer — pending decisions', () => {
   // C's leave reads phase 'playing'; A then plays a Wild (phase -> choose_color) before the write lands.
   function raceToChooseColor(t: Tables) {
@@ -269,6 +317,26 @@ describe('processUnoExpireTurn — auto-pass (delegated processUnoPass) write ou
     expect(res.error).toBeTruthy()
     expect(res.skipped).toBeUndefined()
     expect(t.uno_sessions[0].drawn_card_id).toBe('A1')
+  })
+
+  it('keeps a database error from the delegated pass even when another write moved updated_at', async () => {
+    const t = idledAfterDraw()
+    const s = t.uno_sessions[0]
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions') return
+        // After the delegated pass loaded (read #2), another player's UNO call bumps updated_at,
+        // so the pass's own write then fails. The snapshot differs, but the failure is not a race.
+        if (++reads !== 2) return
+        s.updated_at = '2026-01-01T00:00:05.000Z'
+      },
+      failUpdate: (table) => table === 'uno_sessions',
+    })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.error).toBeTruthy()
+    expect(res.skipped).toBeUndefined()
+    expect(s.current_turn_index).toBe(0)
   })
 
   it('a winning pass still advances the turn', async () => {
@@ -545,5 +613,64 @@ describe('removeUnoPlayer — Wild Draw Four challenge', () => {
     expect(out.error).toBeUndefined()
     // Challenge still adjudicated against A's real hand: A held red, so A draws 4.
     expect(handCount(t, 'A') - before).toBe(4)
+  })
+})
+
+describe('processUnoDraw — No Mercy deck runs out mid forced penalty', () => {
+  const heavy = (id: string) => ({ id, color: 'wild', kind: 'wild' })
+  const light = (id: string, value: number) => ({ id, color: 'red', kind: 'number', value })
+
+  function noMercyTables(): Tables {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    t.uno_player_hands.forEach((h, i) => {
+      h.cards = [i === 0 ? light('A1', 1) : light(`${h.player_id}1`, 5)]
+    })
+    Object.assign(t.uno_sessions[0], {
+      top_card: light('top', 3),
+      draw_pile: [heavy('w1'), heavy('w2')],
+      discard_pile: [],
+      draw_penalty: 6,
+      draw_penalty_kind: 'draw2',
+      draw_stack_chain: 0,
+    })
+    return t
+  }
+
+  it('writes the drawn cards only after the finish wins, before room-point bookkeeping reads hands', async () => {
+    const t = noMercyTables()
+    const seen: number[] = []
+    finishProbe.onFinished = () => {
+      seen.push((t.uno_player_hands.find((h) => h.player_id === 'A')!.cards as unknown[]).length)
+    }
+    const db = makeDb(t)
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    finishProbe.onFinished = null
+    expect(res.error).toBeUndefined()
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    // Standings were computed on the post-draw hand (A holds 1 + 2 wilds), so A no longer wins.
+    expect(t.uno_sessions[0].winner_player_id).not.toBe('A')
+    expect(seen).toEqual([3])
+  })
+
+  it('a lost finish race never overwrites the hands or runs bookkeeping', async () => {
+    const t = noMercyTables()
+    let bookkeeping = 0
+    finishProbe.onFinished = () => {
+      bookkeeping += 1
+    }
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || ++reads !== 1) return
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    finishProbe.onFinished = null
+    expect(res.skipped).toBe(true)
+    expect(bookkeeping).toBe(0)
+    expect((t.uno_player_hands.find((h) => h.player_id === 'A')!.cards as unknown[]).length).toBe(1)
+    expect(t.uno_sessions[0].phase).toBe('playing')
   })
 })

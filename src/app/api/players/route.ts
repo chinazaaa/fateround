@@ -1947,10 +1947,14 @@ export async function DELETE(req: NextRequest) {
    *     handling. The finished-game branch below then retains the leaving player's row
    *     for leaderboard integrity.
    */
+  // Set when the host-leave handoff below nominated a successor / cleared host_user_id. A leave that then
+  // fails retryably (UNO / Scrabble exhaust their CAS retries) leaves the host seated, so the handoff is
+  // rolled back instead of letting the successor claim host over a host who never left.
+  let undoHostHandoff: (() => Promise<void>) | null = null
   if (!hostToken) {
     const { data: gameRow } = await getSupabaseAdmin()
       .from('games')
-      .select('status, game_type, host_player_id, pending_host_player_id')
+      .select('status, game_type, host_player_id, host_user_id, pending_host_player_id, pending_host_nominated_at')
       .eq('id', id)
       .maybeSingle()
     const isHostLeaving = !!gameRow && gameRow.host_player_id === playerId
@@ -1958,6 +1962,16 @@ export async function DELETE(req: NextRequest) {
     if (isHostLeaving && isLive) {
       if (gameRow.pending_host_player_id) {
         await getSupabaseAdmin().from('games').update({ host_user_id: null }).eq('id', id)
+        const pendingId = gameRow.pending_host_player_id
+        undoHostHandoff = async () => {
+          // Only undo our own clear: a claim that already landed has moved the host on.
+          await getSupabaseAdmin()
+            .from('games')
+            .update({ host_user_id: gameRow.host_user_id })
+            .eq('id', id)
+            .eq('pending_host_player_id', pendingId)
+            .is('host_user_id', null)
+        }
       } else {
         const { data: successor } = await getSupabaseAdmin()
           .from('players')
@@ -1978,6 +1992,21 @@ export async function DELETE(req: NextRequest) {
               host_user_id: null,
             })
             .eq('id', id)
+          const successorId = successor.id as string
+          undoHostHandoff = async () => {
+            // Compare-and-set on OUR nomination: if the successor already claimed (pending cleared) or
+            // the nomination changed, there is nothing of ours left to undo.
+            await getSupabaseAdmin()
+              .from('games')
+              .update({
+                pending_host_player_id: gameRow.pending_host_player_id,
+                pending_host_nominated_at: gameRow.pending_host_nominated_at,
+                host_user_id: gameRow.host_user_id,
+              })
+              .eq('id', id)
+              .eq('pending_host_player_id', successorId)
+              .is('host_user_id', null)
+          }
         } else {
           const ended = await adminEndGame(getSupabaseAdmin(), {
             id,
@@ -2098,6 +2127,7 @@ export async function DELETE(req: NextRequest) {
   if (isScrabbleGame(gameType)) {
     const { error } = await removeScrabblePlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) {
+      await undoHostHandoff?.()
       return NextResponse.json({ error }, { status: error === SCRABBLE_REMOVE_CONFLICT_ERROR ? 409 : 500 })
     }
     return NextResponse.json({ success: true })
@@ -2130,6 +2160,7 @@ export async function DELETE(req: NextRequest) {
 
   if (isUnoGame(gameType)) {
     const { error } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) await undoHostHandoff?.()
     if (error) return NextResponse.json({ error }, { status: error === UNO_REMOVE_CONFLICT_ERROR ? 409 : 500 })
     return NextResponse.json({ success: true })
   }

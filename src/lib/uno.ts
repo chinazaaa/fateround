@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { internalErrorMessage } from '@/lib/api-errors'
+import { INTERNAL_ERROR_MESSAGE, internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
@@ -960,7 +960,11 @@ async function finishByLowestHand(
   hands: UnoPlayerHand[],
   playerNames: Map<string, string>,
   reasonPrefix: string,
-  teamMode = false
+  teamMode = false,
+  // Runs only after this call's finish CAS has won, BEFORE the room-point / series bookkeeping reads
+  // `uno_player_hands`. Lets a caller persist hands that `hands` already reflects (e.g. a partial
+  // penalty draw) without a lost race ever writing them.
+  onWon?: () => Promise<void>
 ): Promise<{ won: boolean; error?: string }> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
@@ -1007,6 +1011,7 @@ async function finishByLowestHand(
   // A database failure is not a lost race — surface it instead of reporting a quiet skip.
   if (error) return { won: false, error: internalErrorMessage('uno', error) }
   if ((data?.length ?? 0) === 0) return { won: false }
+  if (onWon) await onWon()
   if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
   await markGameFinished(supabase, gameId)
   return { won: true }
@@ -2185,21 +2190,25 @@ export async function processUnoDraw(
     // total. Only in No Mercy — Classic keeps the existing "draw what you can" beat,
     // which is fine for smaller +2/+4 penalties.
     if (rules.mode === 'no_mercy' && drawn.length < penalty) {
+      // The standings must see the post-draw hands, and the room-point bookkeeping reads them from
+      // the database — so the hands are written inside the finish, after its CAS won and before that
+      // bookkeeping. A lost CAS (or DB error) never writes this stale snapshot's hands.
+      let finalHands = updateHand(hands, playerId, newHand)
+      if (missed) finalHands = updateHand(finalHands, missed.playerId, missed.hand)
       const finished = await finishByLowestHand(
         supabase,
         gameId,
         { ...session, draw_pile: drawPile, discard_pile: discardPile } as UnoSession,
-        updateHand(hands, playerId, newHand),
+        finalHands,
         playerNames,
         `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
-        rules.teamMode
+        rules.teamMode,
+        async () => {
+          await writeHand(supabase, gameId, playerId, newHand)
+          if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
+        }
       )
-      // A lost CAS (or DB error) must not leave this stale snapshot's hands behind: persist what was
-      // drawn so hands reflect the partial payout in the standings only after the finish write won.
-      if (!finished.won) return lostWrite(finished)
-      await writeHand(supabase, gameId, playerId, newHand)
-      if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
-      return {}
+      return finished.won ? {} : lostWrite(finished)
     }
     // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
     const nextIndex = unoNextTurnIndex(
@@ -3124,6 +3133,9 @@ export async function processUnoExpireTurn(
   const expectedUpdatedAt = session.updated_at
   const settle = async (result: { error?: string }): Promise<{ error?: string; skipped?: boolean }> => {
     if (!result.error) return result
+    // A database failure is not a lost race: the turn is still unhandled, so keep the error visible
+    // (and retryable) even when another write has since moved updated_at.
+    if (result.error === INTERNAL_ERROR_MESSAGE) return result
     const { data: fresh } = await supabase.from('uno_sessions').select('updated_at').eq('game_id', gameId).maybeSingle()
     if (fresh && fresh.updated_at !== expectedUpdatedAt) return { skipped: true }
     return result
@@ -3279,7 +3291,15 @@ async function removeUnoPlayerOnce(
   playerId: string,
   playerNameArg?: string
 ): Promise<{ error: string | null } | 'retry'> {
-  const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  const { data: sessionRaw, error: lookupError } = await supabase
+    .from('uno_sessions')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  // Checked on EVERY attempt (a retry re-reads after a lost CAS). A failed lookup is not "no session":
+  // falling through would delete the hand and player while the session still lists the seat in
+  // turn_order. Only a successful lookup that finds no row reaches the no-session cleanup.
+  if (lookupError) return { error: internalErrorMessage('uno', lookupError) }
   const session = sessionRaw as UnoSession | null
 
   // A player who already went out has a locked placement (finish_order) — preserve it.
