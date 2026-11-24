@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isUnoGame } from '@/lib/game-types'
-import { finishExpiredUnoGame, unoGameSessionExpired } from '@/lib/uno'
+import { finishExpiredUnoGame } from '@/lib/uno'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
@@ -22,11 +22,11 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
   if (game.status !== 'active') {
     return NextResponse.json({ expired: false, finished: game.status === 'finished' })
   }
-  if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) {
-    return NextResponse.json({ expired: false, finished: false })
-  }
 
+  // Not gated on the deadline: a round that finished early (or an untimed one) can still have its games.status
+  // flip pending, which the helper recovers before it applies the deadline guard.
   const outcome = await finishExpiredUnoGame(supabase, game)
+  if (outcome === 'not_due') return NextResponse.json({ expired: false, finished: false })
   if (outcome === 'conflict') {
     return NextResponse.json({ error: 'The game changed while ending it — try again' }, { status: 409 })
   }

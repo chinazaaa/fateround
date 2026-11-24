@@ -966,9 +966,11 @@ async function finishByLowestHand(
   teamMode = false,
   // Hands that `hands` already reflects (e.g. a partial penalty draw). Written only after this call's
   // finish CAS has won (a lost race never writes them) and BEFORE the room-point / series bookkeeping
-  // reads `uno_player_hands`. A write that still fails after retries is returned as `error` WITH
-  // `won: true`: the round did finish, but the caller must not report plain success.
-  handWrites?: { playerId: string; cards: UnoCard[] }[]
+  // reads `uno_player_hands`. `before` is the hand being replaced. A write that still fails after retries
+  // undoes the finish (hands restored, then the session returned to its pre-finish state) so the round is
+  // retryable and never published with stale hands; it is returned as `error` WITH `won: true` (the CAS
+  // did win, so the caller must not read it as a lost race or report plain success).
+  handWrites?: { playerId: string; cards: UnoCard[]; before: UnoCard[] }[]
 ): Promise<{ won: boolean; error?: string }> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
@@ -1010,12 +1012,37 @@ async function finishByLowestHand(
     })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
-    .select('game_id')
+    .select('game_id, updated_at')
 
   // A database failure is not a lost race — surface it instead of reporting a quiet skip.
   if (error) return { won: false, error: internalErrorMessage('uno', error) }
   if ((data?.length ?? 0) === 0) return { won: false }
   const handsWritten = handWrites?.length ? await writeHandsWithRetry(supabase, gameId, handWrites) : { error: null }
+  if (handsWritten.error && handWrites?.length) {
+    // The finish cannot be published without its hands. Put the old hands back first (a retry must not draw
+    // on top of a half-written round), then return the session to its pre-finish state, bound to the version
+    // our own finish wrote (the database assigns it, so read it back) so a newer write is never reverted.
+    // If either step fails the session stays `finished` and the expiry recovery publishes it.
+    const restored = await writeHandsWithRetry(
+      supabase,
+      gameId,
+      handWrites.map((w) => ({ playerId: w.playerId, cards: w.before }))
+    )
+    const finishedVersion = (data as { updated_at?: string }[])[0]?.updated_at
+    if (!restored.error && finishedVersion) {
+      await supabase
+        .from('uno_sessions')
+        .update({
+          phase: session.phase,
+          winner_player_id: session.winner_player_id,
+          status_message: session.status_message,
+          turn_deadline_at: session.turn_deadline_at,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('game_id', gameId)
+        .eq('updated_at', finishedVersion)
+    }
+  }
   if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
   // The session is already `finished` here, so a failed games-row flip must be reported (and retried by the
   // expiry path) rather than dropped: the round is over but `games.status` would stay `active`.
@@ -2296,7 +2323,12 @@ export async function processUnoDraw(
         playerNames,
         `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
         rules.teamMode,
-        [{ playerId, cards: newHand }, ...(missed ? [{ playerId: missed.playerId, cards: missed.hand }] : [])]
+        [
+          { playerId, cards: newHand, before: handForPlayer(hands, playerId) },
+          ...(missed
+            ? [{ playerId: missed.playerId, cards: missed.hand, before: handForPlayer(hands, missed.playerId) }]
+            : []),
+        ]
       )
       // The round finished, but a hand that failed to persist must not be reported as a clean success.
       // `committed`: this call's own finish bumped updated_at, so callers must not read that as a racing write.
@@ -2997,13 +3029,13 @@ export async function processUnoChallenge(
 
   const applyDrawTo = async (
     targetId: string
-  ): Promise<{ hand: UnoCard[]; drawPile: UnoCard[]; discardPile: UnoCard[] }> => {
+  ): Promise<{ hand: UnoCard[]; drawPile: UnoCard[]; discardPile: UnoCard[]; drawnCount: number }> => {
     const { drawn, drawPile, discardPile } = drawCardsWithRefill(
       (session.draw_pile as UnoCard[]) ?? [],
       (session.discard_pile as UnoCard[]) ?? [],
       penalty
     )
-    return { hand: [...handForPlayer(hands, targetId), ...drawn], drawPile, discardPile }
+    return { hand: [...handForPlayer(hands, targetId), ...drawn], drawPile, discardPile, drawnCount: drawn.length }
   }
 
   // A challenge needs a Wild Draw Four player whose hand can be revealed; if they left, it can only be accepted.
@@ -3018,7 +3050,7 @@ export async function processUnoChallenge(
         draw_pile: drawResult.drawPile,
         discard_pile: drawResult.discardPile,
         current_turn_index: afterIndex,
-        status_message: `${playerName(playerNames, playerId)} drew ${penalty} — ${playerName(playerNames, afterId)}'s turn`,
+        status_message: `${playerName(playerNames, playerId)} drew ${drawResult.drawnCount} — ${playerName(playerNames, afterId)}'s turn`,
       }),
       timerSeconds,
       session.updated_at
@@ -3047,7 +3079,7 @@ export async function processUnoChallenge(
         draw_pile: drawResult.drawPile,
         discard_pile: drawResult.discardPile,
         current_turn_index: session.current_turn_index,
-        status_message: `Challenge won — ${playerName(playerNames, wd4PlayerId)} was hiding a ${prevLabel} card! ${playerName(playerNames, wd4PlayerId)} draws ${penalty}. ${playerName(playerNames, playerId)}'s turn${colorHint}`,
+        status_message: `Challenge won — ${playerName(playerNames, wd4PlayerId)} was hiding a ${prevLabel} card! ${playerName(playerNames, wd4PlayerId)} draws ${drawResult.drawnCount}. ${playerName(playerNames, playerId)}'s turn${colorHint}`,
       }),
       timerSeconds,
       session.updated_at
@@ -3382,17 +3414,16 @@ export async function processUnoExpireTurn(
 export async function finishExpiredUnoGame(
   supabase: SupabaseClient,
   game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds' | 'uno_team_mode'>
-): Promise<'finished' | 'conflict' | 'error'> {
+): Promise<'finished' | 'conflict' | 'error' | 'not_due'> {
   if (game.status !== 'active') return 'error'
-  if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return 'error'
 
   const gameId = game.id
-  const [sessionRes, handsRes, playersRes] = await Promise.all([
-    supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle(),
-    supabase.from('uno_player_hands').select('player_id, cards, player_order').eq('game_id', gameId),
-    supabase.from('players').select('id, name').eq('game_id', gameId),
-  ])
-
+  const sessionRes = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  // A failed read is not "no session": report it instead of a quiet skip.
+  if (sessionRes.error) {
+    internalErrorMessage('uno', sessionRes.error)
+    return 'error'
+  }
   const session = sessionRes.data as UnoSession | null
   if (!session) return 'error'
   // A finish is already in flight or done (finishByLowestHand flips the phase before games.status):
@@ -3400,16 +3431,29 @@ export async function finishExpiredUnoGame(
   // finish committed the session and then failed the games-row flip, the row is still `active` and nothing
   // else would ever correct it — retry ONLY that flip, as a single-winner CAS (no second session finish,
   // no series points; the room-point bookkeeping runs only for the request that actually flips the row).
+  // This runs before the deadline guard: an untimed round (or one that ended before its deadline) can have
+  // a finished session too.
   if (session.phase === 'finished') {
     // The original finisher publishes after its hand writes; only recover once it has had time to do so.
     if (Date.now() - new Date(session.updated_at).getTime() < UNO_FINISH_RECOVERY_GRACE_MS) return 'conflict'
-    const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+    // Bound to the round inspected above: if Play Again started a new round under this game id meanwhile,
+    // its session_started_at differs and the flip must not finish it.
+    const flipped = await markGameFinished(supabase, gameId, undefined, {
+      onlyIfActive: true,
+      onlySessionStartedAt: game.session_started_at ?? null,
+    })
     if (flipped.error) {
       internalErrorMessage('uno', flipped.error)
       return 'error'
     }
-    return 'finished'
+    return flipped.won ? 'finished' : 'conflict'
   }
+  if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return 'not_due'
+
+  const [handsRes, playersRes] = await Promise.all([
+    supabase.from('uno_player_hands').select('player_id, cards, player_order').eq('game_id', gameId),
+    supabase.from('players').select('id, name').eq('game_id', gameId),
+  ])
 
   const playerNames = new Map<string, string>()
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)

@@ -8,6 +8,8 @@ const finishProbe = vi.hoisted(() => ({
   onFinished: null as null | (() => void),
   /** When set, the games-row flip reports this database error. */
   failWith: null as null | { message: string },
+  /** When true, the games-row flip loses its CAS (no error, nothing flipped). */
+  lose: false,
   /** Options each markGameFinished call was made with. */
   calls: [] as unknown[],
 }))
@@ -16,6 +18,7 @@ vi.mock('./game-finish', async (importOriginal) => ({
   markGameFinished: async (_s: unknown, _g: unknown, _at: unknown, opts: unknown) => {
     finishProbe.calls.push(opts)
     finishProbe.onFinished?.()
+    if (finishProbe.lose) return { error: null, won: false }
     return finishProbe.failWith ? { error: finishProbe.failWith, won: false } : { error: null, won: true }
   },
 }))
@@ -410,6 +413,21 @@ describe('removeUnoPlayer — stacked Wild Draw Four penalty (phase playing)', (
     expect(s.current_turn_index).toBe(2) // skipped past C to D
   })
 
+  it('reports the cards actually drawn, not the pending stack, when the deck runs short', async () => {
+    const t = stackedTables()
+    t.uno_sessions[0].draw_pile = [
+      { id: 'p0', color: 'blue', value: '1' },
+      { id: 'p1', color: 'blue', value: '2' },
+    ]
+    const db = makeDb(t)
+    await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    const before = handCount(t, 'C')
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBeUndefined()
+    expect(handCount(t, 'C') - before).toBe(2)
+    expect(String(t.uno_sessions[0].status_message)).toContain('drew 2 ')
+  })
+
   it('still refuses a challenge from a player who is not the current player', async () => {
     const t = stackedTables()
     const db = makeDb(t)
@@ -675,6 +693,49 @@ describe('processUnoDraw — No Mercy deck runs out mid forced penalty', () => {
     expect(finishProbe.calls).toEqual([{ onlyIfActive: true }])
   })
 
+  it('a hand write that keeps failing undoes the finish: hands restored, round retryable, nothing published', async () => {
+    finishProbe.calls = []
+    const t = noMercyTables()
+    const before = JSON.stringify(t.uno_sessions[0])
+    // The forward write fails all three attempts; the restore that follows succeeds.
+    let handUpdates = 0
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_player_hands' && handUpdates++ < 3 })
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    expect(res.error).toBeTruthy()
+    expect(finishProbe.calls).toEqual([])
+    const s = t.uno_sessions[0]
+    expect(s.phase).toBe('playing')
+    expect(s.winner_player_id).toBeUndefined()
+    expect(JSON.stringify({ ...s, updated_at: 0, winner_player_id: undefined })).toBe(
+      JSON.stringify({ ...JSON.parse(before), updated_at: 0 })
+    )
+    expect((t.uno_player_hands.find((h) => h.player_id === 'A')!.cards as unknown[]).length).toBe(1)
+  })
+
+  it('does not revert a newer session write when undoing a failed-hand finish', async () => {
+    const t = noMercyTables()
+    let handUpdates = 0
+    const db = makeDb(t, {
+      failUpdate: (table) => {
+        if (table !== 'uno_player_hands') return false
+        // A competing write lands after our finish committed, while its hand writes are still running.
+        t.uno_sessions[0].updated_at = '2030-01-01T00:00:00.000Z'
+        return handUpdates++ < 3
+      },
+    })
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    expect(res.error).toBeTruthy()
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('keeps the round finished (recoverable) when the hands cannot be restored either', async () => {
+    const t = noMercyTables()
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_player_hands' })
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
+    expect(res.error).toBeTruthy()
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
   it('a lost finish race never overwrites the hands or runs bookkeeping', async () => {
     const t = noMercyTables()
     let bookkeeping = 0
@@ -822,6 +883,7 @@ describe('finishExpiredUnoGame — games.status flip failures', () => {
   } as Parameters<typeof finishExpiredUnoGame>[1]
   const reset = () => {
     finishProbe.failWith = null
+    finishProbe.lose = false
     finishProbe.calls = []
   }
 
@@ -845,9 +907,50 @@ describe('finishExpiredUnoGame — games.status flip failures', () => {
     finishProbe.failWith = null
     expect(await finishExpiredUnoGame(db.supabase, game)).toBe('finished')
     // Both attempts were single-winner CAS flips, never a plain (side-effect repeating) finish.
-    expect(finishProbe.calls).toEqual([{ onlyIfActive: true }, { onlyIfActive: true }])
+    // ...and bound to the round that was inspected, so a Play Again round is never finished by it.
+    const bound = { onlyIfActive: true, onlySessionStartedAt: game.session_started_at }
+    expect(finishProbe.calls).toEqual([bound, bound])
     expect(t.uno_sessions[0].winner_player_id).toBe('B')
     expect(t.uno_sessions[0].updated_at).toBe(T0)
+    reset()
+  })
+
+  it('reports a conflict when the recovery flip loses to a newer round or another recoverer', async () => {
+    reset()
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished', winner_player_id: 'B' })
+    const db = makeDb(t)
+    finishProbe.lose = true
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('conflict')
+    reset()
+  })
+
+  it('recovers a finished session of an untimed round (no deadline guard in front of it)', async () => {
+    reset()
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished', winner_player_id: 'B' })
+    const db = makeDb(t)
+    const untimed = { ...game, session_started_at: null, game_duration_seconds: null }
+    expect(await finishExpiredUnoGame(db.supabase, untimed)).toBe('finished')
+    expect(finishProbe.calls).toEqual([{ onlyIfActive: true, onlySessionStartedAt: null }])
+    reset()
+  })
+
+  it('a live round that is not yet due is not_due, not an error', async () => {
+    reset()
+    const t = unoTables()
+    const db = makeDb(t)
+    const future = { ...game, session_started_at: new Date().toISOString(), game_duration_seconds: 3600 }
+    expect(await finishExpiredUnoGame(db.supabase, future)).toBe('not_due')
+    expect(t.uno_sessions[0].phase).not.toBe('finished')
+    reset()
+  })
+
+  it('reports a failed session read as an error', async () => {
+    reset()
+    const t = unoTables()
+    const db = makeDb(t, { failSelect: (table) => table === 'uno_sessions' })
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe('error')
     reset()
   })
 

@@ -56,13 +56,26 @@ export function useTurnExpiryTimer({
     }
   }, [])
 
+  // Bumped on every deadline change: a response or re-arm timer from the previous deadline sees a stale
+  // generation and must not touch the new deadline's gate or back-off.
+  const generationRef = useRef(0)
+  const rearmTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
   useEffect(() => {
+    generationRef.current += 1
     skipStreakRef.current = 0
+    // A pending re-arm (up to `maxBackoffMs` away) belongs to the previous deadline: drop it and release the
+    // gate now, so the new deadline can fire the moment it expires.
+    clearTimeout(rearmTimeoutRef.current)
+    rearmTimeoutRef.current = undefined
+    firingRef.current = false
+    return () => clearTimeout(rearmTimeoutRef.current)
   }, [deadlineAt])
 
   useEffect(() => {
     if (!active || secondsLeft > 0 || firingRef.current) return
     firingRef.current = true
+    const generation = generationRef.current
     void Promise.resolve(onExpireRef.current())
       .then(
         (payload) => isSkippedExpire(payload),
@@ -71,6 +84,8 @@ export function useTurnExpiryTimer({
         () => false
       )
       .then((skipped) => {
+        // The deadline changed while the request was in flight: the new deadline owns the gate and back-off.
+        if (generation !== generationRef.current) return
         const rearm = nextExpireRearm({
           streak: skipStreakRef.current,
           ok: true,
@@ -80,7 +95,7 @@ export function useTurnExpiryTimer({
           maxBackoffMs,
         })
         skipStreakRef.current = rearm.streak
-        setTimeout(() => {
+        rearmTimeoutRef.current = setTimeout(() => {
           firingRef.current = false
           if (skipped && mountedRef.current) setRetryTick((t) => t + 1)
         }, rearm.rearmMs)
