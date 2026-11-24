@@ -840,6 +840,8 @@ async function loadGameState(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{
+  /** Set when the session read itself failed — distinct from a successful read that found no row. */
+  error?: string
   session: UnoSession | null
   hands: UnoPlayerHand[]
   timerSeconds: number
@@ -865,6 +867,7 @@ async function loadGameState(
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)
 
   return {
+    error: sessionRes.error ? internalErrorMessage('uno', sessionRes.error) : undefined,
     session: sessionRes.data as UnoSession | null,
     hands: (handsRes.data as UnoPlayerHand[]) ?? [],
     timerSeconds: gameRes.data?.timer_seconds ?? 0,
@@ -1612,8 +1615,17 @@ export async function processUnoPlay(
   opts?: { jumpIn?: boolean },
   boundUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
   if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
@@ -1927,8 +1939,17 @@ export async function processUnoPlayMulti(
   cardIds: string[],
   callUno = false
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
@@ -2137,8 +2158,17 @@ export async function processUnoDraw(
   playerId: string,
   boundUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean; committed?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
   if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
@@ -2430,8 +2460,17 @@ export async function processUnoPass(
   playerId: string,
   boundUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
   if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
@@ -2486,8 +2525,17 @@ export async function processUnoChoose(
   color: UnoColor,
   boundUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
   if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
@@ -2682,8 +2730,17 @@ export async function processUnoColorRoulette(
   playerId: string,
   color: UnoColor
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   const expiredOutcome = await finalizeIfGameExpired(
     supabase,
@@ -2877,8 +2934,17 @@ export async function processUnoChallenge(
   challenge: boolean,
   boundUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
   if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
@@ -3045,8 +3111,17 @@ export async function processUnoSwap(
   targetId: string,
   boundUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
   if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
@@ -3124,8 +3199,13 @@ export async function processUnoCall(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
-): Promise<{ error?: string }> {
-  const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
+): Promise<{ error?: string; skipped?: boolean }> {
+  const { data: sessionRaw, error: sessionError } = await supabase
+    .from('uno_sessions')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (sessionError) return { error: internalErrorMessage('uno', sessionError) }
   const session = sessionRaw as UnoSession | null
   if (!session) return { error: 'Session not found' }
   if (session.uno_pending_player !== playerId) return { error: 'Nothing to call' }
@@ -3134,24 +3214,26 @@ export async function processUnoCall(
   const { data: playerRow } = await supabase.from('players').select('name').eq('id', playerId).maybeSingle()
   const nm = playerRow?.name ?? 'A player'
 
-  const { data: landed } = await supabase
+  const { data: landed, error: callError } = await supabase
     .from('uno_sessions')
     .update({ uno_called: true, status_message: `${nm} called last card! 🎉`, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
     .select('game_id')
+  if (callError) return { error: internalErrorMessage('uno', callError) }
+  // The session moved (e.g. an unrelated leave) after we read it: the call did not land and the caller
+  // still owes it — report a conflict rather than success.
+  if (!landed || landed.length === 0) return { skipped: true }
   // Correctly called UNO on the second-to-last card via the standalone button — "UNO!". Only when
   // the call actually landed (CAS won), and read/written here since this path skips loadGameState.
-  if ((landed?.length ?? 0) > 0) {
-    const { data: handRow } = await supabase
-      .from('uno_player_hands')
-      .select('stats')
-      .eq('game_id', gameId)
-      .eq('player_id', playerId)
-      .maybeSingle()
-    const prev = ((handRow?.stats as UnoRoundStats | null) ?? {}) as UnoRoundStats
-    await writeUnoStats(supabase, gameId, playerId, foldUnoEvent(prev, 'uno_uno_calls'))
-  }
+  const { data: handRow } = await supabase
+    .from('uno_player_hands')
+    .select('stats')
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+    .maybeSingle()
+  const prev = ((handRow?.stats as UnoRoundStats | null) ?? {}) as UnoRoundStats
+  await writeUnoStats(supabase, gameId, playerId, foldUnoEvent(prev, 'uno_uno_calls'))
   return {}
 }
 
@@ -3160,8 +3242,17 @@ export async function processUnoExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
-    await loadGameState(supabase, gameId)
+  const {
+    error: loadError,
+    session,
+    hands,
+    timerSeconds,
+    gameDurationSeconds,
+    sessionStartedAt,
+    rules,
+    playerNames,
+  } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
 
@@ -3428,7 +3519,14 @@ async function removeUnoPlayerOnce(
         .eq('game_id', gameId)
       const hands = (handRows ?? []) as UnoPlayerHand[]
       const prevLeft = unoLeftPlayerIds(session)
-      const leftIds = prevLeft.includes(playerId) ? prevLeft : [...prevLeft, playerId]
+      // Already marked left: a prior attempt committed this departure (team decision / finish included).
+      // Only the remaining cleanup is retried — never write another team_leave_decision.
+      if (prevLeft.includes(playerId)) {
+        await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
+        const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+        return { error: error?.message ?? null }
+      }
+      const leftIds = [...prevLeft, playerId]
       const partner = unoTeammateId(order, playerId)
       const partnerActive = !!partner && !leftIds.includes(partner) && unoHandCount(hands, partner) > 0
       const opponentIds = order.filter(
@@ -3580,7 +3678,8 @@ export async function processUnoTeamLeaveDecision(
   playerId: string,
   decision: 'continue' | 'forfeit'
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const { session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  const { error: loadError, session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
+  if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'The round has already ended' }
   if (session.phase !== 'team_leave_decision') return { error: 'No teammate-leave decision pending' }

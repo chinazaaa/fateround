@@ -74,3 +74,10 @@ describe('uno action routes — error status follows the cause', () => {
     expect((await post(name, route, extra)).status).toBe(400)
   })
 })
+
+describe('call-uno route — conflict', () => {
+  it('a call that did not land is 409, not success', async () => {
+    state.result = { skipped: true }
+    expect((await post('call-uno', callUno, {})).status).toBe(409)
+  })
+})

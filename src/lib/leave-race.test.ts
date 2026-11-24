@@ -29,6 +29,7 @@ import {
   processUnoPlay,
   finishExpiredUnoGame,
   processUnoTeamLeaveDecision,
+  processUnoCall,
   UNO_REMOVE_CONFLICT_ERROR,
 } from './uno'
 import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble'
@@ -1023,5 +1024,88 @@ describe('removeScrabblePlayer — player-state read failure', () => {
     expect(t.scrabble_sessions[0].phase).toBe('playing')
     expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B', 'C'])
     expect(t.players.map((p) => p.id)).toContain('C')
+  })
+})
+
+describe('processUnoCall — write outcomes', () => {
+  const callTables = () => {
+    const t = unoTables()
+    t.uno_sessions[0].uno_pending_player = 'A'
+    t.uno_sessions[0].uno_called = false
+    return t
+  }
+
+  it('returns the internal error when the UPDATE fails', async () => {
+    const t = callTables()
+    const db = makeDb(t, { failUpdate: (table) => table === 'uno_sessions' })
+    const res = await processUnoCall(db.supabase, 'G', 'A')
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+    expect(t.uno_sessions[0].uno_called).toBe(false)
+  })
+
+  it('reports skipped (not success) when the CAS matches no row', async () => {
+    const t = callTables()
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table === 'uno_sessions' && ++reads === 1) t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+    const res = await processUnoCall(db.supabase, 'G', 'A')
+    expect(res).toEqual({ skipped: true })
+    expect(t.uno_sessions[0].uno_called).toBe(false)
+  })
+
+  it('returns the internal error when the session read fails', async () => {
+    const t = callTables()
+    const db = makeDb(t, { failSelect: (table) => table === 'uno_sessions' })
+    expect((await processUnoCall(db.supabase, 'G', 'A')).error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  it('lands the call when nothing raced', async () => {
+    const t = callTables()
+    expect(await processUnoCall(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].uno_called).toBe(true)
+  })
+})
+
+describe('loadGameState — failed session read is not "Session not found"', () => {
+  it('processUnoDraw surfaces the internal error', async () => {
+    const t = unoTables()
+    const db = makeDb(t, { failSelect: (table) => table === 'uno_sessions' })
+    expect((await processUnoDraw(db.supabase, 'G', 'A')).error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  it('still reports Session not found when the read succeeds with no row', async () => {
+    const t = unoTables()
+    t.uno_sessions = []
+    expect((await processUnoDraw(makeDb(t).supabase, 'G', 'A')).error).toBe('Session not found')
+  })
+})
+
+describe('removeUnoPlayer — Team-Up retry of an already committed leave', () => {
+  it('does not reopen the teammate decision once the leaver is marked left', async () => {
+    const t = unoTables()
+    t.games[0].uno_team_mode = true
+    Object.assign(t.uno_sessions[0], {
+      phase: 'playing',
+      left_player_ids: ['A'],
+      team_decider_id: null,
+    })
+    const res = await removeUnoPlayer(makeDb(t).supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('playing')
+    expect(t.uno_sessions[0].team_decider_id).toBeNull()
+    expect(t.players.map((p) => p.id)).not.toContain('A')
+    expect(t.uno_player_hands.map((h) => h.player_id)).not.toContain('A')
+  })
+
+  it('first departure still opens the teammate decision', async () => {
+    const t = unoTables()
+    t.games[0].uno_team_mode = true
+    const res = await removeUnoPlayer(makeDb(t).supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('team_leave_decision')
+    expect(t.uno_sessions[0].team_decider_id).toBe('C')
   })
 })

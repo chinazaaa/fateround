@@ -25,8 +25,10 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error } = await processUnoCall(supabase, code, auth.player.id)
+  const { error, skipped } = await processUnoCall(supabase, code, auth.player.id)
   if (error) return NextResponse.json({ error }, { status: engineErrorStatus(error) })
+
+  if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
 
   return NextResponse.json({ success: true })
 }
