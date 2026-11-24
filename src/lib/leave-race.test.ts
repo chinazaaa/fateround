@@ -16,6 +16,7 @@ import {
   processUnoChoose,
   processUnoDraw,
   processUnoPlay,
+  finishExpiredUnoGame,
   processUnoTeamLeaveDecision,
   UNO_REMOVE_CONFLICT_ERROR,
 } from './uno'
@@ -35,6 +36,8 @@ function makeDb(
   tables: Tables,
   hooks: {
     afterSessionRead?: (table: string) => void
+    /** Runs after an update that matched at least one row landed (e.g. a finish CAS winning). */
+    afterUpdate?: (table: string) => void
     failSelect?: (table: string) => boolean
     failUpdate?: (table: string) => boolean
   } = {}
@@ -51,6 +54,7 @@ function makeDb(
       if (op === 'update') {
         if (hooks.failUpdate?.(table)) return { data: null, error: { message: 'boom', code: 'XX000' } }
         for (const r of rows) Object.assign(r, vals)
+        if (rows.length > 0) hooks.afterUpdate?.(table)
         return { data: selectAfter ? rows.map((r) => ({ ...r })) : null, error: null }
       }
       if (op === 'delete') {
@@ -742,8 +746,9 @@ describe('round-timer finish outcome is not treated as a live round', () => {
         run === 'play'
           ? await processUnoPlay(db.supabase, 'G', 'A', 'A1')
           : await processUnoExpireTurn(db.supabase, 'G')
-      if (run === 'play') expect(res.error).toBe('Game changed, please try again.')
-      else expect(res.skipped).toBe(true)
+      // Both are conflicts (the play route maps skipped to 409), never a client error.
+      expect(res.skipped).toBe(true)
+      expect(res.error).toBeUndefined()
       expect(t.uno_sessions[0].current_turn_index).toBe(0)
     }
   })
@@ -754,6 +759,24 @@ describe('round-timer finish outcome is not treated as a live round', () => {
     const res = await processUnoPlay(db.supabase, 'G', 'A', 'A1')
     expect(res.error).toMatch(/Time's up/)
     expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+})
+
+describe('finishExpiredUnoGame — session already finished', () => {
+  it('does not run a second finish (no winner rewrite, no extra session write)', async () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished', winner_player_id: 'B' })
+    const game = {
+      id: 'G',
+      status: 'active',
+      session_started_at: '2020-01-01T00:00:00.000Z',
+      game_duration_seconds: 60,
+      uno_team_mode: false,
+    } as Parameters<typeof finishExpiredUnoGame>[1]
+    const db = makeDb(t, { afterUpdate: () => expect.fail('a second finish wrote the session') })
+    expect(await finishExpiredUnoGame(db.supabase, game)).toBe(true)
+    expect(t.uno_sessions[0].winner_player_id).toBe('B')
+    expect(t.uno_sessions[0].updated_at).toBe(T0)
   })
 })
 
@@ -846,19 +869,36 @@ describe('processUnoDraw — partial-draw finish surfaces hand-write failures', 
     expect(t.uno_sessions[0].phase).toBe('finished')
   })
 
+  // A real active leave changes the session token before it deletes the hand, which would make the finish
+  // CAS lose; the hand can only vanish without a token change once the session is already finished. So the
+  // deletion lands right after the finish CAS wins and before the first hand write.
+  const deleteAHandAfterFinish = (t: Tables) => {
+    let done = false
+    return (table: string) => {
+      if (table !== 'uno_sessions' || done) return
+      done = true
+      t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id !== 'A')
+    }
+  }
+
   it('does not report success when the hand row is gone (zero rows updated)', async () => {
     const t = noMercyTables()
-    let reads = 0
-    const db = makeDb(t, {
-      afterSessionRead: (table) => {
-        // The leave deletes A's hand right after the draw loaded it.
-        if (table === 'uno_player_hands' && ++reads === 1) {
-          t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id !== 'A')
-        }
-      },
-    })
+    const db = makeDb(t, { afterUpdate: deleteAHandAfterFinish(t) })
     const res = await processUnoDraw(db.supabase, 'G', 'A')
-    expect(res.error).toBeTruthy()
+    expect(res.error).toBe('Hand not found')
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('an expiry-driven draw keeps its own hand-write failure instead of reporting a skip', async () => {
+    const t = noMercyTables()
+    t.uno_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    // Nothing playable, so the expiry auto-draws.
+    t.uno_player_hands.find((h) => h.player_id === 'A')!.cards = [heavy('A9')]
+    const db = makeDb(t, { afterUpdate: deleteAHandAfterFinish(t) })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(res.error).toBe('Hand not found')
+    expect(res.skipped).toBeUndefined()
   })
 
   it('retries a transient hand-write failure and reports success with the hand persisted', async () => {

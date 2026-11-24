@@ -1048,9 +1048,10 @@ async function finalizeIfGameExpired(
   return finished.won ? { finished: true } : { lost: true }
 }
 
-function expiredPlayResult(outcome: ExpiredOutcome): { error: string } {
+function expiredPlayResult(outcome: ExpiredOutcome): { error?: string; skipped?: boolean } {
   if ('error' in outcome) return { error: outcome.error }
-  if ('lost' in outcome) return { error: 'Game changed, please try again.' }
+  // A lost finish CAS means a competing write moved the game: a conflict (409), not a client error.
+  if ('lost' in outcome) return { skipped: true }
   return { error: "Time's up — the game has ended" }
 }
 
@@ -2124,7 +2125,7 @@ export async function processUnoDraw(
   gameId: string,
   playerId: string,
   boundUpdatedAt?: string
-): Promise<{ error?: string; skipped?: boolean }> {
+): Promise<{ error?: string; skipped?: boolean; committed?: boolean }> {
   const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
     await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
@@ -2256,7 +2257,8 @@ export async function processUnoDraw(
         [{ playerId, cards: newHand }, ...(missed ? [{ playerId: missed.playerId, cards: missed.hand }] : [])]
       )
       // The round finished, but a hand that failed to persist must not be reported as a clean success.
-      if (finished.won) return finished.error ? { error: finished.error } : {}
+      // `committed`: this call's own finish bumped updated_at, so callers must not read that as a racing write.
+      if (finished.won) return finished.error ? { error: finished.error, committed: true } : {}
       return lostWrite(finished)
     }
     // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
@@ -3174,8 +3176,14 @@ export async function processUnoExpireTurn(
   // phase validation ("Not your turn", "Card not in hand", ...). That is not a client error — the
   // turn was already handled — so when the session changed under us, report a skip instead.
   const expectedUpdatedAt = session.updated_at
-  const settle = async (result: { error?: string }): Promise<{ error?: string; skipped?: boolean }> => {
+  const settle = async (result: {
+    error?: string
+    committed?: boolean
+  }): Promise<{ error?: string; skipped?: boolean; committed?: boolean }> => {
     if (!result.error) return result
+    // The round finished under this very call but a hand write failed: the finish itself moved
+    // updated_at, so the reread below would wrongly report a skip. Keep the error.
+    if (result.committed) return result
     // A database failure is not a lost race: the turn is still unhandled, so keep the error visible
     // (and retryable) even when another write has since moved updated_at.
     if (result.error === INTERNAL_ERROR_MESSAGE) return result
@@ -3282,6 +3290,9 @@ export async function finishExpiredUnoGame(
 
   const session = sessionRes.data as UnoSession | null
   if (!session) return false
+  // A finish is already in flight or done (finishByLowestHand flips the phase before games.status):
+  // a second one would re-pick the winner from pre-draw hands and award series points twice.
+  if (session.phase === 'finished') return true
 
   const playerNames = new Map<string, string>()
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)

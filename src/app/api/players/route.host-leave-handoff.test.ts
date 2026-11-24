@@ -32,11 +32,15 @@ vi.mock('@/lib/codewords', async (importOriginal) => ({
 type Row = Record<string, unknown>
 /** A successful removal deletes the seat (games.host_player_id is ON DELETE SET NULL); `onCall` runs after it. */
 function removed(r: { error: string | null; onCall: (() => void) | null }) {
-  if (!r.error) tables.games[0].host_player_id = null
+  if (!r.error && !keepSeat) tables.games[0].host_player_id = null
   r.onCall?.()
   return { error: r.error }
 }
 let failSuccessorLookup = false
+/** Number of upcoming successor lookups that fail (the deferred, post-removal ones). */
+let lookupFailBudget = 0
+/** A finished host's seat is retained by the removal helper, so host_player_id keeps naming them. */
+let keepSeat = false
 let tables: Record<string, Row[]> = {}
 
 /** Tiny stateful Supabase stand-in: equality / is-null / neq filters, update, delete. */
@@ -58,7 +62,10 @@ function builder(table: string) {
       for (const r of rows) Object.assign(r, patch)
       return { data: rows.map((r) => ({ ...r })), error: null }
     }
-    if (failSuccessorLookup && excludesSomeone) return { data: null, error: { message: 'boom' } }
+    if (excludesSomeone && (failSuccessorLookup || lookupFailBudget > 0)) {
+      if (!failSuccessorLookup) lookupFailBudget--
+      return { data: null, error: { message: 'boom' } }
+    }
     return { data: match().map((r) => ({ ...r })), error: null }
   }
   const api: Record<string, unknown> = {
@@ -68,6 +75,12 @@ function builder(table: string) {
     eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), api),
     neq: (k: string, v: unknown) => ((excludesSomeone = true), filters.push((r) => r[k] !== v), api),
     is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), api),
+    // Only the `col.is.null,col.eq.X` shape the route uses.
+    or: (expr: string) => {
+      const alts = expr.split(',').map((a) => a.split('.'))
+      filters.push((r) => alts.some(([k, op, v]) => (op === 'is' ? (r[k] ?? null) === null : r[k] === v)))
+      return api
+    },
     in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), api),
     update: (p: Row) => ((patch = p), api),
     delete: () => ((deleting = true), api),
@@ -139,6 +152,8 @@ function setup(gameType: string, extra: Row = {}) {
 beforeEach(async () => {
   DELETE ??= (await import('./route')).DELETE
   failSuccessorLookup = false
+  lookupFailBudget = 0
+  keepSeat = false
   removal.reconcileError = null
   removal.uno.error = null
   removal.scrabble.error = null
@@ -237,6 +252,48 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     expect(res.status).toBe(500)
     expect(tables.games[0].status).toBe('active')
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+  })
+
+  it('a transient deferred successor lookup failure is retried and the nominee is still set', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      lookupFailBudget = 1
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+    expect(tables.games[0].status).toBe('active')
+  })
+
+  it('a persistent deferred successor lookup failure ends the game rather than leaving it host-less', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      lookupFailBudget = 2
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('finished')
+  })
+
+  it('a finished host whose seat is retained still has host_user_id cleared (pending nominee path)', async () => {
+    setup('uno', { pending_host_player_id: OTHER_PID })
+    keepSeat = true
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].host_player_id).toBe(HOST_PID)
+    expect(tables.games[0].host_user_id).toBeNull()
+  })
+
+  it('does not clear host_user_id when a different player claimed host in between', async () => {
+    setup('uno', { pending_host_player_id: OTHER_PID })
+    keepSeat = true
+    removal.uno.onCall = () => {
+      tables.games[0].host_player_id = OTHER_PID
+      tables.games[0].host_user_id = 'user-other'
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].host_user_id).toBe('user-other')
   })
 
   it('when every other player left before the handoff, the game is ended', async () => {

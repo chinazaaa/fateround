@@ -1998,14 +1998,15 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
     if (isHostLeaving && isLive) {
       if (gameRow.pending_host_player_id) {
         // A nominee's banner is already live: once the leave commits, just stop routing the outgoing host back.
-        // The seat delete nulls host_player_id (ON DELETE SET NULL) and a claim sets it to the claimant, so
-        // matching on null keeps this from clearing a host who claimed in between.
+        // The seat delete nulls host_player_id (ON DELETE SET NULL), but a finished host's seat is retained
+        // (host_player_id still names them); a claim sets it to the claimant. So matching null-or-the-outgoing
+        // player clears the linkage without touching a host who claimed in between.
         handoff.apply = async () => {
           const { error } = await getSupabaseAdmin()
             .from('games')
             .update({ host_user_id: null })
             .eq('id', id)
-            .is('host_player_id', null)
+            .or(`host_player_id.is.null,host_player_id.eq.${playerId}`)
           if (error) console.error('players: clearing host_user_id after host leave failed', error)
         }
       } else {
@@ -2026,18 +2027,23 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
         if (successor?.id) {
           // Nominate only after the removal succeeded; re-pick the successor then, as the roster may have moved.
           handoff.apply = async () => {
-            const { data: next, error: nextError } = await getSupabaseAdmin()
-              .from('players')
-              .select('id')
-              .eq('game_id', id)
-              .eq('is_bot', false)
-              .eq('spectator', false)
-              .neq('id', playerId)
-              .order('joined_at', { ascending: true })
-              .limit(1)
-              .maybeSingle()
+            const pickNext = () =>
+              getSupabaseAdmin()
+                .from('players')
+                .select('id')
+                .eq('game_id', id)
+                .eq('is_bot', false)
+                .eq('spectator', false)
+                .neq('id', playerId)
+                .order('joined_at', { ascending: true })
+                .limit(1)
+                .maybeSingle()
+            let { data: next, error: nextError } = await pickNext()
+            if (nextError) ({ data: next, error: nextError } = await pickNext())
             if (nextError) {
+              // The seat is already gone: never leave a live game with no host and no nominee. End it instead.
               console.error('players: host successor lookup after leave failed', nextError)
+              await endGameHostLeft({ id, status: gameRow.status, game_type: gameRow.game_type })
               return
             }
             if (!next?.id) {
