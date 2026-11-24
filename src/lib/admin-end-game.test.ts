@@ -16,15 +16,22 @@ vi.mock('@/lib/game-finish', () => ({ markGameFinished }))
 const revealFinishedTtlRounds = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/two-truths-advance', () => ({ revealFinishedTtlRounds }))
 
-import { adminEndGame } from './admin-end-game'
+import { adminEndGame, completeFinishedHostLeftRoundCleanup } from './admin-end-game'
 
-type Recorded = { gameUpdates: Array<Record<string, unknown>>; deletes: string[]; roundUpdates: number }
+type Recorded = {
+  gameUpdates: Array<Record<string, unknown>>
+  deletes: string[]
+  roundUpdates: number
+  roundBounds: string[]
+}
 
-function mockSupabase(opts: { deleteError?: { message: string }; gameStatus?: string } = {}): {
+function mockSupabase(
+  opts: { deleteError?: { message: string }; gameStatus?: string; gameRow?: Record<string, unknown> } = {}
+): {
   supabase: SupabaseClient
   recorded: Recorded
 } {
-  const recorded: Recorded = { gameUpdates: [], deletes: [], roundUpdates: 0 }
+  const recorded: Recorded = { gameUpdates: [], deletes: [], roundUpdates: 0, roundBounds: [] }
   const supabase = {
     from: (table: string) => ({
       update: (patch: Record<string, unknown>) => {
@@ -33,6 +40,7 @@ function mockSupabase(opts: { deleteError?: { message: string }; gameStatus?: st
         const chain: Record<string, unknown> = {}
         chain.eq = () => chain
         chain.is = () => chain
+        chain.lte = (_col: string, v: string) => (recorded.roundBounds.push(v), chain)
         // Awaitable at any point in the chain — the rounds update ends on `.eq`, the
         // result_reason update ends on `.is`.
         chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
@@ -43,7 +51,11 @@ function mockSupabase(opts: { deleteError?: { message: string }; gameStatus?: st
       select: () => ({
         eq: () => ({
           maybeSingle: async () => ({
-            data: { status: opts.gameStatus ?? 'finished', session_started_at: null, finished_at: null },
+            data: opts.gameRow ?? {
+              status: opts.gameStatus ?? 'finished',
+              session_started_at: null,
+              finished_at: null,
+            },
             error: null,
           }),
         }),
@@ -277,6 +289,37 @@ describe('adminEndGame — a rejected finishGuard leaves the live game untouched
     expect(result.cleanupError).toBeTruthy()
   })
 
+  it('retries a failed round cleanup after a won guarded finish before reporting cleanupError', async () => {
+    markGameFinished.mockResolvedValue({ error: null, won: true })
+    revealFinishedTtlRounds.mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    const { supabase, recorded } = mockSupabase()
+
+    const result = await adminEndGame(
+      supabase,
+      { id: 'G', status: 'active', game_type: 'two_truths' },
+      { finishGuard: GUARD }
+    )
+
+    expect(result).toEqual({ error: null, won: true })
+    expect(recorded.roundUpdates).toBe(2)
+  })
+
+  it('gives up after a bounded number of cleanup attempts', async () => {
+    markGameFinished.mockResolvedValue({ error: null, won: true })
+    revealFinishedTtlRounds.mockResolvedValue(false)
+    const { supabase, recorded } = mockSupabase()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await adminEndGame(
+      supabase,
+      { id: 'G', status: 'active', game_type: 'two_truths' },
+      { finishGuard: GUARD }
+    )
+
+    expect(result.cleanupError).toBeTruthy()
+    expect(recorded.roundUpdates).toBe(3)
+  })
+
   it('without a guard the rounds still finish BEFORE the game flip (a failure leaves it endable)', async () => {
     revealFinishedTtlRounds.mockResolvedValue(false)
     const { supabase } = mockSupabase()
@@ -286,5 +329,41 @@ describe('adminEndGame — a rejected finishGuard leaves the live game untouched
     expect(result.won).toBe(false)
     expect(result.error).toBeTruthy()
     expect(markGameFinished).not.toHaveBeenCalled()
+  })
+})
+
+describe('completeFinishedHostLeftRoundCleanup — generation-bound recovery', () => {
+  const FINISHED = {
+    status: 'finished',
+    game_type: 'two_truths',
+    host_player_id: 'HOST',
+    result_reason: 'host_ended',
+    finished_at: '2026-01-01T00:00:00.000Z',
+  }
+
+  it('finishes and reveals the rounds of the finished session, bound to its finished_at', async () => {
+    const { supabase, recorded } = mockSupabase({ gameRow: FINISHED })
+    expect(await completeFinishedHostLeftRoundCleanup(supabase, 'G', 'HOST')).toBeNull()
+    expect(recorded.roundUpdates).toBe(1)
+    expect(recorded.roundBounds).toEqual([FINISHED.finished_at])
+    expect(revealFinishedTtlRounds).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a still-failing cleanup so the leave can be retried', async () => {
+    revealFinishedTtlRounds.mockResolvedValue(false)
+    const { supabase } = mockSupabase({ gameRow: FINISHED })
+    expect(await completeFinishedHostLeftRoundCleanup(supabase, 'G', 'HOST')).toBeTruthy()
+  })
+
+  it.each([
+    ['a live game (Play Again started a new session)', { ...FINISHED, status: 'active' }],
+    ['a game finished for another reason', { ...FINISHED, result_reason: 'admin_ended' }],
+    ['a game another player now hosts', { ...FINISHED, host_player_id: 'OTHER' }],
+    ['a finished game with no finished_at', { ...FINISHED, finished_at: null }],
+  ])('touches nothing for %s', async (_name, gameRow) => {
+    const { supabase, recorded } = mockSupabase({ gameRow })
+    expect(await completeFinishedHostLeftRoundCleanup(supabase, 'G', 'HOST')).toBeNull()
+    expect(recorded.roundUpdates).toBe(0)
+    expect(revealFinishedTtlRounds).not.toHaveBeenCalled()
   })
 })

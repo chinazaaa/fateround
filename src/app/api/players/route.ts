@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { adminEndGame } from '@/lib/admin-end-game'
+import { adminEndGame, completeFinishedHostLeftRoundCleanup } from '@/lib/admin-end-game'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
@@ -1890,7 +1890,10 @@ async function endGameHostLeft(
   // The game IS finished; a failed post-finish wipe does not un-finish it, so the
   // stamp below still runs. Nothing retries the wipe — surface it for an operator.
   if (ended.cleanupError) {
-    console.error(`players: cleanup after host-left finish failed for ${game.id} — not retried`, ended.cleanupError)
+    console.error(
+      `players: cleanup after host-left finish failed for ${game.id} — retried on the host's next leave`,
+      ended.cleanupError
+    )
   }
   if (ended.error) return false
   if (ended.won) {
@@ -2136,6 +2139,11 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
     // the finish but failed the seat delete, so its deferred handoff never ran). Only the host's own
     // seat qualifies, and it must run BEFORE the delete, which nulls host_player_id (ON DELETE SET NULL).
     if (!hostToken) {
+      // A host-left finish finishes the game BEFORE its rounds (and the Two Truths reveal); if that cleanup failed
+      // the game can no longer be ended again, so every leave of the retained host seat retries it. Bound to the
+      // finished session, so a Play Again game under the same id is never touched.
+      const cleanupError = await completeFinishedHostLeftRoundCleanup(getSupabaseAdmin(), id, playerId)
+      if (cleanupError) return NextResponse.json({ error: cleanupError }, { status: 500 })
       const { error: clearError } = await getSupabaseAdmin()
         .from('games')
         .update({ host_user_id: null })

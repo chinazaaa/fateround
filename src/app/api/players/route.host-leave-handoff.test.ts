@@ -81,6 +81,7 @@ function builder(table: string) {
       filters.push((r) => alts.some(([k, op, v]) => (op === 'is' ? (r[k] ?? null) === null : r[k] === v)))
       return api
     },
+    lte: (k: string, v: string) => (filters.push((r) => r[k] != null && (r[k] as string) <= v), api),
     in: (k: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[k])), api),
     update: (p: Row) => ((patch = p), api),
     delete: () => ((deleting = true), api),
@@ -426,5 +427,32 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     expect(res.status).toBe(500)
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
     expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+})
+
+describe('DELETE /api/players: host-left round cleanup recovery', () => {
+  const finishedHostLeft: Row = {
+    status: 'finished',
+    result_reason: 'host_ended',
+    finished_at: '2026-01-01T00:00:00.000Z',
+  }
+
+  it('a retried leave finishes the stuck round of the finished session and nothing else', async () => {
+    setup('trivia', finishedHostLeft)
+    tables.rounds = [
+      { id: 'old', game_id: 'ABCD', status: 'active', started_at: '2025-12-31T23:59:00.000Z' },
+      { id: 'newer', game_id: 'ABCD', status: 'active', started_at: '2026-01-02T00:00:00.000Z' },
+    ]
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.rounds.find((r) => r.id === 'old')?.status).toBe('finished')
+    expect(tables.rounds.find((r) => r.id === 'newer')?.status).toBe('active')
+  })
+
+  it('does not touch rounds of a live game (Play Again) when the host leaves', async () => {
+    setup('trivia', { result_reason: 'host_ended' })
+    tables.rounds = [{ id: 'live', game_id: 'ABCD', status: 'active', started_at: '2025-12-31T00:00:00.000Z' }]
+    await leave()
+    expect(tables.rounds[0].status).toBe('active')
   })
 })

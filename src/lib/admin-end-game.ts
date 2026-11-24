@@ -49,6 +49,62 @@ export type AdminEndGameOptions = {
   finishGuard?: FinishGuard
 }
 
+const ROUND_CLEANUP_ATTEMPTS = 3
+
+/**
+ * Bulk-finish a game's active rounds and, for Two Truths, fold each finished round's lie and guesses back into
+ * `ttl_metadata` (the bulk update bypasses the normal end-of-round path). Idempotent. `startedNoLaterThan` binds
+ * the update to rounds of a finished session: Play Again deletes the old rounds and a new session's rounds start
+ * after the old `finished_at`, so a later retry can never finish a live game's round.
+ */
+async function finishGameRounds(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: ReturnType<typeof parseGameType>,
+  endedAt: string,
+  startedNoLaterThan?: string
+): Promise<string | null> {
+  let update = supabase
+    .from('rounds')
+    .update({ status: 'finished', ended_at: endedAt })
+    .eq('game_id', gameId)
+    .eq('status', 'active')
+  if (startedNoLaterThan) update = update.lte('started_at', startedNoLaterThan)
+  const { error: roundError } = await update
+  if (roundError) return internalErrorMessage('admin-end-game', roundError)
+  // Without this an admin-ended game renders its last round with no lie highlighted. Unguarded callers run it
+  // BEFORE the game flip (a failure leaves the game endable); a guarded finish runs it after, and recovers via
+  // completeFinishedGameRoundCleanup.
+  if (isTwoTruthsGame(gameType)) {
+    const revealed = await revealFinishedTtlRounds(supabase, gameId)
+    if (!revealed) return 'Could not reveal every Two Truths round — game left endable; retry.'
+  }
+  return null
+}
+
+/**
+ * Recovery for a host-left finish whose round cleanup failed after the game was already finished (the guarded
+ * order finishes the game first). Callable on a later leave retry: it does nothing unless the game is still the
+ * finished session ended by THIS host leaving (`finished`, `host_ended`, host seat still the leaver's), and the
+ * round update is bound to rounds started no later than that session's `finished_at`, so a new live game started
+ * by Play Again under the same id (status no longer finished, rounds deleted and restarted later) is never touched.
+ */
+export async function completeFinishedHostLeftRoundCleanup(
+  supabase: SupabaseClient,
+  gameId: string,
+  hostPlayerId: string
+): Promise<string | null> {
+  const { data: game, error } = await supabase
+    .from('games')
+    .select('status, game_type, host_player_id, result_reason, finished_at')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (error) return internalErrorMessage('admin-end-game', error)
+  if (!game || game.status !== 'finished' || !game.finished_at) return null
+  if (game.result_reason !== 'host_ended' || game.host_player_id !== hostPlayerId) return null
+  return finishGameRounds(supabase, gameId, parseGameType(game.game_type), game.finished_at, game.finished_at)
+}
+
 export async function adminEndGame(
   supabase: SupabaseClient,
   game: AdminGameToEnd,
@@ -62,27 +118,7 @@ export async function adminEndGame(
   const now = new Date().toISOString()
   const gameType = parseGameType(game.game_type)
 
-  // Rounds are bulk-finished here, and for Two Truths the reveal is folded back into ttl_metadata.
-  const finishRounds = async (): Promise<string | null> => {
-    const { error: roundError } = await supabase
-      .from('rounds')
-      .update({ status: 'finished', ended_at: now })
-      .eq('game_id', gameId)
-      .eq('status', 'active')
-    if (roundError) return internalErrorMessage('admin-end-game', roundError)
-    // The bulk round update above finishes rounds without going through the Two Truths reveal,
-    // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
-    // renders its last round with no lie highlighted.
-    if (isTwoTruthsGame(gameType)) {
-      // Bail before the game is marked finished if any reveal could not be written. The rounds are
-      // already 'finished' at this point, but revealFinishedTtlRounds picks those up again, so a
-      // retry recovers — whereas finishing the game makes this function reject every retry and the
-      // round keeps no lie_index forever.
-      const revealed = await revealFinishedTtlRounds(supabase, gameId)
-      if (!revealed) return 'Could not reveal every Two Truths round — game left endable; retry.'
-    }
-    return null
-  }
+  const finishRounds = () => finishGameRounds(supabase, gameId, gameType, now)
 
   // Unguarded: rounds first, so a failure leaves the game endable for a retry. With a `finishGuard` the
   // guarded games update must decide first — it can lose (another finisher, or a player who claimed host),
@@ -94,7 +130,14 @@ export async function adminEndGame(
   }
   const result = await finishGame()
   if (finishGuard && result.won && !result.error) {
-    const roundsError = await finishRounds()
+    // The game is already finished, so a failure here cannot be retried through adminEndGame (it rejects a
+    // finished game). Both writes are idempotent, so retry a few times before giving up; the caller can still
+    // recover later with `completeFinishedGameRoundCleanup`, bound to this finish.
+    let roundsError: string | null = null
+    for (let attempt = 0; attempt < ROUND_CLEANUP_ATTEMPTS; attempt++) {
+      roundsError = await finishRounds()
+      if (!roundsError) break
+    }
     if (roundsError) {
       console.error(`admin-end-game: round finish after guarded finish failed for ${gameId}`, roundsError)
       return { ...result, cleanupError: result.cleanupError ?? roundsError }
