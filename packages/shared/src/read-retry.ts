@@ -8,6 +8,16 @@ export interface ReadRetry {
   reset(): void
   scope(key: string | null): void
   attempts(): number
+  /** True while a retry timer is armed: a later attempt is already owed, so nobody else needs to schedule one. */
+  pending(): boolean
+}
+
+/**
+ * Outcome of a read for a caller that owns its OWN retry (the flip tracker's resync): a failed read counts as
+ * handled while `retry` has an attempt armed for it, so the same failure is not retried by two owners.
+ */
+export function readOutcomeOwned(ok: unknown, retry: Pick<ReadRetry, 'pending'>): boolean {
+  return ok !== false || retry.pending()
 }
 
 /**
@@ -16,7 +26,10 @@ export interface ReadRetry {
  * board sits idle.
  *
  * - `schedule()` after a failed read: arms ONE timer (a pending timer is not stacked) that calls `retry`
- *   after the next backoff delay. Returns false, arming nothing, once the attempt limit is used up.
+ *   after the next backoff delay. Returns false, arming nothing, once the attempt limit is used up. An attempt
+ *   is only charged to the budget when its timer FIRES: a timer that is cancelled (`cancel`/`cancelPending`)
+ *   before it fires used nothing, so a burst of ordinary refreshes cannot burn the whole budget while no
+ *   retry ever ran.
  * - `cancel()` clears a pending timer but keeps the attempt count: use it when a newer read starts (that read
  *   reschedules itself if it fails too) and on unmount.
  * - `cancelPending()` clears only a pending timer. Use it when a newer read takes over: unlike `cancel()` it does
@@ -27,7 +40,9 @@ export interface ReadRetry {
  * - `reset()` cancels and restores the full budget: use it when a read succeeds.
  * - `scope(key)` resets the budget ONCE when `key` (the requested round) differs from the last one; call it
  *   before that round's reads can fail, so a budget used up on an old round never starves the new one. The
- *   same key again changes nothing.
+ *   same key again changes nothing. A retry that is RUNNING when the round changes (its read discovered the new
+ *   round) is not invalidated: the read it is waiting on is now that round's read, so it stays the owner and
+ *   arms the next attempt, from the fresh budget, if that read fails or stalls.
  *
  * `retry` returns whether the read it ran failed (`false`, or a throw / rejection) or not. A failed retry
  * schedules the next attempt by itself, so a read that fails before it can reach the caller's own
@@ -52,6 +67,8 @@ export function createReadRetry(
   let handle: unknown = null
   let armed = false
   let epoch = 0
+  /** Retries whose read is still running (started by a fired timer, not yet settled). */
+  let running = 0
   let scopeKey: string | null | undefined = undefined
 
   const cancel = () => {
@@ -72,18 +89,25 @@ export function createReadRetry(
       if (armed) return true
       if (attempts >= delaysMs.length) return false
       const delay = delaysMs[attempts]!
-      attempts++
       armed = true
       handle = timers.set(() => {
         armed = false
         handle = null
+        // Charged now, not when armed: only an attempt that actually ran uses the budget.
+        attempts++
         const started = epoch
+        running++
+        const settle = () => {
+          running--
+        }
         const failed = () => {
+          settle()
           if (epoch === started) api.schedule()
         }
         try {
           void Promise.resolve(retry()).then((ok) => {
             if (ok === false) failed()
+            else settle()
           }, failed)
         } catch {
           failed()
@@ -100,8 +124,13 @@ export function createReadRetry(
     scope(key: string | null) {
       if (key === scopeKey) return
       scopeKey = key
-      api.reset()
+      if (running > 0) {
+        // The retry that is running keeps owning its read's outcome (see above); only its budget is renewed.
+        cancelPending()
+        attempts = 0
+      } else api.reset()
     },
+    pending: () => armed,
     /** Retries used since the last reset (for tests). */
     attempts: () => attempts,
   }

@@ -79,6 +79,12 @@ export function createFlipResyncTracker(
   let backoff: { handle: unknown } | null = null
   /** Bumped by `cancel()`: the outcome of a resync that started before it is ignored. */
   let epoch = 0
+  /**
+   * Identifies the resync that currently holds the `resyncing` gate. `cancel()` releases the gate and bumps it, so
+   * the abandoned resync (which may never settle) can neither keep a replacement flip's recovery out nor, when it
+   * finally settles, release the gate of the resync that replaced it.
+   */
+  let resyncGen = 0
 
   const clearBackoff = () => {
     if (backoff) timers.clear(backoff.handle)
@@ -110,7 +116,10 @@ export function createFlipResyncTracker(
     resyncing = true
     const round = currentRound
     const started = epoch
+    const gen = ++resyncGen
     const done = (ok: boolean) => {
+      // Cancelled while running: `cancel()` already released the gate and the outcome belongs to nobody.
+      if (gen !== resyncGen) return
       resyncing = false
       if (epoch === started) {
         if (ok) {
@@ -148,6 +157,10 @@ export function createFlipResyncTracker(
     /** Unmount: drop a pending backoff timer and the outcome of a resync still running. Reusable afterwards. */
     cancel() {
       epoch++
+      // Release the gate: a resync still reading is abandoned (its outcome is dropped), and must not hold back
+      // the recovery of a flip that fails after this. It may never settle.
+      resyncing = false
+      resyncGen++
       // Flips that began before this are no longer part of the recovery gate: one that never gets an answer
       // would hold every later resync back forever, and one that settles late must not decrement the count of a
       // flip started AFTER the cancel (the count is per round, not per flip). `end` ignores their decrement.

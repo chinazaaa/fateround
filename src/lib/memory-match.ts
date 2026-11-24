@@ -596,7 +596,7 @@ export function computeStreakBonus(streakBeforeMatch: number): number {
 // Single source in packages/shared so the mobile client runs the same (tested) tracker. Imported by relative
 // path because the web app does not wire up the `@fateround/shared` alias (same pattern as troll-run-types).
 export { createFlipResyncTracker } from '../../packages/shared/src/flip-resync'
-export { createReadRetry } from '../../packages/shared/src/read-retry'
+export { createReadRetry, readOutcomeOwned } from '../../packages/shared/src/read-retry'
 
 /** Format grid size as a readable label. */
 export function formatMatchingPairsGridSize(gridSizePairs: MatchingPairsGridSize): string {

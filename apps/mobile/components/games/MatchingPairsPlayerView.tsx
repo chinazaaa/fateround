@@ -23,7 +23,7 @@ import {
 import { batch3GameLabel } from '@fateround/shared/batch-3-games'
 import { playerIsViewer } from '@fateround/shared/viewers'
 import { createFlipResyncTracker, snapshotReadsOk, type ReadTicket } from '@fateround/shared/flip-resync'
-import { createReadRetry } from '@fateround/shared/read-retry'
+import { createReadRetry, readOutcomeOwned } from '@fateround/shared/read-retry'
 import { JoinScreen } from '@/components/JoinScreen'
 import { GameInfoChips } from '@/components/GameInfoChips'
 import { LobbyView } from '@/components/LobbyView'
@@ -126,9 +126,21 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
   // Drops the board the view is showing together with its owner round, and fences older reads (a stalled read
   // of the round the board belonged to must not rebuild it later). With `ticket`, that read itself stays valid.
+  //
+  // Retiring the board of ANOTHER round also drops what that round owned (finished flag, rank, points, streak, the
+  // opponents' progress): if the new round's history read then fails, none of the previous round's results may show
+  // next to the new round's metadata. They come back with the snapshot that succeeds. `ownsProgress: false` keeps
+  // the progress rows (a caller that has just published this round's own) but still zeroes points and streak.
   const retireBoard = useCallback(
-    (roundId: string | null, ticket?: ReadTicket) => {
+    (roundId: string | null, ticket?: ReadTicket, ownsProgress = true) => {
       flipTracker.clearBoardRound(roundId, ticket)
+      setPoints(0)
+      setStreak(0)
+      if (ownsProgress) {
+        setProgress(null)
+        setFinishRank(null)
+        setAllProgress([])
+      }
       if (flipTimeoutRef.current) clearTimeout(flipTimeoutRef.current)
       flipTimeoutRef.current = null
       boardRef.current = null
@@ -214,7 +226,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
       if (game.status === 'finished') return 'finished'
       return 'playing'
     },
-    afterResolve: async (game, playerId, loaded, isCurrent) => {
+    afterResolve: async (game, playerId, loaded, isCurrent, markFailed) => {
       if (!playerId || !game) return
       // A superseded (or unmounted) load must not touch the tracker, the retry or the view, not even to take
       // over a retry another load armed.
@@ -259,6 +271,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         if (ownerRound !== null && ownerRound !== roundData.id) retireBoard(roundData.id, readTicket)
         flipTracker.markDirty()
         readRetry.schedule()
+        // The load reports the failed snapshot (the retry above owns re-reading: see readOutcomeOwned).
+        markFailed()
         return
       }
       readRetry.reset()
@@ -278,7 +292,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         // This outcome is as authoritative as an applied snapshot: an older read must not bring a board back.
         flipTracker.commitRead(readTicket)
         const ownerRound = flipTracker.boardRound()
-        if (ownerRound !== null && ownerRound !== roundData.id) retireBoard(roundData.id, readTicket)
+        if (ownerRound !== null && ownerRound !== roundData.id) retireBoard(roundData.id, readTicket, false)
         return
       }
 
@@ -326,7 +340,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     },
   })
   // The tracker's resync waits for the real outcome of the load (a failure triggers its bounded retry).
-  loadRef.current = () => bootstrap.loadSettled()
+  // A failed read that the read retry already armed an attempt for is owned there: the tracker must not also back
+  // off and read again for the same failure (readOutcomeOwned).
+  loadRef.current = () => bootstrap.loadSettled().then((ok) => readOutcomeOwned(ok, readRetry))
   retryLoadRef.current = () => bootstrap.loadSettled()
   const { onLeft, lobbyProps } = usePlayerSessionActions(bootstrap)
 

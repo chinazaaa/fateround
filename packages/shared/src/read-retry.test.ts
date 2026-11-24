@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createReadRetry } from './read-retry'
+import { createReadRetry, readOutcomeOwned } from './read-retry'
 
 describe('createReadRetry', () => {
   beforeEach(() => vi.useFakeTimers())
@@ -36,17 +36,54 @@ describe('createReadRetry', () => {
     expect(r.attempts()).toBe(1)
   })
 
-  it('cancel (unmount / newer read) drops a pending retry and keeps the budget', () => {
+  it('cancel (unmount / newer read) drops a pending retry; a timer that never fired used no budget', () => {
     const retry = vi.fn()
     const r = createReadRetry(retry, [100, 200])
     r.schedule()
     r.cancel()
     vi.advanceTimersByTime(10_000)
     expect(retry).not.toHaveBeenCalled()
-    expect(r.attempts()).toBe(1)
+    expect(r.attempts()).toBe(0)
     expect(r.schedule()).toBe(true)
-    vi.advanceTimersByTime(200)
+    vi.advanceTimersByTime(100) // the FIRST delay again: nothing was consumed
     expect(retry).toHaveBeenCalledTimes(1)
+    expect(r.attempts()).toBe(1)
+  })
+
+  it('refreshes that cancel a pending timer before it fires do not burn the whole budget', async () => {
+    // Each ordinary refresh cancels the pending retry and, failing, schedules again. Three of them used to charge
+    // all three attempts although no retry ever ran, so the view then sat on a failed read with nobody to retry.
+    const retry = vi.fn(async () => true)
+    const r = createReadRetry(retry, [100, 200, 400])
+    for (let i = 0; i < 5; i++) {
+      expect(r.schedule()).toBe(true)
+      r.cancelPending()
+    }
+    expect(r.attempts()).toBe(0)
+    expect(r.schedule()).toBe(true)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it('pending() is true only while a timer is armed', async () => {
+    const r = createReadRetry(async () => true, [100])
+    expect(r.pending()).toBe(false)
+    r.schedule()
+    expect(r.pending()).toBe(true)
+    r.cancelPending()
+    expect(r.pending()).toBe(false)
+    r.schedule()
+    await vi.advanceTimersByTimeAsync(100)
+    expect(r.pending()).toBe(false)
+  })
+
+  it('readOutcomeOwned: a failed read counts as handled only while a retry is armed for it', () => {
+    const armed = { pending: () => true }
+    const idle = { pending: () => false }
+    expect(readOutcomeOwned(true, idle)).toBe(true)
+    expect(readOutcomeOwned(undefined, idle)).toBe(true)
+    expect(readOutcomeOwned(false, armed)).toBe(true)
+    expect(readOutcomeOwned(false, idle)).toBe(false)
   })
 
   it('reset (success / new round) cancels and restores the full budget', () => {
@@ -126,6 +163,9 @@ describe('createReadRetry', () => {
     r.schedule()
     await vi.advanceTimersByTimeAsync(100)
     expect(retry).toHaveBeenCalledTimes(1)
+    expect(r.attempts()).toBe(1)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(retry).toHaveBeenCalledTimes(2) // exactly one follow-up timer, not two
     expect(r.attempts()).toBe(2)
   })
 
@@ -150,7 +190,7 @@ describe('createReadRetry', () => {
       r.cancelPending()
       vi.advanceTimersByTime(10_000)
       expect(retry).not.toHaveBeenCalled()
-      expect(r.attempts()).toBe(1)
+      expect(r.attempts()).toBe(0)
       expect(r.schedule()).toBe(true)
     })
 
@@ -182,10 +222,9 @@ describe('createReadRetry', () => {
       expect(retry).toHaveBeenCalledTimes(1)
     })
 
-    it('the running retry is still superseded by a success (reset), a round change (scope) and unmount (cancel)', async () => {
+    it('the running retry is still superseded by a success (reset) and unmount (cancel)', async () => {
       for (const supersede of [
         (r: ReturnType<typeof createReadRetry>) => r.reset(),
-        (r: ReturnType<typeof createReadRetry>) => r.scope('next-round'),
         (r: ReturnType<typeof createReadRetry>) => r.cancel(),
       ]) {
         let resolve!: (v: boolean) => void
@@ -203,6 +242,60 @@ describe('createReadRetry', () => {
     })
   })
 
+  describe('a running retry that discovers a new round', () => {
+    it('stays the owner: if the new round read stalls out, it arms the next attempt from a fresh budget', async () => {
+      // The retry armed for round A starts a load; that load finds round B and calls scope('B') before reading
+      // B's history. scope() used to invalidate the running retry, so a stall of B's read left nobody to retry.
+      let resolve!: (v: boolean) => void
+      const retry = vi.fn(() => new Promise<boolean>((res) => (resolve = res)))
+      const r = createReadRetry(retry, [100, 100, 100])
+      r.scope('A')
+      r.schedule()
+      await vi.advanceTimersByTimeAsync(100)
+      expect(retry).toHaveBeenCalledTimes(1)
+      r.scope('B') // discovered mid-run
+      expect(r.attempts()).toBe(0) // B starts from the full budget
+      resolve(false) // B's read stalled and the load reported failure at its deadline
+      await vi.advanceTimersByTimeAsync(100)
+      expect(retry).toHaveBeenCalledTimes(2)
+    })
+
+    it('a round change with no retry running still invalidates nothing and resets', async () => {
+      const retry = vi.fn(async () => true)
+      const r = createReadRetry(retry, [100])
+      r.scope('A')
+      r.schedule()
+      r.scope('B')
+      expect(r.pending()).toBe(false)
+      expect(r.attempts()).toBe(0)
+    })
+
+    it('a running retry that settled no longer counts as running', async () => {
+      const retry = vi.fn(async () => true)
+      const r = createReadRetry(retry, [100, 100])
+      r.scope('A')
+      r.schedule()
+      await vi.advanceTimersByTimeAsync(100)
+      r.scope('B')
+      // reset() semantics again: epoch bumped, so an old outcome could not arm anything.
+      expect(r.attempts()).toBe(0)
+    })
+
+    it('an unmount (cancel) still wins over the adopted retry', async () => {
+      let resolve!: (v: boolean) => void
+      const retry = vi.fn(() => new Promise<boolean>((res) => (resolve = res)))
+      const r = createReadRetry(retry, [100, 100])
+      r.scope('A')
+      r.schedule()
+      await vi.advanceTimersByTimeAsync(100)
+      r.scope('B')
+      r.cancel()
+      resolve(false)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(retry).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('scope', () => {
     it('resets the budget once when the key changes, not on the same key', async () => {
       const retry = vi.fn(async () => false)
@@ -216,10 +309,12 @@ describe('createReadRetry', () => {
       expect(r.schedule()).toBe(false)
       r.scope('B')
       expect(r.attempts()).toBe(0)
-      expect(r.schedule()).toBe(true)
-      r.cancel()
+      r.schedule()
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(r.schedule()).toBe(false) // B used its three
       r.scope('B') // same key again does not refill
-      expect(r.attempts()).toBe(1)
+      expect(r.attempts()).toBe(3)
+      expect(r.schedule()).toBe(false)
     })
 
     it('a round change cancels the pending timer of the old round', async () => {

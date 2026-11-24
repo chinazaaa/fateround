@@ -12,13 +12,18 @@ const h = vi.hoisted(() => ({
   failPlayersFrom: Infinity,
   /** When set, the first players read waits for it. */
   gate: null as Promise<void> | null,
+  /** Every `.eq(column, value)` value the queries were made with (to tell which room a read was for). */
+  eqValues: [] as unknown[],
 }))
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: unknown) => {
     const o: Record<string, unknown> = {
       select: () => o,
-      eq: () => o,
+      eq: (_column: string, value: unknown) => {
+        h.eqValues.push(value)
+        return o
+      },
       maybeSingle: () => (h.hang ? new Promise(() => {}) : Promise.resolve(result)),
       order: () => {
         if (h.hang) return new Promise(() => {})
@@ -47,6 +52,7 @@ beforeEach(() => {
   h.playerReads = 0
   h.failPlayersFrom = Infinity
   h.gate = null
+  h.eqValues = []
 })
 
 function setup(extra: Record<string, unknown> = {}) {
@@ -96,7 +102,13 @@ describe('useGameViewBootstrap', () => {
     const { computeScreen } = setup({ afterResolve })
     await waitFor(() => expect(afterResolve).toHaveBeenCalled())
     // seam receives the resolved playerId (null via the mocked session) + the loadGameState state
-    expect(afterResolve).toHaveBeenCalledWith({ id: 'ABCD', status: 'active' }, null, 'STATE', expect.any(Function))
+    expect(afterResolve).toHaveBeenCalledWith(
+      { id: 'ABCD', status: 'active' },
+      null,
+      'STATE',
+      expect.any(Function),
+      expect.any(Function)
+    )
     // the enriched return value — not the original 'STATE' — is what computeScreen sees
     expect(computeScreen).toHaveBeenLastCalledWith({ id: 'ABCD', status: 'active' }, null, 'ENRICHED')
   })
@@ -574,5 +586,107 @@ describe('useGameViewBootstrap', () => {
       await Promise.resolve()
     })
     expect(computeScreen).not.toHaveBeenCalled()
+  })
+  it('a read the afterResolve step marked failed reports false from the settled load, screen still selected', async () => {
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    const afterResolve = vi.fn(async (_g, _p, _s, _c, markFailed: () => void) => {
+      markFailed()
+    })
+    const { result } = setup({ afterResolve })
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+    await expect(result.current.loadSettled()).resolves.toBe(false)
+    afterResolve.mockImplementation(async () => {})
+    await expect(result.current.loadSettled()).resolves.toBe(true)
+  })
+
+  it('a room change supersedes the old room run and reads the NEW room instead of only flagging a re-run', async () => {
+    h.gameRow = { id: 'AAAA', status: 'waiting' }
+    let release!: () => void
+    const stall = new Promise<void>((r) => (release = r))
+    const isCurrents: Array<() => boolean> = []
+    const loadGameState = vi.fn(async (_g: unknown, _p: unknown, isCurrent: () => boolean) => {
+      isCurrents.push(isCurrent)
+      if (isCurrents.length === 1) await stall // the old room's load never finishes in time
+      return { state: 'STATE', ok: true }
+    })
+    const computeScreen = vi.fn(() => 'waiting')
+    const { rerender } = renderHook(
+      ({ code }: { code: string }) =>
+        useGameViewBootstrap<string, string>({
+          gameCode: code,
+          loadingScreen: 'loading',
+          notFoundScreen: 'not_found',
+          loadGameState,
+          computeScreen,
+        }),
+      { initialProps: { code: 'AAAA' } }
+    )
+    await waitFor(() => expect(isCurrents).toHaveLength(1))
+    rerender({ code: 'BBBB' })
+    await waitFor(() => expect(isCurrents).toHaveLength(2)) // the new room was read
+    expect(isCurrents[0]!()).toBe(false) // and the old room's run no longer counts as current
+    expect(isCurrents[1]!()).toBe(true)
+    expect(h.eqValues).toContain('BBBB')
+    release()
+  })
+
+  it("a room change resets the previous room's finished latch", async () => {
+    h.gameRow = { id: 'AAAA', status: 'finished', session_started_at: 's1' }
+    const { result, rerender } = renderHook(
+      ({ code }: { code: string }) =>
+        useGameViewBootstrap<string, string>({
+          gameCode: code,
+          loadingScreen: 'loading',
+          notFoundScreen: 'not_found',
+          loadGameState: async () => ({ state: 'STATE', ok: true }),
+          computeScreen: (g: { status?: string }) => g.status ?? '',
+        }),
+      { initialProps: { code: 'AAAA' } }
+    )
+    await waitFor(() => expect(result.current.screen).toBe('finished'))
+    h.gameRow = { id: 'BBBB', status: 'active', session_started_at: 's1' } // same session id string, other room
+    rerender({ code: 'BBBB' })
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+  })
+
+  it('keeps a finished session retryable until the finished screen is selected (stalled afterResolve)', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'finished', session_started_at: 's1' }
+      let release!: () => void
+      const stall = new Promise<void>((r) => (release = r))
+      const afterResolve = vi.fn(async () => {
+        await stall
+      })
+      const { result } = setup({ afterResolve })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(afterResolve).toHaveBeenCalledTimes(1) // the finished load is stuck before it selected the screen
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_001)
+      })
+      // A lagging replica now reports the SAME session as active: the replacement load must report failure (so the
+      // caller retries) rather than success, because the finished screen was never selected.
+      h.gameRow = { id: 'ABCD', status: 'active', session_started_at: 's1' }
+      let outcome: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (outcome = v))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(outcome).toBe(false)
+      expect(result.current.screen).not.toBe('active') // and the stale board was not published
+      release()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('once the finished screen is selected, the same stale active read counts as success', async () => {
+    h.gameRow = { id: 'ABCD', status: 'finished', session_started_at: 's1' }
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('active')) // computeScreen maps non-waiting to 'active'
+    h.gameRow = { id: 'ABCD', status: 'active', session_started_at: 's1' }
+    await expect(result.current.loadSettled()).resolves.toBe(true)
   })
 })

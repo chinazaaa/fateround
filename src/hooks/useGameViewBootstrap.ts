@@ -1,7 +1,7 @@
 'use client'
 
 import { hostHref, takeOverHosting } from '@/lib/take-over-hosting'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { supabasePollOk } from '@/hooks/usePolling'
 import { resolvePlayerSession } from '@/lib/player-resume'
@@ -10,7 +10,7 @@ import { getPlayerSession, setPlayerSession } from '@/lib/utils'
 import { currentTournamentPlayerToken } from '@/lib/tournament-player-token'
 import { trackEvent, GA_EVENTS } from '@/lib/analytics'
 import { authHeaders } from '@/lib/auth-headers'
-import { awaitLoadSettled } from '@/lib/load-settled'
+import { createLoadCoordinator, createFinishedLatch } from '@/lib/load-coordinator'
 import type { Game, Player } from '@/types'
 
 /** How long an in-flight load may run before a new caller is allowed to supersede it.
@@ -61,7 +61,13 @@ export interface UseGameViewBootstrapOptions<Screen extends string, GameState> {
     playerId: string | null,
     state: GameState,
     /** See `loadGameState`. */
-    isCurrent: () => boolean
+    isCurrent: () => boolean,
+    /**
+     * Call when the read behind this step failed (its snapshot was not applied) but the returned fallback state
+     * should still be shown. The load then reports `false`, so a caller that owns a retry (`loadSettled`) does not
+     * take the fallback for a successful read. A throwing `afterResolve` is reported the same way.
+     */
+    markFailed: () => void
   ) => void | GameState | Promise<void | GameState>
   /** Extra fields merged into the join POST body (e.g. room-member identity). */
   joinExtras?: Record<string, unknown>
@@ -138,56 +144,33 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   // (saved at tournament join) rides along so the server seats/reclaims only them.
   const tournamentToken = currentTournamentPlayerToken()
 
-  // Singleflight + finished-latch. Several transports call load() during the active→finished
-  // window (games realtime channel, roster poll, timer expiry, in-flight submits). Without
-  // coalescing they interleave setStates and the results screen flickers; without the latch a
-  // read-replica still returning the pre-finish `active` row bounces it back to the board.
-  const loadingRef = useRef(false)
-  const pendingRef = useRef(false)
-  // When the in-flight load started, and which generation it belongs to. iOS Safari
-  // suspends in-flight fetches when the tab goes to the background and, on return, some
-  // of them neither resolve nor reject — the promise is simply abandoned. That left
-  // `loadingRef` latched true forever, so every later load() (the visibility refresh, the
-  // realtime fallback poll, a timer) returned early as "already loading" and the view sat
-  // on its loading spinner until the user reloaded the page by hand. A load that has been
-  // running longer than STALE_LOAD_MS is therefore treated as abandoned: the generation is
-  // bumped (so the zombie can no longer release the latch or set state) and a fresh load
-  // starts.
-  const loadStartedAtRef = useRef(0)
-  // Settles with the final result of the load chain now running (its trailing re-runs included), so
-  // `loadSettled` can hand a coalesced caller the real outcome instead of the queued-run acknowledgement.
-  const chainRef = useRef<Promise<boolean> | null>(null)
-  // Settles the chain above with `false` when it is superseded or abandoned, so nobody waiting on a read that
-  // never settles waits forever (see loadSettled).
-  const abandonChainRef = useRef<(() => void) | null>(null)
-  const loadGenRef = useRef(0)
-  // Keyed on the session that finished. `start` only moves a game to 'active' from 'waiting'
-  // with a NEW session_started_at, so a later read showing the SAME session as 'active' can
-  // only be replica lag — ignore it. A real replay passes through 'waiting' (clears the latch).
-  const finishedSessionRef = useRef<string | null | undefined>(undefined)
+  // Singleflight. Several transports call load() during the active→finished window (games realtime channel, roster
+  // poll, timer expiry, in-flight submits). Without coalescing they interleave setStates and the results screen
+  // flickers. A load that has been running longer than STALE_LOAD_MS is treated as abandoned (iOS Safari suspends
+  // in-flight fetches in a backgrounded tab and some never settle, which used to latch every later load() as
+  // "already loading" forever). See createLoadCoordinator.
+  const [coordinator] = useState(() => createLoadCoordinator({ staleMs: STALE_LOAD_MS }))
+  // Without the latch a read-replica still returning the pre-finish `active` row bounces the view back to the board
+  // (see createFinishedLatch).
+  const [finishedLatch] = useState(() => createFinishedLatch())
 
-  // False between unmount and the next mount. Unmounting also bumps the generation, so a run still in flight
-  // counts as superseded: its callbacks (`isCurrent`) and its own writes stop, and nobody keeps waiting on it.
-  const mountedRef = useRef(true)
-  const invalidateLoads = useCallback(() => {
-    mountedRef.current = false
-    loadGenRef.current++
-    loadingRef.current = false
-    pendingRef.current = false
-    abandonChainRef.current?.()
-    abandonChainRef.current = null
-    chainRef.current = null
-  }, [])
+  // Unmounting, or moving to another room, supersedes every run in flight: its callbacks (`isCurrent`) and its own
+  // writes stop, nobody keeps waiting on it, and nothing it queued survives. Without that, a load() for the new
+  // room would only flag a trailing re-run on the OLD room's run (which re-runs with the old room's code), and the
+  // new room would never be read. The room's finished latch belongs to the room too.
   useEffect(() => {
-    mountedRef.current = true
-    return invalidateLoads
-  }, [invalidateLoads])
+    coordinator.open()
+    return () => {
+      coordinator.close()
+      finishedLatch.reset()
+    }
+  }, [coordinator, finishedLatch, gameCode])
 
   const runLoad = useCallback(
     async (gen: number): Promise<boolean> => {
-      // True once this run has been superseded by a fresher one (see loadGenRef). A zombie
+      // True once this run has been superseded by a fresher one (see createLoadCoordinator). A zombie
       // fetch that finally settles must not write its stale snapshot over newer state.
-      const superseded = () => gen !== loadGenRef.current
+      const superseded = () => !coordinator.isCurrent(gen)
 
       // NOTE: `loadGameState` / `afterResolve` are the view's own fetches and set the view's own state, so a
       // run already inside one can still commit late unless the view checks the `isCurrent` it is handed (the
@@ -215,16 +198,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
         return true
       }
 
-      // Stale-replica guard (see finishedSessionRef above).
-      if (
-        finishedSessionRef.current !== undefined &&
-        gameData.status === 'active' &&
-        (gameData.session_started_at ?? null) === finishedSessionRef.current
-      ) {
-        return true
+      // Stale-replica guard (see finishedLatch above).
+      if (finishedLatch.observe(gameData.status, gameData.session_started_at) === 'stale-active') {
+        return finishedLatch.staleResult()
       }
-      if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
-      else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
 
       setGame(gameData)
       setPlayers(plrs)
@@ -247,7 +224,9 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
       let afterResolveFailed = false
       if (afterResolve) {
         try {
-          const patched = await afterResolve(gameData, playerId, state, isCurrent)
+          const patched = await afterResolve(gameData, playerId, state, isCurrent, () => {
+            afterResolveFailed = true
+          })
           if (patched !== undefined) effectiveState = patched
         } catch (err) {
           // A throwing afterResolve must not leave the hook stuck on the loading screen
@@ -260,93 +239,26 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
 
       if (superseded()) return ok && !afterResolveFailed
       setScreen(computeScreen(gameData, playerId, effectiveState))
+      // Only now is the finished screen selected: until here a stalled load left the session retryable.
+      if (gameData.status === 'finished') finishedLatch.published()
       // The fallback screen is shown, but the read behind it did not complete: report it as failed so a caller
       // that owns a retry (the flip tracker's resync) does not clear its failure budget for it.
       return ok && !afterResolveFailed
     },
-    [gameCode, notFoundScreen, loadGameState, computeScreen, afterResolve]
+    [gameCode, notFoundScreen, loadGameState, computeScreen, afterResolve, coordinator, finishedLatch]
   )
+  // Installed in an effect, ahead of the effect that starts the first load (effects run in declaration order).
+  useEffect(() => {
+    coordinator.setRun(runLoad)
+  }, [coordinator, runLoad])
 
-  const load = useCallback(async (): Promise<boolean> => {
-    // Unmounted: a late caller (a flip answer, a retry timer) must not start a load that publishes into nothing.
-    if (!mountedRef.current) return false
-    // Coalesce overlapping calls: while one runs, extra callers flag a single trailing re-run
-    // so we still settle on the freshest snapshot instead of racing N interleaved loads.
-    if (loadingRef.current && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
-      pendingRef.current = true
-      return true
-    }
-    // Either nothing is running, or what's running has been stuck past the deadline and is
-    // abandoned. Bumping the generation orphans the stuck run: its `finally` can no longer
-    // clear the latch out from under this one, and its state writes are dropped. Whoever waits on
-    // the abandoned chain (a retry that joined it) is told it failed rather than left hanging.
-    abandonChainRef.current?.()
-    const gen = ++loadGenRef.current
-    loadingRef.current = true
-    loadStartedAtRef.current = Date.now()
-    let abandon: () => void = () => {}
-    const abandoned = new Promise<boolean>((resolve) => {
-      abandon = () => resolve(false)
-    })
-    const run = (async (): Promise<boolean> => {
-      try {
-        // A run that REJECTS (e.g. a query that throws) must not skip the trailing re-run a caller queued while it
-        // ran: that caller asked for a fresher snapshot and is owed one. Remember the failure and go on; it is only
-        // what the chain reports when no later run replaces it.
-        let ok = true
-        let failure: { error: unknown } | null = null
-        const attempt = async () => {
-          try {
-            ok = await runLoad(gen)
-            failure = null
-          } catch (error) {
-            failure = { error }
-          }
-        }
-        await attempt()
-        while (pendingRef.current && gen === loadGenRef.current) {
-          pendingRef.current = false
-          loadStartedAtRef.current = Date.now()
-          await attempt()
-        }
-        if (failure) throw (failure as { error: unknown }).error
-        return ok
-      } finally {
-        if (gen === loadGenRef.current) loadingRef.current = false
-      }
-    })()
-    const chain = Promise.race([run, abandoned])
-    abandonChainRef.current = abandon
-    chainRef.current = chain
-    return chain
-  }, [runLoad])
+  const load = coordinator.load
+  const loadSettled = coordinator.loadSettled
 
-  // Like `load`, but a call that joins a run already in flight resolves with the queued run's real outcome
-  // rather than `true` straight away. For a caller that owns a retry and must know whether the read it asked
-  // for actually succeeded (see createReadRetry).
-  const loadSettled = useCallback((): Promise<boolean> => {
-    const chain = chainRef.current
-    let waitFor: Promise<boolean>
-    if (loadingRef.current && chain && Date.now() - loadStartedAtRef.current < STALE_LOAD_MS) {
-      pendingRef.current = true
-      waitFor = chain
-    } else {
-      // Starting the load here: it gets the same deadline, or a games query that never settles would leave
-      // the caller (the flip tracker's resync) waiting forever and never owing a retry.
-      waitFor = load()
-    }
-    // The deadline follows the run the chain is on NOW, not the one this caller arrived during: a trailing
-    // re-run gets its own STALE_LOAD_MS window (loadStartedAtRef is reset when it starts).
-    return awaitLoadSettled({
-      waitFor,
-      runStartedAt: () => (loadingRef.current ? loadStartedAtRef.current : null),
-      staleMs: STALE_LOAD_MS,
-    })
-  }, [load])
-
+  // `load` is stable; the room is what decides when to read again (the effect above already superseded the old room).
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, gameCode])
 
   // Re-read whenever the tab comes back to the foreground. A backgrounded tab loses its
   // realtime socket (and, on iOS, any in-flight fetch), so without this the view can come

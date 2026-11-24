@@ -43,6 +43,7 @@ import {
   matchingPairsGridLayout,
   createFlipResyncTracker,
   createReadRetry,
+  readOutcomeOwned,
   MATCHING_PAIRS_MIN_PLAYERS,
   type MatchingPairsMetadata,
   type MatchingPairsSubmission,
@@ -92,6 +93,12 @@ interface LocalBoard {
   firstFlipped: number | null
   /** Locked while the flip-back animation is running */
   locked: boolean
+  /**
+   * The round this board was built for. A flip is sent for THIS round, not for whatever round the view has since
+   * moved on to: the load path publishes the new round before the new board commits, and a tap on the still
+   * visible old board must reach the server with the old round id so its roundId fence refuses it.
+   */
+  roundId: string
 }
 
 type MatchingPairsGameState = {
@@ -100,8 +107,9 @@ type MatchingPairsGameState = {
   roundFinished: boolean
 }
 
-function buildInitialBoard(cardOrder: number[]): LocalBoard {
+function buildInitialBoard(cardOrder: number[], roundId: string): LocalBoard {
   return {
+    roundId,
     cardOrder,
     cardStates: new Array(cardOrder.length).fill('hidden') as CardState[],
     firstFlipped: null,
@@ -178,12 +186,26 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
     return { state: { hasBoard: false, ownFinished: false, roundFinished: false }, ok: true }
   }, [])
 
+  // Round-owned progress shown next to the board: dropped together with a board that belonged to ANOTHER round. A
+  // same-round refresh failure keeps it (the stored progress of that round is still the best we know).
+  const resetRoundProgress = useCallback(() => {
+    finishedRef.current = false
+    setFinished(false)
+    setFinishRank(null)
+    setCurrentStreak(0)
+    setTotalPoints(0)
+    setMySubmissions([])
+    setAllSubmissions([])
+    setAllProgress([])
+  }, [])
+
   const afterResolve = useCallback(
     async (
       gameData: Game,
       playerId: string | null,
       _state: unknown,
-      isCurrent: () => boolean
+      isCurrent: () => boolean,
+      markFailed: () => void
     ): Promise<MatchingPairsGameState> => {
       // A superseded (or unmounted) load must not touch the tracker, the retry or the view, not even to take
       // over a retry another load armed.
@@ -239,6 +261,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         if (roundError) {
           flipTracker.markDirty()
           if (!flipTracker.superseded(readTicket)) readRetry.schedule()
+          // Report the failed read to whoever waits on this load (the flip tracker's resync): the board kept on
+          // screen is the fallback, not a successful snapshot. The retry above owns re-reading (readOutcomeOwned).
+          markFailed()
           // Keep the board interactive only while it belongs to the round the game is on. After the game moved
           // on, the old board would accept taps and send pair indices for a round that is over, so retire it
           // (with its owner) and report no board until a read of the new round succeeds.
@@ -251,6 +276,8 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               clearTimeout(flipTimeoutRef.current)
               flipTimeoutRef.current = null
             }
+            // The game moved to another round: the previous round's results must not stay up next to it.
+            if (boardRoundNumberRef.current !== currentRoundNumber) resetRoundProgress()
             boardRoundIdRef.current = null
             boardRoundNumberRef.current = null
             boardRef.current = null
@@ -290,6 +317,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           boardRef.current = null
           flipTracker.clearBoardRound((roundData?.id as string | undefined) ?? null, readTicket)
           setBoard(null)
+          // Another round's finished flag, rank, points, streak and history must not be shown next to this round's
+          // metadata if its own history read fails (they come back with the snapshot that succeeds).
+          resetRoundProgress()
         }
         setMeta(parsedMeta)
 
@@ -320,6 +350,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           if (!supabasePollOk(subRes, progRes)) {
             flipTracker.markDirty()
             readRetry.schedule()
+            markFailed()
             // Only for the round the board on screen was built for: another round's board must not stay up under
             // this round's metadata, so for a new round clear it and report no board until a read succeeds.
             const sameRoundBoard = boardRoundIdRef.current === roundData.id && boardRef.current !== null
@@ -355,7 +386,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
           // Reconstruct local board from submissions (only if round is active)
           const cardOrder = getPlayerBoard(parsedMeta, playerId)
           if (cardOrder && !roundFinished) {
-            const boardState = buildInitialBoard(cardOrder)
+            const boardState = buildInitialBoard(cardOrder, roundData.id as string)
             const matchedPairs = new Set(subs.filter((s) => s.is_match).map((s) => s.pair_index))
             for (let i = 0; i < boardState.cardStates.length; i++) {
               if (matchedPairs.has(boardState.cardOrder[i])) {
@@ -466,7 +497,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
         return { hasBoard: false, ownFinished: false, roundFinished: false }
       }
     },
-    [gameCode, flipTracker, readRetry]
+    [gameCode, flipTracker, readRetry, resetRoundProgress]
   )
 
   const computeScreen = useCallback(
@@ -657,7 +688,9 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
   // ── Flip handler ───────────────────────────────────────────────────────────
 
   // The tracker's resync waits for the real outcome of the load (a failure triggers its bounded retry).
-  loadRef.current = loadSettled
+  // A failed read that the read retry has already armed an attempt for is owned there: the tracker must not also
+  // back off and read again for the same failure (readOutcomeOwned).
+  loadRef.current = () => loadSettled().then((ok) => readOutcomeOwned(ok, readRetry))
   retryLoadRef.current = loadSettled
   boardRef.current = board
   finishedRef.current = finished
@@ -731,7 +764,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
         // Submit to server (fire-and-forget for responsiveness; UI is optimistic).
         // Scoped to the round of the board the flip was made on and settled by this very request.
-        const flipToken = flipTracker.begin(boardRoundIdRef.current ?? roundId)
+        const flipToken = flipTracker.begin(board.roundId)
         let flipFailed = false
         void fetch('/api/matching-pairs/flip', {
           method: 'POST',
@@ -770,7 +803,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
                 const { data, error: refreshError } = await supabase
                   .from('memory_match_submissions')
                   .select(MEMORY_MATCH_SUBMISSION_SELECT)
-                  .eq('round_id', roundId)
+                  .eq('round_id', flipToken.round)
                   .order('submitted_at', { ascending: true })
                 if (boardRoundIdRef.current !== flipToken.round) return
                 // A failed refresh is not an empty history: keep the submissions already shown, and owe a
@@ -807,7 +840,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
 
         // Submit miss to server.
         // Scoped to the round of the board the flip was made on and settled by this very request.
-        const flipToken = flipTracker.begin(boardRoundIdRef.current ?? roundId)
+        const flipToken = flipTracker.begin(board.roundId)
         let flipFailed = false
         void fetch('/api/matching-pairs/flip', {
           method: 'POST',
@@ -836,7 +869,7 @@ export function MatchingPairsPlayerView({ gameCode }: { gameCode: string }) {
               const { data, error: refreshError } = await supabase
                 .from('memory_match_submissions')
                 .select(MEMORY_MATCH_SUBMISSION_SELECT)
-                .eq('round_id', roundId)
+                .eq('round_id', flipToken.round)
                 .order('submitted_at', { ascending: true })
               if (boardRoundIdRef.current !== flipToken.round) return
               // A failed refresh is not an empty history: keep the submissions already shown, and owe a

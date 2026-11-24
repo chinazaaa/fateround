@@ -42,10 +42,24 @@ describe('createFlipResyncTracker (mobile postFlip usage)', () => {
   })
 
   it('a rejecting resync does not leak a rejection and leaves the tracker usable', async () => {
-    const t = createFlipResyncTracker(() => Promise.reject(new Error('load failed')))
-    await flip(t, Promise.reject(new Error('x')))
-    await Promise.resolve()
-    expect(t.inFlight()).toBe(false)
+    // Fake timers: the rejected resync owes a retry, and a real backoff timer must not outlive the test. The retry
+    // succeeds, which also proves the tracker kept working after the rejection.
+    vi.useFakeTimers()
+    try {
+      const resync = vi
+        .fn<() => Promise<void>>()
+        .mockRejectedValueOnce(new Error('load failed'))
+        .mockResolvedValue(undefined)
+      const t = createFlipResyncTracker(resync, [10])
+      await flip(t, Promise.reject(new Error('x')))
+      await Promise.resolve()
+      expect(t.inFlight()).toBe(false)
+      await vi.advanceTimersByTimeAsync(10)
+      expect(resync).toHaveBeenCalledTimes(2)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -610,6 +624,44 @@ describe('createFlipResyncTracker failed resync retry', () => {
     expect(resync).not.toHaveBeenCalled()
     t.end(replacement, false)
     expect(t.inFlight('r1')).toBe(false)
+  })
+
+  it('cancel() releases the resync gate: a replacement flip failure resyncs although the abandoned resync never settles', async () => {
+    const hung = new Promise<void>(() => {})
+    const resync = vi.fn<() => Promise<void>>().mockReturnValueOnce(hung).mockResolvedValue(undefined)
+    const t = createFlipResyncTracker(resync)
+    snap0(t, 'r1')
+    await flip(t, Promise.reject(new Error('refused'))) // starts the resync that never settles
+    expect(resync).toHaveBeenCalledTimes(1)
+    t.cancel() // unmount / remount
+    snap0(t, 'r1')
+    await flip(t, Promise.reject(new Error('refused again')))
+    expect(resync).toHaveBeenCalledTimes(2)
+  })
+
+  it('an abandoned resync that settles late does not release the gate of its replacement', async () => {
+    let finishOld!: () => void
+    const old = new Promise<void>((r) => (finishOld = r))
+    let finishNew!: () => void
+    const replacement = new Promise<void>((r) => (finishNew = r))
+    const resync = vi.fn<() => Promise<void>>().mockReturnValueOnce(old).mockReturnValueOnce(replacement)
+    const t = createFlipResyncTracker(resync)
+    snap0(t, 'r1')
+    await flip(t, Promise.reject(new Error('a')))
+    t.cancel()
+    snap0(t, 'r1')
+    await flip(t, Promise.reject(new Error('b'))) // replacement resync now running
+    expect(resync).toHaveBeenCalledTimes(2)
+    finishOld()
+    await Promise.resolve()
+    await Promise.resolve()
+    // A third failure while the replacement still reads must wait for it (gate still held), not start a third.
+    await flip(t, Promise.reject(new Error('c')))
+    expect(resync).toHaveBeenCalledTimes(2)
+    finishNew()
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(resync).toHaveBeenCalledTimes(3) // the owed resync runs after the replacement settles
   })
 
   it('cancel() drops a deferred read so flushDeferred cannot start a load after unmount', () => {

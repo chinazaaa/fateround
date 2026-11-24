@@ -72,6 +72,8 @@
     "./player-realtime": "./src/player-realtime.ts",
     "./session-coordinator": "./src/session-coordinator.ts",
     "./load-settled": "./src/load-settled.ts",
+    "./load-coordinator": "./src/load-coordinator.ts",
+    "./finished-latch": "./src/finished-latch.ts",
     "./flip-resync": "./src/flip-resync.ts",
     "./read-retry": "./src/read-retry.ts",
     "./session-reconcile": "./src/session-reconcile.ts",
