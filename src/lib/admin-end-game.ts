@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
-import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult, type FinishGuard } from '@/lib/game-finish'
 import {
   isAnonymousMessagesGame,
   isCodewordsGame,
@@ -45,12 +45,14 @@ export type AdminEndGameOptions = {
    * Defaults to false, preserving every existing caller's behaviour.
    */
   onlyIfActive?: boolean
+  /** Single-winner finish over waiting-or-active games, optionally bound to the outgoing host. */
+  finishGuard?: FinishGuard
 }
 
 export async function adminEndGame(
   supabase: SupabaseClient,
   game: AdminGameToEnd,
-  { onlyIfActive = false }: AdminEndGameOptions = {}
+  { onlyIfActive = false, finishGuard }: AdminEndGameOptions = {}
 ): Promise<FinishGameResult> {
   if (game.status !== 'active' && game.status !== 'waiting') {
     return { error: 'Only waiting or active games can be ended', won: false }
@@ -82,19 +84,20 @@ export async function adminEndGame(
     }
   }
   if (isAnonymousMessagesGame(gameType)) {
-    return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive })
+    return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive, finishGuard })
   }
   if (isSecretMessageGame(gameType)) {
-    return finishSecretMessageBoard(supabase, gameId, { onlyIfActive })
+    return finishSecretMessageBoard(supabase, gameId, { onlyIfActive, finishGuard })
   }
   if (isCodewordsGame(gameType)) {
-    return finishCodewordsGame(supabase, gameId, { onlyIfActive })
+    return finishCodewordsGame(supabase, gameId, { onlyIfActive, finishGuard })
   }
 
   // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so its bookkeeping is made
   // durable and recoverable (see markGameFinished's `trackBookkeeping`) on this path too.
   const { error, won } = await markGameFinished(supabase, gameId, now, {
     onlyIfActive,
+    finishGuard,
     trackBookkeeping: isWordRushGame(gameType),
   })
   if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }

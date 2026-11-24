@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult, type FinishGuard } from '@/lib/game-finish'
 import { parseQuestionSource } from '@/lib/custom-questions'
 import {
   CODEWORDS_BOARD_SIZE,
@@ -585,12 +585,17 @@ export async function clearCodewordsChat(
 export async function finishCodewordsGame(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false, onlySessionStartedAt }: { onlyIfActive?: boolean; onlySessionStartedAt?: string | null } = {}
+  {
+    onlyIfActive = false,
+    onlySessionStartedAt,
+    finishGuard,
+  }: { onlyIfActive?: boolean; onlySessionStartedAt?: string | null; finishGuard?: FinishGuard } = {}
 ): Promise<FinishGameResult> {
   const finishedAt = new Date().toISOString()
   const { error: gameError, won } = await markGameFinished(supabase, gameId, finishedAt, {
     onlyIfActive,
     onlySessionStartedAt,
+    finishGuard,
   })
   if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 

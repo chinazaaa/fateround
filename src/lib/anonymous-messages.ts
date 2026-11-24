@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import type { FinishGameResult } from '@/lib/game-finish'
+import type { FinishGameResult, FinishGuard } from '@/lib/game-finish'
 import { clearSessionTables } from './session-clear'
 import type { Game, Player } from '@/types'
 import {
@@ -207,10 +207,10 @@ export async function clearAnonymousRoomSessionData(
 export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  { onlyIfActive = false, finishGuard }: { onlyIfActive?: boolean; finishGuard?: FinishGuard } = {}
 ): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive, finishGuard })
   if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
   // Clearing stays unconditional (it is an idempotent delete, and skipping it on a lost
@@ -228,10 +228,10 @@ export async function finishAnonymousRoomSession(
 export async function finishSecretMessageBoard(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  { onlyIfActive = false, finishGuard }: { onlyIfActive?: boolean; finishGuard?: FinishGuard } = {}
 ): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive, finishGuard })
   if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
   // Cleanup failure is reported separately from the finish — see finishAnonymousRoomSession.

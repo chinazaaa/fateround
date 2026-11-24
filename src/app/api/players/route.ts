@@ -1859,14 +1859,34 @@ export async function DELETE(req: NextRequest) {
 type HostHandoff = { apply: (() => Promise<void>) | null; seatRemoved: boolean }
 
 /**
- * End a live game whose host left with nobody to hand it to (same shape as the idle reaper's
- * abandoned-game end). Returns whether the game is now finished (whoever finished it, so the caller may
- * treat it as finished). Stamps `host_ended` only when THIS call won the finish: a caller that lost
- * the compare-and-set must not relabel a game someone else finished for another reason.
+ * Stop routing the outgoing host back to /host/[code]. The seat delete nulls host_player_id
+ * (ON DELETE SET NULL), but a finished host's seat is retained (host_player_id still names them) and a
+ * claim sets it to the claimant, so matching null-or-the-outgoing player clears the linkage without
+ * touching a host who claimed in between.
  */
-async function endGameHostLeft(game: { id: string; status: string; game_type: string }): Promise<boolean> {
-  // An active game's flip is a compare-and-set so only one caller wins (and stamps).
-  const ended = await adminEndGame(getSupabaseAdmin(), game, { onlyIfActive: game.status === 'active' })
+async function clearOutgoingHostUser(gameId: string, playerId: string) {
+  const { error } = await getSupabaseAdmin()
+    .from('games')
+    .update({ host_user_id: null })
+    .eq('id', gameId)
+    .or(`host_player_id.is.null,host_player_id.eq.${playerId}`)
+  if (error) console.error('players: clearing host_user_id after host leave failed', error)
+}
+
+/**
+ * End a live game whose host left with nobody to hand it to (same shape as the idle reaper's
+ * abandoned-game end). The finish is ONE conditional update: still waiting/active AND nobody but the
+ * outgoing host hosts it, so a game another request finished, or one a different player has since taken
+ * over, is left alone. Stamps `host_ended` only when THIS call won. Returns whether the game is now
+ * finished (whoever finished it, so the caller may treat it as finished).
+ */
+async function endGameHostLeft(
+  game: { id: string; status: string; game_type: string },
+  outgoingPlayerId: string
+): Promise<boolean> {
+  const ended = await adminEndGame(getSupabaseAdmin(), game, {
+    finishGuard: { statuses: ['waiting', 'active'], hostPlayerNullOr: outgoingPlayerId },
+  })
   // The game IS finished; a failed post-finish wipe does not un-finish it, so the
   // stamp below still runs. Nothing retries the wipe — surface it for an operator.
   if (ended.cleanupError) {
@@ -1881,8 +1901,11 @@ async function endGameHostLeft(game: { id: string; status: string; game_type: st
       .update({ result_reason: 'host_ended' })
       .eq('id', game.id)
       .or('result_reason.is.null,result_reason.eq.admin_ended')
+    return true
   }
-  return true
+  // Lost the guard: finished by someone else (fine) or taken over by a new host (still live).
+  const { data } = await getSupabaseAdmin().from('games').select('status').eq('id', game.id).maybeSingle()
+  return data?.status === 'finished'
 }
 
 async function removePlayer(req: NextRequest, handoff: HostHandoff) {
@@ -2006,21 +2029,9 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
     const isHostLeaving = !!gameRow && gameRow.host_player_id === playerId
     const isLive = gameRow?.status === 'waiting' || gameRow?.status === 'active'
     if (isHostLeaving && isLive) {
-      // Stop routing the outgoing host back to /host/[code]. The seat delete nulls host_player_id
-      // (ON DELETE SET NULL), but a finished host's seat is retained (host_player_id still names them) and
-      // a claim sets it to the claimant, so matching null-or-the-outgoing player clears the linkage
-      // without touching a host who claimed in between.
-      const clearOutgoingHostUser = async () => {
-        const { error } = await getSupabaseAdmin()
-          .from('games')
-          .update({ host_user_id: null })
-          .eq('id', id)
-          .or(`host_player_id.is.null,host_player_id.eq.${playerId}`)
-        if (error) console.error('players: clearing host_user_id after host leave failed', error)
-      }
       if (gameRow.pending_host_player_id) {
         // A nominee's banner is already live: once the leave commits, just clear the linkage.
-        handoff.apply = clearOutgoingHostUser
+        handoff.apply = () => clearOutgoingHostUser(id, playerId)
       } else {
         const pickSuccessor = () =>
           getSupabaseAdmin()
@@ -2047,12 +2058,12 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
             if (nextError) {
               // The seat is already gone: never leave a live game with no host and no nominee. End it instead.
               console.error('players: host successor lookup after leave failed', nextError)
-              await endGameHostLeft(endedGame)
+              await endGameHostLeft(endedGame, playerId)
               return
             }
             if (!next?.id) {
               // Everyone else left in the meantime: same outcome as having no successor to begin with.
-              await endGameHostLeft(endedGame)
+              await endGameHostLeft(endedGame, playerId)
               return
             }
             // Guarded like claim-host: only while nobody is nominated, the game is live, and nobody else
@@ -2076,11 +2087,11 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
             }
             // Lost the guard (host nominated someone meanwhile, or the game moved on): still stop routing the
             // outgoing host back; the clear is itself guarded against a claimant.
-            if (!nominated?.length) await clearOutgoingHostUser()
+            if (!nominated?.length) await clearOutgoingHostUser(id, playerId)
           }
         } else {
           // Fall through to the "finished game" branch below (row retained) once the game is ended.
-          if (await endGameHostLeft(endedGame)) {
+          if (await endGameHostLeft(endedGame, playerId)) {
             ;(game as { status?: string }).status = 'finished'
           }
         }
@@ -2117,6 +2128,17 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
      * the session but still holds a seat. A repeat leave must finish the cleanup rather than be
      * answered "retained". Finishers and spectators leave no such trace and fall through below.
      */
+    // A retried forfeit cleanup must also drop the departed host's linkage (the first attempt committed
+    // the finish but failed the seat delete, so its deferred handoff never ran). Only the host's own
+    // seat qualifies, and it must run BEFORE the delete, which nulls host_player_id (ON DELETE SET NULL).
+    if (!hostToken) {
+      const { error: clearError } = await getSupabaseAdmin()
+        .from('games')
+        .update({ host_user_id: null })
+        .eq('id', id)
+        .eq('host_player_id', playerId)
+      if (clearError) return NextResponse.json({ error: internalErrorMessage('players', clearError) }, { status: 500 })
+    }
     const pending = await completePendingFinishedLeave(
       getSupabaseAdmin(),
       (game as { game_type?: string }).game_type,

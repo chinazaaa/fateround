@@ -371,6 +371,51 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     expect(tables.games[0].result_reason).toBeNull()
   })
 
+  it('the deferred end of a WAITING game does not touch a game another caller finished first', async () => {
+    setup('uno', { status: 'waiting' })
+    removal.uno.onCall = () => {
+      tables.players = tables.players.filter((p) => p.id !== OTHER_PID)
+      Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended', finished_at: 'THEIRS' })
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].result_reason).toBe('admin_ended')
+    expect(tables.games[0].finished_at).toBe('THEIRS')
+  })
+
+  it('the fallback end never finishes a game another player took over during the removal', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      lookupFailBudget = 2
+      Object.assign(tables.games[0], { host_player_id: OTHER_PID, host_user_id: 'user-other' })
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    const g = tables.games[0]
+    expect(g.status).toBe('active')
+    expect(g.result_reason).toBeUndefined()
+    expect(g.host_user_id).toBe('user-other')
+  })
+
+  it('a retried chess forfeit cleanup removes the seat and clears the departed host linkage', async () => {
+    setup('chess', { status: 'finished' })
+    tables.chess_sessions = [
+      {
+        game_id: 'ABCD',
+        status: 'finished',
+        player_white_id: HOST_PID,
+        player_black_id: OTHER_PID,
+        winner_player_id: OTHER_PID,
+        is_draw: false,
+        status_message: 'Host left — Other wins!',
+      },
+    ]
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+    expect(tables.games[0].host_user_id).toBeNull()
+  })
+
   it('a codewords host whose seat is gone still hands off when the team cleanup then errors', async () => {
     setup('codewords')
     removal.reconcileError = 'cleanup failed'

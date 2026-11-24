@@ -257,6 +257,16 @@ export async function recoverAllFinishBookkeeping(
   return { recovered, pending, failed }
 }
 
+/**
+ * A single-winner finish for a game that may be waiting OR active, bound to who hosts it. Both
+ * conditions live in the one UPDATE, so a racing finisher or a claimed host makes it a no-op.
+ */
+export type FinishGuard = {
+  statuses: string[]
+  /** Finish only while games.host_player_id is null or this player (the outgoing host). */
+  hostPlayerNullOr?: string
+}
+
 export async function markGameFinished(
   supabase: SupabaseClient,
   gameId: string,
@@ -282,8 +292,11 @@ export async function markGameFinished(
     roundGuard,
     onlySessionStartedAt,
     trackBookkeeping = false,
+    finishGuard,
   }: {
     onlyIfActive?: boolean
+    // Compare-and-set over a status set (and optionally the host linkage); see FinishGuard.
+    finishGuard?: FinishGuard
     roundGuard?: RoundGuard
     // Bind the finish to the session whose state the caller inspected (requires onlyIfActive,
     // plain-update path only). A stalled request must not finish a NEW session started under
@@ -314,6 +327,12 @@ export async function markGameFinished(
       })
       .eq('id', gameId)
     let guarded = onlyIfActive ? update.eq('status', 'active') : null
+    if (finishGuard) {
+      guarded = (guarded ?? update).in('status', finishGuard.statuses)
+      if (finishGuard.hostPlayerNullOr) {
+        guarded = guarded.or(`host_player_id.is.null,host_player_id.eq.${finishGuard.hostPlayerNullOr}`)
+      }
+    }
     if (guarded && onlySessionStartedAt !== undefined) {
       guarded =
         onlySessionStartedAt === null
@@ -333,7 +352,8 @@ export async function markGameFinished(
   // With the guard, only the request that actually flipped the row (non-empty data)
   // won the transition and should award points; losers get an empty set, no error.
   const won =
-    !(onlyIfActive || roundGuard || trackBookkeeping) || (Array.isArray(result.data) && result.data.length > 0)
+    !(onlyIfActive || finishGuard || roundGuard || trackBookkeeping) ||
+    (Array.isArray(result.data) && result.data.length > 0)
 
   let bookkeeping: FinishBookkeepingState | undefined
   if (!result.error && won) {
