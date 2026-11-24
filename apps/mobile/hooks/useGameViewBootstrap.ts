@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 import type { Game, Player } from '@fateround/shared'
 import { normalizeGameCode } from '@fateround/shared'
+import { createLoadCoordinator } from '@fateround/shared/load-coordinator'
+import { createFinishedLatch } from '@fateround/shared/finished-latch'
 import { Alert } from 'react-native'
 import { useRouter } from 'expo-router'
 import { JoinError, joinGame } from '@/lib/api'
@@ -13,6 +15,9 @@ import { subscribePlayerSession } from '@/lib/session-events'
 import { getSupabase, GAME_SELECT, PLAYER_SELECT } from '@/lib/supabase'
 import { uniqueTopic } from '@/lib/realtime'
 import { useProfileAttribution } from '@/hooks/useProfileAttribution'
+
+/** How long an in-flight load may run before a new caller supersedes it (a fetch that never settles). */
+const STALE_LOAD_MS = 12_000
 
 export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   gameCode: string
@@ -28,10 +33,35 @@ export type UseGameViewBootstrapOptions<Screen extends string, GameState> = {
   loadGameState: (
     game: Game,
     players: Player[],
-    session: PlayerSession | null
+    session: PlayerSession | null,
+    /**
+     * True while this load is still the current one. A callback that publishes game-specific state of its own
+     * (setState, refs, trackers) must check it after every await and stop publishing once it turns false: the
+     * hook drops a superseded run's results, but not what the callback already wrote itself.
+     */
+    isCurrent: () => boolean
   ) => Promise<{ state: GameState; ok: boolean }>
   computeScreen: (game: Game, playerId: string | null, state: GameState) => Screen
-  afterResolve?: (game: Game, playerId: string | null, state: GameState) => void | Promise<void>
+  afterResolve?: (
+    game: Game,
+    playerId: string | null,
+    state: GameState,
+    /** See `loadGameState`. */
+    isCurrent: () => boolean,
+    /**
+     * Call when the read behind this step failed (its snapshot was not applied). The screen is still selected, but
+     * the load reports `false`, so a caller that owns a retry (`loadSettled`) does not take the fallback for a
+     * successful read.
+     */
+    markFailed: () => void
+  ) => void | Promise<void>
+  /**
+   * When `loadGameState` reports `ok: false`, resolve the load as failed WITHOUT publishing the new game,
+   * players or screen (and without running `afterResolve`): the view's own state was left as it was, so
+   * showing the new game over it would pair e.g. a new round's board with the previous round's metadata. The
+   * caller owns retrying. Off by default: other games render with a null state on a failed read.
+   */
+  holdOnLoadStateFailure?: boolean
 }
 
 export function useGameViewBootstrap<Screen extends string, GameState>(
@@ -46,6 +76,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     loadGameState,
     computeScreen,
     afterResolve,
+    holdOnLoadStateFailure,
   } = opts
 
   const router = useRouter()
@@ -73,109 +104,130 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
   computeScreenRef.current = computeScreen
   const afterResolveRef = useRef(afterResolve)
   afterResolveRef.current = afterResolve
+  const holdOnFailureRef = useRef(holdOnLoadStateFailure)
+  holdOnFailureRef.current = holdOnLoadStateFailure
 
-  // Singleflight: overlapping load() calls (mount + realtime + submit) must not interleave
-  // their setStates, which is what makes the finished screen flicker. While one load runs,
-  // extra calls just flag a single trailing re-run so we still end on the freshest data.
-  const loadingRef = useRef(false)
-  const pendingRef = useRef(false)
-  // Finished latch, keyed on the session that finished. `start` only moves a game to
-  // 'active' from 'waiting' with a *new* session_started_at, so a later read that shows the
-  // SAME session as 'active' can only be read-replica lag — ignore it so results never bounce
-  // back to the board. A real replay passes through 'waiting' (which clears the latch).
-  const finishedSessionRef = useRef<string | null | undefined>(undefined)
+  // Singleflight: overlapping load() calls (mount + realtime + submit) must not interleave their setStates, which
+  // is what makes the finished screen flicker. While one load runs, extra calls just flag a single trailing re-run
+  // so we still end on the freshest data. See createLoadCoordinator.
+  const [coordinator] = useState(() => createLoadCoordinator({ staleMs: STALE_LOAD_MS }))
+  // Finished latch (see createFinishedLatch): a later read of the SAME session as 'active' can only be read-replica
+  // lag. The session stays unpublished until a run selects the finished screen, so a stalled finished load keeps
+  // the session retryable.
+  const [finishedLatch] = useState(() => createFinishedLatch())
 
-  const runLoad = useCallback(async (): Promise<boolean> => {
-    try {
-      const supabase = getSupabase()
-      const [gameRes, playersRes] = await Promise.all([
-        supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
-        supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
-      ])
-
-      if (gameRes.error || playersRes.error) return false
-
-      const gameData = gameRes.data as Game | null
-      const playerRows = (playersRes.data ?? []) as Player[]
-
-      if (!gameData) {
-        setGame(null)
-        setPlayers([])
-        setScreen(notFoundScreen)
-        return true
-      }
-
-      // Stale-replica guard (see finishedSessionRef above).
-      if (
-        finishedSessionRef.current !== undefined &&
-        gameData.status === 'active' &&
-        (gameData.session_started_at ?? null) === finishedSessionRef.current
-      ) {
-        return true
-      }
-      if (gameData.status === 'finished') finishedSessionRef.current = gameData.session_started_at ?? null
-      else if (gameData.status === 'waiting') finishedSessionRef.current = undefined
-
-      // Reconcile the stored session against the roster we just fetched: a drifted/
-      // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
-      // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
-      // the server's token-keyed resume, clears only on a confirmed 404. Web does
-      // this via resolvePlayerSession; mobile never had it.
-      //
-      // BEFORE loadGameState, and handed to it: game state that is fetched per-player
-      // through a server route (the Codewords key card, a card hand) authenticates with
-      // the resume token, so loading it against the pre-reconciliation token yields a
-      // REDACTED view of a live game — a spymaster staring at an operative's grid until
-      // some later event happens to reload (review on PR #787). Reading SecureStore
-      // directly inside loadGameState has the same flaw and one extra keychain read.
-      const session = await reconcilePlayerSession(code, playerRows)
-      const playerId = session?.playerId ?? null
-      if (session) {
-        setMyPlayerId(session.playerId)
-        setMyResumeToken(session.resumeToken)
-        setJoinName(session.playerName)
-        void recordRecentGame({
-          code,
-          title: gameData.title,
-          gameType: gameData.game_type,
-        })
-      } else {
-        setMyPlayerId(null)
-        setMyResumeToken(null)
-      }
-
-      const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session)
-
-      setGame(gameData)
-      setPlayers(playerRows)
-      setGameState(ok ? state : null)
-
-      const resolvedState = ok ? state : (null as GameState)
-      if (afterResolveRef.current) await afterResolveRef.current(gameData, playerId, resolvedState)
-      setScreen(computeScreenRef.current(gameData, playerId, resolvedState))
-      return true
-    } catch {
-      return false
+  // Unmounting, or moving to another room, supersedes every run in flight: its callbacks (`isCurrent`) and its own
+  // writes stop, nobody keeps waiting on it, and nothing it queued survives. Without that, a load() for the new
+  // room would only flag a trailing re-run on the OLD room's run, and the new room would never be read. The room's
+  // finished latch belongs to the room too.
+  useEffect(() => {
+    coordinator.open()
+    return () => {
+      coordinator.close()
+      finishedLatch.reset()
     }
-  }, [code, notFoundScreen])
+  }, [coordinator, finishedLatch, code])
 
-  const load = useCallback(async (): Promise<boolean> => {
-    if (loadingRef.current) {
-      pendingRef.current = true
-      return true
-    }
-    loadingRef.current = true
-    try {
-      let ok = await runLoad()
-      while (pendingRef.current) {
-        pendingRef.current = false
-        ok = await runLoad()
+  const runLoad = useCallback(
+    async (gen: number): Promise<boolean> => {
+      // True once a fresher load has superseded this run: a zombie that settles late must not write over it.
+      const superseded = () => !coordinator.isCurrent(gen)
+      try {
+        const supabase = getSupabase()
+        const [gameRes, playersRes] = await Promise.all([
+          supabase.from('games').select(GAME_SELECT).eq('id', code).maybeSingle(),
+          supabase.from('players').select(PLAYER_SELECT).eq('game_id', code).order('joined_at'),
+        ])
+
+        if (superseded()) return true
+        if (gameRes.error || playersRes.error) return false
+
+        const gameData = gameRes.data as Game | null
+        const playerRows = (playersRes.data ?? []) as Player[]
+
+        if (!gameData) {
+          setGame(null)
+          setPlayers([])
+          setScreen(notFoundScreen)
+          return true
+        }
+
+        // Stale-replica guard (see finishedLatch above).
+        if (finishedLatch.observe(gameData.status, gameData.session_started_at) === 'stale-active') {
+          return finishedLatch.staleResult()
+        }
+
+        // Reconcile the stored session against the roster we just fetched: a drifted/
+        // stale player id (removed+rejoined, reclaim miss, rotated token) otherwise
+        // sticks forever and mismatches the dealt hand ("Your hand (0)"). Heals via
+        // the server's token-keyed resume, clears only on a confirmed 404. Web does
+        // this via resolvePlayerSession; mobile never had it.
+        //
+        // BEFORE loadGameState, and handed to it: game state that is fetched per-player
+        // through a server route (the Codewords key card, a card hand) authenticates with
+        // the resume token, so loading it against the pre-reconciliation token yields a
+        // REDACTED view of a live game — a spymaster staring at an operative's grid until
+        // some later event happens to reload (review on PR #787). Reading SecureStore
+        // directly inside loadGameState has the same flaw and one extra keychain read.
+        const session = await reconcilePlayerSession(code, playerRows, () => !superseded())
+        if (superseded()) return true
+        const playerId = session?.playerId ?? null
+        if (session) {
+          setMyPlayerId(session.playerId)
+          setMyResumeToken(session.resumeToken)
+          setJoinName(session.playerName)
+          void recordRecentGame({
+            code,
+            title: gameData.title,
+            gameType: gameData.game_type,
+          })
+        } else {
+          setMyPlayerId(null)
+          setMyResumeToken(null)
+        }
+
+        const { state, ok } = await loadGameStateRef.current(gameData, playerRows, session, () => !superseded())
+        if (superseded()) return ok
+        // Held: nothing was published, so a finished session stays unpublished (and retryable).
+        if (!ok && holdOnFailureRef.current) return false
+
+        setGame(gameData)
+        setPlayers(playerRows)
+        setGameState(ok ? state : null)
+
+        const resolvedState = ok ? state : (null as GameState)
+        let afterFailed = false
+        if (afterResolveRef.current) {
+          await afterResolveRef.current(
+            gameData,
+            playerId,
+            resolvedState,
+            () => !superseded(),
+            () => {
+              afterFailed = true
+            }
+          )
+          // A fresher load can overtake this one while afterResolve runs (e.g. it finished the game):
+          // switching the screen now would put this older game snapshot back on top.
+          if (superseded()) return !afterFailed
+        }
+        setScreen(computeScreenRef.current(gameData, playerId, resolvedState))
+        // Only now is the finished screen selected: until here a stalled load left the session retryable.
+        if (gameData.status === 'finished') finishedLatch.published()
+        return !afterFailed
+      } catch {
+        return false
       }
-      return ok
-    } finally {
-      loadingRef.current = false
-    }
-  }, [runLoad])
+    },
+    [code, notFoundScreen, coordinator, finishedLatch]
+  )
+  // Installed in an effect, ahead of the effect that starts the first load (effects run in declaration order).
+  useEffect(() => {
+    coordinator.setRun(runLoad)
+  }, [coordinator, runLoad])
+
+  const load = coordinator.load
+  const loadSettled = coordinator.loadSettled
 
   const join = useCallback(
     async (
@@ -300,9 +352,10 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     [code, joinName, load]
   )
 
+  // `load` is stable; the room is what decides when to read again (the effect above already superseded the old room).
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, code])
 
   // Rotating the player code mints a new resume token; ours would otherwise stay
   // cached from bootstrap and every move would authenticate with the dead one.
@@ -329,6 +382,7 @@ export function useGameViewBootstrap<Screen extends string, GameState>(
     error,
     lobbyFull,
     load,
+    loadSettled,
     join,
     joinScreen,
     waitingScreen,

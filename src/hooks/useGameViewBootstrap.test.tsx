@@ -7,15 +7,30 @@ const h = vi.hoisted(() => ({
   players: [] as unknown[],
   /** When true, reads never settle — models an iOS-suspended fetch. */
   hang: false,
+  /** Reads of the players table made so far, and from which one on they report an error. */
+  playerReads: 0,
+  failPlayersFrom: Infinity,
+  /** When set, the first players read waits for it. */
+  gate: null as Promise<void> | null,
+  /** Every `.eq(column, value)` value the queries were made with (to tell which room a read was for). */
+  eqValues: [] as unknown[],
 }))
 
 vi.mock('@/lib/supabase', () => {
   const chain = (result: unknown) => {
     const o: Record<string, unknown> = {
       select: () => o,
-      eq: () => o,
+      eq: (_column: string, value: unknown) => {
+        h.eqValues.push(value)
+        return o
+      },
       maybeSingle: () => (h.hang ? new Promise(() => {}) : Promise.resolve(result)),
-      order: () => (h.hang ? new Promise(() => {}) : Promise.resolve(result)),
+      order: () => {
+        if (h.hang) return new Promise(() => {})
+        const n = ++h.playerReads
+        const res = n >= h.failPlayersFrom ? { data: null, error: { message: 'boom' } } : result
+        return n === 1 && h.gate ? h.gate.then(() => res) : Promise.resolve(res)
+      },
     }
     return o
   }
@@ -34,6 +49,10 @@ beforeEach(() => {
   h.gameRow = null
   h.players = []
   h.hang = false
+  h.playerReads = 0
+  h.failPlayersFrom = Infinity
+  h.gate = null
+  h.eqValues = []
 })
 
 function setup(extra: Record<string, unknown> = {}) {
@@ -83,7 +102,13 @@ describe('useGameViewBootstrap', () => {
     const { computeScreen } = setup({ afterResolve })
     await waitFor(() => expect(afterResolve).toHaveBeenCalled())
     // seam receives the resolved playerId (null via the mocked session) + the loadGameState state
-    expect(afterResolve).toHaveBeenCalledWith({ id: 'ABCD', status: 'active' }, null, 'STATE')
+    expect(afterResolve).toHaveBeenCalledWith(
+      { id: 'ABCD', status: 'active' },
+      null,
+      'STATE',
+      expect.any(Function),
+      expect.any(Function)
+    )
     // the enriched return value — not the original 'STATE' — is what computeScreen sees
     expect(computeScreen).toHaveBeenLastCalledWith({ id: 'ABCD', status: 'active' }, null, 'ENRICHED')
   })
@@ -241,6 +266,78 @@ describe('useGameViewBootstrap', () => {
     errSpy.mockRestore()
   })
 
+  it('reports a throwing afterResolve as a failed read (false) while still showing the fallback screen', async () => {
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const afterResolve = vi.fn<() => Promise<void>>(async () => {
+      throw new Error('boom')
+    })
+    const { result } = setup({ afterResolve })
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+    await expect(result.current.loadSettled()).resolves.toBe(false)
+    // A completed afterResolve keeps the original ok result.
+    afterResolve.mockImplementation(async () => {})
+    await expect(result.current.loadSettled()).resolves.toBe(true)
+    errSpy.mockRestore()
+  })
+
+  it('a run that rejects still performs the trailing re-run queued while it ran', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    h.players = [{ id: 'p1' }]
+    let release!: () => void
+    h.gate = new Promise<void>((r) => (release = r))
+    const { result, loadGameState } = setup()
+    // The first (gated) run throws from loadGameState; a caller queues a re-run meanwhile.
+    loadGameState.mockRejectedValueOnce(new Error('boom'))
+    let settled: boolean | undefined
+    await act(async () => {
+      void result.current.loadSettled().then((v) => (settled = v))
+    })
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(settled).toBeDefined())
+    expect(loadGameState).toHaveBeenCalledTimes(2) // the queued re-run ran despite the rejection
+    expect(settled).toBe(true) // and it, not the rejected run, is what the chain reports
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+  })
+
+  it("loadSettled joined to a run keeps waiting through that run's trailing re-run window", async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      h.players = [{ id: 'p1' }]
+      let release!: () => void
+      h.gate = new Promise<void>((r) => (release = r))
+      const { result } = setup()
+      let settled: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (settled = v))
+      })
+      // First run finishes at 10s; the trailing re-run it queued starts then and has its own 12s window.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000)
+      })
+      h.hang = true // the trailing re-run's reads never answer
+      await act(async () => {
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      // Past the first run's 12s mark: the waiter must not give up on the first run's clock.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000)
+      })
+      expect(settled).toBeUndefined()
+      // The trailing run itself goes stale at 10s + 12s.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(7_000)
+      })
+      expect(settled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('keeps a successful join successful when onJoinSuccess throws', async () => {
     h.gameRow = { id: 'ABCD', status: 'waiting' }
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -264,5 +361,332 @@ describe('useGameViewBootstrap', () => {
     expect(loadGameState).toHaveBeenCalledTimes(2) // the post-join load() still ran despite the throw
     errSpy.mockRestore()
     vi.unstubAllGlobals()
+  })
+
+  it('loadSettled joined to a run in flight resolves with the queued re-run outcome, not an early true', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    h.players = [{ id: 'p1' }]
+    let release!: () => void
+    h.gate = new Promise<void>((r) => (release = r))
+    h.failPlayersFrom = 2 // the first (gated) run succeeds, the queued re-run fails
+    const { result } = setup()
+    let settled: boolean | undefined
+    let plain: boolean | undefined
+    await act(async () => {
+      void result.current.loadSettled().then((v) => (settled = v))
+      void result.current.load().then((v) => (plain = v))
+    })
+    // plain load() acknowledges the queued run immediately; loadSettled waits for the real result
+    expect(plain).toBe(true)
+    expect(settled).toBeUndefined()
+    await act(async () => {
+      release()
+    })
+    await waitFor(() => expect(settled).toBe(false))
+  })
+
+  it('loadSettled joined to a read that never settles gives up with false once the run is stale', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      h.hang = true // models an iOS-suspended fetch: the mount load never settles
+      const { result } = setup()
+      let settled: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (settled = v))
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_999)
+      })
+      expect(settled).toBeUndefined()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(settled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a load that supersedes a stuck one settles the abandoned chain with false instead of leaving it pending', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      const { result } = setup()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      // This load starts the chain and its read never settles.
+      h.hang = true
+      let stuck: boolean | undefined
+      await act(async () => {
+        void result.current.load().then((v) => (stuck = v))
+      })
+      expect(stuck).toBeUndefined()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_000)
+      })
+      expect(stuck).toBeUndefined() // nothing superseded it yet
+      // Past the stale bound a new load() starts a new generation; the old chain must be settled.
+      h.hang = false
+      let fresh: boolean | undefined
+      await act(async () => {
+        void result.current.load().then((v) => (fresh = v))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(stuck).toBe(false)
+      expect(fresh).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('loadSettled with nothing in flight behaves like load', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('waiting'))
+    await expect(result.current.loadSettled()).resolves.toBe(true)
+  })
+
+  it('loadSettled that starts the load itself gives up with false when the games query never settles', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      const { result } = setup()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      h.hang = true
+      let settled: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (settled = v))
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(11_999)
+      })
+      expect(settled).toBeUndefined()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(settled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hands loadGameState/afterResolve an isCurrent that turns false once a fresher load supersedes the run', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'waiting' }
+      let release!: () => void
+      const stall = new Promise<void>((r) => (release = r))
+      const seen: Array<() => boolean> = []
+      let calls = 0
+      const loadGameState = vi.fn(async (_g: unknown, _p: unknown, isCurrent: () => boolean) => {
+        seen.push(isCurrent)
+        if (++calls === 1) await stall
+        return { state: 'STATE', ok: true }
+      })
+      const { result } = setup({ loadGameState })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(seen).toHaveLength(1)
+      expect(seen[0]!()).toBe(true)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_000)
+      })
+      await act(async () => {
+        void result.current.load()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(seen[0]!()).toBe(false) // the stalled round-1 callback must stop publishing
+      expect(seen[1]!()).toBe(true)
+      await act(async () => {
+        release()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a stalled afterResolve of an older load does not switch the screen back after a newer load finished', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'active' }
+      let release!: () => void
+      const stall = new Promise<void>((r) => (release = r))
+      let calls = 0
+      const afterResolve = vi.fn(async () => {
+        if (++calls === 1) await stall
+      })
+      const computeScreen = vi.fn((g: { status?: string }) => (g.status === 'finished' ? 'results' : 'playing'))
+      const { result } = setup({ afterResolve, computeScreen })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_000)
+      })
+      h.gameRow = { id: 'ABCD', status: 'finished', session_started_at: 's1' }
+      await act(async () => {
+        void result.current.load()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.screen).toBe('results')
+      h.gameRow = { id: 'ABCD', status: 'active' }
+      await act(async () => {
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(result.current.screen).toBe('results')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('unmounting settles a loadSettled waiter on the stalled run with false at once, not after the stale deadline', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    let release!: () => void
+    const stall = new Promise<void>((r) => (release = r))
+    let started = false
+    const loadGameState = vi.fn(async () => {
+      started = true
+      await stall
+      return { state: 'STATE', ok: true }
+    })
+    const { result, unmount } = setup({ loadGameState })
+    await waitFor(() => expect(started).toBe(true))
+    let settled: boolean | undefined
+    void result.current.loadSettled().then((v) => (settled = v))
+    unmount()
+    // Real timers: the 12s stale deadline cannot be what resolved it.
+    await waitFor(() => expect(settled).toBe(false))
+    release()
+  })
+
+  it('after unmount: load resolves false without reading, and an in-flight run reads as superseded', async () => {
+    h.gameRow = { id: 'ABCD', status: 'waiting' }
+    let release!: () => void
+    const stall = new Promise<void>((r) => (release = r))
+    let current: (() => boolean) | undefined
+    const loadGameState = vi.fn(async (_g: unknown, _p: unknown, isCurrent: () => boolean) => {
+      current = isCurrent
+      await stall
+      return { state: 'STATE', ok: true }
+    })
+    const { result, unmount, computeScreen } = setup({ loadGameState })
+    await waitFor(() => expect(current).toBeDefined())
+    const settle = result.current.loadSettled
+    unmount()
+    expect(current!()).toBe(false)
+    await expect(settle()).resolves.toBe(false)
+    release()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(computeScreen).not.toHaveBeenCalled()
+  })
+  it('a read the afterResolve step marked failed reports false from the settled load, screen still selected', async () => {
+    h.gameRow = { id: 'ABCD', status: 'active' }
+    const afterResolve = vi.fn(async (_g, _p, _s, _c, markFailed: () => void) => {
+      markFailed()
+    })
+    const { result } = setup({ afterResolve })
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+    await expect(result.current.loadSettled()).resolves.toBe(false)
+    afterResolve.mockImplementation(async () => {})
+    await expect(result.current.loadSettled()).resolves.toBe(true)
+  })
+
+  it('a room change supersedes the old room run and reads the NEW room instead of only flagging a re-run', async () => {
+    h.gameRow = { id: 'AAAA', status: 'waiting' }
+    let release!: () => void
+    const stall = new Promise<void>((r) => (release = r))
+    const isCurrents: Array<() => boolean> = []
+    const loadGameState = vi.fn(async (_g: unknown, _p: unknown, isCurrent: () => boolean) => {
+      isCurrents.push(isCurrent)
+      if (isCurrents.length === 1) await stall // the old room's load never finishes in time
+      return { state: 'STATE', ok: true }
+    })
+    const computeScreen = vi.fn(() => 'waiting')
+    const { rerender } = renderHook(
+      ({ code }: { code: string }) =>
+        useGameViewBootstrap<string, string>({
+          gameCode: code,
+          loadingScreen: 'loading',
+          notFoundScreen: 'not_found',
+          loadGameState,
+          computeScreen,
+        }),
+      { initialProps: { code: 'AAAA' } }
+    )
+    await waitFor(() => expect(isCurrents).toHaveLength(1))
+    rerender({ code: 'BBBB' })
+    await waitFor(() => expect(isCurrents).toHaveLength(2)) // the new room was read
+    expect(isCurrents[0]!()).toBe(false) // and the old room's run no longer counts as current
+    expect(isCurrents[1]!()).toBe(true)
+    expect(h.eqValues).toContain('BBBB')
+    release()
+  })
+
+  it("a room change resets the previous room's finished latch", async () => {
+    h.gameRow = { id: 'AAAA', status: 'finished', session_started_at: 's1' }
+    const { result, rerender } = renderHook(
+      ({ code }: { code: string }) =>
+        useGameViewBootstrap<string, string>({
+          gameCode: code,
+          loadingScreen: 'loading',
+          notFoundScreen: 'not_found',
+          loadGameState: async () => ({ state: 'STATE', ok: true }),
+          computeScreen: (g: { status?: string }) => g.status ?? '',
+        }),
+      { initialProps: { code: 'AAAA' } }
+    )
+    await waitFor(() => expect(result.current.screen).toBe('finished'))
+    h.gameRow = { id: 'BBBB', status: 'active', session_started_at: 's1' } // same session id string, other room
+    rerender({ code: 'BBBB' })
+    await waitFor(() => expect(result.current.screen).toBe('active'))
+  })
+
+  it('keeps a finished session retryable until the finished screen is selected (stalled afterResolve)', async () => {
+    vi.useFakeTimers()
+    try {
+      h.gameRow = { id: 'ABCD', status: 'finished', session_started_at: 's1' }
+      let release!: () => void
+      const stall = new Promise<void>((r) => (release = r))
+      const afterResolve = vi.fn(async () => {
+        await stall
+      })
+      const { result } = setup({ afterResolve })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(afterResolve).toHaveBeenCalledTimes(1) // the finished load is stuck before it selected the screen
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(12_001)
+      })
+      // A lagging replica now reports the SAME session as active: the replacement load must report failure (so the
+      // caller retries) rather than success, because the finished screen was never selected.
+      h.gameRow = { id: 'ABCD', status: 'active', session_started_at: 's1' }
+      let outcome: boolean | undefined
+      await act(async () => {
+        void result.current.loadSettled().then((v) => (outcome = v))
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(outcome).toBe(false)
+      expect(result.current.screen).not.toBe('active') // and the stale board was not published
+      release()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('once the finished screen is selected, the same stale active read counts as success', async () => {
+    h.gameRow = { id: 'ABCD', status: 'finished', session_started_at: 's1' }
+    const { result } = setup()
+    await waitFor(() => expect(result.current.screen).toBe('active')) // computeScreen maps non-waiting to 'active'
+    h.gameRow = { id: 'ABCD', status: 'active', session_started_at: 's1' }
+    await expect(result.current.loadSettled()).resolves.toBe(true)
   })
 })

@@ -415,4 +415,41 @@ describe('unmount and epoch rechecks before an irreversible clear', () => {
     expect(cleared?.session).toBeNull()
     expect(cleared?.epoch).toBe(coordinator.epoch())
   })
+
+  describe('exclusiveStep', () => {
+    it('waits for a save already queued, and holds back saves queued while it runs', async () => {
+      const c = createSessionCoordinator()
+      const order: string[] = []
+      let finishSave!: () => void
+      const gate = new Promise<void>((r) => (finishSave = r))
+      const save = c.mutate(async () => {
+        await gate
+        order.push('save')
+      })
+      const step = c.exclusiveStep(async (s) => {
+        order.push('step-start')
+        const later = c.mutate(async () => void order.push('later-save'))
+        await s.commit(async () => void order.push('commit'))
+        order.push('step-end')
+        return { later } // wrapped: awaiting `later` inside the step would wait on the step itself
+      })
+      finishSave()
+      const { later } = await step
+      await Promise.all([save, later])
+      expect(order).toEqual(['save', 'step-start', 'commit', 'step-end', 'later-save'])
+    })
+
+    it('exposes a stable epoch inside the step, and only commit() moves it', async () => {
+      const c = createSessionCoordinator()
+      await c.exclusiveStep(async (s) => {
+        const before = s.epoch()
+        await Promise.resolve()
+        expect(s.epoch()).toBe(before)
+        await s.commit(async () => {
+          expect(s.epoch()).toBe(before + 1)
+        })
+        expect(s.epoch()).toBe(before + 2)
+      })
+    })
+  })
 })

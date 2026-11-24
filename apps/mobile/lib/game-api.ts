@@ -189,12 +189,20 @@ export function postVote(gameId: string, resumeToken: string, roundId: string, b
   })
 }
 
-export function postMatchingPairsFlip(gameId: string, resumeToken: string, pairIndex: number, isMatch: boolean) {
+/** `roundId` = the round the board was built for: the server refuses the flip if the game has moved on. */
+export function postMatchingPairsFlip(
+  gameId: string,
+  resumeToken: string,
+  pairIndex: number,
+  isMatch: boolean,
+  roundId?: string | null
+) {
   return postJson<{ success: boolean; pointsAfter: number; finished?: boolean }>('/api/matching-pairs/flip', {
     gameId,
     resumeToken,
     pairIndex,
     isMatch,
+    ...(roundId ? { roundId } : {}),
   })
 }
 

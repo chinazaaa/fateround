@@ -19,6 +19,12 @@ type PlayerRow = {
   resume_token?: string | null
 }
 
+function sameResumeToken(stored: string | null | undefined, urlToken: string): boolean {
+  // A stored session without a token cannot be told apart from the link's: treat it as the checked one
+  // (the pre-existing behaviour) rather than keeping a session the dead link may have owned.
+  return !stored || normalizeResumeToken(stored) === normalizeResumeToken(urlToken)
+}
+
 export function getResumeTokenFromUrl(): string | null {
   if (typeof window === 'undefined') return null
   const raw = new URLSearchParams(window.location.search).get(PLAYER_RESUME_QUERY)
@@ -128,7 +134,12 @@ export async function resolvePlayerSession(
       // we must NOT fall back to local storage, otherwise a player clicking an old link
       // on their own device would silently log in via localStorage and think the old
       // link still worked.
-      clearPlayerSession(gameCode)
+      //
+      // But the probe awaited the network: a join may have saved a NEWER session meanwhile, and clearing
+      // would delete that fresh seat (and mark the room kicked). Only clear when what is stored is not a
+      // different token's session; otherwise leave it alone. Either way this stale link still resolves to null.
+      const stored = getPlayerSession(gameCode)
+      if (!stored || sameResumeToken(stored.resumeToken, urlToken)) clearPlayerSession(gameCode)
       stripResumeTokenFromUrl()
       return null
     }

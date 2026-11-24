@@ -29,6 +29,7 @@ import {
  *   resumeToken – player auth token
  *   pairIndex   – which pair was involved (0-based)
  *   isMatch     – true = both cards matched, false = mismatch
+ *   roundId     – (optional) round the client's board belongs to; refused if it is no longer the current round
  */
 const flipSchema = z.object({
   gameId: z.string().min(1).max(10).toUpperCase(),
@@ -37,6 +38,12 @@ const flipSchema = z.object({
   pairIndex: z.number().int().min(0),
   /** true = matched pair, false = mismatch attempt. */
   isMatch: z.boolean(),
+  /**
+   * Round the client's board was built for. When present the flip is only recorded for that round: a request
+   * already in flight when the game moved to the next round is refused instead of being scored against it.
+   * Optional so older app builds, which do not send it, keep working.
+   */
+  roundId: z.string().min(1).max(64).optional(),
 })
 
 /** Grace (seconds) added to the round timer so a flip made just before time-up still lands. */
@@ -77,7 +84,7 @@ export async function POST(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, flipSchema)
   if (bodyError) return bodyError
 
-  const { gameId, resumeToken, pairIndex, isMatch } = body
+  const { gameId, resumeToken, pairIndex, isMatch, roundId } = body
   const code = gameId.toUpperCase()
   const supabase = getSupabaseAdmin()
 
@@ -118,6 +125,10 @@ export async function POST(req: NextRequest) {
       .eq('round_number', currentRoundNumber)
       .maybeSingle()
     if (!round) return NextResponse.json({ error: 'Round not found' }, { status: 404 })
+
+    if (roundId !== undefined && roundId !== round.id) {
+      return NextResponse.json({ error: 'The round changed while recording this flip' }, { status: 409 })
+    }
 
     if (round.status !== 'active') return NextResponse.json({ error: 'Round is not active' }, { status: 400 })
 

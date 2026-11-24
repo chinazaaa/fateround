@@ -834,27 +834,27 @@ describe('createFlipResyncTracker', () => {
   it('does nothing when every flip succeeds', () => {
     const resync = vi.fn()
     const t = createFlipResyncTracker(resync)
-    t.begin()
-    t.end(false)
+    const f0 = t.begin()
+    t.end(f0, false)
     expect(resync).not.toHaveBeenCalled()
   })
 
   it('resyncs once when a flip fails', () => {
     const resync = vi.fn()
     const t = createFlipResyncTracker(resync)
-    t.begin()
-    t.end(true)
+    const f0 = t.begin()
+    t.end(f0, true)
     expect(resync).toHaveBeenCalledTimes(1)
   })
 
   it('waits for the other in-flight flips to settle before resyncing', () => {
     const resync = vi.fn()
     const t = createFlipResyncTracker(resync)
-    t.begin()
-    t.begin()
-    t.end(true)
+    const f0 = t.begin()
+    const f1 = t.begin()
+    t.end(f0, true)
     expect(resync).not.toHaveBeenCalled()
-    t.end(false)
+    t.end(f1, false)
     expect(resync).toHaveBeenCalledTimes(1)
   })
 
@@ -867,13 +867,13 @@ describe('createFlipResyncTracker', () => {
         })
     )
     const t = createFlipResyncTracker(resync)
-    t.begin()
-    t.end(true)
+    const f0 = t.begin()
+    t.end(f0, true)
     expect(resync).toHaveBeenCalledTimes(1)
 
     // A new flip begins while the read is in flight: its match would be hidden by that read's snapshot.
-    t.begin()
-    t.end(false)
+    const f1 = t.begin()
+    t.end(f1, false)
     expect(resync).toHaveBeenCalledTimes(1)
 
     release()
@@ -891,39 +891,39 @@ describe('createFlipResyncTracker', () => {
         })
     )
     const t = createFlipResyncTracker(resync)
-    t.begin()
-    t.end(true)
-    t.begin() // starts during the resync and is still unanswered when the read finishes
+    const f0 = t.begin()
+    t.end(f0, true)
+    const f1 = t.begin() // starts during the resync and is still unanswered when the read finishes
     release()
     await Promise.resolve()
     await Promise.resolve()
     expect(resync).toHaveBeenCalledTimes(1)
-    t.end(false)
+    t.end(f1, false)
     expect(resync).toHaveBeenCalledTimes(2)
   })
 
   it('keeps working when the resync rejects', async () => {
     const resync = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined)
     const t = createFlipResyncTracker(resync)
-    t.begin()
-    t.end(true)
+    const f0 = t.begin()
+    t.end(f0, true)
     await Promise.resolve()
     await Promise.resolve()
-    t.begin()
-    t.end(true)
+    const f1 = t.begin()
+    t.end(f1, true)
     expect(resync).toHaveBeenCalledTimes(2)
   })
 
-  it('reports in-flight flips and bumps the epoch on every flip, so a snapshot can tell it may be stale', () => {
+  it('reports in-flight flips and marks earlier reads stale on every flip, so a snapshot can tell it may be stale', () => {
     const t = createFlipResyncTracker(vi.fn())
-    const readStartedAt = t.epoch()
+    const read = t.startRead()
     expect(t.inFlight()).toBe(false)
-    t.begin()
+    const f0 = t.begin()
     expect(t.inFlight()).toBe(true)
-    t.end(false)
+    t.end(f0, false)
     // The flip is settled, but it started after the read did: that read may not contain it.
     expect(t.inFlight()).toBe(false)
-    expect(t.epoch()).not.toBe(readStartedAt)
+    expect(t.readMayBeStale(read, null)).toBe(true)
   })
 
   it('requestResync reads again straight away when idle, and after the last flip when one is in flight', async () => {
@@ -934,10 +934,10 @@ describe('createFlipResyncTracker', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    t.begin()
+    const f0 = t.begin()
     t.requestResync()
     expect(resync).toHaveBeenCalledTimes(1)
-    t.end(false)
+    t.end(f0, false)
     expect(resync).toHaveBeenCalledTimes(2)
   })
 
@@ -946,8 +946,8 @@ describe('createFlipResyncTracker', () => {
     const t = createFlipResyncTracker(resync)
     t.markDirty()
     expect(resync).not.toHaveBeenCalled()
-    t.begin()
-    t.end(false)
+    const f0 = t.begin()
+    t.end(f0, false)
     expect(resync).toHaveBeenCalledTimes(1)
   })
 
@@ -1003,13 +1003,13 @@ describe('createFlipResyncTracker', () => {
   it('forgets a settled failure, so later successes do not resync again', async () => {
     const resync = vi.fn()
     const t = createFlipResyncTracker(resync)
-    t.begin()
-    t.end(true)
+    const f0 = t.begin()
+    t.end(f0, true)
     // Let the first resync finish before the next flip starts, so only a leaked failure could trigger another.
     await Promise.resolve()
     await Promise.resolve()
-    t.begin()
-    t.end(false)
+    const f1 = t.begin()
+    t.end(f1, false)
     await Promise.resolve()
     await Promise.resolve()
     expect(resync).toHaveBeenCalledTimes(1)

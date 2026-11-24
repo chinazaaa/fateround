@@ -1,6 +1,8 @@
 import { apiUrl } from '@/lib/config'
-import { clearPlayerSession, getPlayerSession, setPlayerSession, type PlayerSession } from '@/lib/secure-session'
+import { deletePlayerSession, getPlayerSession, writePlayerSession, type PlayerSession } from '@/lib/secure-session'
 import type { PlayerGender } from '@fateround/shared'
+import { getSessionCoordinator } from '@fateround/shared/session-coordinator'
+import { reconcileSession } from '@fateround/shared/session-reconcile'
 
 type ProbeResult =
   | { kind: 'row'; playerId: string; playerName: string; playerGender: PlayerGender; resumeToken: string | null }
@@ -66,32 +68,32 @@ async function probeResume(gameCode: string, resumeToken: string): Promise<Probe
  */
 export async function reconcilePlayerSession(
   gameCode: string,
-  roster: { id: string }[]
+  roster: { id: string }[],
+  /** False once the calling load was superseded/unmounted: such a run must not write session state. */
+  isCurrent?: () => boolean
 ): Promise<PlayerSession | null> {
-  const session = await getPlayerSession(gameCode)
-  if (!session) return null
-  // Stored id is in the roster → trust it. The common case; no network call.
-  if (roster.some((p) => p.id === session.playerId)) return session
-  // Absent could just be a stale snapshot (a load that raced the join replicating),
-  // so never clear on that alone — confirm with the server first.
-  if (!session.resumeToken) return session
-
-  const result = await probeResume(gameCode, session.resumeToken)
-  if (result.kind === 'row') {
-    if (result.playerId !== session.playerId) {
-      await setPlayerSession(gameCode, result.playerId, result.playerName, result.playerGender, result.resumeToken)
-    }
-    return {
-      playerId: result.playerId,
-      playerName: result.playerName,
-      playerGender: result.playerGender,
-      resumeToken: result.resumeToken,
-    }
-  }
-  if (result.kind === 'gone') {
-    await clearPlayerSession(gameCode)
-    return null
-  }
-  // Unverifiable — keep the local session so the next load can retry.
-  return session
+  // The decision logic and its race guards live in @fateround/shared so they are unit-tested; this file only
+  // supplies storage and the network probe. The clear/re-key decision runs INSIDE the room's coordinator (the
+  // one every setPlayerSession/clearPlayerSession goes through), so a join save still in flight is never
+  // overwritten or deleted. That is why write/clear below are the RAW storage operations.
+  return reconcileSession<PlayerSession>(roster, {
+    coordinator: getSessionCoordinator(gameCode),
+    read: () => getPlayerSession(gameCode),
+    probe: async (token) => {
+      const r = await probeResume(gameCode, token)
+      if (r.kind !== 'row') return r
+      return {
+        kind: 'row',
+        session: {
+          playerId: r.playerId,
+          playerName: r.playerName,
+          playerGender: r.playerGender,
+          resumeToken: r.resumeToken,
+        },
+      }
+    },
+    write: (s) => writePlayerSession(gameCode, s.playerId, s.playerName, s.playerGender, s.resumeToken),
+    clear: () => deletePlayerSession(gameCode),
+    isCurrent,
+  })
 }
