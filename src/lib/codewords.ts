@@ -607,21 +607,23 @@ export async function finishCodewordsGame(
   // A failed wipe comes back as `cleanupError`, not `error`: the game is already
   // `finished`, so reporting it as a finish failure made callers drop a close they
   // had actually performed (and skip its `result_reason` stamp).
+  //
+  // A lost flip wipes only when the game really is finished: a lost `finishGuard` (a host claimed
+  // during removal) or `onlyIfActive` leaves a live game behind, and its chat must survive.
   let wipeUpTo: string | undefined
-  if (onlySessionStartedAt !== undefined) {
-    if (won) {
-      wipeUpTo = finishedAt
-    } else {
-      const { data: current, error: currentError } = await supabase
-        .from('games')
-        .select('status, session_started_at, finished_at')
-        .eq('id', gameId)
-        .maybeSingle()
-      if (currentError) return { error: null, won, cleanupError: internalErrorMessage('codewords', currentError) }
-      const sameSession = (current?.session_started_at ?? null) === onlySessionStartedAt
-      if (current?.status !== 'finished' || !sameSession || !current.finished_at) {
-        return { error: null, won, cleanupError: null }
-      }
+  if (won) {
+    if (onlySessionStartedAt !== undefined) wipeUpTo = finishedAt
+  } else {
+    const { data: current, error: currentError } = await supabase
+      .from('games')
+      .select('status, session_started_at, finished_at')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (currentError) return { error: null, won, cleanupError: internalErrorMessage('codewords', currentError) }
+    if (current?.status !== 'finished') return { error: null, won, cleanupError: null }
+    if (onlySessionStartedAt !== undefined) {
+      const sameSession = (current.session_started_at ?? null) === onlySessionStartedAt
+      if (!sameSession || !current.finished_at) return { error: null, won, cleanupError: null }
       wipeUpTo = current.finished_at as string
     }
   }

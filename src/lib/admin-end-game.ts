@@ -60,65 +60,86 @@ export async function adminEndGame(
 
   const gameId = game.id
   const now = new Date().toISOString()
-
-  const { error: roundError } = await supabase
-    .from('rounds')
-    .update({ status: 'finished', ended_at: now })
-    .eq('game_id', gameId)
-    .eq('status', 'active')
-
-  if (roundError) return { error: internalErrorMessage('admin-end-game', roundError), won: false }
-
   const gameType = parseGameType(game.game_type)
-  // The bulk round update above finishes rounds without going through the Two Truths reveal,
-  // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
-  // renders its last round with no lie highlighted.
-  if (isTwoTruthsGame(gameType)) {
-    // Bail before the game is marked finished if any reveal could not be written. The rounds are
-    // already 'finished' at this point, but revealFinishedTtlRounds picks those up again, so a
-    // retry recovers — whereas finishing the game makes this function reject every retry and the
-    // round keeps no lie_index forever.
-    const revealed = await revealFinishedTtlRounds(supabase, gameId)
-    if (!revealed) {
-      return { error: 'Could not reveal every Two Truths round — game left endable; retry.', won: false }
+
+  // Rounds are bulk-finished here, and for Two Truths the reveal is folded back into ttl_metadata.
+  const finishRounds = async (): Promise<string | null> => {
+    const { error: roundError } = await supabase
+      .from('rounds')
+      .update({ status: 'finished', ended_at: now })
+      .eq('game_id', gameId)
+      .eq('status', 'active')
+    if (roundError) return internalErrorMessage('admin-end-game', roundError)
+    // The bulk round update above finishes rounds without going through the Two Truths reveal,
+    // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
+    // renders its last round with no lie highlighted.
+    if (isTwoTruthsGame(gameType)) {
+      // Bail before the game is marked finished if any reveal could not be written. The rounds are
+      // already 'finished' at this point, but revealFinishedTtlRounds picks those up again, so a
+      // retry recovers — whereas finishing the game makes this function reject every retry and the
+      // round keeps no lie_index forever.
+      const revealed = await revealFinishedTtlRounds(supabase, gameId)
+      if (!revealed) return 'Could not reveal every Two Truths round — game left endable; retry.'
+    }
+    return null
+  }
+
+  // Unguarded: rounds first, so a failure leaves the game endable for a retry. With a `finishGuard` the
+  // guarded games update must decide first — it can lose (another finisher, or a player who claimed host),
+  // and a lost finish must not touch the rounds of a game that stays live. The round writes then run only
+  // for the winning call; a failure there cannot un-finish the game, so it is reported as `cleanupError`.
+  if (!finishGuard) {
+    const roundsError = await finishRounds()
+    if (roundsError) return { error: roundsError, won: false }
+  }
+  const result = await finishGame()
+  if (finishGuard && result.won && !result.error) {
+    const roundsError = await finishRounds()
+    if (roundsError) {
+      console.error(`admin-end-game: round finish after guarded finish failed for ${gameId}`, roundsError)
+      return { ...result, cleanupError: result.cleanupError ?? roundsError }
     }
   }
-  if (isAnonymousMessagesGame(gameType)) {
-    return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive, finishGuard })
-  }
-  if (isSecretMessageGame(gameType)) {
-    return finishSecretMessageBoard(supabase, gameId, { onlyIfActive, finishGuard })
-  }
-  if (isCodewordsGame(gameType)) {
-    return finishCodewordsGame(supabase, gameId, { onlyIfActive, finishGuard })
-  }
+  return result
 
-  // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so its bookkeeping is made
-  // durable and recoverable (see markGameFinished's `trackBookkeeping`) on this path too.
-  const { error, won } = await markGameFinished(supabase, gameId, now, {
-    onlyIfActive,
-    finishGuard,
-    trackBookkeeping: isWordRushGame(gameType),
-  })
-  if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }
+  async function finishGame(): Promise<FinishGameResult> {
+    if (isAnonymousMessagesGame(gameType)) {
+      return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive, finishGuard })
+    }
+    if (isSecretMessageGame(gameType)) {
+      return finishSecretMessageBoard(supabase, gameId, { onlyIfActive, finishGuard })
+    }
+    if (isCodewordsGame(gameType)) {
+      return finishCodewordsGame(supabase, gameId, { onlyIfActive, finishGuard })
+    }
 
-  // Lost the compare-and-set: another request already finished this game, so it is
-  // not ours to label. Stamping anyway would write `admin_ended` over a game someone
-  // else finished for a different reason (the `is(null)` guard only helps if the
-  // winner already got its own stamp in). Not an error — just nothing left to do.
-  if (!won) return { error: null, won: false }
+    // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so its bookkeeping is made
+    // durable and recoverable (see markGameFinished's `trackBookkeeping`) on this path too.
+    const { error, won } = await markGameFinished(supabase, gameId, now, {
+      onlyIfActive,
+      finishGuard,
+      trackBookkeeping: isWordRushGame(gameType),
+    })
+    if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }
 
-  // Tag the abort reason so the trophy/coin award pass knows to skip counter
-  // and streak credit for this finish (src/lib/trophies/award.ts — ABORT_REASONS).
-  // Best-effort: the game is already finished; a missing tag only weakens the
-  // farming gate for this one row, it doesn't corrupt anything.
-  const { error: reasonError } = await supabase
-    .from('games')
-    .update({ result_reason: 'admin_ended' })
-    .eq('id', gameId)
-    .is('result_reason', null)
-  if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
-  return { error: null, won: true }
+    // Lost the compare-and-set: another request already finished this game, so it is
+    // not ours to label. Stamping anyway would write `admin_ended` over a game someone
+    // else finished for a different reason (the `is(null)` guard only helps if the
+    // winner already got its own stamp in). Not an error — just nothing left to do.
+    if (!won) return { error: null, won: false }
+
+    // Tag the abort reason so the trophy/coin award pass knows to skip counter
+    // and streak credit for this finish (src/lib/trophies/award.ts — ABORT_REASONS).
+    // Best-effort: the game is already finished; a missing tag only weakens the
+    // farming gate for this one row, it doesn't corrupt anything.
+    const { error: reasonError } = await supabase
+      .from('games')
+      .update({ result_reason: 'admin_ended' })
+      .eq('id', gameId)
+      .is('result_reason', null)
+    if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
+    return { error: null, won: true }
+  }
 }
 
 export async function countStaleOpenGames(

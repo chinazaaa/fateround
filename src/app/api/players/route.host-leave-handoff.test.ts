@@ -273,6 +273,8 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     const res = await leave()
     expect(res.status).toBe(200)
     expect(tables.games[0].status).toBe('finished')
+    // The finish ran after the seat was gone, so nothing else clears the linkage Continue routes by.
+    expect(tables.games[0].host_user_id).toBeNull()
   })
 
   it('a finished host whose seat is retained still has host_user_id cleared (pending nominee path)', async () => {
@@ -305,6 +307,7 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     expect(res.status).toBe(200)
     expect(tables.games[0].status).toBe('finished')
     expect(tables.games[0].pending_host_player_id).toBeNull()
+    expect(tables.games[0].host_user_id).toBeNull()
   })
 
   it('an explicit nominee who claimed host during the leave is not overwritten by the automatic nomination', async () => {

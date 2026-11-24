@@ -2059,11 +2059,15 @@ async function removePlayer(req: NextRequest, handoff: HostHandoff) {
               // The seat is already gone: never leave a live game with no host and no nominee. End it instead.
               console.error('players: host successor lookup after leave failed', nextError)
               await endGameHostLeft(endedGame, playerId)
+              // The seat is gone and nothing else clears the linkage after this point.
+              await clearOutgoingHostUser(id, playerId)
               return
             }
             if (!next?.id) {
               // Everyone else left in the meantime: same outcome as having no successor to begin with.
               await endGameHostLeft(endedGame, playerId)
+              // The seat is gone and nothing else clears the linkage after this point.
+              await clearOutgoingHostUser(id, playerId)
               return
             }
             // Guarded like claim-host: only while nobody is nominated, the game is live, and nobody else
