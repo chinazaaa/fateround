@@ -28,10 +28,27 @@ import { markGameFinished, recoverAllFinishBookkeeping, recoverFinishBookkeeping
 // Minimal Supabase stand-in: the games update builder is chainable and awaitable,
 // resolving to the rows the (optional) CAS `.select()` would return.
 function makeSupabase(rows: unknown[] | null, error: unknown = null) {
-  const calls = { eqs: [] as Array<[string, unknown]>, selected: false }
+  const calls = {
+    eqs: [] as Array<[string, unknown]>,
+    selected: false,
+    patches: [] as Array<Record<string, unknown>>,
+    ors: [] as string[],
+    ins: [] as Array<[string, unknown[]]>,
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const b: any = {}
-  b.update = () => b
+  b.update = (patch: Record<string, unknown>) => {
+    calls.patches.push(patch)
+    return b
+  }
+  b.or = (expr: string) => {
+    calls.ors.push(expr)
+    return b
+  }
+  b.in = (col: string, vals: unknown[]) => {
+    calls.ins.push([col, vals])
+    return b
+  }
   b.eq = (col: string, val: unknown) => {
     calls.eqs.push([col, val])
     return b
@@ -63,6 +80,35 @@ describe('markGameFinished', () => {
     await markGameFinished(supabase, 'GAME', undefined, { onlyIfActive: true, onlySessionStartedAt: 'T1' })
     expect(calls.eqs).toContainEqual(['session_started_at', 'T1'])
     expect(calls.eqs).toContainEqual(['status', 'active'])
+  })
+
+  it('a finishGuard is ONE conditional update that also writes the reason and refuses while a nominee exists', async () => {
+    const { supabase, calls } = makeSupabase([{ id: 'GAME' }])
+    const result = await markGameFinished(supabase, 'GAME', '2026-01-01T00:00:00.000Z', {
+      finishGuard: {
+        statuses: ['waiting', 'active'],
+        hostPlayerNullOr: 'HOST',
+        noPendingHostNominee: true,
+        resultReason: 'host_ended',
+      },
+    })
+    expect(result.won).toBe(true)
+    expect(result.finishedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(calls.patches).toEqual([
+      { status: 'finished', finished_at: '2026-01-01T00:00:00.000Z', result_reason: 'host_ended' },
+    ])
+    expect(calls.ins).toContainEqual(['status', ['waiting', 'active']])
+    expect(calls.ors).toEqual(['host_player_id.is.null,host_player_id.eq.HOST'])
+    expect(calls.eqs).toContainEqual(['pending_host_player_id', null])
+  })
+
+  it('a finishGuard that matches no row is a lost finish', async () => {
+    const { supabase } = makeSupabase([])
+    const result = await markGameFinished(supabase, 'GAME', undefined, {
+      finishGuard: { statuses: ['active'], noPendingHostNominee: true },
+    })
+    expect(result.won).toBe(false)
+    expect(result.finishedAt).toBeUndefined()
   })
 
   it('with a roundGuard, flips via the RPC and only awards when the round still matched', async () => {

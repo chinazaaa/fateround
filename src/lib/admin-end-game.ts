@@ -1,8 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
-import { finishCodewordsGame } from '@/lib/codewords'
-import { markGameFinished, type FinishGameResult, type FinishGuard } from '@/lib/game-finish'
+import {
+  clearAnonymousRoomSessionData,
+  finishAnonymousRoomSession,
+  finishSecretMessageBoard,
+} from '@/lib/anonymous-messages'
+import { clearCodewordsChat, finishCodewordsGame } from '@/lib/codewords'
+import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
 import {
   isAnonymousMessagesGame,
   isCodewordsGame,
@@ -45,17 +49,16 @@ export type AdminEndGameOptions = {
    * Defaults to false, preserving every existing caller's behaviour.
    */
   onlyIfActive?: boolean
-  /** Single-winner finish over waiting-or-active games, optionally bound to the outgoing host. */
-  finishGuard?: FinishGuard
 }
 
-const ROUND_CLEANUP_ATTEMPTS = 3
-
 /**
- * Bulk-finish a game's active rounds and, for Two Truths, fold each finished round's lie and guesses back into
- * `ttl_metadata` (the bulk update bypasses the normal end-of-round path). Idempotent. `startedNoLaterThan` binds
- * the update to rounds of a finished session: Play Again deletes the old rounds and a new session's rounds start
- * after the old `finished_at`, so a later retry can never finish a live game's round.
+ * Bulk-finish a game's active rounds and, for Two Truths, fold each finished round's hidden lie and guesses back
+ * into `ttl_metadata` (the bulk update bypasses the normal end-of-round path, so an ended game would otherwise
+ * render its last round with no lie highlighted). Idempotent. `startedNoLaterThan` binds it to the rounds of a
+ * finished session: Play Again deletes the old rounds and a new session's rounds start after the old
+ * `finished_at`, so a late cleanup can never touch a live game's round.
+ *
+ * The messages are neutral about the game: callers know whether it is still endable and say what to retry.
  */
 async function finishGameRounds(
   supabase: SupabaseClient,
@@ -70,45 +73,99 @@ async function finishGameRounds(
     .eq('game_id', gameId)
     .eq('status', 'active')
   if (startedNoLaterThan) update = update.lte('started_at', startedNoLaterThan)
-  const { error: roundError } = await update
-  if (roundError) return internalErrorMessage('admin-end-game', roundError)
-  // Without this an admin-ended game renders its last round with no lie highlighted. Unguarded callers run it
-  // BEFORE the game flip (a failure leaves the game endable); a guarded finish runs it after, and recovers via
-  // completeFinishedGameRoundCleanup.
-  if (isTwoTruthsGame(gameType)) {
-    const revealed = await revealFinishedTtlRounds(supabase, gameId, startedNoLaterThan)
-    if (!revealed) return 'Could not reveal every Two Truths round — game left endable; retry.'
+  const { error } = await update
+  if (error) return internalErrorMessage('admin-end-game', error)
+  if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId, startedNoLaterThan))) {
+    return 'Could not reveal every Two Truths round'
   }
   return null
 }
 
 /**
- * Recovery for a host-left finish whose round cleanup failed after the game was already finished (the guarded
- * order finishes the game first). Callable on a later leave retry: it does nothing unless the game is still the
- * finished session ended by THIS host leaving (`finished`, `host_ended`, host seat still the leaver's), and the
- * round update is bound to rounds started no later than that session's `finished_at`, so a new live game started
- * by Play Again under the same id (status no longer finished, rounds deleted and restarted later) is never touched.
+ * The ONE cleanup of a finished session's leftovers: its rounds (plus the Two Truths reveal), and the per-feature
+ * session data that is deleted rather than kept (Codewords chat; Anonymous Messages messages and bans, which the
+ * Secret Message Board shares). Everything is bound to `finishedAt`, the `finished_at` the finish wrote, so it is
+ * idempotent and can be re-run at any later time without reaching a replayed (Play Again) session's rows, which
+ * are all created after it. Runs every step and reports the first failure so a retry can finish the rest.
  */
-export async function completeFinishedHostLeftRoundCleanup(
+export async function cleanupFinishedSession(
   supabase: SupabaseClient,
   gameId: string,
-  hostPlayerId: string
+  gameType: ReturnType<typeof parseGameType>,
+  finishedAt: string
 ): Promise<string | null> {
+  const roundsError = await finishGameRounds(supabase, gameId, gameType, finishedAt, finishedAt)
+  let wipeError: string | null = null
+  if (isCodewordsGame(gameType)) {
+    wipeError = (await clearCodewordsChat(supabase, gameId, finishedAt)).error
+  } else if (isAnonymousMessagesGame(gameType) || isSecretMessageGame(gameType)) {
+    wipeError = (await clearAnonymousRoomSessionData(supabase, gameId, finishedAt)).error
+  }
+  return roundsError ?? wipeError
+}
+
+/**
+ * A host who leaves with nobody to hand the game to ends it. ONE conditional update decides it: still
+ * waiting/active, nobody but the outgoing host hosts it, and nobody is nominated to take over — and the same
+ * update writes `result_reason: 'host_ended'`, so the finish and its classification can never be separated by a
+ * lost response. Writes no cleanup: the persisted `host_ended` + `finished_at` are what
+ * `completeHostLeftCleanup` keys on, so the cleanup runs (and re-runs) from them, whoever finished the game.
+ *
+ * Returns whether the game is finished afterwards (whoever finished it), still live (a new host took over, or a
+ * nominee landed), or unknown. A lost or errored write is told apart from a commit by reading the row back.
+ */
+export async function finishGameOnHostLeft(
+  supabase: SupabaseClient,
+  gameId: string,
+  rawGameType: string,
+  outgoingPlayerId: string
+): Promise<'finished' | 'live' | 'error'> {
+  const { error, won } = await markGameFinished(supabase, gameId, undefined, {
+    finishGuard: {
+      statuses: ['waiting', 'active'],
+      hostPlayerNullOr: outgoingPlayerId,
+      noPendingHostNominee: true,
+      resultReason: 'host_ended',
+    },
+    // Same durability as every other force-finish of Word Rush (see adminEndGame).
+    trackBookkeeping: isWordRushGame(parseGameType(rawGameType)),
+  })
+  if (won && !error) return 'finished'
+  const { data, error: readError } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
+  if (readError) return 'error'
+  if (data?.status === 'finished') return 'finished'
+  return error ? 'error' : 'live'
+}
+
+/**
+ * Finish the leftovers of a host-left finish (see `finishGameOnHostLeft`). Does nothing unless the game is
+ * currently the finished session that was ended by a host leaving, and runs the shared cleanup bound to that
+ * session's own `finished_at`, so a Play Again game under the same id (status no longer `finished`) is never
+ * touched. Safe to call on every later leave of the retained host seat, and after any finish attempt whose
+ * response was lost.
+ */
+export async function completeHostLeftCleanup(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ finished: boolean; error: string | null }> {
   const { data: game, error } = await supabase
     .from('games')
-    .select('status, game_type, host_player_id, result_reason, finished_at')
+    .select('status, game_type, result_reason, finished_at')
     .eq('id', gameId)
     .maybeSingle()
-  if (error) return internalErrorMessage('admin-end-game', error)
-  if (!game || game.status !== 'finished' || !game.finished_at) return null
-  if (game.result_reason !== 'host_ended' || game.host_player_id !== hostPlayerId) return null
-  return finishGameRounds(supabase, gameId, parseGameType(game.game_type), game.finished_at, game.finished_at)
+  if (error) return { finished: false, error: internalErrorMessage('admin-end-game', error) }
+  if (game?.status !== 'finished') return { finished: false, error: null }
+  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
+  return {
+    finished: true,
+    error: await cleanupFinishedSession(supabase, gameId, parseGameType(game.game_type), game.finished_at),
+  }
 }
 
 export async function adminEndGame(
   supabase: SupabaseClient,
   game: AdminGameToEnd,
-  { onlyIfActive = false, finishGuard }: AdminEndGameOptions = {}
+  { onlyIfActive = false }: AdminEndGameOptions = {}
 ): Promise<FinishGameResult> {
   if (game.status !== 'active' && game.status !== 'waiting') {
     return { error: 'Only waiting or active games can be ended', won: false }
@@ -116,78 +173,47 @@ export async function adminEndGame(
 
   const gameId = game.id
   const now = new Date().toISOString()
+
   const gameType = parseGameType(game.game_type)
-
-  const finishRounds = (startedNoLaterThan?: string) =>
-    finishGameRounds(supabase, gameId, gameType, startedNoLaterThan ?? now, startedNoLaterThan)
-
-  // Unguarded: rounds first, so a failure leaves the game endable for a retry. With a `finishGuard` the
-  // guarded games update must decide first — it can lose (another finisher, or a player who claimed host),
-  // and a lost finish must not touch the rounds of a game that stays live. The round writes then run only
-  // for the winning call; a failure there cannot un-finish the game, so it is reported as `cleanupError`.
-  if (!finishGuard) {
-    const roundsError = await finishRounds()
-    if (roundsError) return { error: roundsError, won: false }
+  // Rounds first: a failure here (or a Two Truths reveal that could not be written) leaves the game endable,
+  // whereas finishing the game makes this function reject every retry and the round keeps no lie_index forever.
+  const roundsError = await finishGameRounds(supabase, gameId, gameType, now)
+  if (roundsError) return { error: `${roundsError} — game left endable; retry.`, won: false }
+  if (isAnonymousMessagesGame(gameType)) {
+    return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive })
   }
-  const result = await finishGame()
-  if (finishGuard && result.won && !result.error) {
-    // The game is already finished, so a failure here cannot be retried through adminEndGame (it rejects a
-    // finished game). Both writes are idempotent, so retry a few times before giving up; the caller can still
-    // recover later with `completeFinishedGameRoundCleanup`, bound to this finish.
-    // Bound every attempt to the session this finish ended, using the finished_at it actually wrote: the finish
-    // side effects ran first, and Play Again can start a NEW session (new active round) under the same game id in
-    // that window, which an unbounded retry would finish.
-    const finishedAt = result.finishedAt
-    let roundsError: string | null = finishedAt ? null : 'Finished session timestamp unavailable for round cleanup'
-    for (let attempt = 0; finishedAt && attempt < ROUND_CLEANUP_ATTEMPTS; attempt++) {
-      roundsError = await finishRounds(finishedAt)
-      if (!roundsError) break
-    }
-    if (roundsError) {
-      console.error(`admin-end-game: round finish after guarded finish failed for ${gameId}`, roundsError)
-      return { ...result, cleanupError: result.cleanupError ?? roundsError }
-    }
+  if (isSecretMessageGame(gameType)) {
+    return finishSecretMessageBoard(supabase, gameId, { onlyIfActive })
   }
-  return result
-
-  async function finishGame(): Promise<FinishGameResult> {
-    if (isAnonymousMessagesGame(gameType)) {
-      return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive, finishGuard, finishedAt: now })
-    }
-    if (isSecretMessageGame(gameType)) {
-      return finishSecretMessageBoard(supabase, gameId, { onlyIfActive, finishGuard, finishedAt: now })
-    }
-    if (isCodewordsGame(gameType)) {
-      return finishCodewordsGame(supabase, gameId, { onlyIfActive, finishGuard, finishedAt: now })
-    }
-
-    // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so its bookkeeping is made
-    // durable and recoverable (see markGameFinished's `trackBookkeeping`) on this path too.
-    const { error, won, finishedAt } = await markGameFinished(supabase, gameId, now, {
-      onlyIfActive,
-      finishGuard,
-      trackBookkeeping: isWordRushGame(gameType),
-    })
-    if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }
-
-    // Lost the compare-and-set: another request already finished this game, so it is
-    // not ours to label. Stamping anyway would write `admin_ended` over a game someone
-    // else finished for a different reason (the `is(null)` guard only helps if the
-    // winner already got its own stamp in). Not an error — just nothing left to do.
-    if (!won) return { error: null, won: false }
-
-    // Tag the abort reason so the trophy/coin award pass knows to skip counter
-    // and streak credit for this finish (src/lib/trophies/award.ts — ABORT_REASONS).
-    // Best-effort: the game is already finished; a missing tag only weakens the
-    // farming gate for this one row, it doesn't corrupt anything.
-    const { error: reasonError } = await supabase
-      .from('games')
-      .update({ result_reason: 'admin_ended' })
-      .eq('id', gameId)
-      .is('result_reason', null)
-    if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
-    return { error: null, won: true, ...(finishedAt ? { finishedAt } : {}) }
+  if (isCodewordsGame(gameType)) {
+    return finishCodewordsGame(supabase, gameId, { onlyIfActive })
   }
+
+  // Word Rush's Play Again deletes the rows the post-finish bookkeeping reads, so its bookkeeping is made
+  // durable and recoverable (see markGameFinished's `trackBookkeeping`) on this path too.
+  const { error, won } = await markGameFinished(supabase, gameId, now, {
+    onlyIfActive,
+    trackBookkeeping: isWordRushGame(gameType),
+  })
+  if (error) return { error: internalErrorMessage('admin-end-game', error), won: false }
+
+  // Lost the compare-and-set: another request already finished this game, so it is
+  // not ours to label. Stamping anyway would write `admin_ended` over a game someone
+  // else finished for a different reason (the `is(null)` guard only helps if the
+  // winner already got its own stamp in). Not an error — just nothing left to do.
+  if (!won) return { error: null, won: false }
+
+  // Tag the abort reason so the trophy/coin award pass knows to skip counter
+  // and streak credit for this finish (src/lib/trophies/award.ts — ABORT_REASONS).
+  // Best-effort: the game is already finished; a missing tag only weakens the
+  // farming gate for this one row, it doesn't corrupt anything.
+  const { error: reasonError } = await supabase
+    .from('games')
+    .update({ result_reason: 'admin_ended' })
+    .eq('id', gameId)
+    .is('result_reason', null)
+  if (reasonError) console.error(`admin-end-game: result_reason update failed for ${gameId}`, reasonError)
+  return { error: null, won: true }
 }
 
 export async function countStaleOpenGames(

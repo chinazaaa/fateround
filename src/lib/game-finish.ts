@@ -260,13 +260,19 @@ export async function recoverAllFinishBookkeeping(
 }
 
 /**
- * A single-winner finish for a game that may be waiting OR active, bound to who hosts it. Both
- * conditions live in the one UPDATE, so a racing finisher or a claimed host makes it a no-op.
+ * A single-winner finish for a game that may be waiting OR active, bound to who hosts it. Every condition
+ * lives in the one UPDATE, so a racing finisher, a claimed host or a landed nomination makes it a no-op, and
+ * the reason that classifies the finish is written by the same statement (never by a follow-up write that a
+ * lost response or a crash could skip).
  */
 export type FinishGuard = {
   statuses: string[]
   /** Finish only while games.host_player_id is null or this player (the outgoing host). */
   hostPlayerNullOr?: string
+  /** Finish only while nobody is nominated to take over (a valid nominee means the game is not host-less). */
+  noPendingHostNominee?: boolean
+  /** Written to games.result_reason by the finishing update itself. */
+  resultReason?: string
 }
 
 export async function markGameFinished(
@@ -325,6 +331,7 @@ export async function markGameFinished(
       .update({
         status: 'finished',
         finished_at: finishedAt,
+        ...(finishGuard?.resultReason ? { result_reason: finishGuard.resultReason } : {}),
         ...(trackBookkeeping ? { finish_bookkeeping: { finished_at: finishedAt, attempts: 0 } } : {}),
       })
       .eq('id', gameId)
@@ -334,6 +341,7 @@ export async function markGameFinished(
       if (finishGuard.hostPlayerNullOr) {
         guarded = guarded.or(`host_player_id.is.null,host_player_id.eq.${finishGuard.hostPlayerNullOr}`)
       }
+      if (finishGuard.noPendingHostNominee) guarded = guarded.is('pending_host_player_id', null)
     }
     if (guarded && onlySessionStartedAt !== undefined) {
       guarded =

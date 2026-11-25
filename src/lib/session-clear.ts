@@ -14,10 +14,17 @@ export async function clearSessionTables(
   supabase: SupabaseClient,
   gameId: string,
   tables: readonly string[],
-  opts?: { resetSpectators?: boolean }
+  opts?: {
+    resetSpectators?: boolean
+    // Delete only rows created at or before this instant (every table passed must have `created_at`): a
+    // session-bound wipe that must never reach rows a replayed session wrote after the one it cleans up.
+    createdAtOrBefore?: string
+  }
 ): Promise<{ error: string | null }> {
   for (const table of tables) {
-    const { error } = await supabase.from(table).delete().eq('game_id', gameId)
+    let query = supabase.from(table).delete().eq('game_id', gameId)
+    if (opts?.createdAtOrBefore) query = query.lte('created_at', opts.createdAtOrBefore)
+    const { error } = await query
     if (error) return { error: internalErrorMessage('session-clear', error) }
   }
 

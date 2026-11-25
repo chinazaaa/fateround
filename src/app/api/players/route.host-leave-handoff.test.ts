@@ -30,9 +30,15 @@ vi.mock('@/lib/codewords', async (importOriginal) => ({
 }))
 
 type Row = Record<string, unknown>
-/** A successful removal deletes the seat (games.host_player_id is ON DELETE SET NULL); `onCall` runs after it. */
+/**
+ * A successful removal DELETES the seat row (and games.host_player_id is ON DELETE SET NULL); a retained seat
+ * (`keepSeat`: a finisher's row) answers success but stays. `onCall` runs after the removal.
+ */
 function removed(r: { error: string | null; onCall: (() => void) | null }) {
-  if (!r.error && !keepSeat) tables.games[0].host_player_id = null
+  if (!r.error && !keepSeat) {
+    tables.players = tables.players.filter((p) => p.id !== HOST_PID)
+    tables.games[0].host_player_id = null
+  }
   r.onCall?.()
   return { error: r.error }
 }
@@ -45,6 +51,16 @@ let failSuccessorLookup = false
 let lookupFailBudget = 0
 /** A finished host's seat is retained by the removal helper, so host_player_id keeps naming them. */
 let keepSeat = false
+/** Whether the outgoing host's seat row still existed when a nomination write ran (it must not). */
+let hostSeatAtNomination: boolean | null = null
+/** Runs after an errored nomination write (e.g. the roster moves between two attempts). */
+let afterNominationError: (() => void) | null = null
+/** Deleting a players row fails (the forfeit cleanup cannot remove the seat). */
+let failPlayerDelete = false
+/** Updates that carry only a result_reason (a follow-up relabel) fail: the reason must ride the finish itself. */
+let failReasonOnlyUpdates = false
+/** The guarded finish commits but its response is lost (transport error). */
+let finishCommitsButErrors = false
 let tables: Record<string, Row[]> = {}
 
 /** Tiny stateful Supabase stand-in: equality / is-null / neq filters, update, delete. */
@@ -57,14 +73,27 @@ function builder(table: string) {
   const run = async () => {
     await Promise.resolve()
     if (deleting) {
+      if (table === 'players' && failPlayerDelete) return { data: null, error: { message: 'delete failed' } }
       const doomed = match()
       tables[table] = (tables[table] ?? []).filter((r) => !doomed.includes(r))
       return { data: null, error: null }
     }
     if (patch) {
+      if (table === 'games' && 'pending_host_player_id' in patch) {
+        hostSeatAtNomination = tables.players.some((p) => p.id === HOST_PID)
+      }
+      if (table === 'games' && failReasonOnlyUpdates && Object.keys(patch).join() === 'result_reason') {
+        return { data: null, error: { message: 'relabel failed' } }
+      }
+      if (table === 'games' && patch.status === 'finished' && finishCommitsButErrors) {
+        finishCommitsButErrors = false
+        for (const r of match()) Object.assign(r, patch)
+        return { data: null, error: { message: 'response lost' } }
+      }
       if (table === 'games' && 'pending_host_player_id' in patch && nominationFailBudget > 0) {
         nominationFailBudget--
         if (nominationCommitsOnError) for (const r of match()) Object.assign(r, patch)
+        afterNominationError?.()
         return { data: null, error: { message: 'boom' } }
       }
       const rows = match()
@@ -166,6 +195,11 @@ beforeEach(async () => {
   nominationFailBudget = 0
   nominationCommitsOnError = false
   keepSeat = false
+  hostSeatAtNomination = null
+  afterNominationError = null
+  failPlayerDelete = false
+  failReasonOnlyUpdates = false
+  finishCommitsButErrors = false
   removal.reconcileError = null
   removal.uno.error = null
   removal.scrabble.error = null
@@ -219,6 +253,9 @@ describe.each(['uno', 'scrabble'] as const)('DELETE /api/players: host leave han
     expect(res.status).toBe(200)
     expect(seenDuringRemoval).toBeNull()
     expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+    // The nomination ran only once the outgoing host's seat row was really gone.
+    expect(hostSeatAtNomination).toBe(false)
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
   })
 
   it('a pending nomination is only claimable-routed (host_user_id cleared) after a successful leave', async () => {
@@ -280,7 +317,7 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
   it('a persistent deferred successor lookup failure ends the game rather than leaving it host-less', async () => {
     setup('uno')
     removal.uno.onCall = () => {
-      lookupFailBudget = 2
+      lookupFailBudget = 3
     }
     const res = await leave()
     expect(res.status).toBe(200)
@@ -303,7 +340,7 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
   it('a persistent nomination write error ends the game rather than leaving it host-less and unrecoverable', async () => {
     setup('uno')
     removal.uno.onCall = () => {
-      nominationFailBudget = 2
+      nominationFailBudget = 3
     }
     const res = await leave()
     expect(res.status).toBe(200)
@@ -316,7 +353,7 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     setup('uno')
     nominationCommitsOnError = true
     removal.uno.onCall = () => {
-      nominationFailBudget = 2
+      nominationFailBudget = 3
     }
     const res = await leave()
     expect(res.status).toBe(200)
@@ -337,21 +374,51 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     expect(tables.games[0].host_user_id).toBeNull()
   })
 
-  it('a finished host whose seat is retained still has host_user_id cleared (pending nominee path)', async () => {
-    setup('uno', { pending_host_player_id: OTHER_PID })
+  it('an active host whose seat is retained (already in finish_order) is not handed off: still the host', async () => {
+    // removeUnoPlayer answers success for a finisher but keeps the row, so a 2xx is NOT proof the seat is gone.
+    setup('uno')
+    keepSeat = true
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(hostSeatAtNomination).toBeNull()
+    const g = tables.games[0]
+    expect(g.pending_host_player_id).toBeNull()
+    expect(g.host_player_id).toBe(HOST_PID)
+    expect(g.host_user_id).toBe('user-host')
+    expect(g.status).toBe('active')
+  })
+
+  it('an active host whose seat is retained keeps an existing nominee untouched too', async () => {
+    setup('uno', { pending_host_player_id: OTHER_PID, pending_host_nominated_at: 'T' })
     keepSeat = true
     const res = await leave()
     expect(res.status).toBe(200)
     expect(tables.games[0].host_player_id).toBe(HOST_PID)
-    expect(tables.games[0].host_user_id).toBeNull()
+    expect(tables.games[0].host_user_id).toBe('user-host')
+    expect(tables.games[0].pending_host_nominated_at).toBe('T')
+  })
+
+  it('a retained finished Uno host seat (the game finished with this leave) is routed away, never nominated', async () => {
+    setup('uno')
+    keepSeat = true
+    removal.uno.onCall = () => {
+      tables.games[0].status = 'finished'
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    const g = tables.games[0]
+    expect(g.host_player_id).toBe(HOST_PID)
+    expect(g.pending_host_player_id).toBeNull()
+    expect(g.host_user_id).toBeNull()
   })
 
   it('does not clear host_user_id when a different player claimed host in between', async () => {
     setup('uno', { pending_host_player_id: OTHER_PID })
     keepSeat = true
     removal.uno.onCall = () => {
-      tables.games[0].host_player_id = OTHER_PID
-      tables.games[0].host_user_id = 'user-other'
+      Object.assign(tables.games[0], { status: 'finished', host_player_id: OTHER_PID, host_user_id: 'user-other' })
     }
     const res = await leave()
     expect(res.status).toBe(200)
@@ -449,7 +516,7 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
   it('the fallback end never finishes a game another player took over during the removal', async () => {
     setup('uno')
     removal.uno.onCall = () => {
-      lookupFailBudget = 2
+      lookupFailBudget = 3
       Object.assign(tables.games[0], { host_player_id: OTHER_PID, host_user_id: 'user-other' })
     }
     const res = await leave()
@@ -526,5 +593,159 @@ describe('DELETE /api/players: host-left round cleanup recovery', () => {
     tables.rounds = [{ id: 'live', game_id: 'ABCD', status: 'active', started_at: '2025-12-31T00:00:00.000Z' }]
     await leave()
     expect(tables.rounds[0].status).toBe('active')
+  })
+})
+
+const THIRD_PID = '00000000-0000-4000-8000-00000000000c'
+const addThird = () =>
+  tables.players.push({
+    id: THIRD_PID,
+    game_id: 'ABCD',
+    name: 'Third',
+    resume_token: 'YYYY8888',
+    is_bot: false,
+    spectator: false,
+    joined_at: 3,
+  })
+
+describe('DELETE /api/players: host handoff is one guarded step', () => {
+  it('re-selects the successor from the current roster on every attempt (a nominee who left is never reused)', async () => {
+    setup('uno')
+    addThird()
+    nominationFailBudget = 1
+    afterNominationError = () => {
+      // OTHER (the first pick) leaves between the attempts: a stale id would violate the nominee foreign key.
+      tables.players = tables.players.filter((p) => p.id !== OTHER_PID)
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBe(THIRD_PID)
+    expect(tables.games[0].status).toBe('active')
+  })
+
+  it('ends the game only when no eligible successor remains after the roster moved', async () => {
+    setup('uno')
+    nominationFailBudget = 1
+    afterNominationError = () => {
+      tables.players = tables.players.filter((p) => p.id !== OTHER_PID)
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('finished')
+    expect(tables.games[0].pending_host_player_id).toBeNull()
+  })
+
+  it('the fallback finish refuses to end a game that has a valid nominee (decided in the one guarded update)', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      // Lookups keep failing, and a manual transfer nominates meanwhile; the seat delete nulled host_player_id,
+      // so the host guard alone would let the finish through.
+      lookupFailBudget = 3
+      Object.assign(tables.games[0], { pending_host_player_id: OTHER_PID, pending_host_nominated_at: 'MANUAL' })
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    const g = tables.games[0]
+    expect(g.status).toBe('active')
+    expect(g.pending_host_player_id).toBe(OTHER_PID)
+    expect(g.host_user_id).toBeNull()
+  })
+
+  it('writes the host_ended reason in the finishing update itself, never as a follow-up write', async () => {
+    setup('uno')
+    tables.players = tables.players.filter((p) => p.id === HOST_PID)
+    failReasonOnlyUpdates = true
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('finished')
+    expect(tables.games[0].result_reason).toBe('host_ended')
+  })
+
+  it('a finish that commits but loses its response is read back, and the same leave still cleans up', async () => {
+    setup('trivia')
+    tables.players = tables.players.filter((p) => p.id === HOST_PID)
+    tables.rounds = [{ id: 'r', game_id: 'ABCD', status: 'active', started_at: '2000-01-01T00:00:00.000Z' }]
+    finishCommitsButErrors = true
+    const res = await leave()
+    // The reason rode the finishing update, so the committed finish is classified without any follow-up write.
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('finished')
+    expect(tables.games[0].result_reason).toBe('host_ended')
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(tables.rounds[0].status).toBe('finished')
+  })
+})
+
+describe('DELETE /api/players: retained host leave', () => {
+  const chessFinished = () => {
+    setup('chess', { status: 'finished' })
+    tables.chess_sessions = [
+      {
+        game_id: 'ABCD',
+        status: 'finished',
+        player_white_id: HOST_PID,
+        player_black_id: OTHER_PID,
+        winner_player_id: OTHER_PID,
+        is_draw: false,
+        status_message: 'Host left — Other wins!',
+      },
+    ]
+  }
+
+  it('a failed forfeit-cleanup seat delete leaves the host linkage untouched so the repeat can still resolve it', async () => {
+    chessFinished()
+    failPlayerDelete = true
+    const res = await leave()
+    expect(res.status).toBeGreaterThanOrEqual(400)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(tables.games[0].host_user_id).toBe('user-host')
+    expect(tables.games[0].host_player_id).toBe(HOST_PID)
+    failPlayerDelete = false
+    const retry = await leave()
+    expect(retry.status).toBe(200)
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+    expect(tables.games[0].host_user_id).toBeNull()
+  })
+
+  it('does not undo a host who claimed during the forfeit cleanup', async () => {
+    chessFinished()
+    Object.assign(tables.games[0], { host_player_id: OTHER_PID, host_user_id: 'user-other' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].host_user_id).toBe('user-other')
+  })
+
+  const finishedAt = '2026-01-01T00:00:00.000Z'
+  const before = '2025-12-31T23:59:00.000Z'
+  const after = '2026-01-02T00:00:00.000Z'
+  const hostLeft = { status: 'finished', result_reason: 'host_ended', finished_at: finishedAt }
+
+  it.each([
+    ['anonymous_messages', ['anonymous_messages', 'anonymous_room_bans']],
+    ['secret_message', ['anonymous_messages', 'anonymous_room_bans']],
+    ['codewords', ['codewords_messages']],
+  ])(
+    '%s: a later leave of the retained host finishes the pending wipe, fenced to the finished session',
+    async (type, wiped) => {
+      setup(type, hostLeft)
+      for (const t of wiped) {
+        tables[t] = [
+          { id: `${t}-old`, game_id: 'ABCD', created_at: before },
+          { id: `${t}-replay`, game_id: 'ABCD', created_at: after },
+        ]
+      }
+      const res = await leave()
+      expect(res.status).toBe(200)
+      for (const t of wiped) expect(tables[t].map((r) => r.id)).toEqual([`${t}-replay`])
+    }
+  )
+
+  it('never wipes while the game is live again (Play Again) or was finished for another reason', async () => {
+    for (const extra of [{ status: 'active' }, { result_reason: 'admin_ended' }]) {
+      setup('codewords', { ...hostLeft, ...extra })
+      tables.codewords_messages = [{ id: 'm', game_id: 'ABCD', created_at: before }]
+      await leave()
+      expect(tables.codewords_messages).toHaveLength(1)
+    }
   })
 })

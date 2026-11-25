@@ -527,11 +527,23 @@ describe("session-bound finish never wipes a newer session's chat", () => {
     expect(finishedNewer.deletes).toHaveLength(0)
   })
 
-  it('a host/admin finish (no session binding) still wipes everything', async () => {
+  it('a host/admin finish (no session binding) wipes the chat of the session it ended, never more', async () => {
     const { supabase, deletes } = chatDb({ flipWins: true })
     await finishCodewordsGame(supabase, 'ABCD')
     expect(deletes).toHaveLength(1)
-    expect(deletes[0].some((c) => c.method === 'lte')).toBe(false)
+    // An unbounded wipe would also delete a replayed session's chat when this call is delayed.
+    expect(deletes[0].some((c) => c.method === 'lte')).toBe(true)
+  })
+
+  it('a lost onlyIfActive finish (no session named) wipes only a game that really is finished, up to that finished_at', async () => {
+    const done = chatDb({ flipWins: false, current: finished })
+    await finishCodewordsGame(done.supabase, 'ABCD', { onlyIfActive: true })
+    expect(done.deletes).toHaveLength(1)
+    expect(done.deletes[0]).toContainEqual({ method: 'lte', args: ['created_at', '2026-01-01T00:00:00.000Z'] })
+
+    const live = chatDb({ flipWins: false, current: { ...finished, status: 'active', finished_at: null } })
+    await finishCodewordsGame(live.supabase, 'ABCD', { onlyIfActive: true })
+    expect(live.deletes).toHaveLength(0)
   })
 })
 

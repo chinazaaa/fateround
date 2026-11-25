@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { markGameFinished, type FinishGameResult, type FinishGuard } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
 import { parseQuestionSource } from '@/lib/custom-questions'
 import {
   CODEWORDS_BOARD_SIZE,
@@ -570,14 +570,16 @@ export function setCodewordsHostMode(gameCode: string, mode: CodewordsHostMode) 
 export async function clearCodewordsChat(
   supabase: SupabaseClient,
   gameId: string,
-  // codewords_messages has no session column, so a session-bound finish scopes its wipe in time:
-  // only messages written up to the moment that session finished. A newer session starts after its
-  // predecessor finished, so its chat is never reached. Omitted = wipe everything (host/admin end).
-  createdAtOrBefore?: string
+  // codewords_messages has no session column, so every finish scopes its wipe in time: only messages
+  // written up to the moment that session finished. A newer session starts after its predecessor
+  // finished, so its chat is never reached (host/admin ends included).
+  createdAtOrBefore: string
 ): Promise<{ error: string | null }> {
-  let query = supabase.from('codewords_messages').delete().eq('game_id', gameId)
-  if (createdAtOrBefore) query = query.lte('created_at', createdAtOrBefore)
-  const { error } = await query
+  const { error } = await supabase
+    .from('codewords_messages')
+    .delete()
+    .eq('game_id', gameId)
+    .lte('created_at', createdAtOrBefore)
   if (error) return { error: internalErrorMessage('codewords', error) }
   return { error: null }
 }
@@ -585,55 +587,41 @@ export async function clearCodewordsChat(
 export async function finishCodewordsGame(
   supabase: SupabaseClient,
   gameId: string,
-  {
-    onlyIfActive = false,
-    onlySessionStartedAt,
-    finishGuard,
-    finishedAt = new Date().toISOString(),
-  }: {
-    onlyIfActive?: boolean
-    onlySessionStartedAt?: string | null
-    finishGuard?: FinishGuard
-    finishedAt?: string
-  } = {}
+  { onlyIfActive = false, onlySessionStartedAt }: { onlyIfActive?: boolean; onlySessionStartedAt?: string | null } = {}
 ): Promise<FinishGameResult> {
+  const finishedAt = new Date().toISOString()
   const { error: gameError, won } = await markGameFinished(supabase, gameId, finishedAt, {
     onlyIfActive,
     onlySessionStartedAt,
-    finishGuard,
   })
   if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
   // The chat wipe is an idempotent retry (a finish that committed but failed to wipe is repeated),
-  // so it also runs when another request won the flip. A session-bound finish must never reach a
-  // newer session's chat though: it wipes only what existed when ITS session finished, and a lost
-  // flip wipes only if the game is still the finished game of the session it observed.
+  // so it also runs when another request won the flip. It never reaches a newer session's chat: it
+  // wipes only what existed when the finish it follows happened (this call's own `finishedAt`, or the
+  // `finished_at` a lost flip reads back), and a lost flip wipes only a game that really is finished
+  // and, when the caller named a session, is still that session's finished game.
   //
   // A failed wipe comes back as `cleanupError`, not `error`: the game is already
   // `finished`, so reporting it as a finish failure made callers drop a close they
   // had actually performed (and skip its `result_reason` stamp).
-  //
-  // A lost flip wipes only when the game really is finished: a lost `finishGuard` (a host claimed
-  // during removal) or `onlyIfActive` leaves a live game behind, and its chat must survive.
-  let wipeUpTo: string | undefined
-  if (won) {
-    if (onlySessionStartedAt !== undefined) wipeUpTo = finishedAt
-  } else {
+  let wipeUpTo = finishedAt
+  if (!won) {
     const { data: current, error: currentError } = await supabase
       .from('games')
       .select('status, session_started_at, finished_at')
       .eq('id', gameId)
       .maybeSingle()
     if (currentError) return { error: null, won, cleanupError: internalErrorMessage('codewords', currentError) }
-    if (current?.status !== 'finished') return { error: null, won, cleanupError: null }
-    if (onlySessionStartedAt !== undefined) {
-      const sameSession = (current.session_started_at ?? null) === onlySessionStartedAt
-      if (!sameSession || !current.finished_at) return { error: null, won, cleanupError: null }
-      wipeUpTo = current.finished_at as string
+    const sameSession =
+      onlySessionStartedAt === undefined || (current?.session_started_at ?? null) === onlySessionStartedAt
+    if (current?.status !== 'finished' || !sameSession || !current.finished_at) {
+      return { error: null, won, cleanupError: null }
     }
+    wipeUpTo = current.finished_at as string
   }
   const { error: chatError } = await clearCodewordsChat(supabase, gameId, wipeUpTo)
-  return { error: null, won, cleanupError: chatError, ...(won ? { finishedAt } : {}) }
+  return { error: null, won, cleanupError: chatError }
 }
 
 /**
