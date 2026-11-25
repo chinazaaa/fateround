@@ -9,6 +9,7 @@ import {
   processUnoPass,
   processUnoSwap,
   processUnoDraw,
+  processUnoChallenge,
   processUnoCall,
   finishExpiredUnoGame,
   UNO_REMOVE_CONFLICT_ERROR,
@@ -28,7 +29,11 @@ type Tables = Record<string, Row[]>
 
 function makeDb(
   tables: Tables,
-  hooks: { afterSessionRead?: (table: string) => void; failUpdates?: (table: string) => boolean } = {}
+  hooks: {
+    afterSessionRead?: (table: string) => void
+    failUpdates?: (table: string) => boolean
+    failSelect?: (table: string) => boolean
+  } = {}
 ) {
   function builder(table: string) {
     let op: 'select' | 'update' | 'delete' = 'select'
@@ -48,6 +53,7 @@ function makeDb(
         tables[table] = (tables[table] ?? []).filter((r) => !rows.includes(r))
         return { data: null, error: null }
       }
+      if (hooks.failSelect?.(table)) return { data: null, error: { message: 'boom' } }
       const copy = rows.map((r) => ({ ...r }))
       hooks.afterSessionRead?.(table)
       return { data: single ? (copy[0] ?? null) : copy, error: null }
@@ -425,6 +431,244 @@ describe('expiry and call outcomes are not mislabelled', () => {
   })
 })
 
+describe('removeUnoPlayer — stacked Wild Draw Four penalty (phase playing)', () => {
+  // Stacking on: A played +4, B stacked +4 (total 8) ... here C is the target holding the pending +8,
+  // played last by A. Penalty stays in phase 'playing' on the current player (index 2 = C).
+  function stackedTables() {
+    const t = unoTables()
+    t.games[0].uno_stacking = true
+    const s = t.uno_sessions[0]
+    s.phase = 'playing'
+    s.current_turn_index = 2
+    s.wd4_player_id = 'A'
+    s.challenge_prev_color = 'red'
+    s.draw_penalty = 8
+    s.draw_penalty_kind = 'wild_draw4'
+    s.draw_pile = Array.from({ length: 30 }, (_, i) => ({ id: `p${i}`, color: 'blue', value: '1' }))
+    s.discard_pile = []
+    return t
+  }
+  const handCount = (t: Tables, id: string) =>
+    ((t.uno_player_hands.find((h) => h.player_id === id)?.cards as unknown[]) ?? []).length
+
+  it('a challenge after the +4 player leaves is a plain accept: target draws exactly the stack and is skipped', async () => {
+    const t = stackedTables()
+    const db = makeDb(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].wd4_player_id).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('playing')
+    expect(t.uno_sessions[0].draw_penalty).toBe(8)
+    // turn_order is now [B, C, D]; C (the target) sits at index 1.
+    expect(t.uno_sessions[0].turn_order).toEqual(['B', 'C', 'D'])
+    expect(t.uno_sessions[0].current_turn_index).toBe(1)
+
+    const before = handCount(t, 'C')
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBeUndefined()
+    // Exactly the pending stack (8): no failed-challenge extra.
+    expect(handCount(t, 'C') - before).toBe(8)
+    const s = t.uno_sessions[0]
+    expect(s.draw_penalty).toBe(0)
+    expect(s.draw_penalty_kind).toBeNull()
+    expect(s.current_turn_index).toBe(2) // skipped past C to D
+  })
+
+  it('reports the cards actually drawn, not the pending stack, when the deck runs short', async () => {
+    const t = stackedTables()
+    t.uno_sessions[0].draw_pile = [
+      { id: 'p0', color: 'blue', value: '1' },
+      { id: 'p1', color: 'blue', value: '2' },
+    ]
+    const db = makeDb(t)
+    await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    const before = handCount(t, 'C')
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBeUndefined()
+    expect(handCount(t, 'C') - before).toBe(2)
+    expect(String(t.uno_sessions[0].status_message)).toContain('drew 2 ')
+  })
+
+  it('still refuses a challenge from a player who is not the current player', async () => {
+    const t = stackedTables()
+    const db = makeDb(t)
+    await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    const out = await processUnoChallenge(db.supabase, 'G', 'D', true)
+    expect(out.error).toBe('Not your decision')
+    expect(t.uno_sessions[0].draw_penalty).toBe(8)
+  })
+
+  it('refuses a challenge when no stacked penalty is pending', async () => {
+    const t = stackedTables()
+    t.uno_sessions[0].draw_penalty = 0
+    t.uno_sessions[0].wd4_player_id = null
+    const db = makeDb(t)
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBe('No Wild Draw Four to challenge')
+  })
+
+  it('non-leaver case unchanged: challenge is adjudicated against the +4 player real hand', async () => {
+    const t = stackedTables()
+    t.uno_player_hands.find((h) => h.player_id === 'A')!.cards = [{ id: 'A1', color: 'red', value: '5' }]
+    const db = makeDb(t)
+    const beforeA = handCount(t, 'A')
+    const out = await processUnoChallenge(db.supabase, 'G', 'C', true)
+    expect(out.error).toBeUndefined()
+    // A held red (prev colour): challenge succeeds, A draws the stack.
+    expect(handCount(t, 'A') - beforeA).toBe(8)
+  })
+})
+
+describe('removeUnoPlayer — Wild Draw Four challenge', () => {
+  // A (index 0) played a Wild Draw Four; B (index 1) owns the challenge window.
+  function wd4Tables(handOfA: Row[]) {
+    const t = unoTables()
+    const s = t.uno_sessions[0]
+    s.phase = 'challenge_window'
+    s.current_turn_index = 1
+    s.wd4_player_id = 'A'
+    s.challenge_prev_color = 'red'
+    s.draw_penalty = 4
+    s.draw_penalty_kind = 'wild_draw4'
+    s.draw_pile = Array.from({ length: 20 }, (_, i) => ({ id: `p${i}`, color: 'blue', value: '1' }))
+    s.discard_pile = []
+    t.uno_player_hands.find((h) => h.player_id === 'A')!.cards = handOfA
+    return t
+  }
+  const handCount = (t: Tables, id: string) =>
+    ((t.uno_player_hands.find((h) => h.player_id === id)?.cards as unknown[]) ?? []).length
+
+  it('drops the challenge when the +4 player leaves, so a later challenge is a plain accept (no failed-challenge penalty)', async () => {
+    // A held a red card (the challenge would have WON); either way B must not be punished.
+    const t = wd4Tables([{ id: 'A1', color: 'red', value: '5' }])
+    const db = makeDb(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    const s = t.uno_sessions[0]
+    expect(s.turn_order).toEqual(['B', 'C', 'D'])
+    expect(s.phase).toBe('challenge_window')
+    expect(s.wd4_player_id).toBeNull()
+    expect(s.challenge_prev_color).toBeNull()
+
+    const before = handCount(t, 'B')
+    const out = await processUnoChallenge(db.supabase, 'G', 'B', true)
+    expect(out.error).toBeUndefined()
+    // Exactly the +4, not +6 (failed-challenge extra).
+    expect(handCount(t, 'B') - before).toBe(4)
+    expect(t.uno_sessions[0].phase).toBe('playing')
+  })
+
+  it('Team-Up: the +4 player leaving also drops the challenge', async () => {
+    const t = wd4Tables([{ id: 'A1', color: 'red', value: '5' }])
+    t.games[0].uno_team_mode = true
+    const res = await removeUnoPlayer(makeDb(t).supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    const s = t.uno_sessions[0]
+    expect(s.left_player_ids).toEqual(['A'])
+    expect(s.wd4_player_id).toBeNull()
+    expect(s.challenge_prev_color).toBeNull()
+  })
+
+  it('keeps the challenge intact when an unrelated player leaves', async () => {
+    const t = wd4Tables([{ id: 'A1', color: 'red', value: '5' }])
+    const db = makeDb(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'D', 'D')
+    expect(res.error).toBeNull()
+    const s = t.uno_sessions[0]
+    expect(s.phase).toBe('challenge_window')
+    expect(s.wd4_player_id).toBe('A')
+    expect(s.challenge_prev_color).toBe('red')
+    const before = handCount(t, 'A')
+    const out = await processUnoChallenge(db.supabase, 'G', 'B', true)
+    expect(out.error).toBeUndefined()
+    // Challenge still adjudicated against A's real hand: A held red, so A draws 4.
+    expect(handCount(t, 'A') - before).toBe(4)
+  })
+})
+
+describe('session lookup errors on leave', () => {
+  it('uno: a failed lookup returns the internal error and deletes nothing', async () => {
+    const t = unoTables()
+    const res = await removeUnoPlayer(makeDb(t, { failSelect: (tb) => tb === 'uno_sessions' }).supabase, 'G', 'C', 'C')
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.uno_player_hands.map((h) => h.player_id)).toContain('C')
+    expect(t.uno_sessions[0].turn_order).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  it('uno: a successful lookup with no session row still cleans up', async () => {
+    const t = unoTables()
+    t.uno_sessions = []
+    expect((await removeUnoPlayer(makeDb(t).supabase, 'G', 'C', 'C')).error).toBeNull()
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+})
+
+describe('uno draw — deck runs out in No Mercy', () => {
+  const light = (id: string) => ({ id, color: 'red', kind: 'number', value: 5 })
+  function noMercy(): Tables {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    t.uno_player_hands.forEach((h) => {
+      h.cards = [light(`${h.player_id}1`)]
+    })
+    return t
+  }
+  const lostCas = (t: Tables) => {
+    let raced = false
+    return makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || raced) return
+        raced = true
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+  }
+
+  const midPenalty = () => {
+    const t = noMercy()
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [{ id: 'w1', color: 'wild', kind: 'wild' }],
+      discard_pile: [],
+      draw_penalty: 6,
+      draw_penalty_kind: 'draw2',
+      draw_stack_chain: 0,
+    })
+    return t
+  }
+
+  it('mid-penalty: a finish that loses its CAS reports skipped, one that lands reports success', async () => {
+    const lost = midPenalty()
+    expect(await processUnoDraw(lostCas(lost).supabase, 'G', 'A')).toEqual({ skipped: true })
+    expect(lost.uno_sessions[0].phase).toBe('playing')
+    const won = midPenalty()
+    expect(await processUnoDraw(makeDb(won).supabase, 'G', 'A')).toEqual({})
+    expect(won.uno_sessions[0].phase).toBe('finished')
+  })
+
+  const roulette = () => {
+    const t = noMercy()
+    Object.assign(t.uno_sessions[0], {
+      phase: 'color_roulette',
+      color_roulette_player_id: 'A',
+      required_color: 'blue',
+      draw_pile: [],
+      discard_pile: [],
+    })
+    return t
+  }
+
+  it('roulette: a finish that loses its CAS reports skipped, one that lands reports success', async () => {
+    const lost = roulette()
+    expect(await processUnoDraw(lostCas(lost).supabase, 'G', 'A')).toEqual({ skipped: true })
+    expect(lost.uno_sessions[0].phase).toBe('color_roulette')
+    const won = roulette()
+    expect(await processUnoDraw(makeDb(won).supabase, 'G', 'A')).toEqual({})
+    expect(won.uno_sessions[0].phase).toBe('finished')
+  })
+})
+
 function scrabbleTables(): Tables {
   return {
     games: [{ id: 'G', timer_seconds: 0, status: 'active' }],
@@ -500,5 +744,28 @@ describe('removeScrabblePlayer — races with concurrent writes', () => {
     const res = await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
     expect(res.error).toBe(SCRABBLE_REMOVE_CONFLICT_ERROR)
     expect(t.players.map((p) => p.id)).toContain('C')
+  })
+})
+
+describe('removeScrabblePlayer — session lookup error', () => {
+  it('returns the internal error and keeps the player rows', async () => {
+    const t = scrabbleTables()
+    const res = await removeScrabblePlayer(
+      makeDb(t, { failSelect: (tb) => tb === 'scrabble_sessions' }).supabase,
+      'G',
+      'C',
+      'C'
+    )
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.scrabble_player_state.map((x) => x.player_id)).toContain('C')
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B', 'C'])
+  })
+
+  it('a successful lookup with no session row still cleans up', async () => {
+    const t = scrabbleTables()
+    t.scrabble_sessions = []
+    expect((await removeScrabblePlayer(makeDb(t).supabase, 'G', 'C', 'C')).error).toBeNull()
+    expect(t.players.map((p) => p.id)).not.toContain('C')
   })
 })

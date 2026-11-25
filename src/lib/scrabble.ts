@@ -1017,7 +1017,14 @@ async function removeScrabblePlayerOnce(
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null } | 'retry'> {
-  const { data: sessionRaw } = await supabase.from('scrabble_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  const { data: sessionRaw, error: lookupError } = await supabase
+    .from('scrabble_sessions')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  // A failed lookup is not "no session": falling through would delete the player's rows while the
+  // session still lists them in turn_order. A successful lookup that finds no row still reaches cleanup.
+  if (lookupError) return { error: internalErrorMessage('scrabble', lookupError) }
   const session = sessionRaw as ScrabbleSession | null
   const order = session ? [...(session.turn_order ?? [])] : []
   const removedIndex = order.indexOf(playerId)

@@ -2816,11 +2816,14 @@ export async function processUnoChallenge(
   }
 
   // Challengeable either in the dedicated window (challenge-only games) or, when stacking is on,
-  // while a Wild Draw Four penalty sits pending on the current player in normal play.
+  // while a Wild Draw Four penalty sits pending on the current player in normal play. The +4
+  // player may have left (wd4_player_id cleared); the penalty is then still pending and the
+  // challenge degrades to a plain accept below, so wd4_player_id is deliberately not required.
   const inChallengeWindow = session.phase === 'challenge_window'
   const inStackedPenalty =
     session.phase === 'playing' &&
-    !!session.wd4_player_id &&
+    rules.wd4Challenge &&
+    rules.stacking &&
     (session.draw_penalty ?? 0) > 0 &&
     session.draw_penalty_kind === 'wild_draw4'
   if (!inChallengeWindow && !inStackedPenalty) return { error: 'No Wild Draw Four to challenge' }
@@ -2848,16 +2851,17 @@ export async function processUnoChallenge(
 
   const applyDrawTo = async (
     targetId: string
-  ): Promise<{ hand: UnoCard[]; drawPile: UnoCard[]; discardPile: UnoCard[] }> => {
+  ): Promise<{ hand: UnoCard[]; drawPile: UnoCard[]; discardPile: UnoCard[]; drawnCount: number }> => {
     const { drawn, drawPile, discardPile } = drawCardsWithRefill(
       (session.draw_pile as UnoCard[]) ?? [],
       (session.discard_pile as UnoCard[]) ?? [],
       penalty
     )
-    return { hand: [...handForPlayer(hands, targetId), ...drawn], drawPile, discardPile }
+    return { hand: [...handForPlayer(hands, targetId), ...drawn], drawPile, discardPile, drawnCount: drawn.length }
   }
 
-  if (!challenge) {
+  // A challenge needs a Wild Draw Four player whose hand can be revealed; if they left, it can only be accepted.
+  if (!challenge || !wd4PlayerId) {
     // Accept: challenger draws 4 and is skipped.
     if (!playerId) return { error: 'Player required' }
     const drawResult = await applyDrawTo(playerId)
@@ -2868,7 +2872,7 @@ export async function processUnoChallenge(
         draw_pile: drawResult.drawPile,
         discard_pile: drawResult.discardPile,
         current_turn_index: afterIndex,
-        status_message: `${playerName(playerNames, playerId)} drew ${penalty} — ${playerName(playerNames, afterId)}'s turn`,
+        status_message: `${playerName(playerNames, playerId)} drew ${drawResult.drawnCount} — ${playerName(playerNames, afterId)}'s turn`,
       }),
       timerSeconds,
       session.updated_at
@@ -3274,7 +3278,14 @@ async function removeUnoPlayerOnce(
   playerId: string,
   playerNameArg?: string
 ): Promise<{ error: string | null } | 'retry'> {
-  const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
+  const { data: sessionRaw, error: lookupError } = await supabase
+    .from('uno_sessions')
+    .select('*')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  // A failed lookup is not "no session": falling through would delete the player's rows while the
+  // session still lists them in turn_order. A successful lookup that finds no row still reaches cleanup.
+  if (lookupError) return { error: internalErrorMessage('uno', lookupError) }
   const session = sessionRaw as UnoSession | null
 
   // A player who already went out has a locked placement (finish_order) — preserve it.
@@ -3320,6 +3331,11 @@ async function removeUnoPlayerOnce(
         left_player_ids: leftIds,
         uno_pending_player: session.uno_pending_player === playerId ? null : session.uno_pending_player,
         updated_at: new Date().toISOString(),
+      }
+      // The pending Wild Draw Four player left: drop the challenge (nobody's hand can be revealed).
+      if (session.wd4_player_id === playerId) {
+        teamUpdate.wd4_player_id = null
+        teamUpdate.challenge_prev_color = null
       }
 
       if (partnerActive) {
@@ -3370,6 +3386,12 @@ async function removeUnoPlayerOnce(
       // A removed player might have owed an UNO call — clear it so a ghost never penalises.
       uno_pending_player: session.uno_pending_player === playerId ? null : session.uno_pending_player,
       updated_at: new Date().toISOString(),
+    }
+    // The pending Wild Draw Four player left: drop the challenge (nobody's hand can be revealed) but keep
+    // the +4 penalty and the target's turn, so the target takes the stack with no failed-challenge penalty.
+    if (session.wd4_player_id === playerId) {
+      update.wd4_player_id = null
+      update.challenge_prev_color = null
     }
 
     // Players who already went out (finish_order) or were knocked out (eliminated_player_ids)
