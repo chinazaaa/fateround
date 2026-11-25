@@ -1,3 +1,4 @@
+import { actionErrorStatus } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isScrabbleGame } from '@/lib/game-types'
 import { processScrabbleExpireTurn } from '@/lib/scrabble'
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { error } = await processScrabbleExpireTurn(supabase, code)
-  if (error) return NextResponse.json({ error }, { status: 400 })
+  if (error) return NextResponse.json({ error }, { status: actionErrorStatus(error) })
 
   scheduleTurnNotification(code, game)
 

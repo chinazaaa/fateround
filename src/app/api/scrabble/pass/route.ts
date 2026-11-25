@@ -1,3 +1,4 @@
+import { actionErrorStatus } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isScrabbleGame } from '@/lib/game-types'
 import { processScrabblePass } from '@/lib/scrabble'
@@ -26,8 +27,10 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error } = await processScrabblePass(supabase, code, auth.player.id)
-  if (error) return NextResponse.json({ error }, { status: 400 })
+  const { error, skipped } = await processScrabblePass(supabase, code, auth.player.id)
+  if (error) return NextResponse.json({ error }, { status: actionErrorStatus(error) })
+  // The write lost a compare-and-swap (the game moved, e.g. a leave): nothing changed — the client retries.
+  if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
 
   scheduleTurnNotification(code, game)
 

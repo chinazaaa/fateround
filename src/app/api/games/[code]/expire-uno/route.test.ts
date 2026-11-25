@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('server-only', () => ({}))
-const state = vi.hoisted(() => ({ finished: false, afterStatus: 'active' as string, reads: 0 }))
+const state = vi.hoisted(() => ({ finished: false, finishError: false, afterStatus: 'active' as string, reads: 0 }))
 vi.mock('@/lib/uno', () => ({
-  finishExpiredUnoGame: async () => state.finished,
+  finishExpiredUnoGame: async () => (state.finishError ? { won: false, error: 'x' } : { won: state.finished }),
   unoGameSessionExpired: () => true,
 }))
 vi.mock('@/lib/supabase-admin', () => {
@@ -45,6 +45,7 @@ const call = () =>
 describe('POST /api/games/[code]/expire-uno', () => {
   beforeEach(() => {
     state.reads = 0
+    state.finishError = false
   })
 
   it('a landed finish answers success', async () => {
@@ -65,6 +66,12 @@ describe('POST /api/games/[code]/expire-uno', () => {
   it('a real failed finish stays a 500', async () => {
     state.finished = false
     state.afterStatus = 'active'
+    expect((await call()).status).toBe(500)
+  })
+
+  it('a finish that errored is a 500 even if the game row already reads finished', async () => {
+    state.finishError = true
+    state.afterStatus = 'finished'
     expect((await call()).status).toBe(500)
   })
 })

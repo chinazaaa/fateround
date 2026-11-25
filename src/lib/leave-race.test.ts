@@ -16,7 +16,13 @@ import {
   UNO_REMOVE_CONFLICT_ERROR,
 } from './uno'
 import { INTERNAL_ERROR_MESSAGE } from './api-errors'
-import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble'
+import {
+  removeScrabblePlayer,
+  processScrabblePass,
+  processScrabbleExpireTurn,
+  finishScrabbleGameEarly,
+  SCRABBLE_REMOVE_CONFLICT_ERROR,
+} from './scrabble'
 
 /**
  * Concurrent leaves read the same session snapshot. A leave that writes the session without an
@@ -361,13 +367,13 @@ describe('expiry and call outcomes are not mislabelled', () => {
 
   it('finishExpiredUnoGame reports false (not a finished round) when its finish CAS loses', async () => {
     const t = unoTables()
-    expect(await finishExpiredUnoGame(bumpAfterFirstRead(t).supabase, expiredGame)).toBe(false)
+    expect(await finishExpiredUnoGame(bumpAfterFirstRead(t).supabase, expiredGame)).toEqual({ won: false })
     expect(t.uno_sessions[0].phase).toBe('playing')
   })
 
   it('finishExpiredUnoGame reports true when the finish lands', async () => {
     const t = unoTables()
-    expect(await finishExpiredUnoGame(makeDb(t).supabase, expiredGame)).toBe(true)
+    expect(await finishExpiredUnoGame(makeDb(t).supabase, expiredGame)).toEqual({ won: true })
     expect(t.uno_sessions[0].phase).toBe('finished')
   })
 
@@ -824,5 +830,285 @@ describe('processUnoTeamLeaveDecision — lost CAS is skipped', () => {
     const t = pausedTables()
     expect(await processUnoTeamLeaveDecision(makeDb(t).supabase, 'G', 'C', 'continue')).toEqual({})
     expect(t.uno_sessions[0].phase).toBe('playing')
+  })
+})
+
+describe('finish write outcomes are three-state (landed / lost / failed)', () => {
+  const expiredGame = {
+    id: 'G',
+    status: 'active',
+    session_started_at: '2020-01-01T00:00:00.000Z',
+    game_duration_seconds: 60,
+    uno_team_mode: false,
+  } as unknown as Parameters<typeof finishExpiredUnoGame>[1]
+
+  it('finishExpiredUnoGame reports a failed finish write as an error, not a lost race', async () => {
+    const t = unoTables()
+    const res = await finishExpiredUnoGame(
+      makeDb(t, { failUpdates: (tb) => tb === 'uno_sessions' }).supabase,
+      expiredGame
+    )
+    expect(res).toEqual({ won: false, error: INTERNAL_ERROR_MESSAGE })
+  })
+
+  it('finishExpiredUnoGame reports a failed session read as an error', async () => {
+    const t = unoTables()
+    const res = await finishExpiredUnoGame(
+      makeDb(t, { failSelect: (tb) => tb === 'uno_sessions' }).supabase,
+      expiredGame
+    )
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  const expiredRound = () => {
+    const t = unoTables()
+    t.games[0].session_started_at = '2020-01-01T00:00:00.000Z'
+    t.games[0].game_duration_seconds = 60
+    return t
+  }
+
+  it('a move on an expired round returns the finish error (and does not move) when the finish write fails', async () => {
+    const t = expiredRound()
+    const res = await processUnoPlay(makeDb(t, { failUpdates: (tb) => tb === 'uno_sessions' }).supabase, 'G', 'A', 'A1')
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(t.uno_sessions[0].current_turn_index).toBe(0)
+  })
+
+  it('a move on an expired round reports skipped when the finish loses its CAS, "Time\'s up" when it lands', async () => {
+    const lost = expiredRound()
+    let raced = false
+    const db = makeDb(lost, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || raced) return
+        raced = true
+        lost.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+    expect(await processUnoPlay(db.supabase, 'G', 'A', 'A1')).toEqual({ skipped: true })
+    const won = expiredRound()
+    expect((await processUnoPlay(makeDb(won).supabase, 'G', 'A', 'A1')).error).toContain("Time's up")
+  })
+
+  it('a database error inside a draw-path finish is an error, not skipped', async () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 't', color: 'blue', kind: 'skip' },
+      draw_pile: [],
+      discard_pile: [],
+    })
+    const res = await processUnoDraw(makeDb(t, { failUpdates: (tb) => tb === 'uno_sessions' }).supabase, 'G', 'A')
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+  })
+})
+
+describe('processUnoDraw — empty pile: no derived write before the session write lands', () => {
+  // Nobody holds a card A can match, but B can play: the draw just passes the turn.
+  const emptyPileTables = () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 't', color: 'blue', kind: 'skip' },
+      draw_pile: [],
+      discard_pile: [],
+    })
+    t.uno_player_hands[1].cards = [{ id: 'B1', color: 'blue', kind: 'skip' }]
+    return t
+  }
+
+  it('a lost CAS reports skipped and leaves the turn alone', async () => {
+    const t = emptyPileTables()
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || raced) return
+        raced = true
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+    expect(await processUnoDraw(db.supabase, 'G', 'A')).toEqual({ skipped: true })
+    expect(t.uno_sessions[0].current_turn_index).toBe(0)
+  })
+
+  it('a database error reports the error', async () => {
+    const t = emptyPileTables()
+    const res = await processUnoDraw(makeDb(t, { failUpdates: (tb) => tb === 'uno_sessions' }).supabase, 'G', 'A')
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+  })
+
+  it('still passes the turn when nothing raced', async () => {
+    const t = emptyPileTables()
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].current_turn_index).toBe(1)
+  })
+})
+
+describe('Mercy knockout — derived writes only after its own session write lands', () => {
+  const swapTables = () => {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    t.uno_sessions[0].phase = 'swap_target'
+    const card = (id: string) => ({ id, color: 'red', kind: 'number', value: 5 })
+    t.uno_player_hands[1].cards = Array.from({ length: 25 }, (_, i) => card(`B${i}`))
+    return t
+  }
+
+  it('a lost knockout write leaves the hand and the spectator flag alone', async () => {
+    const t = swapTables()
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        // Read #1 is the swap's load, read #2 the knockout's fresh read: a competing write lands after it.
+        if (tb === 'uno_sessions' && ++reads === 2) t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
+    // A now holds B's 25 cards and would be knocked out; the knockout never landed, so nothing was zeroed.
+    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(25)
+    expect(t.players.find((p) => p.id === 'A')!.spectator).toBeUndefined()
+  })
+
+  it('a landed knockout zeroes the hand and marks a spectator', async () => {
+    const t = swapTables()
+    expect(await processUnoSwap(makeDb(t).supabase, 'G', 'A', 'B')).toEqual({})
+    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(0)
+    expect(t.players.find((p) => p.id === 'A')!.spectator).toBe(true)
+  })
+})
+
+describe('failed state reads are internal errors, not "not found"', () => {
+  it('uno: processUnoDraw and processUnoCall', async () => {
+    const t = unoTables()
+    const failing = makeDb(t, { failSelect: (tb) => tb === 'uno_sessions' }).supabase
+    expect(await processUnoDraw(failing, 'G', 'A')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(await processUnoCall(failing, 'G', 'A')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+  })
+
+  it('uno: a successful read with no row is still "Session not found"', async () => {
+    const t = unoTables()
+    t.uno_sessions = []
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({ error: 'Session not found' })
+  })
+
+  it('scrabble: a failed session read is an internal error', async () => {
+    const t = scrabbleTables()
+    const res = await processScrabblePass(
+      makeDb(t, { failSelect: (tb) => tb === 'scrabble_sessions' }).supabase,
+      'G',
+      'A'
+    )
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+  })
+})
+
+describe('scrabble session writes: lost CAS is skipped, database error is an error', () => {
+  const passTables = () => {
+    const t = scrabbleTables()
+    t.scrabble_sessions[0].bag = []
+    return t
+  }
+
+  it('processScrabblePass', async () => {
+    const lost = passTables()
+    let raced = false
+    const db = makeDb(lost, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'scrabble_sessions' || raced) return
+        raced = true
+        lost.scrabble_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+    expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({ skipped: true })
+    expect(lost.scrabble_sessions[0].current_turn_index).toBe(0)
+
+    const failed = passTables()
+    const res = await processScrabblePass(
+      makeDb(failed, { failUpdates: (tb) => tb === 'scrabble_sessions' }).supabase,
+      'G',
+      'A'
+    )
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+
+    const ok = passTables()
+    expect(await processScrabblePass(makeDb(ok).supabase, 'G', 'A')).toEqual({})
+    expect(ok.scrabble_sessions[0].current_turn_index).toBe(1)
+  })
+
+  it('processScrabbleExpireTurn: a database error is an error (a lost race stays a benign success)', async () => {
+    const t = passTables()
+    t.scrabble_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    const res = await processScrabbleExpireTurn(
+      makeDb(t, { failUpdates: (tb) => tb === 'scrabble_sessions' }).supabase,
+      'G'
+    )
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+  })
+})
+
+describe('remaining session writes follow the same rule', () => {
+  it('classic roulette with an empty pile: lost CAS is skipped, database error is an error', async () => {
+    const mk = () => {
+      const t = unoTables()
+      Object.assign(t.uno_sessions[0], {
+        phase: 'color_roulette',
+        color_roulette_player_id: 'A',
+        required_color: 'blue',
+        draw_pile: [],
+        discard_pile: [],
+      })
+      return t
+    }
+    const lost = mk()
+    let raced = false
+    const db = makeDb(lost, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || raced) return
+        raced = true
+        lost.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+    expect(await processUnoDraw(db.supabase, 'G', 'A')).toEqual({ skipped: true })
+    const failed = await processUnoDraw(makeDb(mk(), { failUpdates: (tb) => tb === 'uno_sessions' }).supabase, 'G', 'A')
+    expect(failed).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(await processUnoDraw(makeDb(mk()).supabase, 'G', 'A')).toEqual({})
+  })
+
+  it('scrabble early finish: a failed session read is an error, not "Session not found"', async () => {
+    const t = scrabbleTables()
+    const res = await finishScrabbleGameEarly(
+      makeDb(t, { failSelect: (tb) => tb === 'scrabble_sessions' }).supabase,
+      'G'
+    )
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+})
+
+describe('finish ordering and knockout write failures', () => {
+  it('a finish whose games-row flip fails is reported as an error, not a clean finish', async () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 't', color: 'blue', kind: 'skip' },
+      draw_pile: [],
+      discard_pile: [],
+    })
+    const res = await processUnoDraw(makeDb(t, { failUpdates: (tb) => tb === 'games' }).supabase, 'G', 'A')
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('a knockout write that errors runs none of its derived writes', async () => {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    t.uno_sessions[0].phase = 'swap_target'
+    t.uno_player_hands[1].cards = Array.from({ length: 25 }, (_, i) => ({
+      id: `B${i}`,
+      color: 'red',
+      kind: 'number',
+      value: 5,
+    }))
+    let sessionUpdates = 0
+    // The swap's own write is update #1; the knockout's is #2.
+    const db = makeDb(t, { failUpdates: (tb) => tb === 'uno_sessions' && ++sessionUpdates === 2 })
+    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
+    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(25)
+    expect(t.players.find((p) => p.id === 'A')!.spectator).toBeUndefined()
   })
 })
