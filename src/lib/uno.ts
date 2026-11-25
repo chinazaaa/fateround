@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { internalErrorMessage } from '@/lib/api-errors'
+import { INTERNAL_ERROR_MESSAGE, internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
@@ -3007,7 +3007,7 @@ export async function processUnoSwap(
     timerSeconds,
     session.updated_at
   )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
   await writeHand(supabase, gameId, playerId, theirCards)
   await writeHand(supabase, gameId, targetId, myCards)
@@ -3099,9 +3099,10 @@ export async function processUnoExpireTurn(
   // turn, so the losers' delegated processor re-reads a moved-on session and fails its own turn /
   // phase validation ("Not your turn", "Card not in hand", ...). That is not a client error — the
   // turn was already handled — so when the session changed under us, report a skip instead.
+  // Only validation errors convert: a database failure (the generic internal message) stays an error.
   const expectedUpdatedAt = session.updated_at
   const settle = async (result: { error?: string }): Promise<{ error?: string; skipped?: boolean }> => {
-    if (!result.error) return result
+    if (!result.error || result.error === INTERNAL_ERROR_MESSAGE) return result
     const { data: fresh } = await supabase.from('uno_sessions').select('updated_at').eq('game_id', gameId).maybeSingle()
     if (fresh && fresh.updated_at !== expectedUpdatedAt) return { skipped: true }
     return result

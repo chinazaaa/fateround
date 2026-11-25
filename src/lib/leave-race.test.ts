@@ -2,7 +2,15 @@ import { describe, it, expect, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 
-import { removeUnoPlayer, processUnoExpireTurn, processUnoPlay, processUnoPass, UNO_REMOVE_CONFLICT_ERROR } from './uno'
+import {
+  removeUnoPlayer,
+  processUnoExpireTurn,
+  processUnoPlay,
+  processUnoPass,
+  processUnoSwap,
+  UNO_REMOVE_CONFLICT_ERROR,
+} from './uno'
+import { INTERNAL_ERROR_MESSAGE } from './api-errors'
 import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble'
 
 /**
@@ -15,7 +23,10 @@ import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from './scrabble
 type Row = Record<string, unknown>
 type Tables = Record<string, Row[]>
 
-function makeDb(tables: Tables, hooks: { afterSessionRead?: (table: string) => void } = {}) {
+function makeDb(
+  tables: Tables,
+  hooks: { afterSessionRead?: (table: string) => void; failUpdates?: (table: string) => boolean } = {}
+) {
   function builder(table: string) {
     let op: 'select' | 'update' | 'delete' = 'select'
     let vals: Row = {}
@@ -23,9 +34,10 @@ function makeDb(tables: Tables, hooks: { afterSessionRead?: (table: string) => v
     let selectAfter = false
     let single = false
 
-    const exec = (): { data: unknown; error: null } => {
+    const exec = (): { data: unknown; error: { message: string } | null } => {
       const rows = (tables[table] ?? []).filter((r) => filters.every(([k, v]) => r[k] === v))
       if (op === 'update') {
+        if (hooks.failUpdates?.(table)) return { data: null, error: { message: 'boom' } }
         for (const r of rows) Object.assign(r, vals)
         return { data: selectAfter ? rows.map((r) => ({ ...r })) : null, error: null }
       }
@@ -193,12 +205,67 @@ describe('uno actions — a competing write (e.g. a leave) after the load', () =
     expect(res).toEqual({ skipped: true })
   })
 
+  it('processUnoSwap reports skipped (not success) when the CAS loses', async () => {
+    const t = unoTables()
+    t.uno_sessions[0].phase = 'swap_target'
+    const db = leaveAfterRead(t)
+    const res = await processUnoSwap(db.supabase, 'G', 'A', 'B')
+    expect(res).toEqual({ skipped: true })
+    // Nothing was swapped.
+    expect(t.uno_player_hands[0].cards).toEqual([{ id: 'A1', color: 'red', value: '5' }])
+  })
+
+  it('processUnoSwap still swaps when nothing raced', async () => {
+    const t = unoTables()
+    t.uno_sessions[0].phase = 'swap_target'
+    const res = await processUnoSwap(makeDb(t).supabase, 'G', 'A', 'B')
+    expect(res).toEqual({})
+    expect(t.uno_player_hands[0].cards).toEqual([{ id: 'B1', color: 'red', value: '5' }])
+  })
+
   it('processUnoPlay still lands when nothing raced', async () => {
     const t = unoTables()
     const db = makeDb(t)
     const res = await processUnoPlay(db.supabase, 'G', 'A', 'A1')
     expect(res.skipped).toBeUndefined()
     expect(t.uno_sessions[0].updated_at).not.toBe(T0)
+  })
+})
+
+describe('processUnoExpireTurn — settlement of the delegated result', () => {
+  const expiredTables = () => {
+    const t = unoTables()
+    t.uno_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    return t
+  }
+
+  it('keeps a database error from the delegated play even when the session version also moved', async () => {
+    const t = expiredTables()
+    let reads = 0
+    const db = makeDb(t, {
+      failUpdates: (table) => table === 'uno_sessions',
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions') return
+        // Read #1 is the expire load, read #2 the delegate's: a later write bumps the version after it.
+        if (++reads === 2) t.uno_sessions[0].updated_at = '2026-01-01T00:00:09.000Z'
+      },
+    })
+    const res = await processUnoExpireTurn(db.supabase, 'G')
+    expect(res.skipped).toBeUndefined()
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  it('still converts a stale validation error to skipped when the session moved', async () => {
+    const t = expiredTables()
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || ++reads !== 1) return
+        t.uno_sessions[0].current_turn_index = 1
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:05.000Z'
+      },
+    })
+    expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({ skipped: true })
   })
 })
 
