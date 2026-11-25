@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
-import { isSkippedExpire, nextExpireRearm } from '@fateround/shared/expire-rearm'
+import { useEffect, useRef } from 'react'
 import { useAbsoluteDeadline } from '@/components/party/useAbsoluteDeadline'
 
 // De-dupe window so a late realtime reload doesn't immediately re-fire the expire.
@@ -17,88 +16,37 @@ const COOLDOWN_MS = 3000
  * Call it once per deadline: games with a break/intermission phase (Describe It,
  * Word Rush, Quick Draw) arm two instances, one per (deadline → endpoint) pair.
  * Set `deadlineAt` to null to disarm for the current phase.
- *
- * A resolved `{ skipped: true }` payload means the server did not act on the deadline (e.g. a leave committed
- * before the expiry reloaded, so a Wild colour choice stays overdue). The countdown sits at zero, so nothing
- * would fire again on its own: the hook re-arms with the same grace + bounded exponential back-off as web's
- * `useTurnTimer`. Any other outcome stays one-shot per zero-crossing. A new `deadlineAt` resets the back-off.
  */
 export function useTurnExpiryTimer({
   deadlineAt,
   enabled,
   onExpire,
   cooldownMs = COOLDOWN_MS,
-  graceSkips = 3,
-  maxBackoffMs = 60000,
 }: {
   deadlineAt: string | null | undefined
   enabled: boolean
   onExpire: () => void | Promise<unknown>
   cooldownMs?: number
-  graceSkips?: number
-  maxBackoffMs?: number
 }) {
   const active = enabled && !!deadlineAt
   const secondsLeft = useAbsoluteDeadline(deadlineAt ?? null, active)
   const firingRef = useRef(false)
-  const skipStreakRef = useRef(0)
-  const mountedRef = useRef(true)
-  // Bumped when a skipped expiry re-arms: the countdown is already at zero, so nothing else re-runs the effect.
-  const [retryTick, setRetryTick] = useState(0)
   // Latest closure without re-arming the effect every render.
   const onExpireRef = useRef(onExpire)
   onExpireRef.current = onExpire
 
   useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
-
-  // Bumped on every deadline change: a response or re-arm timer from the previous deadline sees a stale
-  // generation and must not touch the new deadline's gate or back-off.
-  const generationRef = useRef(0)
-  const rearmTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-
-  useEffect(() => {
-    generationRef.current += 1
-    skipStreakRef.current = 0
-    // A pending re-arm (up to `maxBackoffMs` away) belongs to the previous deadline: drop it and release the
-    // gate now, so the new deadline can fire the moment it expires.
-    clearTimeout(rearmTimeoutRef.current)
-    rearmTimeoutRef.current = undefined
-    firingRef.current = false
-    return () => clearTimeout(rearmTimeoutRef.current)
-  }, [deadlineAt])
-
-  useEffect(() => {
     if (!active || secondsLeft > 0 || firingRef.current) return
     firingRef.current = true
-    const generation = generationRef.current
     void Promise.resolve(onExpireRef.current())
-      .then(
-        (payload) => isSkippedExpire(payload),
+      .catch(() => {
         // Swallow: fire-and-forget. The server is idempotent + deadline-gated, so
         // the next state change (or the next zero-crossing) safely re-fires.
-        () => false
-      )
-      .then((skipped) => {
-        // The deadline changed while the request was in flight: the new deadline owns the gate and back-off.
-        if (generation !== generationRef.current) return
-        const rearm = nextExpireRearm({
-          streak: skipStreakRef.current,
-          ok: true,
-          skipped,
-          cooldownMs,
-          graceSkips,
-          maxBackoffMs,
-        })
-        skipStreakRef.current = rearm.streak
-        rearmTimeoutRef.current = setTimeout(() => {
-          firingRef.current = false
-          if (skipped && mountedRef.current) setRetryTick((t) => t + 1)
-        }, rearm.rearmMs)
       })
-  }, [active, secondsLeft, cooldownMs, graceSkips, maxBackoffMs, retryTick])
+      .finally(() => {
+        setTimeout(() => {
+          firingRef.current = false
+        }, cooldownMs)
+      })
+  }, [active, secondsLeft, cooldownMs])
 }

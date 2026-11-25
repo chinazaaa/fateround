@@ -1017,14 +1017,7 @@ async function removeScrabblePlayerOnce(
   playerId: string,
   playerName?: string
 ): Promise<{ error: string | null } | 'retry'> {
-  const { data: sessionRaw, error: lookupError } = await supabase
-    .from('scrabble_sessions')
-    .select('*')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  // A failed lookup is not "no session": falling through would delete the player's rows while the
-  // session still lists them in turn_order. A successful lookup that finds no row still reaches cleanup.
-  if (lookupError) return { error: internalErrorMessage('scrabble', lookupError) }
+  const { data: sessionRaw } = await supabase.from('scrabble_sessions').select('*').eq('game_id', gameId).maybeSingle()
   const session = sessionRaw as ScrabbleSession | null
   const order = session ? [...(session.turn_order ?? [])] : []
   const removedIndex = order.indexOf(playerId)
@@ -1038,17 +1031,8 @@ async function removeScrabblePlayerOnce(
     if (turnOrder.length === 0) currentTurnIndex = 0
 
     const removedName = playerName ?? 'A player'
-    const { data: statesRaw, error: statesError } = await supabase
-      .from('scrabble_player_state')
-      .select('*')
-      .eq('game_id', gameId)
-    // A failed read is not "no seats": states = [] would let a chess-clock game finish with no winner.
-    // Stop before any write — the session and the player stay untouched, so the leave can be retried.
-    if (statesError) return { error: internalErrorMessage('scrabble', statesError) }
-    // Only seats still in the (freshly read) turn order count: a concurrent leave that has already
-    // shrunk turn_order but not yet deleted its state row must not be treated as a winner/active seat.
-    const remaining = new Set(turnOrder)
-    const states = ((statesRaw ?? []) as ScrabblePlayerState[]).filter((s) => remaining.has(s.player_id))
+    const { data: statesRaw } = await supabase.from('scrabble_player_state').select('*').eq('game_id', gameId)
+    const states = ((statesRaw ?? []) as ScrabblePlayerState[]).filter((s) => s.player_id !== playerId)
     const names = await loadPlayerNames(supabase, gameId)
 
     const update: Record<string, unknown> = {

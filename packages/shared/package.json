@@ -12,7 +12,6 @@
     "./checkers": "./src/checkers.ts",
     "./ayo": "./src/ayo.ts",
     "./streak": "./src/streak.ts",
-    "./expire-rearm": "./src/expire-rearm.ts",
     "./trivia": "./src/trivia.ts",
     "./poll-games": "./src/poll-games.ts",
     "./memory-match": "./src/memory-match.ts",

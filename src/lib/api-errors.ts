@@ -13,9 +13,11 @@
  * `fallback` overrides the generic line when a more specific (but still safe)
  * message fits — e.g. "Failed to fetch from Klipy" for an upstream call.
  */
-export const INTERNAL_ERROR_MESSAGE = 'Something went wrong. Please try again.'
-
-export function internalErrorMessage(context: string, error: unknown, fallback = INTERNAL_ERROR_MESSAGE): string {
+export function internalErrorMessage(
+  context: string,
+  error: unknown,
+  fallback = 'Something went wrong. Please try again.'
+): string {
   console.error(`[${context}]`, error)
   return fallback
 }
@@ -28,12 +30,4 @@ export function internalErrorMessage(context: string, error: unknown, fallback =
  */
 export function internalFailure(context: string, error: unknown, fallback?: string): { error: string; internal: true } {
   return { error: internalErrorMessage(context, error, fallback), internal: true }
-}
-
-/**
- * HTTP status for an engine result's `error` string: the generic {@link INTERNAL_ERROR_MESSAGE} marks an
- * unexpected (database) failure and maps to 500; any other message is a validation error and keeps `clientStatus`.
- */
-export function engineErrorStatus(error: string, clientStatus = 400): number {
-  return error === INTERNAL_ERROR_MESSAGE ? 500 : clientStatus
 }

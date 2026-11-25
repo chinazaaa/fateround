@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { secondsUntil } from '@/lib/timer-format'
-import { nextExpireRearm } from '@/lib/expire-rearm'
 
 /**
  * Shared per-turn countdown for the board games. Ticks `secondsLeft` down to a server
@@ -128,16 +127,17 @@ export function useTurnTimer({
           } else if (!payload?.skipped && effectActive) {
             setExpireFailure(null)
           }
-          const rearm = nextExpireRearm({
-            streak: skipStreakRef.current,
-            ok: res.ok,
-            skipped: !!payload?.skipped,
-            cooldownMs,
-            graceSkips,
-            maxBackoffMs,
-          })
-          skipStreakRef.current = rearm.streak
-          rearmMs = rearm.rearmMs
+          if (!res.ok || payload?.skipped) {
+            skipStreakRef.current += 1
+            // A 200 `skipped` gets a grace window of flat-cooldown retries first — that
+            // deadline may just be skew away from firing, and a long back-off would freeze
+            // a live turn. Only skips *past* the window (a genuinely dead deadline) ramp up.
+            // A 4xx never gets grace: it's terminal, so back off from the first one.
+            const overGrace = res.ok ? skipStreakRef.current - graceSkips : skipStreakRef.current
+            rearmMs = overGrace > 0 ? Math.min(cooldownMs * 2 ** overGrace, maxBackoffMs) : cooldownMs
+          } else {
+            skipStreakRef.current = 0
+          }
         } catch {
           // Swallow — `tick` is fire-and-forget (`void tick()`), so a rejected fetch
           // (network blip, 5xx) must not surface as an unhandled promise rejection.

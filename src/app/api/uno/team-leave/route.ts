@@ -1,4 +1,3 @@
-import { engineErrorStatus } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isUnoGame } from '@/lib/game-types'
 import { processUnoTeamLeaveDecision } from '@/lib/uno'
@@ -28,10 +27,8 @@ export async function POST(req: NextRequest) {
   const auth = await assertPlayer(supabase, code, resumeToken)
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { error, skipped } = await processUnoTeamLeaveDecision(supabase, code, auth.player.id, decision)
-  if (error) return NextResponse.json({ error }, { status: engineErrorStatus(error) })
-  // The decision lost its race and did not commit: not a success, and no turn notification.
-  if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
+  const { error } = await processUnoTeamLeaveDecision(supabase, code, auth.player.id, decision)
+  if (error) return NextResponse.json({ error }, { status: 400 })
 
   if (decision === 'continue') scheduleTurnNotification(code, game)
 

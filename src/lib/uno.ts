@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { INTERNAL_ERROR_MESSAGE, internalErrorMessage } from '@/lib/api-errors'
+import { internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
 import { markGameFinished } from '@/lib/game-finish'
 import { secondsUntilDeadline } from '@/lib/round-timing'
@@ -840,8 +840,6 @@ async function loadGameState(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{
-  /** Set when the session read itself failed — distinct from a successful read that found no row. */
-  error?: string
   session: UnoSession | null
   hands: UnoPlayerHand[]
   timerSeconds: number
@@ -867,7 +865,6 @@ async function loadGameState(
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)
 
   return {
-    error: sessionRes.error ? internalErrorMessage('uno', sessionRes.error) : undefined,
     session: sessionRes.data as UnoSession | null,
     hands: (handsRes.data as UnoPlayerHand[]) ?? [],
     timerSeconds: gameRes.data?.timer_seconds ?? 0,
@@ -963,15 +960,8 @@ async function finishByLowestHand(
   hands: UnoPlayerHand[],
   playerNames: Map<string, string>,
   reasonPrefix: string,
-  teamMode = false,
-  // Hands that `hands` already reflects (e.g. a partial penalty draw). Written only after this call's
-  // finish CAS has won (a lost race never writes them) and BEFORE the room-point / series bookkeeping
-  // reads `uno_player_hands`. `before` is the hand being replaced. A write that still fails after retries
-  // undoes the finish (hands restored, then the session returned to its pre-finish state) so the round is
-  // retryable and never published with stale hands; it is returned as `error` WITH `won: true` (the CAS
-  // did win, so the caller must not read it as a lost race or report plain success).
-  handWrites?: { playerId: string; cards: UnoCard[]; before: UnoCard[] }[]
-): Promise<{ won: boolean; error?: string }> {
+  teamMode = false
+): Promise<boolean> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
   // No Mercy: knocked-out seats must never rank as the winner on a timed finish. Pass
@@ -1001,7 +991,7 @@ async function finishByLowestHand(
     statusMessage = `${reasonPrefix} ${winnerName} wins — ${detail}.`
   }
 
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from('uno_sessions')
     .update({
       phase: 'finished',
@@ -1012,65 +1002,14 @@ async function finishByLowestHand(
     })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
-    .select('game_id, updated_at')
+    .select('game_id')
 
-  // A database failure is not a lost race — surface it instead of reporting a quiet skip.
-  if (error) return { won: false, error: internalErrorMessage('uno', error) }
-  if ((data?.length ?? 0) === 0) return { won: false }
-  const handsWritten = handWrites?.length ? await writeHandsWithRetry(supabase, gameId, handWrites) : { error: null }
-  if (handsWritten.error && handWrites?.length) {
-    // The finish cannot be published without its hands. Put the old hands back first (a retry must not draw
-    // on top of a half-written round), then return the session to its pre-finish state, bound to the version
-    // our own finish wrote (the database assigns it, so read it back) so a newer write is never reverted.
-    // If either step fails the session stays `finished` and the expiry recovery publishes it.
-    const restored = await writeHandsWithRetry(
-      supabase,
-      gameId,
-      handWrites.map((w) => ({ playerId: w.playerId, cards: w.before }))
-    )
-    const finishedVersion = (data as { updated_at?: string }[])[0]?.updated_at
-    if (!restored.error && finishedVersion) {
-      await supabase
-        .from('uno_sessions')
-        .update({
-          phase: session.phase,
-          winner_player_id: session.winner_player_id,
-          status_message: session.status_message,
-          turn_deadline_at: session.turn_deadline_at,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('game_id', gameId)
-        .eq('updated_at', finishedVersion)
-    }
-  }
+  if ((data?.length ?? 0) === 0) return false
   if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
-  // The session is already `finished` here, so a failed games-row flip must be reported (and retried by the
-  // expiry path) rather than dropped: the round is over but `games.status` would stay `active`.
-  // Publish only once the finish's hands are stored: a failed hand write leaves the row `active`, so the
-  // expiry recovery (which waits out UNO_FINISH_RECOVERY_GRACE_MS) publishes it instead of this request.
-  // The flip is a single-winner CAS: if the recovery path got there first it already ran the side effects,
-  // so losing it is not an error and must not repeat them.
-  if (handsWritten.error) return { won: true, error: handsWritten.error }
-  const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
-  return flipped.error ? { won: true, error: internalErrorMessage('uno', flipped.error) } : { won: true }
+  await markGameFinished(supabase, gameId)
+  return true
 }
 
-/** How long a `finished` session may sit with `games.status` still active before expiry recovery flips it. */
-const UNO_FINISH_RECOVERY_GRACE_MS = 30_000
-
-/** Result for a delegated write that did not land: a database error is surfaced, a lost CAS is a skip. */
-function lostWrite(persisted: { error?: string }): { error?: string; skipped?: boolean } {
-  return persisted.error ? { error: persisted.error } : { skipped: true }
-}
-
-/** Outcome of a round-timer check that DID act: the round was finished, the finish write failed, or it lost its CAS. */
-type ExpiredOutcome = { finished: true } | { error: string } | { lost: true }
-
-/**
- * Returns null when the round is not due (the caller continues to gameplay) — and ONLY then. A finish write
- * that errored or lost its CAS must not read as "round still live", or an ordinary move would be accepted
- * on a round whose timer already expired.
- */
 async function finalizeIfGameExpired(
   supabase: SupabaseClient,
   gameId: string,
@@ -1080,24 +1019,10 @@ async function finalizeIfGameExpired(
   sessionStartedAt: string | null,
   gameDurationSeconds: number,
   teamMode = false
-): Promise<ExpiredOutcome | null> {
-  if (session.phase === 'finished') return null
-  if (!unoGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return null
-  const finished = await finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", teamMode)
-  if (finished.error) return { error: finished.error }
-  return finished.won ? { finished: true } : { lost: true }
-}
-
-function expiredPlayResult(outcome: ExpiredOutcome): { error?: string; skipped?: boolean } {
-  if ('error' in outcome) return { error: outcome.error }
-  // A lost finish CAS means a competing write moved the game: a conflict (409), not a client error.
-  if ('lost' in outcome) return { skipped: true }
-  return { error: "Time's up — the game has ended" }
-}
-
-function expiredHandlerResult(outcome: ExpiredOutcome): { error?: string; skipped?: boolean } {
-  if ('error' in outcome) return { error: outcome.error }
-  return 'lost' in outcome ? { skipped: true } : {}
+): Promise<boolean> {
+  if (session.phase === 'finished') return false
+  if (!unoGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return false
+  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", teamMode)
 }
 
 /**
@@ -1397,40 +1322,8 @@ async function persistSession(
   return { won: (data?.length ?? 0) > 0 }
 }
 
-async function writeHand(
-  supabase: SupabaseClient,
-  gameId: string,
-  playerId: string,
-  cards: UnoCard[]
-): Promise<{ error: string | null }> {
-  const { data, error } = await supabase
-    .from('uno_player_hands')
-    .update({ cards })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-    .select('player_id')
-  if (error) return { error: internalErrorMessage('uno', error) }
-  // Zero rows: the hand row is gone (the player left) after the finish already committed. The request was
-  // valid, so this is a server failure (500); the specific reason stays in the server log.
-  if (!data || data.length === 0) return { error: internalErrorMessage('uno', 'hand row missing after finish commit') }
-  return { error: null }
-}
-
-/** Idempotent (fixed-value) hand writes, retried: a finished round must not keep a pre-draw hand over a blip. */
-async function writeHandsWithRetry(
-  supabase: SupabaseClient,
-  gameId: string,
-  writes: { playerId: string; cards: UnoCard[] }[]
-): Promise<{ error: string | null }> {
-  let error: string | null = null
-  for (const w of writes) {
-    let result: { error: string | null } = { error: 'unset' }
-    for (let attempt = 0; attempt < 3 && result.error; attempt++) {
-      result = await writeHand(supabase, gameId, w.playerId, w.cards)
-    }
-    error ??= result.error
-  }
-  return { error }
+async function writeHand(supabase: SupabaseClient, gameId: string, playerId: string, cards: UnoCard[]) {
+  await supabase.from('uno_player_hands').update({ cards }).eq('game_id', gameId).eq('player_id', playerId)
 }
 
 /** Bonus per opponent knocked out by the Mercy rule this round (No Mercy scoring only). */
@@ -1639,36 +1532,27 @@ export async function processUnoPlay(
   playerId: string,
   cardId: string,
   callUno = false,
-  opts?: { jumpIn?: boolean },
-  boundUpdatedAt?: string
+  opts?: { jumpIn?: boolean }
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
-  // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
-  if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
   if (unoHandCount(hands, playerId) === 0) return { error: 'You are out of the game' }
@@ -1966,31 +1850,25 @@ export async function processUnoPlayMulti(
   cardIds: string[],
   callUno = false
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   if (rules.multiPlay === 'off') return { error: 'Multi-Play is off for this game' }
   if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
@@ -2182,36 +2060,27 @@ export async function processUnoPlayMulti(
 export async function processUnoDraw(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string,
-  boundUpdatedAt?: string
-): Promise<{ error?: string; skipped?: boolean; committed?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  playerId: string
+): Promise<{ error?: string; skipped?: boolean }> {
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
-  // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
-  if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   // Colour Roulette: the target reveals cards one at a time by clicking Draw. Route to
   // the dedicated reveal helper; it handles the match/no-match branches and the caster's
@@ -2260,23 +2129,14 @@ export async function processUnoDraw(
       return { error: 'Draw pile is empty — play a card from your hand' }
     }
     if (!anyPlayerCanPlay(hands, session)) {
-      const finished = await finishByLowestHand(
-        supabase,
-        gameId,
-        session,
-        hands,
-        playerNames,
-        'Nobody can play —',
-        rules.teamMode
-      )
-      if (finished.won) return finished.error ? { error: finished.error, committed: true } : {}
-      return lostWrite(finished)
+      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody can play —', rules.teamMode)
+      return {}
     }
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-    const persisted = await persistSession(
+    await persistSession(
       supabase,
       gameId,
       {
@@ -2290,7 +2150,6 @@ export async function processUnoDraw(
       timerSeconds,
       session.updated_at
     )
-    if (!persisted.won) return lostWrite(persisted)
     if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
     return {}
   }
@@ -2310,30 +2169,19 @@ export async function processUnoDraw(
     // total. Only in No Mercy — Classic keeps the existing "draw what you can" beat,
     // which is fine for smaller +2/+4 penalties.
     if (rules.mode === 'no_mercy' && drawn.length < penalty) {
-      // The standings must see the post-draw hands, and the room-point bookkeeping reads them from
-      // the database — so the hands are written inside the finish, after its CAS won and before that
-      // bookkeeping. A lost CAS (or DB error) never writes this stale snapshot's hands.
-      let finalHands = updateHand(hands, playerId, newHand)
-      if (missed) finalHands = updateHand(finalHands, missed.playerId, missed.hand)
-      const finished = await finishByLowestHand(
+      // Persist what was drawn so hands reflect the partial payout in the standings.
+      await writeHand(supabase, gameId, playerId, newHand)
+      if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
+      await finishByLowestHand(
         supabase,
         gameId,
         { ...session, draw_pile: drawPile, discard_pile: discardPile } as UnoSession,
-        finalHands,
+        updateHand(hands, playerId, newHand),
         playerNames,
         `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
-        rules.teamMode,
-        [
-          { playerId, cards: newHand, before: handForPlayer(hands, playerId) },
-          ...(missed
-            ? [{ playerId: missed.playerId, cards: missed.hand, before: handForPlayer(hands, missed.playerId) }]
-            : []),
-        ]
+        rules.teamMode
       )
-      // The round finished, but a hand that failed to persist must not be reported as a clean success.
-      // `committed`: this call's own finish bumped updated_at, so callers must not read that as a racing write.
-      if (finished.won) return finished.error ? { error: finished.error, committed: true } : {}
-      return lostWrite(finished)
+      return {}
     }
     // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
     const nextIndex = unoNextTurnIndex(
@@ -2489,36 +2337,27 @@ export async function processUnoDraw(
 export async function processUnoPass(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string,
-  boundUpdatedAt?: string
+  playerId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
-  // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
-  if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   if (session.phase !== 'playing') return { error: 'Resolve the current card first' }
   const currentId = currentPlayerId(session)
@@ -2541,7 +2380,7 @@ export async function processUnoPass(
     timerSeconds,
     session.updated_at
   )
-  if (!persisted.won) return lostWrite(persisted)
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
   return {}
 }
 
@@ -2554,23 +2393,11 @@ export async function processUnoChoose(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  color: UnoColor,
-  boundUpdatedAt?: string
+  color: UnoColor
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
-  // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
-  if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
 
   // Wild Color Roulette resolves through the same endpoint but takes a different flow — the
   // player reveals cards from the pile until they hit their named colour. Dispatch early.
@@ -2578,17 +2405,20 @@ export async function processUnoChoose(
     return processUnoColorRoulette(supabase, gameId, playerId, color)
   }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   if (session.phase !== 'choose_color') return { error: 'Not choosing a colour' }
 
@@ -2762,29 +2592,23 @@ export async function processUnoColorRoulette(
   playerId: string,
   color: UnoColor
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
   if (session.phase !== 'color_roulette') return { error: 'No Color Roulette pending' }
   if (session.color_roulette_player_id !== playerId) return { error: 'Not your Color Roulette' }
   if (!UNO_COLORS.includes(color)) return { error: 'Choose a colour' }
@@ -2841,7 +2665,7 @@ async function processUnoColorRouletteReveal(
     // On No Mercy the round can't meaningfully continue from here, so end it via
     // lowest-hand-wins. Classic falls back to "no colour found, next player's turn".
     if (rules.mode === 'no_mercy') {
-      const finished = await finishByLowestHand(
+      await finishByLowestHand(
         supabase,
         gameId,
         { ...session, draw_pile: pile, discard_pile: discard } as UnoSession,
@@ -2850,14 +2674,13 @@ async function processUnoColorRouletteReveal(
         `Deck ran out mid-Roulette (no ${UNO_COLOR_LABELS[color]}) —`,
         rules.teamMode
       )
-      if (finished.won) return finished.error ? { error: finished.error } : {}
-      return lostWrite(finished)
+      return {}
     }
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
     const status = `${playerName(playerNames, playerId)} — pile ran out, no ${UNO_COLOR_LABELS[color]} · ${playerName(playerNames, nextPlayerId)}'s turn`
-    const persisted = await persistSession(
+    await persistSession(
       supabase,
       gameId,
       {
@@ -2873,7 +2696,7 @@ async function processUnoColorRouletteReveal(
       timerSeconds,
       session.updated_at
     )
-    return persisted.won ? {} : lostWrite(persisted)
+    return {}
   }
 
   const card = pile.pop()!
@@ -2963,45 +2786,33 @@ export async function processUnoChallenge(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  challenge: boolean,
-  boundUpdatedAt?: string
+  challenge: boolean
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
-  // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
-  if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   // Challengeable either in the dedicated window (challenge-only games) or, when stacking is on,
-  // while a Wild Draw Four penalty sits pending on the current player in normal play. The +4
-  // player may have left (wd4_player_id cleared); the penalty is then still pending and the
-  // challenge degrades to a plain accept below, so wd4_player_id is deliberately not required.
+  // while a Wild Draw Four penalty sits pending on the current player in normal play.
   const inChallengeWindow = session.phase === 'challenge_window'
   const inStackedPenalty =
     session.phase === 'playing' &&
-    rules.wd4Challenge &&
-    rules.stacking &&
+    !!session.wd4_player_id &&
     (session.draw_penalty ?? 0) > 0 &&
     session.draw_penalty_kind === 'wild_draw4'
   if (!inChallengeWindow && !inStackedPenalty) return { error: 'No Wild Draw Four to challenge' }
@@ -3029,17 +2840,16 @@ export async function processUnoChallenge(
 
   const applyDrawTo = async (
     targetId: string
-  ): Promise<{ hand: UnoCard[]; drawPile: UnoCard[]; discardPile: UnoCard[]; drawnCount: number }> => {
+  ): Promise<{ hand: UnoCard[]; drawPile: UnoCard[]; discardPile: UnoCard[] }> => {
     const { drawn, drawPile, discardPile } = drawCardsWithRefill(
       (session.draw_pile as UnoCard[]) ?? [],
       (session.discard_pile as UnoCard[]) ?? [],
       penalty
     )
-    return { hand: [...handForPlayer(hands, targetId), ...drawn], drawPile, discardPile, drawnCount: drawn.length }
+    return { hand: [...handForPlayer(hands, targetId), ...drawn], drawPile, discardPile }
   }
 
-  // A challenge needs a Wild Draw Four player whose hand can be revealed; if they left, it can only be accepted.
-  if (!challenge || !wd4PlayerId) {
+  if (!challenge) {
     // Accept: challenger draws 4 and is skipped.
     if (!playerId) return { error: 'Player required' }
     const drawResult = await applyDrawTo(playerId)
@@ -3050,7 +2860,7 @@ export async function processUnoChallenge(
         draw_pile: drawResult.drawPile,
         discard_pile: drawResult.discardPile,
         current_turn_index: afterIndex,
-        status_message: `${playerName(playerNames, playerId)} drew ${drawResult.drawnCount} — ${playerName(playerNames, afterId)}'s turn`,
+        status_message: `${playerName(playerNames, playerId)} drew ${penalty} — ${playerName(playerNames, afterId)}'s turn`,
       }),
       timerSeconds,
       session.updated_at
@@ -3079,7 +2889,7 @@ export async function processUnoChallenge(
         draw_pile: drawResult.drawPile,
         discard_pile: drawResult.discardPile,
         current_turn_index: session.current_turn_index,
-        status_message: `Challenge won — ${playerName(playerNames, wd4PlayerId)} was hiding a ${prevLabel} card! ${playerName(playerNames, wd4PlayerId)} draws ${drawResult.drawnCount}. ${playerName(playerNames, playerId)}'s turn${colorHint}`,
+        status_message: `Challenge won — ${playerName(playerNames, wd4PlayerId)} was hiding a ${prevLabel} card! ${playerName(playerNames, wd4PlayerId)} draws ${penalty}. ${playerName(playerNames, playerId)}'s turn${colorHint}`,
       }),
       timerSeconds,
       session.updated_at
@@ -3140,35 +2950,26 @@ export async function processUnoSwap(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  targetId: string,
-  boundUpdatedAt?: string
+  targetId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
-  // Bound delegate (turn-expiry auto-play): act only on the exact version that was found expired.
-  if (boundUpdatedAt !== undefined && session.updated_at !== boundUpdatedAt) return { skipped: true }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredPlayResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return { error: "Time's up — the game has ended" }
+  }
 
   if (session.phase !== 'swap_target') return { error: 'No hand swap pending' }
 
@@ -3206,7 +3007,7 @@ export async function processUnoSwap(
     timerSeconds,
     session.updated_at
   )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
 
   await writeHand(supabase, gameId, playerId, theirCards)
   await writeHand(supabase, gameId, targetId, myCards)
@@ -3231,13 +3032,8 @@ export async function processUnoCall(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
-): Promise<{ error?: string; skipped?: boolean }> {
-  const { data: sessionRaw, error: sessionError } = await supabase
-    .from('uno_sessions')
-    .select('*')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (sessionError) return { error: internalErrorMessage('uno', sessionError) }
+): Promise<{ error?: string }> {
+  const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
   const session = sessionRaw as UnoSession | null
   if (!session) return { error: 'Session not found' }
   if (session.uno_pending_player !== playerId) return { error: 'Nothing to call' }
@@ -3246,26 +3042,24 @@ export async function processUnoCall(
   const { data: playerRow } = await supabase.from('players').select('name').eq('id', playerId).maybeSingle()
   const nm = playerRow?.name ?? 'A player'
 
-  const { data: landed, error: callError } = await supabase
+  const { data: landed } = await supabase
     .from('uno_sessions')
     .update({ uno_called: true, status_message: `${nm} called last card! 🎉`, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
     .select('game_id')
-  if (callError) return { error: internalErrorMessage('uno', callError) }
-  // The session moved (e.g. an unrelated leave) after we read it: the call did not land and the caller
-  // still owes it — report a conflict rather than success.
-  if (!landed || landed.length === 0) return { skipped: true }
   // Correctly called UNO on the second-to-last card via the standalone button — "UNO!". Only when
   // the call actually landed (CAS won), and read/written here since this path skips loadGameState.
-  const { data: handRow } = await supabase
-    .from('uno_player_hands')
-    .select('stats')
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-    .maybeSingle()
-  const prev = ((handRow?.stats as UnoRoundStats | null) ?? {}) as UnoRoundStats
-  await writeUnoStats(supabase, gameId, playerId, foldUnoEvent(prev, 'uno_uno_calls'))
+  if ((landed?.length ?? 0) > 0) {
+    const { data: handRow } = await supabase
+      .from('uno_player_hands')
+      .select('stats')
+      .eq('game_id', gameId)
+      .eq('player_id', playerId)
+      .maybeSingle()
+    const prev = ((handRow?.stats as UnoRoundStats | null) ?? {}) as UnoRoundStats
+    await writeUnoStats(supabase, gameId, playerId, foldUnoEvent(prev, 'uno_uno_calls'))
+  }
   return {}
 }
 
@@ -3274,31 +3068,25 @@ export async function processUnoExpireTurn(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; skipped?: boolean }> {
-  const {
-    error: loadError,
-    session,
-    hands,
-    timerSeconds,
-    gameDurationSeconds,
-    sessionStartedAt,
-    rules,
-    playerNames,
-  } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+  const { session, hands, timerSeconds, gameDurationSeconds, sessionStartedAt, rules, playerNames } =
+    await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { skipped: true }
 
-  const expiredOutcome = await finalizeIfGameExpired(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    sessionStartedAt,
-    gameDurationSeconds,
-    rules.teamMode
-  )
-  if (expiredOutcome) return expiredHandlerResult(expiredOutcome)
+  if (
+    await finalizeIfGameExpired(
+      supabase,
+      gameId,
+      session,
+      hands,
+      playerNames,
+      sessionStartedAt,
+      gameDurationSeconds,
+      rules.teamMode
+    )
+  ) {
+    return {}
+  }
 
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at as string) > new Date()) {
     return { skipped: true }
@@ -3312,17 +3100,8 @@ export async function processUnoExpireTurn(
   // phase validation ("Not your turn", "Card not in hand", ...). That is not a client error — the
   // turn was already handled — so when the session changed under us, report a skip instead.
   const expectedUpdatedAt = session.updated_at
-  const settle = async (result: {
-    error?: string
-    committed?: boolean
-  }): Promise<{ error?: string; skipped?: boolean; committed?: boolean }> => {
+  const settle = async (result: { error?: string }): Promise<{ error?: string; skipped?: boolean }> => {
     if (!result.error) return result
-    // The round finished under this very call but a hand write failed: the finish itself moved
-    // updated_at, so the reread below would wrongly report a skip. Keep the error.
-    if (result.committed) return result
-    // A database failure is not a lost race: the turn is still unhandled, so keep the error visible
-    // (and retryable) even when another write has since moved updated_at.
-    if (result.error === INTERNAL_ERROR_MESSAGE) return result
     const { data: fresh } = await supabase.from('uno_sessions').select('updated_at').eq('game_id', gameId).maybeSingle()
     if (fresh && fresh.updated_at !== expectedUpdatedAt) return { skipped: true }
     return result
@@ -3334,21 +3113,12 @@ export async function processUnoExpireTurn(
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextId = session.turn_order[nextIndex]
     if (!nextId || unoHandCount(hands, nextId) === 0) {
-      const finished = await finishByLowestHand(
-        supabase,
-        gameId,
-        session,
-        hands,
-        playerNames,
-        'Nobody left —',
-        rules.teamMode
-      )
-      if (finished.won) return finished.error ? { error: finished.error } : {}
-      return lostWrite(finished)
+      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody left —', rules.teamMode)
+      return {}
     }
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-    const persisted = await persistSession(
+    await persistSession(
       supabase,
       gameId,
       {
@@ -3359,26 +3129,26 @@ export async function processUnoExpireTurn(
       timerSeconds,
       session.updated_at
     )
-    return persisted.won ? {} : lostWrite(persisted)
+    return {}
   }
 
   if (session.phase === 'choose_color') {
-    return settle(await processUnoChoose(supabase, gameId, currentId, dominantColor(hand), expectedUpdatedAt))
+    return settle(await processUnoChoose(supabase, gameId, currentId, dominantColor(hand)))
   }
 
   if (session.phase === 'challenge_window') {
     // Auto-accept on timeout — the safe default.
-    return settle(await processUnoChallenge(supabase, gameId, currentId, false, expectedUpdatedAt))
+    return settle(await processUnoChallenge(supabase, gameId, currentId, false))
   }
 
   if (session.phase === 'swap_target') {
     // Auto-swap with the first other active player on timeout.
     const targetId = (session.turn_order ?? []).find((id) => id !== currentId && unoHandCount(hands, id) > 0)
-    if (targetId) return settle(await processUnoSwap(supabase, gameId, currentId, targetId, expectedUpdatedAt))
+    if (targetId) return settle(await processUnoSwap(supabase, gameId, currentId, targetId))
     // No one to swap with — just resume play.
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
-    const persisted = await persistSession(
+    await persistSession(
       supabase,
       gameId,
       {
@@ -3389,12 +3159,12 @@ export async function processUnoExpireTurn(
       timerSeconds,
       session.updated_at
     )
-    return persisted.won ? {} : lostWrite(persisted)
+    return {}
   }
 
   // Already drew this turn and idled — keep the card (auto-pass), the safe default.
   if (session.drawn_card_id) {
-    return settle(await processUnoPass(supabase, gameId, currentId, expectedUpdatedAt))
+    return settle(await processUnoPass(supabase, gameId, currentId))
   }
 
   if (hasPlayableCard(hand, session)) {
@@ -3403,76 +3173,35 @@ export async function processUnoExpireTurn(
     const nonWild = playable.filter((c) => !isWildCard(c))
     const pool = nonWild.length > 0 ? nonWild : playable
     const card = [...pool].sort((a, b) => cardPoints(a) - cardPoints(b))[0]!
-    return settle(
-      await processUnoPlay(supabase, gameId, currentId, card.id, hand.length - 1 === 1, undefined, expectedUpdatedAt)
-    )
+    return settle(await processUnoPlay(supabase, gameId, currentId, card.id, hand.length - 1 === 1))
   }
 
-  return settle(await processUnoDraw(supabase, gameId, currentId, expectedUpdatedAt))
+  return settle(await processUnoDraw(supabase, gameId, currentId))
 }
 
 export async function finishExpiredUnoGame(
   supabase: SupabaseClient,
   game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds' | 'uno_team_mode'>
-): Promise<'finished' | 'conflict' | 'error' | 'not_due'> {
-  if (game.status !== 'active') return 'error'
+): Promise<boolean> {
+  if (game.status !== 'active') return false
+  if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
 
   const gameId = game.id
-  const sessionRes = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
-  // A failed read is not "no session": report it instead of a quiet skip.
-  if (sessionRes.error) {
-    internalErrorMessage('uno', sessionRes.error)
-    return 'error'
-  }
-  const session = sessionRes.data as UnoSession | null
-  if (!session) return 'error'
-  // A finish is already in flight or done (finishByLowestHand flips the phase before games.status):
-  // a second one would re-pick the winner from pre-draw hands and award series points twice. But if that
-  // finish committed the session and then failed the games-row flip, the row is still `active` and nothing
-  // else would ever correct it — retry ONLY that flip, as a single-winner CAS (no second session finish,
-  // no series points; the room-point bookkeeping runs only for the request that actually flips the row).
-  // This runs before the deadline guard: an untimed round (or one that ended before its deadline) can have
-  // a finished session too.
-  if (session.phase === 'finished') {
-    // The original finisher publishes after its hand writes; only recover once it has had time to do so.
-    if (Date.now() - new Date(session.updated_at).getTime() < UNO_FINISH_RECOVERY_GRACE_MS) return 'conflict'
-    // Bound to the round inspected above: if Play Again started a new round under this game id meanwhile,
-    // its session_started_at differs and the flip must not finish it.
-    const flipped = await markGameFinished(supabase, gameId, undefined, {
-      onlyIfActive: true,
-      onlySessionStartedAt: game.session_started_at ?? null,
-    })
-    if (flipped.error) {
-      internalErrorMessage('uno', flipped.error)
-      return 'error'
-    }
-    return flipped.won ? 'finished' : 'conflict'
-  }
-  if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return 'not_due'
-
-  const [handsRes, playersRes] = await Promise.all([
+  const [sessionRes, handsRes, playersRes] = await Promise.all([
+    supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle(),
     supabase.from('uno_player_hands').select('player_id, cards, player_order').eq('game_id', gameId),
     supabase.from('players').select('id, name').eq('game_id', gameId),
   ])
+
+  const session = sessionRes.data as UnoSession | null
+  if (!session) return false
 
   const playerNames = new Map<string, string>()
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)
 
   const hands = (handsRes.data as UnoPlayerHand[]) ?? []
-  const finished = await finishByLowestHand(
-    supabase,
-    gameId,
-    session,
-    hands,
-    playerNames,
-    "Time's up!",
-    game.uno_team_mode === true
-  )
-  // A failed session write or games-row flip is a failed expiry (the route answers 500, clients retry, and the
-  // retry lands in the already-finished branch above), never a quiet success.
-  if (finished.error) return 'error'
-  // A lost session CAS means a competing write moved the round: not finished, not a server failure.
-  return finished.won ? 'finished' : 'conflict'
+  await finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", game.uno_team_mode === true)
+  return true
 }
 
 // ── Host mode ─────────────────────────────────────────────────────────────────
@@ -3520,15 +3249,7 @@ async function removeUnoPlayerOnce(
   playerId: string,
   playerNameArg?: string
 ): Promise<{ error: string | null } | 'retry'> {
-  const { data: sessionRaw, error: lookupError } = await supabase
-    .from('uno_sessions')
-    .select('*')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  // Checked on EVERY attempt (a retry re-reads after a lost CAS). A failed lookup is not "no session":
-  // falling through would delete the hand and player while the session still lists the seat in
-  // turn_order. Only a successful lookup that finds no row reaches the no-session cleanup.
-  if (lookupError) return { error: internalErrorMessage('uno', lookupError) }
+  const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
   const session = sessionRaw as UnoSession | null
 
   // A player who already went out has a locked placement (finish_order) — preserve it.
@@ -3563,14 +3284,7 @@ async function removeUnoPlayerOnce(
         .eq('game_id', gameId)
       const hands = (handRows ?? []) as UnoPlayerHand[]
       const prevLeft = unoLeftPlayerIds(session)
-      // Already marked left: a prior attempt committed this departure (team decision / finish included).
-      // Only the remaining cleanup is retried — never write another team_leave_decision.
-      if (prevLeft.includes(playerId)) {
-        await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
-        const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-        return { error: error?.message ?? null }
-      }
-      const leftIds = [...prevLeft, playerId]
+      const leftIds = prevLeft.includes(playerId) ? prevLeft : [...prevLeft, playerId]
       const partner = unoTeammateId(order, playerId)
       const partnerActive = !!partner && !leftIds.includes(partner) && unoHandCount(hands, partner) > 0
       const opponentIds = order.filter(
@@ -3581,13 +3295,6 @@ async function removeUnoPlayerOnce(
         left_player_ids: leftIds,
         uno_pending_player: session.uno_pending_player === playerId ? null : session.uno_pending_player,
         updated_at: new Date().toISOString(),
-      }
-
-      // The Wild Draw Four player's hand is deleted below, so a pending challenge against them can no
-      // longer be adjudicated — drop the challenge evidence (the +4 itself still stands).
-      if (session.wd4_player_id === playerId) {
-        teamUpdate.wd4_player_id = null
-        teamUpdate.challenge_prev_color = null
       }
 
       if (partnerActive) {
@@ -3640,16 +3347,6 @@ async function removeUnoPlayerOnce(
       updated_at: new Date().toISOString(),
     }
 
-    // If the leaver played the pending Wild Draw Four, their hand (the challenge evidence) is deleted
-    // below, so the challenge can no longer be adjudicated. Drop the challenge (wd4_player_id /
-    // challenge_prev_color) but keep the +4 penalty and the decision owner's turn: the target must
-    // still draw (processUnoChallenge treats any challenge without a Wild Draw Four player as an
-    // accept) rather than eat a bogus failed-challenge penalty.
-    if (session.wd4_player_id === playerId) {
-      update.wd4_player_id = null
-      update.challenge_prev_color = null
-    }
-
     // Players who already went out (finish_order) or were knocked out (eliminated_player_ids)
     // stay in turn_order — they're skipped on their turn — but are NOT still in play. The game
     // can only continue while at least two players remain active, so count active seats, not raw
@@ -3672,21 +3369,11 @@ async function removeUnoPlayerOnce(
         : `${removedName} left — game over.`
       update.turn_deadline_at = null
     } else {
-      // Only cancel a pending decision (choose/challenge/swap/roulette) when the REMOVED player owns
-      // it, falling back to plain play. If someone else leaves while the current player is mid-decision
-      // (e.g. A just played a Wild and must still pick a colour), the phase and its status stay
-      // intact — resetting it to 'playing' would leave A unable to choose a colour.
-      const decisionOwnerId =
-        session.phase === 'team_leave_decision' ? session.team_decider_id : order[session.current_turn_index]
-      const cancelsDecision = session.phase !== 'playing' && decisionOwnerId === playerId
-      if (cancelsDecision) update.phase = 'playing'
+      // If we removed the player mid-decision (choose/challenge), fall back to plain play.
+      if (session.phase !== 'playing') update.phase = 'playing'
       const nextPlayerId = turnOrder[currentTurnIndex]
-      // The timer restarts only when play actually moves on; a pending decision owned by someone
-      // else keeps its original deadline (the update simply omits turn_deadline_at).
-      if (session.phase === 'playing' || cancelsDecision) {
-        update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
-        update.turn_deadline_at = unoTurnDeadline(timerSeconds)
-      }
+      update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
+      update.turn_deadline_at = unoTurnDeadline(timerSeconds)
     }
 
     const { data: claimed, error: sessionError } = await supabase
@@ -3721,9 +3408,8 @@ export async function processUnoTeamLeaveDecision(
   gameId: string,
   playerId: string,
   decision: 'continue' | 'forfeit'
-): Promise<{ error?: string; skipped?: boolean }> {
-  const { error: loadError, session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
-  if (loadError) return { error: loadError }
+): Promise<{ error?: string }> {
+  const { session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'The round has already ended' }
   if (session.phase !== 'team_leave_decision') return { error: 'No teammate-leave decision pending' }
@@ -3757,8 +3443,8 @@ export async function processUnoTeamLeaveDecision(
       timerSeconds,
       session.updated_at
     )
-    if (!persisted.won) return lostWrite(persisted)
-    await markGameFinished(supabase, gameId)
+    if (persisted.error) return { error: persisted.error }
+    if (persisted.won) await markGameFinished(supabase, gameId)
     return {}
   }
 
@@ -3790,8 +3476,6 @@ export async function processUnoTeamLeaveDecision(
     patch.draw_penalty = 0
     patch.draw_penalty_kind = null
   }
-  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
-  // A lost CAS means another writer moved the session on: the decision did NOT commit, so say so.
-  if (!persisted.won) return lostWrite(persisted)
+  await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   return {}
 }

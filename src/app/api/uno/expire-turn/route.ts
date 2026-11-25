@@ -1,4 +1,3 @@
-import { engineErrorStatus } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isUnoGame } from '@/lib/game-types'
 import { processUnoExpireTurn } from '@/lib/uno'
@@ -26,7 +25,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await processUnoExpireTurn(supabase, code)
-  if (result.error) return NextResponse.json({ error: result.error }, { status: engineErrorStatus(result.error) })
+  if (result.error) return NextResponse.json({ error: result.error }, { status: 400 })
 
   return NextResponse.json({ ok: true, skipped: result.skipped ?? false })
 }

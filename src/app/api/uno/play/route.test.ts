@@ -20,7 +20,6 @@ vi.mock('@/lib/supabase-admin', () => ({
   }),
 }))
 
-import { INTERNAL_ERROR_MESSAGE } from '@/lib/api-errors'
 import { POST } from './route'
 
 const call = () =>
@@ -44,9 +43,7 @@ describe('POST /api/uno/play', () => {
     expect(state.notified).toBe(0)
   })
 
-  it('answers a database failure with 500 and a validation error with 400', async () => {
-    state.result = { error: INTERNAL_ERROR_MESSAGE }
-    expect((await call()).status).toBe(500)
+  it('answers a validation error with 400', async () => {
     state.result = { error: 'Not your turn' }
     expect((await call()).status).toBe(400)
     expect(state.notified).toBe(0)

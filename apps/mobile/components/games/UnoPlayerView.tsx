@@ -376,12 +376,7 @@ export function UnoPlayerView({ gameCode }: { gameCode: string }) {
   useTurnExpiryTimer({
     deadlineAt: session?.turn_deadline_at,
     enabled: bootstrap.game?.status === 'active' && session?.phase !== 'finished',
-    // Resolve with the expire result so a `skipped` verdict re-arms the timer (see useTurnExpiryTimer).
-    onExpire: () =>
-      postUnoExpireTurn(bootstrap.code).then(async (result) => {
-        await bootstrap.load()
-        return result
-      }),
+    onExpire: () => postUnoExpireTurn(bootstrap.code).then(() => bootstrap.load()),
   })
 
   const handCounts = useMemo(() => {
