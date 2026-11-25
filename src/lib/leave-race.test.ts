@@ -10,6 +10,7 @@ import {
   processUnoSwap,
   processUnoDraw,
   processUnoChallenge,
+  processUnoTeamLeaveDecision,
   processUnoCall,
   finishExpiredUnoGame,
   UNO_REMOVE_CONFLICT_ERROR,
@@ -33,6 +34,7 @@ function makeDb(
     afterSessionRead?: (table: string) => void
     failUpdates?: (table: string) => boolean
     failSelect?: (table: string) => boolean
+    failDeletes?: (table: string) => boolean
   } = {}
 ) {
   function builder(table: string) {
@@ -50,6 +52,7 @@ function makeDb(
         return { data: selectAfter ? rows.map((r) => ({ ...r })) : null, error: null }
       }
       if (op === 'delete') {
+        if (hooks.failDeletes?.(table)) return { data: null, error: { message: 'secret db detail' } }
         tables[table] = (tables[table] ?? []).filter((r) => !rows.includes(r))
         return { data: null, error: null }
       }
@@ -767,5 +770,59 @@ describe('removeScrabblePlayer — session lookup error', () => {
     t.scrabble_sessions = []
     expect((await removeScrabblePlayer(makeDb(t).supabase, 'G', 'C', 'C')).error).toBeNull()
     expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+})
+
+describe('leave — a failed players delete is not echoed to the client', () => {
+  it('uno: returns the generic internal message', async () => {
+    const t = unoTables()
+    const res = await removeUnoPlayer(makeDb(t, { failDeletes: (tb) => tb === 'players' }).supabase, 'G', 'C', 'C')
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  it('uno Team-Up and no-session cleanup paths: the generic internal message too', async () => {
+    const team = unoTables()
+    team.games[0].uno_team_mode = true
+    const failing = { failDeletes: (tb: string) => tb === 'players' }
+    expect((await removeUnoPlayer(makeDb(team, failing).supabase, 'G', 'C', 'C')).error).toBe(INTERNAL_ERROR_MESSAGE)
+    const none = unoTables()
+    none.uno_sessions = []
+    expect((await removeUnoPlayer(makeDb(none, failing).supabase, 'G', 'C', 'C')).error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  it('scrabble: returns the generic internal message', async () => {
+    const t = scrabbleTables()
+    const res = await removeScrabblePlayer(makeDb(t, { failDeletes: (tb) => tb === 'players' }).supabase, 'G', 'C', 'C')
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+})
+
+describe('processUnoTeamLeaveDecision — lost CAS is skipped', () => {
+  const pausedTables = () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'team_leave_decision', team_decider_id: 'C', left_player_ids: ['A'] })
+    return t
+  }
+  const lostAfterRead = (t: Tables) => {
+    let raced = false
+    return makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || raced) return
+        raced = true
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+  }
+
+  it.each(['continue', 'forfeit'] as const)('%s reports skipped and leaves the phase paused', async (decision) => {
+    const t = pausedTables()
+    expect(await processUnoTeamLeaveDecision(lostAfterRead(t).supabase, 'G', 'C', decision)).toEqual({ skipped: true })
+    expect(t.uno_sessions[0].phase).toBe('team_leave_decision')
+  })
+
+  it('continue still commits when nothing raced', async () => {
+    const t = pausedTables()
+    expect(await processUnoTeamLeaveDecision(makeDb(t).supabase, 'G', 'C', 'continue')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('playing')
   })
 })

@@ -3371,7 +3371,7 @@ async function removeUnoPlayerOnce(
       await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
       if (teamUpdate.phase === 'finished') await markGameFinished(supabase, gameId)
       const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-      return { error: error?.message ?? null }
+      return { error: error ? internalErrorMessage('uno', error) : null }
     }
 
     const turnOrder = order.filter((id) => id !== playerId)
@@ -3445,12 +3445,12 @@ async function removeUnoPlayerOnce(
     await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
     if (finishing) await markGameFinished(supabase, gameId)
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-    return { error: error?.message ?? null }
+    return { error: error ? internalErrorMessage('uno', error) : null }
   }
 
   await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: error?.message ?? null }
+  return { error: error ? internalErrorMessage('uno', error) : null }
 }
 
 // ── Team-Up mid-round leave: the remaining teammate's decision ─────────────────
@@ -3465,7 +3465,7 @@ export async function processUnoTeamLeaveDecision(
   gameId: string,
   playerId: string,
   decision: 'continue' | 'forfeit'
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { session, hands, timerSeconds, playerNames } = await loadGameState(supabase, gameId)
   if (!session) return { error: 'Session not found' }
   if (session.phase === 'finished') return { error: 'The round has already ended' }
@@ -3500,8 +3500,8 @@ export async function processUnoTeamLeaveDecision(
       timerSeconds,
       session.updated_at
     )
-    if (persisted.error) return { error: persisted.error }
-    if (persisted.won) await markGameFinished(supabase, gameId)
+    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+    await markGameFinished(supabase, gameId)
     return {}
   }
 
@@ -3533,6 +3533,8 @@ export async function processUnoTeamLeaveDecision(
     patch.draw_penalty = 0
     patch.draw_penalty_kind = null
   }
-  await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
+  // A lost CAS means another writer moved the session on: the decision did NOT commit, so say so.
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
   return {}
 }

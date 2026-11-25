@@ -1107,11 +1107,11 @@ async function removeScrabblePlayerOnce(
     await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
     if (finishing) await markGameFinished(supabase, gameId)
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-    return { error: error?.message ?? null }
+    return { error: error ? internalErrorMessage('scrabble', error) : null }
   }
 
   // Lobby, spectator, already-finished, or not in the turn order — just drop their state + row.
   await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: error?.message ?? null }
+  return { error: error ? internalErrorMessage('scrabble', error) : null }
 }
