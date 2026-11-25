@@ -769,7 +769,8 @@ describe('DELETE /api/players: retained host leave', () => {
     ['host_user_id only (the seat reference still reads null)', { host_user_id: 'user-other' }],
   ])(
     'does not undo a replacement host who took over %s after the leave captured the linkage, before the clear',
-    async (_name, claim) => {
+    async (_name, rawClaim) => {
+      const claim = rawClaim as { host_player_id?: string; host_user_id?: string }
       chessFinished()
       // Ownership changes AFTER the route captured host_user_id and deleted the seat, BEFORE it clears.
       afterPlayerDelete = () => Object.assign(tables.games[0], claim)
