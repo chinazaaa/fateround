@@ -29,3 +29,8 @@ export function internalErrorMessage(context: string, error: unknown, fallback =
 export function internalFailure(context: string, error: unknown, fallback?: string): { error: string; internal: true } {
   return { error: internalErrorMessage(context, error, fallback), internal: true }
 }
+
+/** HTTP status for a game-action `error`: the generic internal message marks a database failure (500), anything else is a validation error (400). */
+export function actionErrorStatus(error: string): number {
+  return error === INTERNAL_ERROR_MESSAGE ? 500 : 400
+}

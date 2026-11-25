@@ -2129,8 +2129,16 @@ export async function processUnoDraw(
       return { error: 'Draw pile is empty — play a card from your hand' }
     }
     if (!anyPlayerCanPlay(hands, session)) {
-      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody can play —', rules.teamMode)
-      return {}
+      const ended = await finishByLowestHand(
+        supabase,
+        gameId,
+        session,
+        hands,
+        playerNames,
+        'Nobody can play —',
+        rules.teamMode
+      )
+      return ended ? {} : { skipped: true }
     }
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextPlayerId = session.turn_order[nextIndex]
@@ -2172,7 +2180,7 @@ export async function processUnoDraw(
       // Persist what was drawn so hands reflect the partial payout in the standings.
       await writeHand(supabase, gameId, playerId, newHand)
       if (missed) await writeHand(supabase, gameId, missed.playerId, missed.hand)
-      await finishByLowestHand(
+      const ended = await finishByLowestHand(
         supabase,
         gameId,
         { ...session, draw_pile: drawPile, discard_pile: discardPile } as UnoSession,
@@ -2181,7 +2189,7 @@ export async function processUnoDraw(
         `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
         rules.teamMode
       )
-      return {}
+      return ended ? {} : { skipped: true }
     }
     // A forced penalty draw (Draw Two / Draw Four target) ends the turn — pass play on.
     const nextIndex = unoNextTurnIndex(
@@ -2665,7 +2673,7 @@ async function processUnoColorRouletteReveal(
     // On No Mercy the round can't meaningfully continue from here, so end it via
     // lowest-hand-wins. Classic falls back to "no colour found, next player's turn".
     if (rules.mode === 'no_mercy') {
-      await finishByLowestHand(
+      const ended = await finishByLowestHand(
         supabase,
         gameId,
         { ...session, draw_pile: pile, discard_pile: discard } as UnoSession,
@@ -2674,7 +2682,7 @@ async function processUnoColorRouletteReveal(
         `Deck ran out mid-Roulette (no ${UNO_COLOR_LABELS[color]}) —`,
         rules.teamMode
       )
-      return {}
+      return ended ? {} : { skipped: true }
     }
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -3032,7 +3040,7 @@ export async function processUnoCall(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; skipped?: boolean }> {
   const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
   const session = sessionRaw as UnoSession | null
   if (!session) return { error: 'Session not found' }
@@ -3042,12 +3050,15 @@ export async function processUnoCall(
   const { data: playerRow } = await supabase.from('players').select('name').eq('id', playerId).maybeSingle()
   const nm = playerRow?.name ?? 'A player'
 
-  const { data: landed } = await supabase
+  const { data: landed, error: callError } = await supabase
     .from('uno_sessions')
     .update({ uno_called: true, status_message: `${nm} called last card! 🎉`, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
     .eq('updated_at', session.updated_at)
     .select('game_id')
+  if (callError) return { error: internalErrorMessage('uno', callError) }
+  // A lost CAS (the game moved on) means the call did not land.
+  if (!landed || landed.length === 0) return { skipped: true }
   // Correctly called UNO on the second-to-last card via the standalone button — "UNO!". Only when
   // the call actually landed (CAS won), and read/written here since this path skips loadGameState.
   if ((landed?.length ?? 0) > 0) {
@@ -3064,6 +3075,11 @@ export async function processUnoCall(
 }
 
 // ── Turn / game expiry ────────────────────────────────────────────────────────
+/** A write that did not land: a database error is surfaced, a lost CAS is a skip. */
+function lostWrite(persisted: { error?: string }): { error?: string; skipped?: boolean } {
+  return persisted.error ? { error: persisted.error } : { skipped: true }
+}
+
 export async function processUnoExpireTurn(
   supabase: SupabaseClient,
   gameId: string
@@ -3114,12 +3130,20 @@ export async function processUnoExpireTurn(
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
     const nextId = session.turn_order[nextIndex]
     if (!nextId || unoHandCount(hands, nextId) === 0) {
-      await finishByLowestHand(supabase, gameId, session, hands, playerNames, 'Nobody left —', rules.teamMode)
-      return {}
+      const finished = await finishByLowestHand(
+        supabase,
+        gameId,
+        session,
+        hands,
+        playerNames,
+        'Nobody left —',
+        rules.teamMode
+      )
+      return finished ? {} : { skipped: true }
     }
     const top = session.top_card
     const matchHint = top ? ` — match ${cardLabel(top)}` : ''
-    await persistSession(
+    const advanced = await persistSession(
       supabase,
       gameId,
       {
@@ -3130,7 +3154,7 @@ export async function processUnoExpireTurn(
       timerSeconds,
       session.updated_at
     )
-    return {}
+    return advanced.won ? {} : lostWrite(advanced)
   }
 
   if (session.phase === 'choose_color') {
@@ -3149,7 +3173,7 @@ export async function processUnoExpireTurn(
     // No one to swap with — just resume play.
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
-    await persistSession(
+    const resumed = await persistSession(
       supabase,
       gameId,
       {
@@ -3160,7 +3184,7 @@ export async function processUnoExpireTurn(
       timerSeconds,
       session.updated_at
     )
-    return {}
+    return resumed.won ? {} : lostWrite(resumed)
   }
 
   // Already drew this turn and idled — keep the card (auto-pass), the safe default.
@@ -3201,8 +3225,8 @@ export async function finishExpiredUnoGame(
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)
 
   const hands = (handsRes.data as UnoPlayerHand[]) ?? []
-  await finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", game.uno_team_mode === true)
-  return true
+  // False when the finish write lost its CAS or failed: the round is not known to be over.
+  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", game.uno_team_mode === true)
 }
 
 // ── Host mode ─────────────────────────────────────────────────────────────────
@@ -3370,11 +3394,21 @@ async function removeUnoPlayerOnce(
         : `${removedName} left — game over.`
       update.turn_deadline_at = null
     } else {
-      // If we removed the player mid-decision (choose/challenge), fall back to plain play.
-      if (session.phase !== 'playing') update.phase = 'playing'
+      // Only cancel a pending decision (choose/challenge/swap/roulette) when the REMOVED player owns
+      // it, falling back to plain play. If someone else leaves while the current player is mid-decision
+      // (e.g. A just played a Wild and must still pick a colour), the phase and its status stay
+      // intact — resetting it to 'playing' would leave A unable to choose a colour.
+      const decisionOwnerId =
+        session.phase === 'team_leave_decision' ? session.team_decider_id : order[session.current_turn_index]
+      const cancelsDecision = session.phase !== 'playing' && decisionOwnerId === playerId
+      if (cancelsDecision) update.phase = 'playing'
       const nextPlayerId = turnOrder[currentTurnIndex]
-      update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
-      update.turn_deadline_at = unoTurnDeadline(timerSeconds)
+      // The timer restarts only when play actually moves on; a pending decision owned by someone
+      // else keeps its original deadline (the update simply omits turn_deadline_at).
+      if (session.phase === 'playing' || cancelsDecision) {
+        update.status_message = `${removedName} left. ${names.get(nextPlayerId) ?? 'Next player'}'s turn`
+        update.turn_deadline_at = unoTurnDeadline(timerSeconds)
+      }
     }
 
     const { data: claimed, error: sessionError } = await supabase

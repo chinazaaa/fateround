@@ -1,3 +1,4 @@
+import { actionErrorStatus } from '@/lib/api-errors'
 import { NextRequest, NextResponse } from 'next/server'
 import { parseGameType, isUnoGame } from '@/lib/game-types'
 import { processUnoPlay } from '@/lib/uno'
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const { error, skipped } = await processUnoPlay(supabase, code, auth.player.id, cardId, callUno === true)
-  if (error) return NextResponse.json({ error }, { status: 400 })
+  if (error) return NextResponse.json({ error }, { status: actionErrorStatus(error) })
   // The write lost a compare-and-swap (the game moved, e.g. a leave): nothing changed — the client retries.
   if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
 

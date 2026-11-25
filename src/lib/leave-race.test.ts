@@ -8,6 +8,9 @@ import {
   processUnoPlay,
   processUnoPass,
   processUnoSwap,
+  processUnoDraw,
+  processUnoCall,
+  finishExpiredUnoGame,
   UNO_REMOVE_CONFLICT_ERROR,
 } from './uno'
 import { INTERNAL_ERROR_MESSAGE } from './api-errors'
@@ -151,6 +154,65 @@ describe('removeUnoPlayer — concurrent leaves', () => {
   })
 })
 
+describe('removeUnoPlayer — pending decisions', () => {
+  // C's leave reads phase 'playing'; A then plays a Wild (phase -> choose_color) before the write lands.
+  function raceToChooseColor(t: Tables) {
+    let raced = false
+    return makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || raced) return
+        raced = true
+        const s = t.uno_sessions[0]
+        s.phase = 'choose_color'
+        s.status_message = 'A played a Wild — choose a colour'
+        s.updated_at = '2026-01-01T00:00:01.000Z'
+      },
+    })
+  }
+
+  it("keeps another player's pending colour choice when someone else leaves", async () => {
+    const t = unoTables()
+    const db = raceToChooseColor(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'C', 'C')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].turn_order).toEqual(['A', 'B', 'D'])
+    expect(t.uno_sessions[0].phase).toBe('choose_color')
+    expect(t.uno_sessions[0].status_message).toBe('A played a Wild — choose a colour')
+  })
+
+  it('cancels the pending decision when the decision owner is the one who leaves', async () => {
+    const t = unoTables()
+    const db = raceToChooseColor(t)
+    const res = await removeUnoPlayer(db.supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('playing')
+    expect(t.uno_sessions[0].turn_order).toEqual(['B', 'C', 'D'])
+  })
+})
+
+describe('removeUnoPlayer — pending decision keeps its deadline', () => {
+  const DEADLINE = '2030-01-01T00:00:00.000Z'
+  it("another player's leave does not restart the decision owner's timer", async () => {
+    const t = unoTables()
+    t.games[0].timer_seconds = 30
+    Object.assign(t.uno_sessions[0], { phase: 'choose_color', turn_deadline_at: DEADLINE })
+    const res = await removeUnoPlayer(makeDb(t).supabase, 'G', 'C', 'C')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].phase).toBe('choose_color')
+    expect(t.uno_sessions[0].turn_deadline_at).toBe(DEADLINE)
+  })
+
+  it("the decision owner's own leave starts the next player's timer", async () => {
+    const t = unoTables()
+    t.games[0].timer_seconds = 30
+    Object.assign(t.uno_sessions[0], { phase: 'choose_color', turn_deadline_at: DEADLINE })
+    const res = await removeUnoPlayer(makeDb(t).supabase, 'G', 'A', 'A')
+    expect(res.error).toBeNull()
+    expect(t.uno_sessions[0].turn_deadline_at).not.toBe(DEADLINE)
+    expect(t.uno_sessions[0].turn_deadline_at).toBeTruthy()
+  })
+})
+
 describe('processUnoExpireTurn — concurrent expiry', () => {
   it('returns skipped (not an error) when another caller already handled the turn', async () => {
     const t = unoTables()
@@ -266,6 +328,100 @@ describe('processUnoExpireTurn — settlement of the delegated result', () => {
       },
     })
     expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({ skipped: true })
+  })
+})
+
+describe('expiry and call outcomes are not mislabelled', () => {
+  const bumpAfterFirstRead = (t: Tables) => {
+    let raced = false
+    return makeDb(t, {
+      afterSessionRead: (table) => {
+        if (table !== 'uno_sessions' || raced) return
+        raced = true
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+  }
+  const expiredGame = {
+    id: 'G',
+    status: 'active',
+    session_started_at: '2020-01-01T00:00:00.000Z',
+    game_duration_seconds: 60,
+    uno_team_mode: false,
+  } as unknown as Parameters<typeof finishExpiredUnoGame>[1]
+
+  it('finishExpiredUnoGame reports false (not a finished round) when its finish CAS loses', async () => {
+    const t = unoTables()
+    expect(await finishExpiredUnoGame(bumpAfterFirstRead(t).supabase, expiredGame)).toBe(false)
+    expect(t.uno_sessions[0].phase).toBe('playing')
+  })
+
+  it('finishExpiredUnoGame reports true when the finish lands', async () => {
+    const t = unoTables()
+    expect(await finishExpiredUnoGame(makeDb(t).supabase, expiredGame)).toBe(true)
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('a "nobody can play" finish that loses its CAS reports skipped, not success', async () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 't', color: 'blue', kind: 'skip' },
+      draw_pile: [],
+      discard_pile: [],
+    })
+    expect(await processUnoDraw(bumpAfterFirstRead(t).supabase, 'G', 'A')).toEqual({ skipped: true })
+    expect(t.uno_sessions[0].phase).toBe('playing')
+    const t2 = unoTables()
+    Object.assign(t2.uno_sessions[0], {
+      top_card: { id: 't', color: 'blue', kind: 'skip' },
+      draw_pile: [],
+      discard_pile: [],
+    })
+    expect(await processUnoDraw(makeDb(t2).supabase, 'G', 'A')).toEqual({})
+    expect(t2.uno_sessions[0].phase).toBe('finished')
+  })
+
+  // The current player holds no cards: expiry just advances the turn, and that write can lose its CAS.
+  const emptyHandTables = () => {
+    const t = unoTables()
+    t.uno_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    t.uno_player_hands[0].cards = []
+    return t
+  }
+
+  it('expiry of an empty-handed seat reports skipped, not success, when its write loses the CAS', async () => {
+    const t = emptyHandTables()
+    const res = await processUnoExpireTurn(bumpAfterFirstRead(t).supabase, 'G')
+    expect(res).toEqual({ skipped: true })
+    expect(t.uno_sessions[0].current_turn_index).toBe(0)
+  })
+
+  it('expiry of an empty-handed seat reports a database error instead of success', async () => {
+    const t = emptyHandTables()
+    const res = await processUnoExpireTurn(makeDb(t, { failUpdates: (tb) => tb === 'uno_sessions' }).supabase, 'G')
+    expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+  })
+
+  it('expiry of an empty-handed seat still advances the turn when nothing raced', async () => {
+    const t = emptyHandTables()
+    expect(await processUnoExpireTurn(makeDb(t).supabase, 'G')).toEqual({})
+    expect(t.uno_sessions[0].current_turn_index).toBe(1)
+  })
+
+  it('processUnoCall reports skipped when the CAS loses, an error when the write fails, success otherwise', async () => {
+    const mk = () => {
+      const t = unoTables()
+      t.uno_sessions[0].uno_pending_player = 'A'
+      return t
+    }
+    const lost = mk()
+    expect(await processUnoCall(bumpAfterFirstRead(lost).supabase, 'G', 'A')).toEqual({ skipped: true })
+    expect(lost.uno_sessions[0].uno_called).toBeUndefined()
+    const failed = await processUnoCall(makeDb(mk(), { failUpdates: (tb) => tb === 'uno_sessions' }).supabase, 'G', 'A')
+    expect(failed.error).toBe(INTERNAL_ERROR_MESSAGE)
+    const ok = mk()
+    expect(await processUnoCall(makeDb(ok).supabase, 'G', 'A')).toEqual({})
+    expect(ok.uno_sessions[0].uno_called).toBe(true)
   })
 })
 
