@@ -29,6 +29,9 @@ as $$
 declare
   v_status text;
 begin
+  if p_game_id is null or p_player_id is null then
+    raise exception 'message insert: game id and player id are required';
+  end if;
   select status into v_status from public.games where id = upper(p_game_id) for share;
   if v_status is distinct from 'active' then
     return jsonb_build_object('status', 'game_not_active');
@@ -57,6 +60,9 @@ as $$
 declare
   v_status text;
 begin
+  if p_game_id is null or p_player_id is null then
+    raise exception 'message insert: game id and player id are required';
+  end if;
   select status into v_status from public.games where id = upper(p_game_id) for share;
   if v_status is distinct from 'active' then
     return jsonb_build_object('status', 'game_not_active');
@@ -85,6 +91,11 @@ declare
   v_status text;
   v_finished_at timestamptz;
 begin
+  -- `NOT IN` is NULL (not true) for a NULL kind, so a NULL must be rejected explicitly or it would skip the
+  -- check and reach the delete branch below.
+  if p_game_id is null or p_finished_at is null or p_kind is null then
+    raise exception 'wipe_finished_session_rows: game id, finished_at and kind are required';
+  end if;
   if p_kind not in ('anonymous', 'codewords') then
     raise exception 'wipe_finished_session_rows: unknown kind %', p_kind;
   end if;
