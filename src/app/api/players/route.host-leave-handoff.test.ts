@@ -15,11 +15,11 @@ const removal = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/uno', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/uno')>()),
-  removeUnoPlayer: async () => removed(removal.uno),
+  removeUnoPlayer: async (_s: unknown, _g: string, playerId: string) => removed(removal.uno, playerId),
 }))
 vi.mock('@/lib/scrabble', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/scrabble')>()),
-  removeScrabblePlayer: async () => removed(removal.scrabble),
+  removeScrabblePlayer: async (_s: unknown, _g: string, playerId: string) => removed(removal.scrabble, playerId),
 }))
 vi.mock('@/lib/codewords', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/codewords')>()),
@@ -28,39 +28,41 @@ vi.mock('@/lib/codewords', async (importOriginal) => ({
     outcome: { ended: false },
   }),
 }))
-// The bookkeeping owed to a finish committed by the database function: observed, then run for real.
-const bookkeeping = vi.hoisted(() => ({ calls: [] as unknown[][] }))
-vi.mock('@/lib/game-finish', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/game-finish')>()
-  return {
-    ...actual,
-    runPostFinishBookkeeping: async (...args: Parameters<typeof actual.runPostFinishBookkeeping>) => {
-      bookkeeping.calls.push(args.slice(1))
-      return actual.runPostFinishBookkeeping(...args)
-    },
-  }
-})
+// Word Rush's own per-player bookkeeping is not what these tests are about.
+vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/word-rush-server')>()),
+  syncWordRushAfterPlayerRemoved: async () => ({}),
+}))
+// The bookkeeping a host-left finish owes is resumed by claiming its durable marker (recoverFinishBookkeeping).
+const bookkeeping = vi.hoisted(() => ({ calls: [] as string[], state: 'none' as string }))
+vi.mock('@/lib/game-finish', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/game-finish')>()),
+  recoverFinishBookkeeping: async (_s: unknown, gameId: string) => {
+    bookkeeping.calls.push(gameId)
+    return { state: bookkeeping.state }
+  },
+}))
 
 type Row = Record<string, unknown>
 /**
  * A successful removal DELETES the seat row (and games.host_player_id is ON DELETE SET NULL); a retained seat
  * (`keepSeat`: a finisher's row) answers success but stays. `onCall` runs after the removal.
  */
-function removed(r: { error: string | null; onCall: (() => void) | null }) {
-  if (!r.error && !keepSeat) deletePlayers([HOST_PID])
+function removed(r: { error: string | null; onCall: (() => void) | null }, playerId: string) {
+  if (!r.error && !keepSeat) deletePlayers([playerId])
   r.onCall?.()
   return { error: r.error }
 }
-/** Reading the roster fails (the pre-removal successor lookup). */
-let failSuccessorLookup = false
+/** The pre-removal end_game_if_host_alone call fails (a transport error). */
+let failEndCheck = false
 /** A finished host's seat is retained by the removal helper, so host_player_id keeps naming them. */
 let keepSeat = false
 /** Deleting a players row fails (the forfeit cleanup cannot remove the seat). */
 let failPlayerDelete = false
 /** Runs right after a players delete committed (and its ON DELETE SET NULL ran): e.g. a claim lands. */
 let afterPlayerDelete: (() => void) | null = null
-/** Runs once, right after the first successor lookup (a stalled leave: the world moves on meanwhile). */
-let afterSuccessorLookup: (() => void) | null = null
+/** Runs once, just BEFORE end_game_if_host_alone is evaluated (a stalled leave: the world moves on meanwhile). */
+let beforeEndCheck: (() => void) | null = null
 /** Every games update the route attempted: its patch and how many rows it matched. */
 let gameUpdateLog: Array<{ patch: Row; matched: number }> = []
 /** Every rounds update the route attempted. */
@@ -82,7 +84,6 @@ function builder(table: string) {
   const filters: ((r: Row) => boolean)[] = []
   let patch: Row | null = null
   let deleting = false
-  let excludesSomeone = false
   let orderBy: { col: string; asc: boolean } | null = null
   let limitTo: number | null = null
   const match = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)))
@@ -109,7 +110,6 @@ function builder(table: string) {
       if (table === 'games') gameUpdateLog.push({ patch, matched: rows.length })
       return { data: rows.map((r) => ({ ...r })), error: null }
     }
-    if (excludesSomeone && failSuccessorLookup) return { data: null, error: { message: 'boom' } }
     let out = match().map((r) => ({ ...r }))
     // The roster read relies on the database ordering and limiting it; model both.
     if (orderBy) {
@@ -117,11 +117,6 @@ function builder(table: string) {
       out = out.sort((a, b) => ((a[col] as number) - (b[col] as number)) * (asc ? 1 : -1))
     }
     if (limitTo !== null) out = out.slice(0, limitTo)
-    if (excludesSomeone && afterSuccessorLookup) {
-      const hook = afterSuccessorLookup
-      afterSuccessorLookup = null
-      hook()
-    }
     return { data: out, error: null }
   }
   const api: Record<string, unknown> = {
@@ -129,7 +124,7 @@ function builder(table: string) {
     order: (col: string, opts?: { ascending?: boolean }) => ((orderBy = { col, asc: opts?.ascending !== false }), api),
     limit: (n: number) => ((limitTo = n), api),
     eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), api),
-    neq: (k: string, v: unknown) => ((excludesSomeone = true), filters.push((r) => r[k] !== v), api),
+    neq: (k: string, v: unknown) => (filters.push((r) => r[k] !== v), api),
     is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), api),
     // Only the `col.is.null,col.eq.X` shape the route uses.
     or: (expr: string) => {
@@ -156,8 +151,9 @@ type SettleArgs = {
   p_outgoing_host_user_id: string | null
   p_session_started_at: string | null
   p_sessions_played: number | null
-  p_track_bookkeeping: boolean
 }
+/** Every end_game_if_host_alone answer. */
+let endCalls: Array<{ status: string; finished_now?: boolean }> = []
 /** Number of upcoming settle_host_leave CALLS that fail (a transport error, not a decision). */
 let settleFailBudget = 0
 /** Every settle_host_leave call: its arguments and whether the leaver's seat row existed when it ran. */
@@ -204,17 +200,52 @@ function settleModel(a: SettleArgs) {
     .filter((p) => p.game_id === g.id && !p.is_bot && !p.spectator && p.id !== out)
     .sort((x, y) => (x.joined_at as number) - (y.joined_at as number) || String(x.id).localeCompare(String(y.id)))[0]
   if (successor) {
-    Object.assign(g, { pending_host_player_id: successor.id, pending_host_nominated_at: 'NOW', host_user_id: null })
+    Object.assign(g, {
+      pending_host_player_id: successor.id,
+      pending_host_nominated_at: 'NOW',
+      host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !changed ? null : g.host_user_id,
+    })
     return { status: 'nominated', nominee: successor.id }
   }
   Object.assign(g, {
     status: 'finished',
     finished_at: FINISHED_AT,
     result_reason: 'host_ended',
-    host_user_id: null,
+    host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !changed ? null : g.host_user_id,
     pending_host_player_id: null,
   })
   return { status: 'finished', finished_now: true, finished_at: FINISHED_AT, result_reason: 'host_ended' }
+}
+
+/** A model of public.end_game_if_host_alone (same migration; tested for real in supabase/tests/). */
+function endModel(a: {
+  p_game_id: string
+  p_outgoing_player_id: string
+  p_session_started_at: string | null
+  p_sessions_played: number | null
+}) {
+  const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
+  if (!g) return { status: 'game_missing' }
+  if (g.status === 'finished') {
+    return g.result_reason === 'host_ended'
+      ? { status: 'finished', finished_now: false, finished_at: g.finished_at }
+      : { status: 'continue' }
+  }
+  const eligible = tables.players.some(
+    (p) => p.game_id === g.id && !p.is_bot && !p.spectator && p.id !== a.p_outgoing_player_id
+  )
+  if (
+    (g.status !== 'waiting' && g.status !== 'active') ||
+    g.sessions_played !== a.p_sessions_played ||
+    ((g.session_started_at as string | null) ?? null) !== a.p_session_started_at ||
+    g.host_player_id !== a.p_outgoing_player_id ||
+    g.pending_host_player_id != null ||
+    eligible
+  ) {
+    return { status: 'continue' }
+  }
+  Object.assign(g, { status: 'finished', finished_at: FINISHED_AT, result_reason: 'host_ended' })
+  return { status: 'finished', finished_now: true, finished_at: FINISHED_AT }
 }
 
 /** Number of upcoming session wipes (the database function) that fail. */
@@ -226,6 +257,15 @@ let wipeCalls: Array<{ p_game_id: string; p_finished_at: string; p_kind: string 
  * finished_at the caller names (no created_at comparison at all).
  */
 async function rpc(name: string, args: Record<string, unknown>) {
+  if (name === 'end_game_if_host_alone') {
+    if (failEndCheck) return { data: null, error: { message: 'rpc unreachable' } }
+    const hook = beforeEndCheck
+    beforeEndCheck = null
+    hook?.()
+    const answer = endModel(args as Parameters<typeof endModel>[0])
+    endCalls.push(answer)
+    return { data: answer, error: null }
+  }
   if (name === 'settle_host_leave') {
     if (settleFailBudget > 0) {
       settleFailBudget--
@@ -309,11 +349,12 @@ beforeAll(async () => {
 }, 120_000)
 
 beforeEach(() => {
-  failSuccessorLookup = false
+  failEndCheck = false
+  endCalls = []
   keepSeat = false
   failPlayerDelete = false
   afterPlayerDelete = null
-  afterSuccessorLookup = null
+  beforeEndCheck = null
   gameUpdateLog = []
   roundUpdateLog = []
   failLinkageClear = false
@@ -322,6 +363,7 @@ beforeEach(() => {
   wipeFailBudget = 0
   wipeCalls = []
   bookkeeping.calls = []
+  bookkeeping.state = 'none'
   removal.reconcileError = null
   removal.uno.error = null
   removal.scrabble.error = null
@@ -400,17 +442,29 @@ describe('DELETE /api/players: what the leave captures and hands to the database
       p_outgoing_host_user_id: 'user-host',
       p_session_started_at: 'S1',
       p_sessions_played: 1,
-      p_track_bookkeeping: false,
     })
   })
 
-  it('tracks bookkeeping for Word Rush only', async () => {
-    setup('word_rush')
-    tables.players = [tables.players[0]]
-    await leave().catch(() => {})
-    // Word Rush has its own removal path; whatever it answers, the flag is derived from the game type.
-    for (const c of settleCalls) expect(c.args.p_track_bookkeeping).toBe(true)
-  })
+  it.each(['uno', 'word_rush'])(
+    '%s: a leave with a successor succeeds with exactly one settle call and no flag to pick',
+    async (type) => {
+      setup(type)
+      const res = await leave()
+      expect(res.status).toBe(200)
+      expect(settleCalls).toHaveLength(1)
+      // Bookkeeping is no longer opt-in per game type: nothing to pass, the finish itself writes the marker.
+      expect(Object.keys(settleCalls[0].args).sort()).toEqual(
+        [
+          'p_game_id',
+          'p_outgoing_host_user_id',
+          'p_outgoing_player_id',
+          'p_session_started_at',
+          'p_sessions_played',
+        ].sort()
+      )
+      expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+    }
+  )
 
   it('a leave by a player who is not the host never settles a handoff', async () => {
     setup('uno')
@@ -423,11 +477,15 @@ describe('DELETE /api/players: what the leave captures and hands to the database
     )
     expect(res.status).toBe(200)
     expect(settleCalls).toEqual([])
+    // The removal is forwarded the REQUESTED player: Other's seat is gone, the host's remains.
+    expect(tables.players.map((p) => p.id)).not.toContain(OTHER_PID)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(tables.games[0].host_player_id).toBe(HOST_PID)
   })
 
-  it('a failed pre-removal roster lookup fails the leave instead of ending a game that still has players', async () => {
-    setup('uno')
-    failSuccessorLookup = true
+  it('a pre-removal end check that cannot be reached fails the leave instead of removing a host from a live game', async () => {
+    hostOnly('uno')
+    failEndCheck = true
     const res = await leave()
     expect(res.status).toBe(500)
     expect(tables.games[0].status).toBe('active')
@@ -581,7 +639,7 @@ describe('DELETE /api/players: no-successor end and its cleanup', () => {
     expect(g.status).toBe('finished')
     expect(g.result_reason).toBe('host_ended')
     expect(g.host_user_id).toBeNull()
-    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
+    expect(bookkeeping.calls).toEqual(['ABCD'])
   })
 
   it('does not owe bookkeeping (or relabel) for a game another caller finished first', async () => {
@@ -620,8 +678,8 @@ describe('DELETE /api/players: no-successor end and its cleanup', () => {
     removal.uno.onCall = null
     tables.players = tables.players.filter((p) => p.id === HOST_PID)
     keepSeat = false
-    // The leave sees a roster with nobody else but finishes through the pre-removal path; force the post-removal one.
-    afterSuccessorLookup = () => Object.assign(tables.games[0], { sessions_played: 2 })
+    // Force the post-removal path: the session moves on before the pre-removal end check.
+    beforeEndCheck = () => Object.assign(tables.games[0], { sessions_played: 2 })
     tables.rounds = [
       { id: 'old', game_id: 'ABCD', status: 'active', started_at: '2000-01-01T00:00:00.000Z' },
       { id: 'newer', game_id: 'ABCD', status: 'active', started_at: '2999-01-01T00:00:00.000Z' },
@@ -634,8 +692,6 @@ describe('DELETE /api/players: no-successor end and its cleanup', () => {
 })
 
 describe('DELETE /api/players: the stale session is never finished by the leave', () => {
-  const finishAttempts = () => gameUpdateLog.filter((u) => u.patch.status === 'finished')
-
   it.each([
     ['session_started_at changed (a start or replay)', { status: 'active', session_started_at: 'S2' }],
     ['only sessions_played changed (a replay back to the same start)', { sessions_played: 2 }],
@@ -643,26 +699,28 @@ describe('DELETE /api/players: the stale session is never finished by the leave'
     'a pre-removal finish that misses is not forced; the game is decided against the CURRENT row after the removal: %s',
     async (_name, change) => {
       hostOnly('trivia')
-      afterSuccessorLookup = () => Object.assign(tables.games[0], change)
+      beforeEndCheck = () => Object.assign(tables.games[0], change)
       const res = await leave()
       expect(res.status).toBe(200)
-      // The stale (inspected-session) finish matched nothing; the end came from the settle step on the current row.
-      expect(finishAttempts().map((u) => u.matched)).toEqual([0])
+      // The end check, bound to the inspected session, did not finish a game whose session moved on; the end came from
+      // the settle step, decided against the current row.
+      expect(endCalls.map((c) => c.status)).toEqual(['continue'])
       expect(settleCalls).toHaveLength(1)
       const g = tables.games[0]
       expect(g.status).toBe('finished')
       expect(g.result_reason).toBe('host_ended')
-      expect(g.host_user_id).toBeNull()
+      // The linkage belongs to the session the leave inspected; a replayed session's is not this leave's to clear.
+      expect(g.host_user_id).toBe('user-host')
     }
   )
 
   it('a waiting game that STARTED between the leave read and the finish (a bot beside the host) is ended, not left hostless', async () => {
     setup('trivia', { status: 'waiting', session_started_at: null })
     tables.players = [tables.players[0], player('bot', 'Bot', 2, { is_bot: true })]
-    afterSuccessorLookup = () => Object.assign(tables.games[0], { status: 'active', session_started_at: 'S1' })
+    beforeEndCheck = () => Object.assign(tables.games[0], { status: 'active', session_started_at: 'S1' })
     const res = await leave()
     expect(res.status).toBe(200)
-    expect(finishAttempts().map((u) => u.matched)).toEqual([0])
+    expect(endCalls.map((c) => c.status)).toEqual(['continue'])
     expect(tables.games[0].status).toBe('finished')
     expect(tables.games[0].result_reason).toBe('host_ended')
   })
@@ -675,7 +733,7 @@ describe('DELETE /api/players: the stale session is never finished by the leave'
     // OTHER is a real roster row, so the taken-over state is the one the database would hold.
     tables.players = [tables.players[0], tables.players[1]]
     tables.rounds = [{ id: 'r', game_id: 'ABCD', status: 'active', started_at: '2999-01-01T00:00:00.000Z' }]
-    afterSuccessorLookup = () =>
+    beforeEndCheck = () =>
       Object.assign(tables.games[0], { status: 'active', session_started_at: 'S2', sessions_played: 2, ...taken })
     const res = await leave()
     expect(res.status).toBe(200)
@@ -841,6 +899,97 @@ describe('DELETE /api/players: retained host leave (forfeit games)', () => {
       await leave()
       expect(tables.codewords_messages).toHaveLength(1)
     }
+  })
+})
+
+describe('DELETE /api/players: a host-left finish owes its bookkeeping, durably', () => {
+  it.each(['uno', 'trivia', 'word_rush', 'codewords'])(
+    '%s: the pre-removal end resumes the bookkeeping its marker owes (every game type, not only Word Rush)',
+    async (type) => {
+      hostOnly(type)
+      const res = await leave()
+      expect(res.status).toBe(200)
+      expect(endCalls).toEqual([{ status: 'finished', finished_now: true, finished_at: FINISHED_AT }])
+      expect(bookkeeping.calls).toEqual(['ABCD'])
+    }
+  )
+
+  it('a repeat after a lost response (the game is already ended by this leave) resumes the same marker', async () => {
+    hostOnly('uno', { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(bookkeeping.calls).toEqual(['ABCD'])
+  })
+
+  it('the end check itself reports a repeat (already ended by this leave) as finished and resumes the marker', async () => {
+    hostOnly('uno')
+    // The first answer was lost: the game is finished by the time the check runs again.
+    beforeEndCheck = () =>
+      Object.assign(tables.games[0], { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(endCalls).toEqual([{ status: 'finished', finished_now: false, finished_at: FINISHED_AT }])
+    expect(bookkeeping.calls).toContain('ABCD')
+  })
+
+  it('a finish by someone else (another reason) is never resumed by this leave', async () => {
+    hostOnly('uno', { status: 'finished', result_reason: 'admin_ended', finished_at: 'THEIRS' })
+    await leave()
+    expect(bookkeeping.calls).toEqual([])
+  })
+
+  it('a post-removal finish committed by the settle step resumes its marker too, once', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      tables.players = tables.players.filter((p) => p.id !== OTHER_PID)
+    }
+    await leave()
+    expect(settleCalls).toHaveLength(1)
+    expect(bookkeeping.calls).toEqual(['ABCD'])
+  })
+
+  it('a resume that errors is logged, never fails the leave', async () => {
+    hostOnly('uno')
+    bookkeeping.state = 'error'
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await leave()
+    log.mockRestore()
+    expect(res.status).toBe(200)
+  })
+})
+
+describe('DELETE /api/players: removal disposition is carried separately from the HTTP status', () => {
+  it('a Codewords seat deleted and then a failed reconcile, with the settle step unreachable: reconcile error AND unresolved', async () => {
+    setup('codewords')
+    removal.reconcileError = 'cleanup failed'
+    settleFailBudget = 99
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.error).toBe('cleanup failed')
+    expect(body.handoff).toBe('unresolved')
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+  })
+
+  it('a Codewords removal that FAILED to delete the seat keeps its own error alone (the leave can be repeated)', async () => {
+    setup('codewords')
+    failPlayerDelete = true
+    settleFailBudget = 99
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBeUndefined()
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+  })
+
+  it('a Codewords reconcile error with a reachable settle step still reports only the reconcile error', async () => {
+    setup('codewords')
+    removal.reconcileError = 'cleanup failed'
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBeUndefined()
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
   })
 })
 

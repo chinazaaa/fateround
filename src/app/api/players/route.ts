@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { completeHostLeftCleanup, finishGameOnHostLeft } from '@/lib/admin-end-game'
-import { runPostFinishBookkeeping } from '@/lib/game-finish'
+import { completeHostLeftCleanup } from '@/lib/admin-end-game'
+import { recoverFinishBookkeeping } from '@/lib/game-finish'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
@@ -1855,11 +1855,22 @@ export async function PATCH(req: NextRequest) {
  * threshold regardless of who hosts it (src/lib/idle-reaper.ts) and the stale-lobby cron for waiting games.
  */
 export async function DELETE(req: NextRequest) {
-  const ctx: { handoff: HostHandoff | null } = { handoff: null }
+  const ctx: { handoff: HostHandoff | null; seatRemoved: boolean } = { handoff: null, seatRemoved: false }
   const res = await removePlayer(req, ctx)
   if (!ctx.handoff) return res
   const settled = await settleHostLeave(ctx.handoff, res.status < 400)
-  if (settled === 'ok' || res.status >= 400) return res
+  if (settled === 'ok') return res
+  if (res.status >= 400) {
+    // The removal's own failure is what the caller sees. If it had ALREADY deleted the seat (Codewords deletes the seat,
+    // then its team reconcile can fail), the handoff is unresolved too, and the response says so alongside the original
+    // error; if the seat is still there, the removal error stands alone and the leave can simply be repeated.
+    if (settled !== 'unresolved' || !ctx.seatRemoved) return res
+    const original = (await res
+      .clone()
+      .json()
+      .catch(() => ({}))) as Record<string, unknown>
+    return NextResponse.json({ ...original, handoff: 'unresolved' }, { status: res.status })
+  }
   if (settled === 'retained_clear_failed') {
     // The seat still exists and the resume token still works: this one really can be repeated.
     return NextResponse.json({ error: 'Could not finish leaving the game — try again' }, { status: 500 })
@@ -1889,6 +1900,7 @@ type SettleOutcome = {
   game_status?: string
   finished_now?: boolean
   finished_at?: string
+  result_reason?: string | null
 }
 
 const SETTLE_ATTEMPTS = 3
@@ -1911,7 +1923,6 @@ async function settleHostLeave(
       p_outgoing_host_user_id: h.hostUserId,
       p_session_started_at: h.session.startedAt,
       p_sessions_played: h.session.sessionsPlayed,
-      p_track_bookkeeping: isWordRushGame(parseGameType(h.gameType)),
     })
     if (!error && data) outcome = data as SettleOutcome
   }
@@ -1949,15 +1960,11 @@ async function settleHostLeave(
   }
 
   if (outcome.status === 'finished') {
-    // This call ended the game (nobody to hand it to): its post-finish bookkeeping is owed, exactly as for any
-    // other finish. Either way the session-bound cleanup is idempotent, so run it for whoever finished it.
-    if (outcome.finished_now && outcome.finished_at) {
-      try {
-        await runPostFinishBookkeeping(admin, h.gameId, outcome.finished_at, isWordRushGame(parseGameType(h.gameType)))
-      } catch (err) {
-        console.error(`players: post-finish bookkeeping after host-left finish failed for ${h.gameId}`, err)
-      }
-    }
+    // A host-left finish owes its post-finish bookkeeping (room points, round facts, tournament work). The finish itself
+    // wrote the durable marker, bound to its own finished_at, so resuming is a lease claim on that marker: it does
+    // nothing for a finish without one (someone else's), runs once for one that is owed (a repeat after a lost response
+    // included), and cannot award twice. The session-bound cleanup is idempotent too.
+    if (outcome.result_reason === 'host_ended') await resumeHostLeftBookkeeping(admin, h.gameId)
     const cleanup = await completeHostLeftCleanup(admin, h.gameId)
     // The seat is gone, so a failed cleanup has no later leave to retry it: surface it for an operator.
     if (cleanup.error) console.error(`players: cleanup after host-left finish failed for ${h.gameId}`, cleanup.error)
@@ -1965,21 +1972,43 @@ async function settleHostLeave(
   return 'ok'
 }
 
-/** Oldest remaining non-bot, non-spectator player (decides only whether the game can be ended before the removal). */
-function pickSuccessor(gameId: string, outgoingPlayerId: string) {
-  return getSupabaseAdmin()
-    .from('players')
-    .select('id')
-    .eq('game_id', gameId)
-    .eq('is_bot', false)
-    .eq('spectator', false)
-    .neq('id', outgoingPlayerId)
-    .order('joined_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
+/** Resume the bookkeeping a host-left finish owes (see settleHostLeave); never throws. */
+async function resumeHostLeftBookkeeping(admin: ReturnType<typeof getSupabaseAdmin>, gameId: string) {
+  try {
+    const resumed = await recoverFinishBookkeeping(admin, gameId)
+    if (resumed.state === 'error') {
+      console.error(`players: resuming post-finish bookkeeping failed for ${gameId}`, resumed.error)
+    }
+  } catch (err) {
+    console.error(`players: resuming post-finish bookkeeping threw for ${gameId}`, err)
+  }
 }
 
-async function removePlayer(req: NextRequest, ctx: { handoff: HostHandoff | null }) {
+/**
+ * A host who leaves while nobody else is eligible ends the game BEFORE the removal, so the finished game keeps their
+ * seat. `end_game_if_host_alone` reads the roster and finishes under FOR UPDATE on the game row (a join holds KEY SHARE
+ * on it through its foreign key, so a joiner either is seen or waits), bound to the session the leave inspected, with
+ * `host_ended` and the bookkeeping marker written by the same UPDATE. Returns 'finished' (including a repeat after a
+ * lost response), 'continue' (remove the seat and settle the handoff against the current row) or 'error'.
+ */
+async function endGameIfHostAlone(h: HostHandoff): Promise<'finished' | 'continue' | 'error'> {
+  const admin = getSupabaseAdmin()
+  for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
+    const { data, error } = await admin.rpc('end_game_if_host_alone', {
+      p_game_id: h.gameId,
+      p_outgoing_player_id: h.playerId,
+      p_session_started_at: h.session.startedAt,
+      p_sessions_played: h.session.sessionsPlayed,
+    })
+    if (error || !data) continue
+    const status = (data as { status?: string }).status
+    // A 'finished' answer falls into the finished-game branch, which cleans up and resumes the owed bookkeeping.
+    return status === 'finished' ? 'finished' : 'continue'
+  }
+  return 'error'
+}
+
+async function removePlayer(req: NextRequest, ctx: { handoff: HostHandoff | null; seatRemoved: boolean }) {
   const { data: body, error: bodyError } = await parseJsonBody(req, deletePlayerSchema)
   if (bodyError) return bodyError
 
@@ -2109,27 +2138,12 @@ async function removePlayer(req: NextRequest, ctx: { handoff: HostHandoff | null
         session: { startedAt: gameRow.session_started_at ?? null, sessionsPlayed: gameRow.sessions_played ?? null },
       }
       if ((gameRow.status === 'waiting' || gameRow.status === 'active') && !gameRow.pending_host_player_id) {
-        const { data: successor, error: successorError } = await pickSuccessor(id, playerId)
-        if (successorError) {
-          // Never read a failed lookup as "nobody left": that would end a game that still has players.
-          return NextResponse.json({ error: internalErrorMessage('players', successorError) }, { status: 500 })
+        const ended = await endGameIfHostAlone(leavingHost)
+        // Nothing is removed yet: a failed end must not fall through and delete the host from a live game.
+        if (ended === 'error') {
+          return NextResponse.json({ error: 'Could not end the game — try again' }, { status: 500 })
         }
-        if (!successor?.id) {
-          // Nobody to hand it to: end the game now (the seat is kept, like any finished game) and fall through to the
-          // finished-game branch. A miss (a start, replay or new host since the read) just continues with the removal.
-          const ended = await finishGameOnHostLeft(
-            getSupabaseAdmin(),
-            id,
-            gameRow.game_type,
-            playerId,
-            leavingHost.session
-          )
-          // Nothing is removed yet: a failed end must not fall through and delete the host from a live game.
-          if (ended === 'error') {
-            return NextResponse.json({ error: 'Could not end the game — try again' }, { status: 500 })
-          }
-          if (ended === 'finished') (game as { status?: string }).status = 'finished'
-        }
+        if (ended === 'finished') (game as { status?: string }).status = 'finished'
       }
       // Whoever follows is chosen only after the seat is verifiably gone, in one database call (see DELETE).
       ctx.handoff = leavingHost
@@ -2172,6 +2186,8 @@ async function removePlayer(req: NextRequest, ctx: { handoff: HostHandoff | null
     if (leavingHost) {
       const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), id)
       if (cleanup.error) return NextResponse.json({ error: cleanup.error }, { status: 500 })
+      // A repeat of a leave whose end response was lost resumes the bookkeeping the finish's marker owes.
+      if (cleanup.hostEnded) await resumeHostLeftBookkeeping(getSupabaseAdmin(), id)
     }
     const pending = await completePendingFinishedLeave(
       getSupabaseAdmin(),
@@ -2220,6 +2236,8 @@ async function removePlayer(req: NextRequest, ctx: { handoff: HostHandoff | null
 
     const { error } = await removeCodewordsPlayer(getSupabaseAdmin(), id, playerId)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    // The seat is gone from here on: a later failure (the team reconcile) must not hide an unresolved handoff.
+    ctx.seatRemoved = true
 
     // Keep the round playable (or end it) when the departure breaks a team's roster.
     const { error: reconcileError, outcome } = await reconcileCodewordsTeamAfterRemoval(

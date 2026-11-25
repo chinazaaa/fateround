@@ -29,7 +29,7 @@ export type FinishGameResult = {
   cleanupError?: string | null
   /** Only for `trackBookkeeping` finishes that won the flip: how the post-finish bookkeeping ended. */
   bookkeeping?: FinishBookkeepingState
-  /** The `finished_at` this call wrote, present only when it won the flip: binds later round cleanup to that session. */
+  /** The `finished_at` this call wrote, present only when it won the flip: binds the session wipe to that finish. */
   finishedAt?: string
 }
 
@@ -259,44 +259,6 @@ export async function recoverAllFinishBookkeeping(
   return { recovered, pending, failed }
 }
 
-/**
- * A single-winner finish for a game that may be waiting OR active, bound to who hosts it. Every condition
- * lives in the one UPDATE, so a racing finisher, a claimed host or a landed nomination makes it a no-op, and
- * the reason that classifies the finish is written by the same statement (never by a follow-up write that a
- * lost response or a crash could skip).
- */
-export type FinishGuard = {
-  statuses: string[]
-  /** Finish only while games.host_player_id is null or this player (the outgoing host). */
-  hostPlayerNullOr?: string
-  /** Finish only while nobody is nominated to take over (a valid nominee means the game is not host-less). */
-  noPendingHostNominee?: boolean
-  /** Written to games.result_reason by the finishing update itself. */
-  resultReason?: string
-  /**
-   * Finish only the session the caller inspected. A replay advances `sessions_played` (Play Again) and/or
-   * replaces `session_started_at` (Play Again clears it, a start or a secret-board reopen sets it), so a stalled
-   * caller can never finish a replayed session that reuses the same game id. `null` matches only a null column.
-   */
-  session?: { startedAt: string | null; sessionsPlayed: number | null }
-}
-
-/**
- * The bookkeeping owed by the request that won a finish: a tracked finish (whose marker the finishing statement wrote)
- * runs it under the durable lease, any other runs the side effects directly. Exported for finishes that are committed
- * by a database function instead of `markGameFinished` (settle_host_leave), which must owe exactly the same.
- */
-export async function runPostFinishBookkeeping(
-  supabase: SupabaseClient,
-  gameId: string,
-  finishedAt: string,
-  trackBookkeeping: boolean
-): Promise<FinishBookkeepingState | undefined> {
-  if (trackBookkeeping) return (await recoverFinishBookkeeping(supabase, gameId)).state
-  await runFinishSideEffects(supabase, gameId, finishedAt)
-  return undefined
-}
-
 export async function markGameFinished(
   supabase: SupabaseClient,
   gameId: string,
@@ -322,11 +284,8 @@ export async function markGameFinished(
     roundGuard,
     onlySessionStartedAt,
     trackBookkeeping = false,
-    finishGuard,
   }: {
     onlyIfActive?: boolean
-    // Compare-and-set over a status set (and optionally the host linkage); see FinishGuard.
-    finishGuard?: FinishGuard
     roundGuard?: RoundGuard
     // Bind the finish to the session whose state the caller inspected (requires onlyIfActive,
     // plain-update path only). A stalled request must not finish a NEW session started under
@@ -353,29 +312,10 @@ export async function markGameFinished(
       .update({
         status: 'finished',
         finished_at: finishedAt,
-        ...(finishGuard?.resultReason ? { result_reason: finishGuard.resultReason } : {}),
         ...(trackBookkeeping ? { finish_bookkeeping: { finished_at: finishedAt, attempts: 0 } } : {}),
       })
       .eq('id', gameId)
     let guarded = onlyIfActive ? update.eq('status', 'active') : null
-    if (finishGuard) {
-      guarded = (guarded ?? update).in('status', finishGuard.statuses)
-      if (finishGuard.hostPlayerNullOr) {
-        guarded = guarded.or(`host_player_id.is.null,host_player_id.eq.${finishGuard.hostPlayerNullOr}`)
-      }
-      if (finishGuard.noPendingHostNominee) guarded = guarded.is('pending_host_player_id', null)
-      const { session } = finishGuard
-      if (session) {
-        guarded =
-          session.startedAt === null
-            ? guarded.is('session_started_at', null)
-            : guarded.eq('session_started_at', session.startedAt)
-        guarded =
-          session.sessionsPlayed === null
-            ? guarded.is('sessions_played', null)
-            : guarded.eq('sessions_played', session.sessionsPlayed)
-      }
-    }
     if (guarded && onlySessionStartedAt !== undefined) {
       guarded =
         onlySessionStartedAt === null
@@ -395,11 +335,13 @@ export async function markGameFinished(
   // With the guard, only the request that actually flipped the row (non-empty data)
   // won the transition and should award points; losers get an empty set, no error.
   const won =
-    !(onlyIfActive || finishGuard || roundGuard || trackBookkeeping) ||
-    (Array.isArray(result.data) && result.data.length > 0)
+    !(onlyIfActive || roundGuard || trackBookkeeping) || (Array.isArray(result.data) && result.data.length > 0)
 
   let bookkeeping: FinishBookkeepingState | undefined
-  if (!result.error && won) bookkeeping = await runPostFinishBookkeeping(supabase, gameId, finishedAt, trackBookkeeping)
+  if (!result.error && won) {
+    if (trackBookkeeping) bookkeeping = (await recoverFinishBookkeeping(supabase, gameId)).state
+    else await runFinishSideEffects(supabase, gameId, finishedAt)
+  }
 
   // Surfaced so callers can tell a real finish from a lost CAS: `error` is null in
   // both cases, so without this a racer that changed nothing looks like a success and

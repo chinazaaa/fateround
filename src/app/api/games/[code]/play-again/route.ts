@@ -28,6 +28,7 @@ import {
   isWordleRoomGame,
   isTrollRunGame,
 } from '@/lib/game-types'
+import { recoverFinishBookkeeping } from '@/lib/game-finish'
 import { clearAnonymousRoomSessionData, reopenSecretMessageBoard } from '@/lib/anonymous-messages'
 import { clearBingoSessionData } from '@/lib/bingo'
 import { clearCodewordsRoundData, CODEWORDS_MIN_CUSTOM_POOL } from '@/lib/codewords'
@@ -248,6 +249,20 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isTrollRunGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
+  }
+
+  // A finish that still owes its post-finish bookkeeping (a host-left finish writes the durable marker in the finishing
+  // statement, for every game type) must complete it before the reset: the bookkeeping reads this game's rows, and the
+  // reset deletes them. Resume it here; if it is still owed or held by a live runner, refuse so Play Again can simply be
+  // retried. A game with no marker answers `none` immediately.
+  if (game.status === 'finished') {
+    const owed = await recoverFinishBookkeeping(getSupabaseAdmin(), gameId)
+    if (owed.state !== 'none' && owed.state !== 'done') {
+      return NextResponse.json(
+        { error: 'The previous game is still being finalized — try again in a moment' },
+        { status: 409 }
+      )
+    }
   }
 
   // Exiting the ready-up ring back to the normal lobby ("Return to lobby" while the ring

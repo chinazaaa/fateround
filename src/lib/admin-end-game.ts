@@ -3,7 +3,7 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
 import { wipeFinishedSession } from '@/lib/session-clear'
-import { markGameFinished, type FinishGameResult, type FinishGuard } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
 import {
   isAnonymousMessagesGame,
   isCodewordsGame,
@@ -102,43 +102,7 @@ export async function cleanupFinishedSession(
 }
 
 /**
- * A host who leaves with nobody to hand the game to ends it. ONE conditional update decides it: still
- * waiting/active, still the session the leave inspected (a replay under the same id never matches), nobody but
- * the outgoing host hosts it, and nobody is nominated to take over — and the same
- * update writes `result_reason: 'host_ended'`, so the finish and its classification can never be separated by a
- * lost response. Writes no cleanup: the persisted `host_ended` + `finished_at` are what
- * `completeHostLeftCleanup` keys on, so the cleanup runs (and re-runs) from them, whoever finished the game.
- *
- * Returns whether the game is finished afterwards (whoever finished it), still live (a new host took over, or a
- * nominee landed), or unknown. A lost or errored write is told apart from a commit by reading the row back.
- */
-export async function finishGameOnHostLeft(
-  supabase: SupabaseClient,
-  gameId: string,
-  rawGameType: string,
-  outgoingPlayerId: string,
-  session: NonNullable<FinishGuard['session']>
-): Promise<'finished' | 'live' | 'error'> {
-  const { error, won } = await markGameFinished(supabase, gameId, undefined, {
-    finishGuard: {
-      statuses: ['waiting', 'active'],
-      hostPlayerNullOr: outgoingPlayerId,
-      noPendingHostNominee: true,
-      resultReason: 'host_ended',
-      session,
-    },
-    // Same durability as every other force-finish of Word Rush (see adminEndGame).
-    trackBookkeeping: isWordRushGame(parseGameType(rawGameType)),
-  })
-  if (won && !error) return 'finished'
-  const { data, error: readError } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
-  if (readError) return 'error'
-  if (data?.status === 'finished') return 'finished'
-  return error ? 'error' : 'live'
-}
-
-/**
- * Finish the leftovers of a host-left finish (see `finishGameOnHostLeft`). Does nothing unless the game is
+ * Finish the leftovers of a host-left finish (see `end_game_if_host_alone` / `settle_host_leave`). Does nothing unless the game is
  * currently the finished session that was ended by a host leaving, and runs the shared cleanup bound to that
  * session's own `finished_at`, so a Play Again game under the same id (status no longer `finished`) is never
  * touched. Safe to call on every later leave of the retained host seat, and after any finish attempt whose
@@ -147,17 +111,18 @@ export async function finishGameOnHostLeft(
 export async function completeHostLeftCleanup(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ finished: boolean; error: string | null }> {
+): Promise<{ finished: boolean; hostEnded: boolean; error: string | null }> {
   const { data: game, error } = await supabase
     .from('games')
     .select('status, game_type, result_reason, finished_at')
     .eq('id', gameId)
     .maybeSingle()
-  if (error) return { finished: false, error: internalErrorMessage('admin-end-game', error) }
-  if (game?.status !== 'finished') return { finished: false, error: null }
-  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
+  if (error) return { finished: false, hostEnded: false, error: internalErrorMessage('admin-end-game', error) }
+  if (game?.status !== 'finished') return { finished: false, hostEnded: false, error: null }
+  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, hostEnded: false, error: null }
   return {
     finished: true,
+    hostEnded: true,
     error: await cleanupFinishedSession(supabase, gameId, parseGameType(game.game_type), game.finished_at),
   }
 }

@@ -16,7 +16,7 @@ vi.mock('@/lib/game-finish', () => ({ markGameFinished }))
 const revealFinishedTtlRounds = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/two-truths-advance', () => ({ revealFinishedTtlRounds }))
 
-import { adminEndGame, cleanupFinishedSession, completeHostLeftCleanup, finishGameOnHostLeft } from './admin-end-game'
+import { adminEndGame, cleanupFinishedSession, completeHostLeftCleanup } from './admin-end-game'
 
 type Recorded = {
   gameUpdates: Array<Record<string, unknown>>
@@ -327,67 +327,6 @@ describe('cleanupFinishedSession — the one session-bound cleanup', () => {
   })
 })
 
-const SESSION = { startedAt: 'S1', sessionsPlayed: 2 }
-
-describe('finishGameOnHostLeft — one guarded finish that carries its own reason', () => {
-  const outcome = (status: string | null, readError = false) => mockSupabaseWithRead(status, readError)
-
-  function mockSupabaseWithRead(status: string | null, readError: boolean) {
-    return {
-      from: () => ({
-        select: () => ({
-          eq: () => ({
-            maybeSingle: async () =>
-              readError
-                ? { data: null, error: { message: 'boom' } }
-                : { data: status ? { status } : null, error: null },
-          }),
-        }),
-      }),
-    } as unknown as SupabaseClient
-  }
-
-  it('hands the whole decision to the single guarded update, reason included', async () => {
-    markGameFinished.mockResolvedValue({ error: null, won: true })
-    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST', SESSION)).toBe('finished')
-    const [, gameId, finishedAt, options] = markGameFinished.mock.calls[0]
-    expect(gameId).toBe('G')
-    expect(finishedAt).toBeUndefined()
-    expect(options.finishGuard).toEqual({
-      statuses: ['waiting', 'active'],
-      hostPlayerNullOr: 'HOST',
-      noPendingHostNominee: true,
-      resultReason: 'host_ended',
-      // Bound to the session the leave inspected, so a replay under the same id is never finished.
-      session: SESSION,
-    })
-    expect(options.trackBookkeeping).toBe(false)
-  })
-
-  it("keeps Word Rush's bookkeeping durable like every other force-finish", async () => {
-    markGameFinished.mockResolvedValue({ error: null, won: true })
-    await finishGameOnHostLeft(outcome('finished'), 'G', 'word_rush', 'HOST', SESSION)
-    expect(markGameFinished.mock.calls[0][3].trackBookkeeping).toBe(true)
-  })
-
-  it('a lost guard on a still-live game reports live (a new host or a nominee exists)', async () => {
-    markGameFinished.mockResolvedValue({ error: null, won: false })
-    expect(await finishGameOnHostLeft(outcome('active'), 'G', 'uno', 'HOST', SESSION)).toBe('live')
-  })
-
-  it('a lost guard on a game someone else finished reports finished', async () => {
-    markGameFinished.mockResolvedValue({ error: null, won: false })
-    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST', SESSION)).toBe('finished')
-  })
-
-  it('an errored write is read back: committed means finished, otherwise error', async () => {
-    markGameFinished.mockResolvedValue({ error: { message: 'response lost' }, won: false })
-    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST', SESSION)).toBe('finished')
-    expect(await finishGameOnHostLeft(outcome('active'), 'G', 'uno', 'HOST', SESSION)).toBe('error')
-    expect(await finishGameOnHostLeft(outcome('active', true), 'G', 'uno', 'HOST', SESSION)).toBe('error')
-  })
-})
-
 describe('completeHostLeftCleanup — recovery bound to the finished session', () => {
   const FINISHED = {
     status: 'finished',
@@ -398,7 +337,7 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
 
   it('runs the shared cleanup bound to the session finished_at', async () => {
     const { supabase, recorded } = mockSupabase({ gameRow: FINISHED })
-    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished: true, error: null })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished: true, hostEnded: true, error: null })
     expect(recorded.roundBounds).toEqual([FINISHED_AT])
     expect(revealFinishedTtlRounds).toHaveBeenCalledTimes(1)
   })
@@ -424,7 +363,7 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
     ['a finished game with no finished_at', { ...FINISHED, finished_at: null }, true],
   ])('touches nothing for %s', async (_name, gameRow, finished) => {
     const { supabase, recorded } = mockSupabase({ gameRow })
-    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished, error: null })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished, hostEnded: false, error: null })
     expect(recorded.roundUpdates).toBe(0)
     expect(recorded.deletes).toEqual([])
     expect(revealFinishedTtlRounds).not.toHaveBeenCalled()

@@ -23,37 +23,15 @@ vi.mock('@/lib/tournament-scoring', () => ({ resolveKnockoutGroupRoom: resolveKn
 const recordFacts = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/trophies/round-facts', () => ({ recordRoundFacts: recordFacts }))
 
-import {
-  markGameFinished,
-  recoverAllFinishBookkeeping,
-  recoverFinishBookkeeping,
-  runPostFinishBookkeeping,
-} from './game-finish'
+import { markGameFinished, recoverAllFinishBookkeeping, recoverFinishBookkeeping } from './game-finish'
 
 // Minimal Supabase stand-in: the games update builder is chainable and awaitable,
 // resolving to the rows the (optional) CAS `.select()` would return.
 function makeSupabase(rows: unknown[] | null, error: unknown = null) {
-  const calls = {
-    eqs: [] as Array<[string, unknown]>,
-    selected: false,
-    patches: [] as Array<Record<string, unknown>>,
-    ors: [] as string[],
-    ins: [] as Array<[string, unknown[]]>,
-  }
+  const calls = { eqs: [] as Array<[string, unknown]>, selected: false }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const b: any = {}
-  b.update = (patch: Record<string, unknown>) => {
-    calls.patches.push(patch)
-    return b
-  }
-  b.or = (expr: string) => {
-    calls.ors.push(expr)
-    return b
-  }
-  b.in = (col: string, vals: unknown[]) => {
-    calls.ins.push([col, vals])
-    return b
-  }
+  b.update = () => b
   b.eq = (col: string, val: unknown) => {
     calls.eqs.push([col, val])
     return b
@@ -87,50 +65,13 @@ describe('markGameFinished', () => {
     expect(calls.eqs).toContainEqual(['status', 'active'])
   })
 
-  it('a finishGuard is ONE conditional update that also writes the reason and refuses while a nominee exists', async () => {
-    const { supabase, calls } = makeSupabase([{ id: 'GAME' }])
-    const result = await markGameFinished(supabase, 'GAME', '2026-01-01T00:00:00.000Z', {
-      finishGuard: {
-        statuses: ['waiting', 'active'],
-        hostPlayerNullOr: 'HOST',
-        noPendingHostNominee: true,
-        resultReason: 'host_ended',
-      },
-    })
-    expect(result.won).toBe(true)
-    expect(result.finishedAt).toBe('2026-01-01T00:00:00.000Z')
-    expect(calls.patches).toEqual([
-      { status: 'finished', finished_at: '2026-01-01T00:00:00.000Z', result_reason: 'host_ended' },
-    ])
-    expect(calls.ins).toContainEqual(['status', ['waiting', 'active']])
-    expect(calls.ors).toEqual(['host_player_id.is.null,host_player_id.eq.HOST'])
-    expect(calls.eqs).toContainEqual(['pending_host_player_id', null])
-  })
-
-  it('a finishGuard session binds the finish to the inspected session (null matches only a null column)', async () => {
-    const bound = makeSupabase([{ id: 'GAME' }])
-    await markGameFinished(bound.supabase, 'GAME', undefined, {
-      finishGuard: { statuses: ['active'], session: { startedAt: 'S1', sessionsPlayed: 3 } },
-    })
-    expect(bound.calls.eqs).toContainEqual(['session_started_at', 'S1'])
-    expect(bound.calls.eqs).toContainEqual(['sessions_played', 3])
-
-    const unset = makeSupabase([{ id: 'GAME' }])
-    await markGameFinished(unset.supabase, 'GAME', undefined, {
-      finishGuard: { statuses: ['waiting'], session: { startedAt: null, sessionsPlayed: null } },
-    })
-    // `.is(col, null)` is recorded like an eq in this stub.
-    expect(unset.calls.eqs).toContainEqual(['session_started_at', null])
-    expect(unset.calls.eqs).toContainEqual(['sessions_played', null])
-  })
-
-  it('a finishGuard that matches no row is a lost finish', async () => {
-    const { supabase } = makeSupabase([])
-    const result = await markGameFinished(supabase, 'GAME', undefined, {
-      finishGuard: { statuses: ['active'], noPendingHostNominee: true },
-    })
-    expect(result.won).toBe(false)
-    expect(result.finishedAt).toBeUndefined()
+  it('reports the finished_at it wrote only when it won the flip (binds the session wipe to that finish)', async () => {
+    const won = makeSupabase([{ id: 'GAME' }])
+    const lost = makeSupabase([])
+    const a = await markGameFinished(won.supabase, 'GAME', '2026-01-01T00:00:00.000Z', { onlyIfActive: true })
+    const b = await markGameFinished(lost.supabase, 'GAME', '2026-01-01T00:00:00.000Z', { onlyIfActive: true })
+    expect(a.finishedAt).toBe('2026-01-01T00:00:00.000Z')
+    expect(b.finishedAt).toBeUndefined()
   })
 
   it('with a roundGuard, flips via the RPC and only awards when the round still matched', async () => {
@@ -187,21 +128,6 @@ describe('markGameFinished', () => {
     expect(award).toHaveBeenCalledTimes(1)
     // No CAS was attempted, so every unguarded caller keeps reading a win.
     expect(res.won).toBe(true)
-  })
-})
-
-describe('runPostFinishBookkeeping (the bookkeeping owed to a finish a database function committed)', () => {
-  it('an untracked finish runs the post-finish side effects for the finished_at it is given', async () => {
-    const { supabase } = makeSupabase([])
-    await runPostFinishBookkeeping(supabase, 'GAME', '2026-01-01T00:00:00.000Z', false)
-    expect(award).toHaveBeenCalledTimes(1)
-    expect(recordFacts).toHaveBeenCalledWith(supabase, 'GAME', '2026-01-01T00:00:00.000Z', undefined)
-  })
-
-  it('a tracked finish runs it under the durable lease (claims the marker), not directly', async () => {
-    const rpc = vi.fn().mockResolvedValue({ data: null, error: null })
-    await runPostFinishBookkeeping({ rpc, from: vi.fn() } as never, 'GAME', '2026-01-01T00:00:00.000Z', true)
-    expect(rpc).toHaveBeenCalledWith('claim_finish_bookkeeping', expect.objectContaining({ p_game_id: 'GAME' }))
   })
 })
 
