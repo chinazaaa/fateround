@@ -23,8 +23,17 @@ vi.mock('server-only', () => ({}))
 const GAME = { id: 'ABCD', status: 'active', game_type: 'anonymous_messages', session_started_at: null }
 const PLAYER = { id: 'p-1', game_id: 'ABCD', resume_token: 'TOKEN-1234', joined_at: null }
 
-const rpc = vi.fn().mockResolvedValue({ data: true, error: null })
-const insert = vi.fn().mockResolvedValue({ error: null })
+// The insert is an rpc (it re-checks the game status under a lock); `insert` records its arguments.
+const insertResult = vi.hoisted(() => ({ value: { data: { status: 'inserted' }, error: null } as unknown }))
+const insert = vi.fn()
+const rpc = vi.fn(async (name: string, args: unknown) => {
+  if (name === 'insert_anonymous_message_if_active') {
+    insert(args)
+    return insertResult.value
+  }
+  return { data: true, error: null }
+})
+const activityCalls = () => rpc.mock.calls.filter(([name]) => name === 'touch_game_activity')
 
 /** Minimal PostgREST-shaped stub covering the reads this route makes. */
 function makeClient() {
@@ -39,7 +48,6 @@ function makeClient() {
           if (table === 'players') return { data: PLAYER, error: null }
           return { data: null, error: null }
         },
-        insert,
       }
       return chain
     },
@@ -78,6 +86,7 @@ beforeEach(async () => {
   const { resetGameActivityThrottle } = await import('@/lib/game-activity')
   rpc.mockClear()
   insert.mockClear()
+  insertResult.value = { data: { status: 'inserted' }, error: null }
   deferred.length = 0
   resetGameActivityThrottle()
 })
@@ -99,7 +108,7 @@ describe('POST /api/anonymous-messages', () => {
     await Promise.all(deferred.splice(0))
 
     expect(insert).toHaveBeenCalledTimes(5)
-    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(activityCalls()).toHaveLength(1)
   })
   it('rejects mediaUrl on a text message', async () => {
     const res = await send({
@@ -148,6 +157,18 @@ describe('POST /api/anonymous-messages', () => {
     const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}'
     const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text: family })
     expect(res.status).toBe(200)
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ text: family }))
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ p_text: family }))
+  })
+
+  it('rejects a message when the game finished between the status check and the insert (decided in the database)', async () => {
+    insertResult.value = { data: { status: 'game_not_active' }, error: null }
+    const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text: 'late' })
+    expect(res.status).toBe(400)
+  })
+
+  it('surfaces a failed insert as a 500', async () => {
+    insertResult.value = { data: null, error: { message: 'boom' } }
+    const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text: 'x' })
+    expect(res.status).toBe(500)
   })
 })

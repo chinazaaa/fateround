@@ -70,6 +70,12 @@ let hostRefReadFails = false
 let afterSuccessorLookup: (() => void) | null = null
 /** Every games update the route attempted: its patch and how many rows it matched. */
 let gameUpdateLog: Array<{ patch: Row; matched: number }> = []
+/** Number of upcoming reads of the game state the handoff decides on (status, host, nominee, session) that fail. */
+let stateReadFailBudget = 0
+/** Every rounds update the route attempted. */
+let roundUpdateLog: Row[] = []
+/** A start / replay keeps winning the race: every finish attempt sees the session counter already advanced. */
+let racingSession = false
 let tables: Record<string, Row[]> = {}
 
 /** Deleting players models ON DELETE SET NULL for the games columns that reference them. */
@@ -105,6 +111,10 @@ function builder(table: string) {
       return { data: null, error: null }
     }
     if (patch) {
+      if (table === 'rounds') roundUpdateLog.push(patch)
+      if (table === 'games' && patch.status === 'finished' && racingSession) {
+        tables.games[0].sessions_played = ((tables.games[0].sessions_played as number) ?? 0) + 1
+      }
       if (table === 'games' && 'pending_host_player_id' in patch) {
         hostSeatAtNomination = tables.players.some((p) => p.id === HOST_PID)
       }
@@ -130,6 +140,10 @@ function builder(table: string) {
     if (table === 'players' && selectCols === 'id' && idOnly && !excludesSomeone && seatReadFailBudget > 0) {
       seatReadFailBudget--
       return { data: null, error: { message: 'seat read failed' } }
+    }
+    if (table === 'games' && selectCols?.startsWith('status, host_player_id') && stateReadFailBudget > 0) {
+      stateReadFailBudget--
+      return { data: null, error: { message: 'state read failed' } }
     }
     if (table === 'games' && selectCols === 'host_player_id' && hostRefReadFails) {
       return { data: null, error: { message: 'host ref read failed' } }
@@ -177,7 +191,30 @@ function builder(table: string) {
   }
   return api
 }
-const client = { from: builder, rpc: async () => ({ data: true, error: null }) }
+/** Number of upcoming session wipes (the database function) that fail. */
+let wipeFailBudget = 0
+/** Every wipe the route asked the database for. */
+let wipeCalls: Array<{ p_game_id: string; p_finished_at: string; p_kind: string }> = []
+/**
+ * wipe_finished_session_rows: deletes the session's rows only while the game is still finished with exactly the
+ * finished_at the caller names (no created_at comparison at all).
+ */
+async function rpc(name: string, args: { p_game_id: string; p_finished_at: string; p_kind: string }) {
+  if (name !== 'wipe_finished_session_rows') return { data: true, error: null }
+  wipeCalls.push(args)
+  if (wipeFailBudget > 0) {
+    wipeFailBudget--
+    return { data: null, error: { message: 'wipe failed' } }
+  }
+  const game = tables.games[0]
+  if (game.status !== 'finished' || game.finished_at !== args.p_finished_at) {
+    return { data: { status: 'not_current_session' }, error: null }
+  }
+  const doomed = args.p_kind === 'anonymous' ? ['anonymous_messages', 'anonymous_room_bans'] : ['codewords_messages']
+  for (const table of doomed) tables[table] = []
+  return { data: { status: 'wiped' }, error: null }
+}
+const client = { from: builder, rpc }
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => client }))
 vi.mock('@/lib/supabase-anon', () => ({ getSupabaseAnon: () => client }))
 
@@ -251,6 +288,11 @@ beforeEach(async () => {
   hostRefReadFails = false
   afterSuccessorLookup = null
   gameUpdateLog = []
+  stateReadFailBudget = 0
+  roundUpdateLog = []
+  racingSession = false
+  wipeFailBudget = 0
+  wipeCalls = []
   failReasonOnlyUpdates = false
   finishCommitsButErrors = false
   removal.reconcileError = null
@@ -796,24 +838,39 @@ describe('DELETE /api/players: retained host leave', () => {
   const hostLeft = { status: 'finished', result_reason: 'host_ended', finished_at: finishedAt }
 
   it.each([
-    ['anonymous_messages', ['anonymous_messages', 'anonymous_room_bans']],
-    ['secret_message', ['anonymous_messages', 'anonymous_room_bans']],
-    ['codewords', ['codewords_messages']],
+    ['anonymous_messages', ['anonymous_messages', 'anonymous_room_bans'], 'anonymous'],
+    ['secret_message', ['anonymous_messages', 'anonymous_room_bans'], 'anonymous'],
+    ['codewords', ['codewords_messages'], 'codewords'],
   ])(
-    '%s: a later leave of the retained host finishes the pending wipe, fenced to the finished session',
-    async (type, wiped) => {
+    '%s: a later leave of the retained host finishes the pending wipe, decided in the database for the finished session',
+    async (type, wiped, kind) => {
       setup(type, hostLeft)
       for (const t of wiped) {
+        // Includes a row stamped AFTER the finished_at: a message accepted just before the finish can carry a
+        // later created_at (clock skew), and must not survive the wipe.
         tables[t] = [
           { id: `${t}-old`, game_id: 'ABCD', created_at: before },
-          { id: `${t}-replay`, game_id: 'ABCD', created_at: after },
+          { id: `${t}-late`, game_id: 'ABCD', created_at: after },
         ]
       }
       const res = await leave()
       expect(res.status).toBe(200)
-      for (const t of wiped) expect(tables[t].map((r) => r.id)).toEqual([`${t}-replay`])
+      expect(wipeCalls).toEqual([{ p_game_id: 'ABCD', p_finished_at: finishedAt, p_kind: kind }])
+      for (const t of wiped) expect(tables[t]).toEqual([])
     }
   )
+
+  it('a failing session wipe fails the leave (repeatable), and the next leave finishes it', async () => {
+    setup('anonymous_messages', hostLeft)
+    tables.anonymous_messages = [{ id: 'a', game_id: 'ABCD', created_at: before }]
+    wipeFailBudget = 1
+    const first = await leave()
+    expect(first.status).toBe(500)
+    expect(tables.anonymous_messages).toHaveLength(1)
+    const retry = await leave()
+    expect(retry.status).toBe(200)
+    expect(tables.anonymous_messages).toEqual([])
+  })
 
   it('never wipes while the game is live again (Play Again) or was finished for another reason', async () => {
     for (const extra of [{ status: 'active' }, { result_reason: 'admin_ended' }]) {
@@ -875,30 +932,119 @@ describe('DELETE /api/players: seat state is resolved, never guessed', () => {
 })
 
 describe('DELETE /api/players: the host-left finish is bound to the session the leave inspected', () => {
-  it('a stalled leave never finishes (or cleans up) a session that was replayed under the same game id', async () => {
-    setup('trivia')
+  const finishAttempts = () => gameUpdateLog.filter((u) => u.patch.status === 'finished')
+  const hostOnly = (type: string, extra: Row = {}) => {
+    setup(type, extra)
     tables.players = tables.players.filter((p) => p.id === HOST_PID)
-    tables.rounds = [{ id: 'r', game_id: 'ABCD', status: 'active', started_at: '2999-01-01T00:00:00.000Z' }]
-    // The leave read session S1 / sessions_played 1 and found no successor; before its finish lands the game is
-    // finished, replayed (Play Again bumps sessions_played, clears and then re-sets the session start) and live.
-    afterSuccessorLookup = () =>
-      Object.assign(tables.games[0], { status: 'active', session_started_at: 'S2', sessions_played: 2 })
+  }
+
+  it.each([
+    ['session_started_at changed (a start or replay)', { status: 'active', session_started_at: 'S2' }],
+    ['only sessions_played changed (a replay back to the same start)', { sessions_played: 2 }],
+  ])(
+    'a stale-session miss is re-inspected and the FRESH session is ended, never hostless-live: %s',
+    async (_name, change) => {
+      hostOnly('trivia')
+      afterSuccessorLookup = () => Object.assign(tables.games[0], change)
+      const res = await leave()
+      expect(res.status).toBe(200)
+      // The stale (inspected-session) attempts, before and after the removal, matched nothing; only the attempt bound to the fresh read finished it.
+      expect(finishAttempts().map((u) => u.matched)).toEqual([0, 0, 1])
+      const g = tables.games[0]
+      expect(g.status).toBe('finished')
+      expect(g.result_reason).toBe('host_ended')
+      expect(g.host_user_id).toBeNull()
+    }
+  )
+
+  it('a waiting game that STARTED between the leave read and the finish (a bot beside the host) is ended, not left hostless', async () => {
+    setup('trivia', { status: 'waiting', session_started_at: null })
+    tables.players = [
+      tables.players[0],
+      { id: 'bot', game_id: 'ABCD', name: 'Bot', resume_token: 'B', is_bot: true, spectator: false, joined_at: 2 },
+    ]
+    afterSuccessorLookup = () => Object.assign(tables.games[0], { status: 'active', session_started_at: 'S1' })
     const res = await leave()
     expect(res.status).toBe(200)
-    const g = tables.games[0]
-    expect(g.status).toBe('active')
-    expect(g.result_reason).toBeUndefined()
-    expect(g.finished_at).toBeUndefined()
-    expect(tables.rounds[0].status).toBe('active')
+    expect(finishAttempts().map((u) => u.matched)).toEqual([0, 0, 1])
+    expect(tables.games[0].status).toBe('finished')
+    expect(tables.games[0].result_reason).toBe('host_ended')
   })
 
-  it('a replay that restored the same session_started_at is still told apart by sessions_played', async () => {
-    setup('trivia')
-    tables.players = tables.players.filter((p) => p.id === HOST_PID)
-    afterSuccessorLookup = () => Object.assign(tables.games[0], { sessions_played: 2 })
-    await leave()
+  it('a replayed session that has a nominee or another host is never finished by the stale leave, and nothing is cleaned up', async () => {
+    for (const taken of [{ host_player_id: OTHER_PID }, { pending_host_player_id: OTHER_PID }]) {
+      hostOnly('trivia')
+      tables.rounds = [{ id: 'r', game_id: 'ABCD', status: 'active', started_at: '2999-01-01T00:00:00.000Z' }]
+      afterSuccessorLookup = () =>
+        Object.assign(tables.games[0], { status: 'active', session_started_at: 'S2', sessions_played: 2, ...taken })
+      const res = await leave()
+      expect(res.status).toBe(200)
+      const g = tables.games[0]
+      expect(g.status).toBe('active')
+      expect(g.result_reason).toBeUndefined()
+      expect(g.finished_at).toBeUndefined()
+      expect(finishAttempts().every((u) => u.matched === 0)).toBe(true)
+      // No cleanup of any kind was attempted for a session the leave never finished.
+      expect(roundUpdateLog).toEqual([])
+      expect(tables.rounds[0].status).toBe('active')
+      roundUpdateLog = []
+      gameUpdateLog = []
+    }
+  })
+
+  it('a game that cannot be settled (the session keeps changing) answers a retryable 500, never success', async () => {
+    hostOnly('trivia')
+    racingSession = true
+    const res = await leave()
+    expect(res.status).toBe(500)
     expect(tables.games[0].status).toBe('active')
     expect(tables.games[0].result_reason).toBeUndefined()
+  })
+})
+
+describe('DELETE /api/players: a retained host seat resolves the game status, never assumes live', () => {
+  const finishedOnLeave = () => {
+    setup('uno')
+    keepSeat = true
+    removal.uno.onCall = () => {
+      tables.games[0].status = 'finished'
+    }
+  }
+
+  it('retries a failed status read and still clears the linkage of a game that finished', async () => {
+    finishedOnLeave()
+    const original = removal.uno.onCall
+    removal.uno.onCall = () => {
+      original?.()
+      stateReadFailBudget = 2
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].host_user_id).toBeNull()
+  })
+
+  it('answers a retryable 500 when the status stays unreadable, instead of a success that hides it', async () => {
+    finishedOnLeave()
+    const original = removal.uno.onCall
+    removal.uno.onCall = () => {
+      original?.()
+      stateReadFailBudget = 99
+    }
+    const res = await leave()
+    expect(res.status).toBe(500)
+    // Nothing was guessed: the seat is retained and the profile linkage is untouched for the retry.
+    expect(tables.games[0].host_player_id).toBe(HOST_PID)
+    expect(tables.games[0].host_user_id).toBe('user-host')
+    expect(tables.games[0].pending_host_player_id).toBeNull()
+  })
+
+  it('the readable live path is unchanged: a retained active finisher stays host', async () => {
+    setup('uno')
+    keepSeat = true
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].host_player_id).toBe(HOST_PID)
+    expect(tables.games[0].host_user_id).toBe('user-host')
   })
 })
 

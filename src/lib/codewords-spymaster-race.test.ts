@@ -488,98 +488,93 @@ describe('forfeit finish is single-winner', () => {
 })
 
 describe("session-bound finish never wipes a newer session's chat", () => {
+  /** The wipe is one database function bound to a finished_at; record each call. */
   function chatDb(opts: { flipWins: boolean; current?: Record<string, unknown> }) {
-    const deletes: Array<readonly { method: string; args: readonly unknown[] }[]> = []
-    const supabase = makeSupabaseStub({
+    const wipes: Array<{ p_game_id: string; p_finished_at: string; p_kind: string }> = []
+    const base = makeSupabaseStub({
       games: ({ op }) =>
         op === 'update'
           ? { data: opts.flipWins ? [{ id: 'ABCD' }] : [], error: null }
           : { data: opts.current ?? null, error: null },
-      codewords_messages: ({ op, filterCalls }) => {
-        if (op === 'delete') deletes.push(filterCalls)
-        return { data: null, error: null }
+    })
+    const supabase = {
+      ...base,
+      rpc: async (name: string, args: (typeof wipes)[number]) => {
+        if (name === 'wipe_finished_session_rows') wipes.push(args)
+        return { data: { status: 'wiped' }, error: null }
       },
-    }) as unknown as SupabaseClient
-    return { supabase, deletes }
+    } as unknown as SupabaseClient
+    return { supabase, wipes }
   }
   const finished = { status: 'finished', session_started_at: 'S1', finished_at: '2026-01-01T00:00:00.000Z' }
 
-  it('a winning flip wipes only messages up to its own finish time', async () => {
-    const { supabase, deletes } = chatDb({ flipWins: true })
-    await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
-    expect(deletes).toHaveLength(1)
-    expect(deletes[0].some((c) => c.method === 'lte' && c.args[0] === 'created_at')).toBe(true)
-  })
-
-  it('a lost flip still retries the wipe for the same finished session, up to its finish time', async () => {
-    const { supabase, deletes } = chatDb({ flipWins: false, current: finished })
-    await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
-    expect(deletes).toHaveLength(1)
-    expect(deletes[0]).toContainEqual({ method: 'lte', args: ['created_at', '2026-01-01T00:00:00.000Z'] })
-  })
-
-  it('a lost flip does not wipe when the game now belongs to a newer session', async () => {
-    const newer = chatDb({ flipWins: false, current: { ...finished, session_started_at: 'S2', status: 'active' } })
-    await finishCodewordsGame(newer.supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
-    expect(newer.deletes).toHaveLength(0)
-    const finishedNewer = chatDb({ flipWins: false, current: { ...finished, session_started_at: 'S2' } })
-    await finishCodewordsGame(finishedNewer.supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
-    expect(finishedNewer.deletes).toHaveLength(0)
-  })
-
-  it('a host/admin finish (no session binding) wipes the chat of the session it ended, never more', async () => {
-    const { supabase, deletes } = chatDb({ flipWins: true })
-    await finishCodewordsGame(supabase, 'ABCD')
-    expect(deletes).toHaveLength(1)
-    // An unbounded wipe would also delete a replayed session's chat when this call is delayed.
-    expect(deletes[0].some((c) => c.method === 'lte')).toBe(true)
-  })
-
-  it('the winning-finish wipe is created_at <= the exact finished_at written to games, and a later row survives', async () => {
+  it('a winning flip wipes the session it finished, bound to the finished_at it wrote', async () => {
     vi.useFakeTimers()
     try {
       vi.setSystemTime(new Date('2026-03-03T03:03:03.000Z'))
-      let written: string | undefined
-      const chat = [
-        { id: 'during', created_at: '2026-03-03T03:03:02.000Z' },
-        { id: 'at', created_at: '2026-03-03T03:03:03.000Z' },
-        { id: 'replayed', created_at: '2026-03-03T03:03:04.000Z' },
-      ]
-      let remaining = chat
-      const supabase = makeSupabaseStub({
-        games: ({ op, payload }) => {
-          if (op === 'update') {
-            written = (payload as { finished_at: string }).finished_at
-            return { data: [{ id: 'ABCD' }], error: null }
-          }
-          return { data: null, error: null }
-        },
-        codewords_messages: ({ op, filterCalls }) => {
-          if (op === 'delete') {
-            const bound = filterCalls.find((c) => c.method === 'lte' && c.args[0] === 'created_at')
-            expect(bound?.args[1]).toBe(written)
-            remaining = remaining.filter((r) => r.created_at > (bound?.args[1] as string))
-          }
-          return { data: null, error: null }
-        },
-      }) as unknown as SupabaseClient
+      const { supabase, wipes } = chatDb({ flipWins: true })
       await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
-      expect(written).toBe('2026-03-03T03:03:03.000Z')
-      expect(remaining.map((r) => r.id)).toEqual(['replayed'])
+      expect(wipes).toEqual([{ p_game_id: 'ABCD', p_finished_at: '2026-03-03T03:03:03.000Z', p_kind: 'codewords' }])
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('a lost onlyIfActive finish (no session named) wipes only a game that really is finished, up to that finished_at', async () => {
+  it('the finished_at the wipe is bound to is exactly the value written to games', async () => {
+    let written: string | undefined
+    const wipes: string[] = []
+    const base = makeSupabaseStub({
+      games: ({ op, payload }) => {
+        if (op === 'update') {
+          written = (payload as { finished_at: string }).finished_at
+          return { data: [{ id: 'ABCD' }], error: null }
+        }
+        return { data: null, error: null }
+      },
+    })
+    const supabase = {
+      ...base,
+      rpc: async (_name: string, args: { p_finished_at: string }) => {
+        wipes.push(args.p_finished_at)
+        return { data: { status: 'wiped' }, error: null }
+      },
+    } as unknown as SupabaseClient
+    await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(written).toBeTruthy()
+    expect(wipes).toEqual([written])
+  })
+
+  it('a lost flip still retries the wipe for the same finished session, bound to its finish time', async () => {
+    const { supabase, wipes } = chatDb({ flipWins: false, current: finished })
+    await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(wipes).toEqual([{ p_game_id: 'ABCD', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'codewords' }])
+  })
+
+  it('a lost flip does not wipe when the game now belongs to a newer session', async () => {
+    const newer = chatDb({ flipWins: false, current: { ...finished, session_started_at: 'S2', status: 'active' } })
+    await finishCodewordsGame(newer.supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(newer.wipes).toHaveLength(0)
+    const finishedNewer = chatDb({ flipWins: false, current: { ...finished, session_started_at: 'S2' } })
+    await finishCodewordsGame(finishedNewer.supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+    expect(finishedNewer.wipes).toHaveLength(0)
+  })
+
+  it('a host/admin finish (no session binding) wipes the session it ended, never more', async () => {
+    const { supabase, wipes } = chatDb({ flipWins: true })
+    await finishCodewordsGame(supabase, 'ABCD')
+    // Always bound to its own finish: a delayed call can never reach a replayed session's chat.
+    expect(wipes).toHaveLength(1)
+    expect(wipes[0].p_finished_at).toMatch(/^\d{4}-\d\d-\d\dT/)
+  })
+
+  it('a lost onlyIfActive finish (no session named) wipes only a game that really is finished, for that finished_at', async () => {
     const done = chatDb({ flipWins: false, current: finished })
     await finishCodewordsGame(done.supabase, 'ABCD', { onlyIfActive: true })
-    expect(done.deletes).toHaveLength(1)
-    expect(done.deletes[0]).toContainEqual({ method: 'lte', args: ['created_at', '2026-01-01T00:00:00.000Z'] })
+    expect(done.wipes).toEqual([{ p_game_id: 'ABCD', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'codewords' }])
 
     const live = chatDb({ flipWins: false, current: { ...finished, status: 'active', finished_at: null } })
     await finishCodewordsGame(live.supabase, 'ABCD', { onlyIfActive: true })
-    expect(live.deletes).toHaveLength(0)
+    expect(live.wipes).toHaveLength(0)
   })
 })
 

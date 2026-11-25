@@ -4,11 +4,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // `finishAnonymousRoomSession` resolves the finish through a dynamic import, so the
 // mock has to be registered before the module under test pulls it in.
 const markGameFinished = vi.hoisted(() =>
-  vi.fn(async (): Promise<{ error: { message: string } | null; won: boolean }> => ({ error: null, won: true }))
+  vi.fn(
+    async (): Promise<{ error: { message: string } | null; won: boolean; finishedAt?: string }> => ({
+      error: null,
+      won: true,
+      finishedAt: '2026-01-01T00:00:00.000Z',
+    })
+  )
 )
 vi.mock('@/lib/game-finish', () => ({ markGameFinished }))
 
-import { clearSessionTables } from './session-clear'
+import { clearSessionTables, wipeFinishedSession } from './session-clear'
 import { clearBingoSessionData } from './bingo'
 import { clearAnonymousRoomSessionData, finishExpiredAnonymousSession } from './anonymous-messages'
 import { clearLudoSessionData } from './ludo'
@@ -27,7 +33,15 @@ function makeMockSupabase(errorOnTable?: string) {
     p.eq = () => p
     return p
   }
+  const wipes: Array<Record<string, unknown>> = []
   const supabase = {
+    // The session wipe is decided in the database (wipe_finished_session_rows); it fails when the test names
+    // the table that kind of wipe deletes from.
+    rpc(name: string, args: Record<string, unknown>) {
+      if (name === 'wipe_finished_session_rows') wipes.push(args)
+      const table = args.p_kind === 'anonymous' ? 'anonymous_messages' : 'codewords_messages'
+      return Promise.resolve({ error: table === errorOnTable ? { message: 'boom' } : null })
+    },
     from(table: string) {
       return {
         delete: () => {
@@ -42,7 +56,7 @@ function makeMockSupabase(errorOnTable?: string) {
     },
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { supabase: supabase as any, deletedTables, getSpectatorsReset: () => spectatorsReset }
+  return { supabase: supabase as any, deletedTables, wipes, getSpectatorsReset: () => spectatorsReset }
 }
 
 describe('clearSessionTables', () => {
@@ -65,6 +79,22 @@ describe('clearSessionTables', () => {
     expect(r.error).toBeTruthy()
     expect(r.error).not.toBe('boom')
     expect(m.deletedTables).toEqual(['a', 'b']) // 'c' never attempted
+  })
+})
+
+describe('wipeFinishedSession', () => {
+  it('asks the database to wipe the session bound to the finished_at, never deleting from the client', async () => {
+    const m = makeMockSupabase()
+    expect(await wipeFinishedSession(m.supabase, 'G', '2026-01-01T00:00:00.000Z', 'codewords')).toEqual({ error: null })
+    expect(m.wipes).toEqual([{ p_game_id: 'G', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'codewords' }])
+    expect(m.deletedTables).toEqual([])
+  })
+
+  it('returns a sanitized error when the database call fails', async () => {
+    const m = makeMockSupabase('anonymous_messages')
+    const r = await wipeFinishedSession(m.supabase, 'G', '2026-01-01T00:00:00.000Z', 'anonymous')
+    expect(r.error).toBeTruthy()
+    expect(r.error).not.toBe('boom')
   })
 })
 
@@ -131,7 +161,9 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe(true)
-    expect(m.deletedTables).toEqual(['anonymous_messages', 'anonymous_room_bans'])
+    // Bound to the finished_at the finish wrote and decided in the database, never by a client-side delete.
+    expect(m.wipes).toEqual([{ p_game_id: 'GAME', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'anonymous' }])
+    expect(m.deletedTables).toEqual([])
     expect(spy).not.toHaveBeenCalled()
   })
 

@@ -1,11 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import {
-  clearAnonymousRoomSessionData,
-  finishAnonymousRoomSession,
-  finishSecretMessageBoard,
-} from '@/lib/anonymous-messages'
-import { clearCodewordsChat, finishCodewordsGame } from '@/lib/codewords'
+import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
+import { finishCodewordsGame } from '@/lib/codewords'
+import { wipeFinishedSession } from '@/lib/session-clear'
 import { markGameFinished, type FinishGameResult, type FinishGuard } from '@/lib/game-finish'
 import {
   isAnonymousMessagesGame,
@@ -97,9 +94,9 @@ export async function cleanupFinishedSession(
   const roundsError = await finishGameRounds(supabase, gameId, gameType, finishedAt, finishedAt)
   let wipeError: string | null = null
   if (isCodewordsGame(gameType)) {
-    wipeError = (await clearCodewordsChat(supabase, gameId, finishedAt)).error
+    wipeError = (await wipeFinishedSession(supabase, gameId, finishedAt, 'codewords')).error
   } else if (isAnonymousMessagesGame(gameType) || isSecretMessageGame(gameType)) {
-    wipeError = (await clearAnonymousRoomSessionData(supabase, gameId, finishedAt)).error
+    wipeError = (await wipeFinishedSession(supabase, gameId, finishedAt, 'anonymous')).error
   }
   return roundsError ?? wipeError
 }

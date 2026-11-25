@@ -1952,6 +1952,51 @@ async function seatIsGone(h: HostHandoff): Promise<boolean | null> {
   return game.host_player_id !== h.playerId
 }
 
+const GAME_STATE_COLUMNS = 'status, host_player_id, pending_host_player_id, session_started_at, sessions_played'
+
+/** Fresh read of what a handoff decision depends on; bounded retries, null when it cannot be read. */
+async function readGameState(gameId: string) {
+  for (let attempt = 0; attempt < HANDOFF_ATTEMPTS; attempt++) {
+    const { data, error } = await getSupabaseAdmin()
+      .from('games')
+      .select(GAME_STATE_COLUMNS)
+      .eq('id', gameId)
+      .maybeSingle()
+    if (!error && data) return data
+  }
+  return null
+}
+
+/**
+ * The leaver's seat is gone and the guarded nominate-or-end matched nothing. Re-inspect the game: if it is
+ * finished, has a nominee or has another host there is nothing to do; if it is live with NO host and NO nominee
+ * (the session the leave inspected was replaced by a start or replay under the same id), run the nominate-or-end
+ * decision again against the FRESH session. The first, stale-session attempt never finished anything, and the
+ * second is bound to what was just read, so a stale leave cannot end a session it did not inspect, yet a game is
+ * never left live and hostless. Whatever still cannot be settled is reported as unresolved.
+ */
+async function settleHostlessGame(h: HostHandoff): Promise<'settled' | 'finished' | 'unresolved'> {
+  const hostlessLive = (s: NonNullable<Awaited<ReturnType<typeof readGameState>>>) =>
+    (s.status === 'waiting' || s.status === 'active') &&
+    !s.pending_host_player_id &&
+    (s.host_player_id === null || s.host_player_id === h.playerId)
+  for (let round = 0; round < 2; round++) {
+    const state = await readGameState(h.gameId)
+    if (!state) return 'unresolved'
+    if (state.status === 'finished') return 'finished'
+    if (!hostlessLive(state)) return 'settled'
+    const outcome = await nominateSuccessorOrEnd({
+      ...h,
+      session: { startedAt: state.session_started_at ?? null, sessionsPlayed: state.sessions_played ?? null },
+    })
+    if (outcome === 'finished') return 'finished'
+  }
+  const last = await readGameState(h.gameId)
+  if (!last) return 'unresolved'
+  if (last.status === 'finished') return 'finished'
+  return hostlessLive(last) ? 'unresolved' : 'settled'
+}
+
 async function handOffHost(h: HostHandoff): Promise<'done' | 'unresolved'> {
   const admin = getSupabaseAdmin()
   const gone = await seatIsGone(h)
@@ -1961,9 +2006,14 @@ async function handOffHost(h: HostHandoff): Promise<'done' | 'unresolved'> {
   }
   if (!gone) {
     // The seat was kept (a finisher's row is retained): they never stopped being the host, so nobody is
-    // nominated. If their leave ended the game, route them away like any retained finished host.
-    const { data: game } = await admin.from('games').select('status').eq('id', h.gameId).maybeSingle()
-    if (game?.status === 'finished') {
+    // nominated. If their leave ended the game, route them away like any retained finished host. A status that
+    // cannot be read is not "still live": it would leave the profile linked to a finished game as its host.
+    const state = await readGameState(h.gameId)
+    if (!state) {
+      console.error(`players: could not read the status of ${h.gameId} after a retained host leave`)
+      return 'unresolved'
+    }
+    if (state.status === 'finished') {
       const error = await clearOutgoingHostUser(h)
       if (error) console.error('players: clearing host_user_id after retained host leave failed', error)
     }
@@ -1979,6 +2029,20 @@ async function handOffHost(h: HostHandoff): Promise<'done' | 'unresolved'> {
     // The guarded end refuses if a nominee landed behind an errored response.
     console.error(`players: host handoff for ${h.gameId} kept failing; ending the game instead`)
     outcome = await finishGameOnHostLeft(admin, h.gameId, h.gameType, h.playerId, h.session)
+  }
+  if (outcome === 'error') {
+    console.error(`players: host handoff for ${h.gameId} could not be settled`)
+    return 'unresolved'
+  }
+  if (outcome === 'live') {
+    // The guarded steps matched nothing: a nominee / new host / finish landed (settled), or the session the leave
+    // inspected is gone and the game is now live without a host (a start or replay under the same id).
+    const settled = await settleHostlessGame(h)
+    if (settled === 'unresolved') {
+      console.error(`players: game ${h.gameId} is live with no host and no nominee after the handoff`)
+      return 'unresolved'
+    }
+    outcome = settled === 'finished' ? 'finished' : 'live'
   }
   if (outcome === 'finished') {
     // The seat is gone, so a failed cleanup has no later leave to retry it: surface it for an operator.

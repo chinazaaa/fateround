@@ -20,8 +20,9 @@ import { adminEndGame, cleanupFinishedSession, completeHostLeftCleanup, finishGa
 
 type Recorded = {
   gameUpdates: Array<Record<string, unknown>>
+  /** Kinds of session wipe requested ('anonymous' | 'codewords'). */
   deletes: string[]
-  /** `created_at <=` bounds of the session-bound deletes. */
+  /** The finished_at each session wipe is bound to (decided in the database). */
   deleteBounds: string[]
   roundUpdates: number
   /** `started_at <=` bounds of the round updates. */
@@ -61,18 +62,16 @@ function mockSupabase(
           }),
         }),
       }),
-      delete: () => ({
-        eq: () => {
-          recorded.deletes.push(table)
-          const result = { error: opts.deleteError ?? null }
-          return {
-            lte: async (_col: string, v: string) => (recorded.deleteBounds.push(v), result),
-            then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-              Promise.resolve(result).then(resolve, reject),
-          }
-        },
-      }),
     }),
+    // The session wipe is one database function (wipe_finished_session_rows): it records the kind of wipe and the
+    // finished_at it is bound to, and fails when the test asks for a failing wipe.
+    rpc: async (name: string, args: { p_kind: string; p_finished_at: string }) => {
+      if (name === 'wipe_finished_session_rows') {
+        recorded.deletes.push(args.p_kind)
+        recorded.deleteBounds.push(args.p_finished_at)
+      }
+      return { data: { status: 'wiped' }, error: opts.deleteError ?? null }
+    },
   } as unknown as SupabaseClient
   return { supabase, recorded }
 }
@@ -159,7 +158,7 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
 
     expect(result).toEqual({ error: null, won: false, cleanupError: null })
     // Delegated, not handled by the generic path.
-    expect(recorded.deletes).toContain('codewords_messages')
+    expect(recorded.deletes).toContain('codewords')
     expect(recorded.gameUpdates).toEqual([])
   })
 
@@ -211,7 +210,7 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
     expect(result.error).toBeNull()
     expect(result.cleanupError).toBeTruthy()
     // The wipe was still attempted, and its failure did not abort the finish.
-    expect(recorded.deletes).toContain('codewords_messages')
+    expect(recorded.deletes).toContain('codewords')
   })
 
   it('keeps a lost CAS a lost CAS even when the cleanup also fails', async () => {
@@ -289,10 +288,10 @@ describe('cleanupFinishedSession — the one session-bound cleanup', () => {
   })
 
   it.each([
-    ['codewords', ['codewords_messages']],
-    ['anonymous_messages', ['anonymous_messages', 'anonymous_room_bans']],
-    ['secret_message', ['anonymous_messages', 'anonymous_room_bans']],
-  ])('%s: wipes %j bounded to the finished_at', async (gameType, tables) => {
+    ['codewords', ['codewords']],
+    ['anonymous_messages', ['anonymous']],
+    ['secret_message', ['anonymous']],
+  ])('%s: one database wipe %j bound to the finished_at', async (gameType, tables) => {
     const { supabase, recorded } = mockSupabase()
     expect(await cleanupFinishedSession(supabase, 'G', gameType as never, FINISHED_AT)).toBeNull()
     expect(recorded.deletes).toEqual(tables)
@@ -303,7 +302,7 @@ describe('cleanupFinishedSession — the one session-bound cleanup', () => {
     const { supabase, recorded } = mockSupabase({ roundError: { message: 'round update failed' } })
     const error = await cleanupFinishedSession(supabase, 'G', 'codewords', FINISHED_AT)
     expect(error).toBeTruthy()
-    expect(recorded.deletes).toEqual(['codewords_messages'])
+    expect(recorded.deletes).toEqual(['codewords'])
     expect(recorded.deleteBounds).toEqual([FINISHED_AT])
   })
 
@@ -407,7 +406,7 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
   it('wipes the per-feature data of the finished session too (Codewords chat)', async () => {
     const { supabase, recorded } = mockSupabase({ gameRow: { ...FINISHED, game_type: 'codewords' } })
     await completeHostLeftCleanup(supabase, 'G')
-    expect(recorded.deletes).toEqual(['codewords_messages'])
+    expect(recorded.deletes).toEqual(['codewords'])
     expect(recorded.deleteBounds).toEqual([FINISHED_AT])
   })
 

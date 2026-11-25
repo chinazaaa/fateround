@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import type { FinishGameResult } from '@/lib/game-finish'
-import { clearSessionTables } from './session-clear'
+import { clearSessionTables, wipeFinishedSession } from './session-clear'
 import type { Game, Player } from '@/types'
 import {
   ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
@@ -196,25 +196,21 @@ export async function trimAnonymousMessagesIfDue(
   return { trimmed: deleted }
 }
 
-/**
- * Wipe session data when an anonymous room ends — messages are not kept. With `createdAtOrBefore` only rows
- * written up to that instant go (a finished session's data, never a replayed session's); omitted wipes the
- * whole game (Play Again's reset).
- */
+/** Wipe the whole game's messages and bans (Play Again's / a reopen's reset of a game that is being replayed). */
 export async function clearAnonymousRoomSessionData(
   supabase: SupabaseClient,
-  gameId: string,
-  createdAtOrBefore?: string
+  gameId: string
 ): Promise<{ error: string | null }> {
-  return clearSessionTables(supabase, gameId, ['anonymous_messages', 'anonymous_room_bans'], { createdAtOrBefore })
+  return clearSessionTables(supabase, gameId, ['anonymous_messages', 'anonymous_room_bans'])
 }
 
 /**
  * Finish the game row, then wipe the finished session's data. A lost compare-and-set (`won` false) can mean
  * another request already finished it (the wipe is an idempotent retry, so it still runs) or that
  * `onlyIfActive` rejected the flip and the game is still live (its data must survive), so the two are told
- * apart by reading the row. Either way the wipe is bound to the `finished_at` of the finish it follows: a
- * stalled request that wakes after Play Again started a new session must not delete that session's rows.
+ * apart by reading the row. Either way the wipe is bound to the `finished_at` of the finish it follows and decided
+ * in the database (see wipeFinishedSession): a stalled request that wakes after Play Again started a new session
+ * deletes nothing, and a message accepted just before the finish cannot survive it.
  *
  * A failed clear is reported as `cleanupError`, never as `error`: the game IS finished at this point, and
  * folding the wipe failure into `error` made callers (the idle reaper) treat a completed close as a failure
@@ -241,7 +237,8 @@ async function finishAndClearSession(
     if (current?.status !== 'finished' || !current.finished_at) return { error: null, won, cleanupError: null }
     wipeUpTo = current.finished_at as string
   }
-  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId, wipeUpTo)
+  if (!wipeUpTo) return { error: null, won, cleanupError: null }
+  const { error: clearError } = await wipeFinishedSession(supabase, gameId, wipeUpTo, 'anonymous')
   return { error: null, won, cleanupError: clearError }
 }
 

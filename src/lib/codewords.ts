@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
+import { wipeFinishedSession } from '@/lib/session-clear'
 import { parseQuestionSource } from '@/lib/custom-questions'
 import {
   CODEWORDS_BOARD_SIZE,
@@ -567,23 +568,6 @@ export function setCodewordsHostMode(gameCode: string, mode: CodewordsHostMode) 
   localStorage.setItem(codewordsHostModeKey(gameCode), mode)
 }
 
-export async function clearCodewordsChat(
-  supabase: SupabaseClient,
-  gameId: string,
-  // codewords_messages has no session column, so every finish scopes its wipe in time: only messages
-  // written up to the moment that session finished. A newer session starts after its predecessor
-  // finished, so its chat is never reached (host/admin ends included).
-  createdAtOrBefore: string
-): Promise<{ error: string | null }> {
-  const { error } = await supabase
-    .from('codewords_messages')
-    .delete()
-    .eq('game_id', gameId)
-    .lte('created_at', createdAtOrBefore)
-  if (error) return { error: internalErrorMessage('codewords', error) }
-  return { error: null }
-}
-
 export async function finishCodewordsGame(
   supabase: SupabaseClient,
   gameId: string,
@@ -597,9 +581,9 @@ export async function finishCodewordsGame(
   if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
   // The chat wipe is an idempotent retry (a finish that committed but failed to wipe is repeated),
-  // so it also runs when another request won the flip. It never reaches a newer session's chat: it
-  // wipes only what existed when the finish it follows happened (this call's own `finishedAt`, or the
-  // `finished_at` a lost flip reads back), and a lost flip wipes only a game that really is finished
+  // so it also runs when another request won the flip. It never reaches a newer session's chat: the database
+  // deletes only while the game is still finished with exactly the `finished_at` of the finish it follows (this
+  // call's own, or the one a lost flip reads back), and a lost flip wipes only a game that really is finished
   // and, when the caller named a session, is still that session's finished game.
   //
   // A failed wipe comes back as `cleanupError`, not `error`: the game is already
@@ -620,7 +604,7 @@ export async function finishCodewordsGame(
     }
     wipeUpTo = current.finished_at as string
   }
-  const { error: chatError } = await clearCodewordsChat(supabase, gameId, wipeUpTo)
+  const { error: chatError } = await wipeFinishedSession(supabase, gameId, wipeUpTo, 'codewords')
   return { error: null, won, cleanupError: chatError }
 }
 
