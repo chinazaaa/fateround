@@ -273,6 +273,12 @@ export type FinishGuard = {
   noPendingHostNominee?: boolean
   /** Written to games.result_reason by the finishing update itself. */
   resultReason?: string
+  /**
+   * Finish only the session the caller inspected. A replay advances `sessions_played` (Play Again) and/or
+   * replaces `session_started_at` (Play Again clears it, a start or a secret-board reopen sets it), so a stalled
+   * caller can never finish a replayed session that reuses the same game id. `null` matches only a null column.
+   */
+  session?: { startedAt: string | null; sessionsPlayed: number | null }
 }
 
 export async function markGameFinished(
@@ -342,6 +348,17 @@ export async function markGameFinished(
         guarded = guarded.or(`host_player_id.is.null,host_player_id.eq.${finishGuard.hostPlayerNullOr}`)
       }
       if (finishGuard.noPendingHostNominee) guarded = guarded.is('pending_host_player_id', null)
+      const { session } = finishGuard
+      if (session) {
+        guarded =
+          session.startedAt === null
+            ? guarded.is('session_started_at', null)
+            : guarded.eq('session_started_at', session.startedAt)
+        guarded =
+          session.sessionsPlayed === null
+            ? guarded.is('sessions_played', null)
+            : guarded.eq('sessions_played', session.sessionsPlayed)
+      }
     }
     if (guarded && onlySessionStartedAt !== undefined) {
       guarded =

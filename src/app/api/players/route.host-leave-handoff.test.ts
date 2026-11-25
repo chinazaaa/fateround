@@ -36,8 +36,7 @@ type Row = Record<string, unknown>
  */
 function removed(r: { error: string | null; onCall: (() => void) | null }) {
   if (!r.error && !keepSeat) {
-    tables.players = tables.players.filter((p) => p.id !== HOST_PID)
-    tables.games[0].host_player_id = null
+    deletePlayers([HOST_PID])
   }
   r.onCall?.()
   return { error: r.error }
@@ -61,7 +60,25 @@ let failPlayerDelete = false
 let failReasonOnlyUpdates = false
 /** The guarded finish commits but its response is lost (transport error). */
 let finishCommitsButErrors = false
+/** Runs right after a players delete committed (and its ON DELETE SET NULL ran): e.g. a claim lands. */
+let afterPlayerDelete: (() => void) | null = null
+/** Number of upcoming seat-existence reads (players select 'id' by id alone) that fail. */
+let seatReadFailBudget = 0
+/** Reads of games.host_player_id alone (the fallback seat signal) fail. */
+let hostRefReadFails = false
+/** Runs once, right after the first successor lookup (a stalled leave: the world moves on meanwhile). */
+let afterSuccessorLookup: (() => void) | null = null
+/** Every games update the route attempted: its patch and how many rows it matched. */
+let gameUpdateLog: Array<{ patch: Row; matched: number }> = []
 let tables: Record<string, Row[]> = {}
+
+/** Deleting players models ON DELETE SET NULL for the games columns that reference them. */
+function deletePlayers(ids: unknown[]) {
+  tables.players = tables.players.filter((p) => !ids.includes(p.id))
+  for (const g of tables.games ?? []) {
+    for (const col of ['host_player_id', 'pending_host_player_id']) if (ids.includes(g[col])) g[col] = null
+  }
+}
 
 /** Tiny stateful Supabase stand-in: equality / is-null / neq filters, update, delete. */
 function builder(table: string) {
@@ -69,13 +86,22 @@ function builder(table: string) {
   let patch: Row | null = null
   let deleting = false
   let excludesSomeone = false
+  let selectCols: string | undefined
+  let idOnly = true
+  let orderBy: { col: string; asc: boolean } | null = null
+  let limitTo: number | null = null
   const match = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)))
   const run = async () => {
     await Promise.resolve()
     if (deleting) {
       if (table === 'players' && failPlayerDelete) return { data: null, error: { message: 'delete failed' } }
       const doomed = match()
-      tables[table] = (tables[table] ?? []).filter((r) => !doomed.includes(r))
+      if (table === 'players') {
+        deletePlayers(doomed.map((r) => r.id))
+        afterPlayerDelete?.()
+      } else {
+        tables[table] = (tables[table] ?? []).filter((r) => !doomed.includes(r))
+      }
       return { data: null, error: null }
     }
     if (patch) {
@@ -98,19 +124,39 @@ function builder(table: string) {
       }
       const rows = match()
       for (const r of rows) Object.assign(r, patch)
+      if (table === 'games') gameUpdateLog.push({ patch, matched: rows.length })
       return { data: rows.map((r) => ({ ...r })), error: null }
+    }
+    if (table === 'players' && selectCols === 'id' && idOnly && !excludesSomeone && seatReadFailBudget > 0) {
+      seatReadFailBudget--
+      return { data: null, error: { message: 'seat read failed' } }
+    }
+    if (table === 'games' && selectCols === 'host_player_id' && hostRefReadFails) {
+      return { data: null, error: { message: 'host ref read failed' } }
     }
     if (excludesSomeone && (failSuccessorLookup || lookupFailBudget > 0)) {
       if (!failSuccessorLookup) lookupFailBudget--
       return { data: null, error: { message: 'boom' } }
     }
-    return { data: match().map((r) => ({ ...r })), error: null }
+    let out = match().map((r) => ({ ...r }))
+    // The roster read relies on the database ordering and limiting it; model both.
+    if (orderBy) {
+      const { col, asc } = orderBy
+      out = out.sort((a, b) => ((a[col] as number) - (b[col] as number)) * (asc ? 1 : -1))
+    }
+    if (limitTo !== null) out = out.slice(0, limitTo)
+    if (excludesSomeone && afterSuccessorLookup) {
+      const hook = afterSuccessorLookup
+      afterSuccessorLookup = null
+      hook()
+    }
+    return { data: out, error: null }
   }
   const api: Record<string, unknown> = {
-    select: () => api,
-    order: () => api,
-    limit: () => api,
-    eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), api),
+    select: (cols?: string) => ((selectCols = cols), api),
+    order: (col: string, opts?: { ascending?: boolean }) => ((orderBy = { col, asc: opts?.ascending !== false }), api),
+    limit: (n: number) => ((limitTo = n), api),
+    eq: (k: string, v: unknown) => ((idOnly = idOnly && k === 'id'), filters.push((r) => r[k] === v), api),
     neq: (k: string, v: unknown) => ((excludesSomeone = true), filters.push((r) => r[k] !== v), api),
     is: (k: string, v: unknown) => (filters.push((r) => (r[k] ?? null) === v), api),
     // Only the `col.is.null,col.eq.X` shape the route uses.
@@ -160,6 +206,8 @@ function setup(gameType: string, extra: Row = {}) {
         participant_mode: 'players',
         host_player_id: HOST_PID,
         host_user_id: 'user-host',
+        session_started_at: 'S1',
+        sessions_played: 1,
         pending_host_player_id: null,
         pending_host_nominated_at: null,
         ...extra,
@@ -198,6 +246,11 @@ beforeEach(async () => {
   hostSeatAtNomination = null
   afterNominationError = null
   failPlayerDelete = false
+  afterPlayerDelete = null
+  seatReadFailBudget = 0
+  hostRefReadFails = false
+  afterSuccessorLookup = null
+  gameUpdateLog = []
   failReasonOnlyUpdates = false
   finishCommitsButErrors = false
   removal.reconcileError = null
@@ -543,6 +596,8 @@ describe('DELETE /api/players: host leave handoff edge cases', () => {
     const res = await leave()
     expect(res.status).toBe(200)
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+    // ON DELETE SET NULL cleared the seat reference; the route cleared the user linkage.
+    expect(tables.games[0].host_player_id).toBeNull()
     expect(tables.games[0].host_user_id).toBeNull()
   })
 
@@ -704,15 +759,34 @@ describe('DELETE /api/players: retained host leave', () => {
     const retry = await leave()
     expect(retry.status).toBe(200)
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+    expect(tables.games[0].host_player_id).toBeNull()
     expect(tables.games[0].host_user_id).toBeNull()
   })
 
-  it('does not undo a host who claimed during the forfeit cleanup', async () => {
+  it.each([
+    ['host_player_id and host_user_id', { host_player_id: OTHER_PID, host_user_id: 'user-other' }],
+    ['host_player_id only (the user linkage still reads as the outgoing host)', { host_player_id: OTHER_PID }],
+    ['host_user_id only (the seat reference still reads null)', { host_user_id: 'user-other' }],
+  ])(
+    'does not undo a replacement host who took over %s after the leave captured the linkage, before the clear',
+    async (_name, claim) => {
+      chessFinished()
+      // Ownership changes AFTER the route captured host_user_id and deleted the seat, BEFORE it clears.
+      afterPlayerDelete = () => Object.assign(tables.games[0], claim)
+      const before = { ...tables.games[0] }
+      const res = await leave()
+      expect(res.status).toBe(200)
+      // The clear was attempted, matched nothing, and the replacement linkage survived.
+      expect(gameUpdateLog).toContainEqual({ patch: { host_user_id: null }, matched: 0 })
+      expect(tables.games[0].host_player_id).toBe(claim.host_player_id ?? null)
+      expect(tables.games[0].host_user_id).toBe(claim.host_user_id ?? before.host_user_id)
+    }
+  )
+
+  it('the clear really does apply when nobody claimed (the same attempt matches the departed host)', async () => {
     chessFinished()
-    Object.assign(tables.games[0], { host_player_id: OTHER_PID, host_user_id: 'user-other' })
-    const res = await leave()
-    expect(res.status).toBe(200)
-    expect(tables.games[0].host_user_id).toBe('user-other')
+    await leave()
+    expect(gameUpdateLog).toContainEqual({ patch: { host_user_id: null }, matched: 1 })
   })
 
   const finishedAt = '2026-01-01T00:00:00.000Z'
@@ -747,5 +821,133 @@ describe('DELETE /api/players: retained host leave', () => {
       await leave()
       expect(tables.codewords_messages).toHaveLength(1)
     }
+  })
+})
+
+describe('DELETE /api/players: seat state is resolved, never guessed', () => {
+  it('a transient seat read failure is retried and the handoff still happens', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      seatReadFailBudget = 2
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+
+  it('a persistently failing seat read falls back to games.host_player_id: seat deleted means handoff', async () => {
+    setup('uno')
+    removal.uno.onCall = () => {
+      seatReadFailBudget = 99
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+
+  it('a persistently failing seat read with a retained seat (host_player_id still the host) nominates nobody', async () => {
+    setup('uno')
+    keepSeat = true
+    removal.uno.onCall = () => {
+      seatReadFailBudget = 99
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBeNull()
+    expect(tables.games[0].host_player_id).toBe(HOST_PID)
+    expect(tables.games[0].host_user_id).toBe('user-host')
+  })
+
+  it('when the seat state cannot be established at all, the leave surfaces a retryable 500 and writes nothing', async () => {
+    setup('uno')
+    hostRefReadFails = true
+    removal.uno.onCall = () => {
+      seatReadFailBudget = 99
+    }
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const g = tables.games[0]
+    expect(g.pending_host_player_id).toBeNull()
+    expect(g.status).toBe('active')
+    expect(g.host_user_id).toBe('user-host')
+  })
+})
+
+describe('DELETE /api/players: the host-left finish is bound to the session the leave inspected', () => {
+  it('a stalled leave never finishes (or cleans up) a session that was replayed under the same game id', async () => {
+    setup('trivia')
+    tables.players = tables.players.filter((p) => p.id === HOST_PID)
+    tables.rounds = [{ id: 'r', game_id: 'ABCD', status: 'active', started_at: '2999-01-01T00:00:00.000Z' }]
+    // The leave read session S1 / sessions_played 1 and found no successor; before its finish lands the game is
+    // finished, replayed (Play Again bumps sessions_played, clears and then re-sets the session start) and live.
+    afterSuccessorLookup = () =>
+      Object.assign(tables.games[0], { status: 'active', session_started_at: 'S2', sessions_played: 2 })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    const g = tables.games[0]
+    expect(g.status).toBe('active')
+    expect(g.result_reason).toBeUndefined()
+    expect(g.finished_at).toBeUndefined()
+    expect(tables.rounds[0].status).toBe('active')
+  })
+
+  it('a replay that restored the same session_started_at is still told apart by sessions_played', async () => {
+    setup('trivia')
+    tables.players = tables.players.filter((p) => p.id === HOST_PID)
+    afterSuccessorLookup = () => Object.assign(tables.games[0], { sessions_played: 2 })
+    await leave()
+    expect(tables.games[0].status).toBe('active')
+    expect(tables.games[0].result_reason).toBeUndefined()
+  })
+})
+
+describe('DELETE /api/players: roster ordering', () => {
+  it('nominates the OLDEST eligible player even when storage order differs', async () => {
+    setup('uno')
+    // Storage order: host, newest, oldest.
+    tables.players = [
+      tables.players[0],
+      {
+        id: THIRD_PID,
+        game_id: 'ABCD',
+        name: 'Third',
+        resume_token: 'YYYY8888',
+        is_bot: false,
+        spectator: false,
+        joined_at: 9,
+      },
+      tables.players[1],
+    ]
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+
+  it('skips bots and spectators even when they are the oldest', async () => {
+    setup('uno')
+    tables.players = [
+      tables.players[0],
+      { id: 'bot', game_id: 'ABCD', name: 'Bot', resume_token: 'B', is_bot: true, spectator: false, joined_at: 0 },
+      { id: 'spec', game_id: 'ABCD', name: 'Spec', resume_token: 'S', is_bot: false, spectator: true, joined_at: 0 },
+      tables.players[1],
+    ]
+    await leave()
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+})
+
+describe('PATCH /api/players on a finished Codewords game', () => {
+  it('is still rejected: only DELETE may reach the finished-game leave branch', async () => {
+    setup('codewords', { status: 'finished' })
+    const { PATCH } = await import('./route')
+    const res = await PATCH(
+      new NextRequest('https://x.test/api/players', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ gameCode: 'abcd', playerId: HOST_PID, playerName: 'Renamed', resumeToken: TOKEN }),
+      })
+    )
+    expect(res.status).toBe(400)
+    expect(tables.players.find((p) => p.id === HOST_PID)?.name).toBe('Host')
   })
 })

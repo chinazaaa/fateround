@@ -535,6 +535,42 @@ describe("session-bound finish never wipes a newer session's chat", () => {
     expect(deletes[0].some((c) => c.method === 'lte')).toBe(true)
   })
 
+  it('the winning-finish wipe is created_at <= the exact finished_at written to games, and a later row survives', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date('2026-03-03T03:03:03.000Z'))
+      let written: string | undefined
+      const chat = [
+        { id: 'during', created_at: '2026-03-03T03:03:02.000Z' },
+        { id: 'at', created_at: '2026-03-03T03:03:03.000Z' },
+        { id: 'replayed', created_at: '2026-03-03T03:03:04.000Z' },
+      ]
+      let remaining = chat
+      const supabase = makeSupabaseStub({
+        games: ({ op, payload }) => {
+          if (op === 'update') {
+            written = (payload as { finished_at: string }).finished_at
+            return { data: [{ id: 'ABCD' }], error: null }
+          }
+          return { data: null, error: null }
+        },
+        codewords_messages: ({ op, filterCalls }) => {
+          if (op === 'delete') {
+            const bound = filterCalls.find((c) => c.method === 'lte' && c.args[0] === 'created_at')
+            expect(bound?.args[1]).toBe(written)
+            remaining = remaining.filter((r) => r.created_at > (bound?.args[1] as string))
+          }
+          return { data: null, error: null }
+        },
+      }) as unknown as SupabaseClient
+      await finishCodewordsGame(supabase, 'ABCD', { onlyIfActive: true, onlySessionStartedAt: 'S1' })
+      expect(written).toBe('2026-03-03T03:03:03.000Z')
+      expect(remaining.map((r) => r.id)).toEqual(['replayed'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('a lost onlyIfActive finish (no session named) wipes only a game that really is finished, up to that finished_at', async () => {
     const done = chatDb({ flipWins: false, current: finished })
     await finishCodewordsGame(done.supabase, 'ABCD', { onlyIfActive: true })

@@ -30,7 +30,9 @@ type Recorded = {
 
 const FINISHED_AT = '2026-01-01T00:00:00.000Z'
 
-function mockSupabase(opts: { deleteError?: { message: string }; gameRow?: Record<string, unknown> } = {}): {
+function mockSupabase(
+  opts: { deleteError?: { message: string }; roundError?: { message: string }; gameRow?: Record<string, unknown> } = {}
+): {
   supabase: SupabaseClient
   recorded: Recorded
 } {
@@ -47,7 +49,7 @@ function mockSupabase(opts: { deleteError?: { message: string }; gameRow?: Recor
         // Awaitable at any point in the chain — the rounds update ends on `.eq`, the
         // result_reason update ends on `.is`.
         chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-          Promise.resolve({ error: null }).then(resolve, reject)
+          Promise.resolve({ error: table === 'rounds' ? (opts.roundError ?? null) : null }).then(resolve, reject)
         return chain
       },
       // The row a lost finish / a cleanup recovery reads back.
@@ -297,6 +299,14 @@ describe('cleanupFinishedSession — the one session-bound cleanup', () => {
     expect(recorded.deleteBounds).toEqual(tables.map(() => FINISHED_AT))
   })
 
+  it('a failing round update still runs the Codewords chat wipe bound to FINISHED_AT, and returns the round error', async () => {
+    const { supabase, recorded } = mockSupabase({ roundError: { message: 'round update failed' } })
+    const error = await cleanupFinishedSession(supabase, 'G', 'codewords', FINISHED_AT)
+    expect(error).toBeTruthy()
+    expect(recorded.deletes).toEqual(['codewords_messages'])
+    expect(recorded.deleteBounds).toEqual([FINISHED_AT])
+  })
+
   it('wipes nothing for a game type that keeps no deletable session data', async () => {
     const { supabase, recorded } = mockSupabase()
     await cleanupFinishedSession(supabase, 'G', 'trivia', FINISHED_AT)
@@ -318,6 +328,8 @@ describe('cleanupFinishedSession — the one session-bound cleanup', () => {
   })
 })
 
+const SESSION = { startedAt: 'S1', sessionsPlayed: 2 }
+
 describe('finishGameOnHostLeft — one guarded finish that carries its own reason', () => {
   const outcome = (status: string | null, readError = false) => mockSupabaseWithRead(status, readError)
 
@@ -338,7 +350,7 @@ describe('finishGameOnHostLeft — one guarded finish that carries its own reaso
 
   it('hands the whole decision to the single guarded update, reason included', async () => {
     markGameFinished.mockResolvedValue({ error: null, won: true })
-    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST')).toBe('finished')
+    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST', SESSION)).toBe('finished')
     const [, gameId, finishedAt, options] = markGameFinished.mock.calls[0]
     expect(gameId).toBe('G')
     expect(finishedAt).toBeUndefined()
@@ -347,31 +359,33 @@ describe('finishGameOnHostLeft — one guarded finish that carries its own reaso
       hostPlayerNullOr: 'HOST',
       noPendingHostNominee: true,
       resultReason: 'host_ended',
+      // Bound to the session the leave inspected, so a replay under the same id is never finished.
+      session: SESSION,
     })
     expect(options.trackBookkeeping).toBe(false)
   })
 
   it("keeps Word Rush's bookkeeping durable like every other force-finish", async () => {
     markGameFinished.mockResolvedValue({ error: null, won: true })
-    await finishGameOnHostLeft(outcome('finished'), 'G', 'word_rush', 'HOST')
+    await finishGameOnHostLeft(outcome('finished'), 'G', 'word_rush', 'HOST', SESSION)
     expect(markGameFinished.mock.calls[0][3].trackBookkeeping).toBe(true)
   })
 
   it('a lost guard on a still-live game reports live (a new host or a nominee exists)', async () => {
     markGameFinished.mockResolvedValue({ error: null, won: false })
-    expect(await finishGameOnHostLeft(outcome('active'), 'G', 'uno', 'HOST')).toBe('live')
+    expect(await finishGameOnHostLeft(outcome('active'), 'G', 'uno', 'HOST', SESSION)).toBe('live')
   })
 
   it('a lost guard on a game someone else finished reports finished', async () => {
     markGameFinished.mockResolvedValue({ error: null, won: false })
-    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST')).toBe('finished')
+    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST', SESSION)).toBe('finished')
   })
 
   it('an errored write is read back: committed means finished, otherwise error', async () => {
     markGameFinished.mockResolvedValue({ error: { message: 'response lost' }, won: false })
-    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST')).toBe('finished')
-    expect(await finishGameOnHostLeft(outcome('active'), 'G', 'uno', 'HOST')).toBe('error')
-    expect(await finishGameOnHostLeft(outcome('active', true), 'G', 'uno', 'HOST')).toBe('error')
+    expect(await finishGameOnHostLeft(outcome('finished'), 'G', 'uno', 'HOST', SESSION)).toBe('finished')
+    expect(await finishGameOnHostLeft(outcome('active'), 'G', 'uno', 'HOST', SESSION)).toBe('error')
+    expect(await finishGameOnHostLeft(outcome('active', true), 'G', 'uno', 'HOST', SESSION)).toBe('error')
   })
 })
 

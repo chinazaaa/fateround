@@ -102,6 +102,23 @@ describe('markGameFinished', () => {
     expect(calls.eqs).toContainEqual(['pending_host_player_id', null])
   })
 
+  it('a finishGuard session binds the finish to the inspected session (null matches only a null column)', async () => {
+    const bound = makeSupabase([{ id: 'GAME' }])
+    await markGameFinished(bound.supabase, 'GAME', undefined, {
+      finishGuard: { statuses: ['active'], session: { startedAt: 'S1', sessionsPlayed: 3 } },
+    })
+    expect(bound.calls.eqs).toContainEqual(['session_started_at', 'S1'])
+    expect(bound.calls.eqs).toContainEqual(['sessions_played', 3])
+
+    const unset = makeSupabase([{ id: 'GAME' }])
+    await markGameFinished(unset.supabase, 'GAME', undefined, {
+      finishGuard: { statuses: ['waiting'], session: { startedAt: null, sessionsPlayed: null } },
+    })
+    // `.is(col, null)` is recorded like an eq in this stub.
+    expect(unset.calls.eqs).toContainEqual(['session_started_at', null])
+    expect(unset.calls.eqs).toContainEqual(['sessions_played', null])
+  })
+
   it('a finishGuard that matches no row is a lost finish', async () => {
     const { supabase } = makeSupabase([])
     const result = await markGameFinished(supabase, 'GAME', undefined, {

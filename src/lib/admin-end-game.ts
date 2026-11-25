@@ -6,7 +6,7 @@ import {
   finishSecretMessageBoard,
 } from '@/lib/anonymous-messages'
 import { clearCodewordsChat, finishCodewordsGame } from '@/lib/codewords'
-import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
+import { markGameFinished, type FinishGameResult, type FinishGuard } from '@/lib/game-finish'
 import {
   isAnonymousMessagesGame,
   isCodewordsGame,
@@ -106,7 +106,8 @@ export async function cleanupFinishedSession(
 
 /**
  * A host who leaves with nobody to hand the game to ends it. ONE conditional update decides it: still
- * waiting/active, nobody but the outgoing host hosts it, and nobody is nominated to take over — and the same
+ * waiting/active, still the session the leave inspected (a replay under the same id never matches), nobody but
+ * the outgoing host hosts it, and nobody is nominated to take over — and the same
  * update writes `result_reason: 'host_ended'`, so the finish and its classification can never be separated by a
  * lost response. Writes no cleanup: the persisted `host_ended` + `finished_at` are what
  * `completeHostLeftCleanup` keys on, so the cleanup runs (and re-runs) from them, whoever finished the game.
@@ -118,7 +119,8 @@ export async function finishGameOnHostLeft(
   supabase: SupabaseClient,
   gameId: string,
   rawGameType: string,
-  outgoingPlayerId: string
+  outgoingPlayerId: string,
+  session: NonNullable<FinishGuard['session']>
 ): Promise<'finished' | 'live' | 'error'> {
   const { error, won } = await markGameFinished(supabase, gameId, undefined, {
     finishGuard: {
@@ -126,6 +128,7 @@ export async function finishGameOnHostLeft(
       hostPlayerNullOr: outgoingPlayerId,
       noPendingHostNominee: true,
       resultReason: 'host_ended',
+      session,
     },
     // Same durability as every other force-finish of Word Rush (see adminEndGame).
     trackBookkeeping: isWordRushGame(parseGameType(rawGameType)),
