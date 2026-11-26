@@ -233,16 +233,18 @@ describe('adminEndGame — every post-finish wipe is bound to the finished sessi
   it.each(['codewords', 'anonymous_messages', 'secret_message'])(
     '%s: a won finish wipes only rows created up to the finished_at it wrote',
     async (gameType) => {
-      markGameFinished.mockImplementation(async (_s: unknown, _g: string, finishedAt?: string) => ({
-        error: null,
-        won: true,
-        finishedAt: finishedAt ?? '2026-02-02T00:00:00.000Z',
-      }))
+      let written: string | undefined
+      markGameFinished.mockImplementation(async (_s: unknown, _g: string, finishedAt?: string) => {
+        // The finished_at the (mocked) finish wrote: the caller's own when it supplied one, else a fixed value.
+        written = finishedAt ?? '2026-02-02T00:00:00.000Z'
+        return { error: null, won: true, finishedAt: written }
+      })
       const { supabase, recorded } = mockSupabase()
       await adminEndGame(supabase, { id: 'G', status: 'active', game_type: gameType })
-      expect(recorded.deletes.length).toBeGreaterThan(0)
-      expect(recorded.deleteBounds).toHaveLength(recorded.deletes.length)
-      expect(recorded.deleteBounds.every((b) => typeof b === 'string' && b.length > 0)).toBe(true)
+      // Exactly ONE session wipe, bound to EXACTLY the finished_at the finish wrote (not merely "some timestamp").
+      expect(written).toBeTruthy()
+      expect(recorded.deleteBounds).toEqual([written])
+      expect(recorded.deletes).toHaveLength(1)
     }
   )
 

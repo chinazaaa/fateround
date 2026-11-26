@@ -394,6 +394,36 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     poolUsage = nextPoolUsage
   }
 
+  // Resetting a LIVE game (a host abandoning an active round): the owed-bookkeeping check above read a snapshot, and a
+  // host-left finish can commit after it, leaving a marker whose bookkeeping reads the rows deleted below. So the first
+  // WRITE of the reset (before the participant list is replaced and before any delete) is ONE conditional UPDATE that
+  // flips the game to the lobby only while it is still the game that was read (same status) and owes nothing; the
+  // writes that follow run only if it matched. A finished or waiting game cannot gain a marker after the check (a
+  // finish needs a live game), so those need no fence. Idempotent: it runs once.
+  let fenced = false
+  const fenceLiveReset = async (): Promise<NextResponse | null> => {
+    if (fenced || game.status !== 'active') return null
+    const { data: matched, error: fenceError } = await getSupabaseAdmin()
+      .from('games')
+      .update({ status: 'waiting' })
+      .eq('id', gameId)
+      .eq('status', 'active')
+      .is('finish_bookkeeping', null)
+      .select('id')
+    if (fenceError) {
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', fenceError) }, { status: 500 })
+    }
+    if (!matched?.length) {
+      // It finished, or owes bookkeeping, since it was read: nothing has been touched.
+      return NextResponse.json(
+        { error: 'The game changed or is still being finalized — try again in a moment' },
+        { status: 409 }
+      )
+    }
+    fenced = true
+    return null
+  }
+
   if (rawParticipants !== undefined) {
     if (!canReplaceHostParticipantList(game)) {
       return NextResponse.json({ error: 'This game mode does not support replacing the name list' }, { status: 400 })
@@ -404,6 +434,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       return NextResponse.json({ error: 'Add at least one valid name' }, { status: 400 })
     }
 
+    const fenceFirst = await fenceLiveReset()
+    if (fenceFirst) return fenceFirst
+
     const { error: replaceError } = await replaceHostParticipantList(supabase, gameId, nextParticipants)
     if (replaceError) return NextResponse.json({ error: replaceError }, { status: 500 })
 
@@ -413,6 +446,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   gameUpdate.pool_usage = poolUsage
 
   const admin = getSupabaseAdmin()
+
+  const fenceResponse = await fenceLiveReset()
+  if (fenceResponse) return fenceResponse
 
   const { error: votesError } = await admin.from('votes').delete().eq('game_id', gameId)
   if (votesError)

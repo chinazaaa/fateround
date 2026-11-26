@@ -49,6 +49,7 @@ type Row = Record<string, unknown>
  * (`keepSeat`: a finisher's row) answers success but stays. `onCall` runs after the removal.
  */
 function removed(r: { error: string | null; onCall: (() => void) | null }, playerId: string) {
+  removalCalls++
   if (!r.error && !keepSeat) deletePlayers([playerId])
   r.onCall?.()
   return { error: r.error }
@@ -61,6 +62,10 @@ let keepSeat = false
 let failPlayerDelete = false
 /** Runs right after a players delete committed (and its ON DELETE SET NULL ran): e.g. a claim lands. */
 let afterPlayerDelete: (() => void) | null = null
+/** Runs once, right after the FIRST games read (the one that authorises the leave). */
+let afterFirstGamesRead: (() => void) | null = null
+/** Runs once, just BEFORE the seat delete (remove_player_if_game_open): a finish lands after the status was read. */
+let beforeSeatDelete: (() => void) | null = null
 /** Runs once, just BEFORE end_game_if_host_alone is evaluated (a stalled leave: the world moves on meanwhile). */
 let beforeEndCheck: (() => void) | null = null
 /** Every games update the route attempted: its patch and how many rows it matched. */
@@ -69,6 +74,8 @@ let gameUpdateLog: Array<{ patch: Row; matched: number }> = []
 let roundUpdateLog: Row[] = []
 /** The retained-seat linkage clear (a games update of host_user_id alone) fails. */
 let failLinkageClear = false
+/** How many times a per-game removal helper ran. */
+let removalCalls = 0
 let tables: Record<string, Row[]> = {}
 
 /** Deleting players models ON DELETE SET NULL for the games columns that reference them. */
@@ -117,6 +124,11 @@ function builder(table: string) {
       out = out.sort((a, b) => ((a[col] as number) - (b[col] as number)) * (asc ? 1 : -1))
     }
     if (limitTo !== null) out = out.slice(0, limitTo)
+    if (table === 'games' && afterFirstGamesRead) {
+      const hook = afterFirstGamesRead
+      afterFirstGamesRead = null
+      hook()
+    }
     return { data: out, error: null }
   }
   const api: Record<string, unknown> = {
@@ -229,7 +241,7 @@ function endModel(a: {
   if (g.status === 'finished') {
     return g.result_reason === 'host_ended'
       ? { status: 'finished', finished_now: false, finished_at: g.finished_at }
-      : { status: 'continue' }
+      : { status: 'continue', game_status: g.status }
   }
   const eligible = tables.players.some(
     (p) => p.game_id === g.id && !p.is_bot && !p.spectator && p.id !== a.p_outgoing_player_id
@@ -242,7 +254,7 @@ function endModel(a: {
     g.pending_host_player_id != null ||
     eligible
   ) {
-    return { status: 'continue' }
+    return { status: 'continue', game_status: g.status }
   }
   Object.assign(g, { status: 'finished', finished_at: FINISHED_AT, result_reason: 'host_ended' })
   return { status: 'finished', finished_now: true, finished_at: FINISHED_AT }
@@ -257,6 +269,19 @@ let wipeCalls: Array<{ p_game_id: string; p_finished_at: string; p_kind: string 
  * finished_at the caller names (no created_at comparison at all).
  */
 async function rpc(name: string, args: Record<string, unknown>) {
+  if (name === 'remove_player_if_game_open') {
+    const hook = beforeSeatDelete
+    beforeSeatDelete = null
+    hook?.()
+    if (failPlayerDelete) return { data: null, error: { message: 'delete failed' } }
+    const a = args as { p_game_id: string; p_player_id: string }
+    const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
+    if (!g) return { data: { status: 'game_missing' }, error: null }
+    if (g.status === 'finished') return { data: { status: 'game_finished' }, error: null }
+    deletePlayers([a.p_player_id])
+    afterPlayerDelete?.()
+    return { data: { status: 'deleted' }, error: null }
+  }
   if (name === 'end_game_if_host_alone') {
     if (failEndCheck) return { data: null, error: { message: 'rpc unreachable' } }
     const hook = beforeEndCheck
@@ -355,6 +380,9 @@ beforeEach(() => {
   failPlayerDelete = false
   afterPlayerDelete = null
   beforeEndCheck = null
+  beforeSeatDelete = null
+  afterFirstGamesRead = null
+  removalCalls = 0
   gameUpdateLog = []
   roundUpdateLog = []
   failLinkageClear = false
@@ -990,6 +1018,105 @@ describe('DELETE /api/players: removal disposition is carried separately from th
     const body = (await res.json()) as { error: string; handoff?: string }
     expect(body.handoff).toBeUndefined()
     expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+})
+
+describe('DELETE /api/players: a finish that lands after the status was read never loses a seat', () => {
+  it.each(['codewords', 'trivia'])(
+    '%s: a non-host leave whose game finishes right before the delete keeps the seat and answers a retained leave',
+    async (type) => {
+      setup(type)
+      tables.players.push(player(THIRD_PID, 'Third', 3, { resume_token: 'YYYY8888' }))
+      beforeSeatDelete = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+      const res = await DELETE(
+        new NextRequest('https://x.test/api/players', {
+          method: 'DELETE',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ gameCode: 'abcd', playerId: THIRD_PID, resumeToken: 'YYYY8888' }),
+        })
+      )
+      expect(res.status).toBe(200)
+      expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+      expect(tables.players.map((p) => p.id)).toContain(THIRD_PID)
+    }
+  )
+
+  it('a Codewords HOST whose game finished (another reason) between the capture and the end check keeps the seat', async () => {
+    setup('codewords')
+    beforeEndCheck = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    // The seat belongs to a result now: not deleted, no handoff written.
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(tables.games[0].pending_host_player_id).toBeNull()
+    expect(endCalls).toEqual([{ status: 'continue', game_status: 'finished' }])
+  })
+
+  it('a Codewords host whose game finishes AFTER the end check but before the delete keeps the seat (the delete itself is conditional)', async () => {
+    setup('codewords')
+    beforeSeatDelete = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(tables.games[0].pending_host_player_id).toBeNull()
+  })
+
+  it('a still-open game deletes the seat as before', async () => {
+    setup('codewords')
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+})
+
+describe('DELETE /api/players: a finish that landed before the host capture is seen by every removal helper', () => {
+  it('a game finished (another reason) between the session read and the host-capture read: the removal helper never runs', async () => {
+    setup('uno')
+    afterFirstGamesRead = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(removalCalls).toBe(0)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+  })
+
+  it('a game finished (another reason) between the capture and the end check: the removal helper never runs', async () => {
+    setup('uno')
+    beforeEndCheck = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(removalCalls).toBe(0)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+  })
+})
+
+describe('DELETE /api/players: a known-retained seat is never reported as an unresolved handoff', () => {
+  it('a retained finished-game leave whose settle step is unreachable answers a retryable error, and the repeat works', async () => {
+    setup('uno', { status: 'finished', result_reason: 'admin_ended', finished_at: 'F' })
+    settleFailBudget = 99
+    const first = await leave()
+    expect(first.status).toBe(500)
+    const body = (await first.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBeUndefined()
+    expect(body.error).toMatch(/try again/i)
+    // The seat is retained, so the resume token still works.
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    settleFailBudget = 0
+    const retry = await leave()
+    expect(retry.status).toBe(200)
+  })
+
+  it('a SEAT THAT WAS DELETED with an unreachable settle step is still reported as unresolved, never as retryable', async () => {
+    setup('uno')
+    settleFailBudget = 99
+    const res = await leave()
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).not.toMatch(/try again|retry/i)
   })
 })
 

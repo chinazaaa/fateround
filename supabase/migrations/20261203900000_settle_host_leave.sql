@@ -113,16 +113,18 @@ begin
   end if;
 
   -- Hostless (or a nominee that no longer exists): hand over to the oldest eligible player, chosen in this
-  -- transaction. FOR KEY SHARE on the chosen row makes a concurrent DELETE of that player wait until this
-  -- transaction commits, so the nominee cannot leave between the choice and the write. (A join takes KEY SHARE on
-  -- this games row through its foreign key, which conflicts with the FOR UPDATE above: a join either committed
-  -- before this read, and is a candidate, or waits until this transaction ends.)
+  -- transaction. FOR NO KEY UPDATE on the chosen row makes a concurrent DELETE of that player AND a concurrent
+  -- ordinary UPDATE of it (a spectator or bot flag, a rename) wait until this transaction commits, so the nominee
+  -- cannot leave or stop being eligible between the choice and the write; the eligibility columns are therefore
+  -- still true when the nomination is written and need no re-check. (FOR KEY SHARE would only have blocked the
+  -- delete.) A join takes KEY SHARE on this games row through its foreign key, which conflicts with the FOR UPDATE
+  -- above: a join either committed before this read, and is a candidate, or waits until this transaction ends.
   select id into v_successor
     from public.players
     where game_id = v_id and is_bot = false and spectator = false and id <> p_outgoing_player_id
     order by joined_at, id
     limit 1
-    for key share;
+    for no key update;
 
   if v_successor is not null then
     update public.games
@@ -192,7 +194,8 @@ begin
     if v_game.result_reason = 'host_ended' then
       return jsonb_build_object('status', 'finished', 'finished_now', false, 'finished_at', v_game.finished_at);
     end if;
-    return jsonb_build_object('status', 'continue');
+    -- Finished for another reason: the caller must not remove the host's seat from a finished result.
+    return jsonb_build_object('status', 'continue', 'game_status', v_game.status);
   end if;
 
   if v_game.status not in ('waiting', 'active')
@@ -204,7 +207,7 @@ begin
        select 1 from public.players
        where game_id = v_id and is_bot = false and spectator = false and id <> p_outgoing_player_id
      ) then
-    return jsonb_build_object('status', 'continue');
+    return jsonb_build_object('status', 'continue', 'game_status', v_game.status);
   end if;
 
   v_now := now();
@@ -220,3 +223,37 @@ $$;
 
 revoke execute on function public.end_game_if_host_alone(text, uuid, timestamptz, integer) from public, anon, authenticated;
 grant execute on function public.end_game_if_host_alone(text, uuid, timestamptz, integer) to service_role;
+
+-- Remove a player's seat only while the game is still open. The caller's own status read can be stale by the time it
+-- deletes (another request finishes the game in between), and deleting a seat of a FINISHED game erases that
+-- player's row from the result (the score tables cascade off it). The game row is locked FOR SHARE, which conflicts
+-- with the UPDATE that finishes a game, so the delete either happens while the game is open or does not happen.
+create or replace function public.remove_player_if_game_open(
+  p_game_id text,
+  p_player_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+begin
+  if p_game_id is null or p_player_id is null then
+    raise exception 'remove_player_if_game_open: game id and player id are required';
+  end if;
+  select status into v_status from public.games where id = upper(p_game_id) for share;
+  if not found then
+    return jsonb_build_object('status', 'game_missing');
+  end if;
+  if v_status = 'finished' then
+    return jsonb_build_object('status', 'game_finished');
+  end if;
+  delete from public.players where id = p_player_id and game_id = upper(p_game_id);
+  return jsonb_build_object('status', 'deleted');
+end;
+$$;
+
+revoke execute on function public.remove_player_if_game_open(text, uuid) from public, anon, authenticated;
+grant execute on function public.remove_player_if_game_open(text, uuid) to service_role;

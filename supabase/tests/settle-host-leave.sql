@@ -195,6 +195,8 @@ select pg_temp.assert_eq('12 marker', (pg_temp.g('STE')).finish_bookkeeping->>'a
 select pg_temp.mk('STF', 'finished');
 update public.games set result_reason = 'admin_ended' where id = 'STF';
 select pg_temp.assert_eq('12 finished for another reason: continue', pg_temp.alone('STF')->>'status', 'continue');
+select pg_temp.assert_eq('12 ... and says the game is finished (the seat must be kept)', pg_temp.alone('STF')->>'game_status', 'finished');
+select pg_temp.assert_eq('12 live continue reports the live status', pg_temp.alone('ST1')->>'game_status', 'active');
 do $$ begin
   perform public.end_game_if_host_alone(null, '00000000-0000-0000-0000-000000000001', null, 1);
   raise exception 'FAIL: NULL game id accepted';
@@ -205,5 +207,26 @@ end $$;
 -- 13. FOR KEY SHARE with ORDER BY ... LIMIT 1 is accepted and still picks the oldest eligible player.
 select pg_temp.mk('STG', 'active');
 select pg_temp.assert_eq('13 oldest picked under the row lock', pg_temp.settle('STG')->>'nominee', pg_temp.early('STG')::text);
+
+-- 14. remove_player_if_game_open: deletes the seat only while the game is open (the caller's status read can be stale).
+select pg_temp.mk('STH', 'active');
+select pg_temp.assert_eq('14 open: deleted', public.remove_player_if_game_open('STH', pg_temp.late('STH'))->>'status', 'deleted');
+select pg_temp.assert_eq('14 open: gone', (select count(*) from public.players where id = pg_temp.late('STH')), 0::bigint);
+update public.games set status = 'finished' where id = 'STH';
+select pg_temp.assert_eq('14 finished: refused', public.remove_player_if_game_open('STH', pg_temp.early('STH'))->>'status', 'game_finished');
+select pg_temp.assert_eq('14 finished: seat kept', (select count(*) from public.players where id = pg_temp.early('STH')), 1::bigint);
+select pg_temp.assert_eq('14 missing game', public.remove_player_if_game_open('NOPE1', pg_temp.early('STH'))->>'status', 'game_missing');
+select pg_temp.mk('STI', 'waiting');
+select pg_temp.assert_eq('14 lobby: deleted', public.remove_player_if_game_open('STI', pg_temp.early('STI'))->>'status', 'deleted');
+-- A player of ANOTHER game is never deleted through the wrong game id.
+select pg_temp.mk('STJ', 'active');
+select public.remove_player_if_game_open('STI', pg_temp.late('STJ'));
+select pg_temp.assert_eq('14 wrong game id: the other game keeps its seat', (select count(*) from public.players where id = pg_temp.late('STJ')), 1::bigint);
+do $$ begin
+  perform public.remove_player_if_game_open(null, '00000000-0000-0000-0000-000000000001');
+  raise exception 'FAIL: NULL game id accepted';
+exception when raise_exception then
+  if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
 
 rollback;

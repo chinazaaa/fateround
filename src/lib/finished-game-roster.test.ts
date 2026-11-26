@@ -57,8 +57,10 @@ describe('removal from a finished game', () => {
 
   it('runs before the generic delete too', () => {
     const guardAt = deleteHandler.search(/status === 'finished'/)
-    const genericDelete = deleteHandler.search(/from\('players'\)\s*\.delete\(\)/)
+    // The generic removal is the conditional `remove_player_if_game_open` (it re-checks the status under a lock).
+    const genericDelete = deleteHandler.search(/removePlayerIfGameOpen\(/)
     expect(genericDelete).toBeGreaterThan(guardAt)
+    expect(deleteHandler).not.toMatch(/from\('players'\)\s*\.delete\(\)/)
   })
 
   it("unsubscribes the leaver from this game's pushes", () => {

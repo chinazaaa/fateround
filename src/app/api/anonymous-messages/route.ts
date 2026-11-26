@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
 
   if (isAnonymousMessagesGame(gameType)) {
     if (anonymousSessionExpired(game.session_started_at)) {
-      await finishExpiredAnonymousSession(supabase, { ...game, id: gameCode })
+      // Service role: the finish's session wipe (wipe_finished_session_rows) is granted to service_role only, so an
+      // anon client would finish the room and then fail to clean it up.
+      await finishExpiredAnonymousSession(getSupabaseAdmin(), { ...game, id: gameCode })
       return NextResponse.json({ error: 'Session has ended' }, { status: 400 })
     }
   }

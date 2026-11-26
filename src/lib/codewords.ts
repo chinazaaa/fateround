@@ -685,14 +685,30 @@ export async function removeCodewordsPlayerRole(
   return { error: null }
 }
 
+/**
+ * Delete the seat only while the game is still open, decided in the database under a lock on the game row (see
+ * remove_player_if_game_open): a finish that landed after the caller read the status keeps the seat, and the
+ * caller answers it like any leave of a finished game. `gameFinished` is true when nothing was deleted for that reason.
+ */
+export async function removePlayerIfGameOpen(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error: string | null; gameFinished: boolean }> {
+  const { data, error } = await supabase.rpc('remove_player_if_game_open', {
+    p_game_id: gameId,
+    p_player_id: playerId,
+  })
+  if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
+  return { error: null, gameFinished: (data as { status?: string } | null)?.status === 'game_finished' }
+}
+
 export async function removeCodewordsPlayer(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
-): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  if (error) return { error: internalErrorMessage('codewords', error) }
-  return { error: null }
+): Promise<{ error: string | null; gameFinished: boolean }> {
+  return removePlayerIfGameOpen(supabase, gameId, playerId)
 }
 
 export type CodewordsRemovalOutcome = {

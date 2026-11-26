@@ -58,11 +58,16 @@ const anon = makeClient()
 const admin = makeClient()
 vi.mock('@/lib/supabase-anon', () => ({ getSupabaseAnon: () => anon }))
 vi.mock('@/lib/supabase-admin', () => ({ getSupabaseAdmin: () => admin }))
+const expired = vi.hoisted(() => ({ value: false, clients: [] as unknown[] }))
 vi.mock('@/lib/anonymous-messages', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/anonymous-messages')>()),
   trimAnonymousMessagesIfDue: async () => {},
   anonymousPlayerCanPost: () => true,
-  anonymousSessionExpired: () => false,
+  anonymousSessionExpired: () => expired.value,
+  finishExpiredAnonymousSession: async (client: unknown) => {
+    expired.clients.push(client)
+    return true
+  },
   isPlayerBanned: () => false,
 }))
 
@@ -84,6 +89,8 @@ async function send(body: Record<string, unknown>) {
 beforeEach(async () => {
   POST ??= (await import('./route')).POST
   const { resetGameActivityThrottle } = await import('@/lib/game-activity')
+  expired.value = false
+  expired.clients = []
   rpc.mockClear()
   insert.mockClear()
   insertResult.value = { data: { status: 'inserted' }, error: null }
@@ -170,5 +177,15 @@ describe('POST /api/anonymous-messages', () => {
     insertResult.value = { data: null, error: { message: 'boom' } }
     const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text: 'x' })
     expect(res.status).toBe(500)
+  })
+
+  it('finishes an expired room with the SERVICE-ROLE client (the session wipe is granted to service_role only)', async () => {
+    expired.value = true
+    const res = await send({ gameId: 'abcd', resumeToken: PLAYER.resume_token, text: 'late' })
+    expect(res.status).toBe(400)
+    expect(expired.clients).toHaveLength(1)
+    expect(expired.clients[0]).toBe(admin)
+    expect(expired.clients[0]).not.toBe(anon)
+    expect(insert).not.toHaveBeenCalled()
   })
 })

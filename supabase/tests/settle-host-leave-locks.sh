@@ -26,7 +26,7 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 
 cleanup() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'shl-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('SHLA', 'SHLB')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('SHLA', 'SHLB', 'SHLC')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 cleanup
@@ -34,6 +34,7 @@ cleanup
 HOST=00000000-0000-0000-0000-00000000e001
 OTHER=00000000-0000-0000-0000-00000000e002
 JOINER=00000000-0000-0000-0000-00000000e003
+OTHER2=00000000-0000-0000-0000-00000000e005
 GONE=00000000-0000-0000-0000-00000000e004 # the leaver of case B: no seat row
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
@@ -97,5 +98,24 @@ wait_for "both sessions finished" "select not exists (select 1 from pg_stat_acti
 # The nomination committed first; the delete then ran (the foreign key nulls the nominee reference).
 [ "$(psqlq -c "select count(*) from public.players where id = '$OTHER'")" = "0" ] || fail "case B: the delete did not complete"
 [ "$(psqlq -c "select pending_host_nominated_at is not null from public.games where id = 'SHLB'")" = "t" ] || fail "case B: the nomination did not commit: $(cat "$OUT_S")"
+
+# ---- Case C: a non-key update of the nominee vs the nomination -----------------------------------------------
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('SHLC', 'lock test C', 'tok-shlc', 'uno', 'active');
+insert into public.players (id, game_id, name, joined_at) values ('$OTHER2', 'SHLC', 'Other', now());
+SQL
+start_gate
+PGAPPNAME=shl-settle2 psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+  begin;
+  select public.settle_host_leave('SHLC', '$GONE', null, null, 1);
+  select pg_advisory_xact_lock($GATE);
+  commit;" >/dev/null 2>&1 &
+wait_for "settle holds its locks (case C)" "select exists (select 1 from pg_stat_activity where application_name = 'shl-settle2' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+PGAPPNAME=shl-flag psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "update public.players set spectator = true where id = '$OTHER2'" >/dev/null 2>&1 &
+wait_for "the spectator-flag UPDATE waits for the nomination" "select exists (select 1 from pg_stat_activity where application_name = 'shl-flag' and wait_event_type = 'Lock')"
+[ "$(psqlq -c "select spectator from public.players where id = '$OTHER2'")" = "f" ] || fail "case C: the flag changed while the nomination was in flight"
+open_gate
+wait_for "both sessions finished (case C)" "select not exists (select 1 from pg_stat_activity where application_name in ('shl-settle2', 'shl-flag'))"
+[ "$(psqlq -c "select pending_host_player_id is not null from public.games where id = 'SHLC'")" = "t" ] || fail "case C: the nomination did not commit"
 
 echo "ok"
