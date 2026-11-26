@@ -97,11 +97,13 @@ async function finalizeScrabbleSession(
   supabase: SupabaseClient,
   gameId: string,
   reason: string
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; skipped?: boolean }> {
   const { session, error: loadError } = await loadSession(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
-  if (session.phase === 'finished') return { error: null }
+  // Already finished: scores are written exactly once by whoever claimed the session, so do NOT tally again.
+  // Only complete the games-row flip (idempotent single-winner CAS) in case the claimer's flip failed.
+  if (session.phase === 'finished') return completeGameFlip(supabase, gameId)
 
   const { data: statesRaw } = await supabase.from('scrabble_player_state').select('*').eq('game_id', gameId)
   const states = (statesRaw ?? []) as ScrabblePlayerState[]
@@ -127,16 +129,28 @@ async function finalizeScrabbleSession(
     session.updated_at
   )
   if (persisted.error) return { error: persisted.error }
-  if (!persisted.won) return { error: null }
+  if (!persisted.won) {
+    // Lost the claim. If the round is finished now, someone else ended it (success). If it is still
+    // running, a play/pass moved the session first and THIS request did not end the round.
+    const { session: after } = await loadSession(supabase, gameId)
+    return after?.phase === 'finished' ? { error: null } : { error: null, skipped: true }
+  }
 
   await persistFinalScores(supabase, states, result.finalScores)
-  const flipped = await markGameFinished(supabase, gameId)
-  // The session is already finished: a failed games-row flip must not read as a clean finish.
+  return completeGameFlip(supabase, gameId)
+}
+
+/** Flip games.status active -> finished once (single-winner CAS). A failed flip is an error, not a clean finish. */
+async function completeGameFlip(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
+  const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
   return { error: flipped.error ? internalErrorMessage('scrabble', flipped.error) : null }
 }
 
 /** End the game now because the session clock ran out. */
-async function finishScrabbleByTimeLimit(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
+async function finishScrabbleByTimeLimit(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error: string | null; skipped?: boolean }> {
   return finalizeScrabbleSession(supabase, gameId, "Time's up!")
 }
 
@@ -145,7 +159,7 @@ async function finishScrabbleByTimeLimit(supabase: SupabaseClient, gameId: strin
 export async function finishScrabbleGameEarly(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; skipped?: boolean }> {
   return finalizeScrabbleSession(supabase, gameId, 'Host ended the game.')
 }
 
@@ -1044,8 +1058,17 @@ async function removeScrabblePlayerOnce(
     if (turnOrder.length === 0) currentTurnIndex = 0
 
     const removedName = playerName ?? 'A player'
-    const { data: statesRaw } = await supabase.from('scrabble_player_state').select('*').eq('game_id', gameId)
-    const states = ((statesRaw ?? []) as ScrabblePlayerState[]).filter((s) => s.player_id !== playerId)
+    const { data: statesRaw, error: statesError } = await supabase
+      .from('scrabble_player_state')
+      .select('*')
+      .eq('game_id', gameId)
+    // A failed read is not "no seats": states = [] would let a chess-clock game finish with no winner.
+    // Stop before any write, so the session and the player stay untouched and the leave can be retried.
+    if (statesError) return { error: internalErrorMessage('scrabble', statesError) }
+    // Only seats still in the (freshly read) turn order count: a concurrent leave that already shrank
+    // turn_order but has not yet deleted its state row must not count as a winner / active seat / tie.
+    const remaining = new Set(turnOrder)
+    const states = ((statesRaw ?? []) as ScrabblePlayerState[]).filter((s) => remaining.has(s.player_id))
     const names = await loadPlayerNames(supabase, gameId)
 
     const update: Record<string, unknown> = {
