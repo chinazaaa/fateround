@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('server-only', () => ({}))
@@ -86,8 +86,12 @@ const chessSession = (statusMessage: string) => ({
   status_message: statusMessage,
 })
 
-beforeEach(async () => {
-  DELETE ??= (await import('./route')).DELETE
+// The route module is large: load it once, outside any single test's timeout, even on a loaded CI runner.
+beforeAll(async () => {
+  DELETE = (await import('./route')).DELETE
+}, 120_000)
+
+beforeEach(() => {
   deletes.length = 0
   for (const k of Object.keys(failNext)) delete failNext[k]
 })

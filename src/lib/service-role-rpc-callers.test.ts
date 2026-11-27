@@ -15,6 +15,7 @@ const ALLOWED: Record<string, string[]> = {
   wipe_finished_session_rows: ['src/lib/session-clear.ts'],
   insert_anonymous_message_if_active: ['src/app/api/anonymous-messages/route.ts'],
   insert_codewords_message_if_active: ['src/app/api/codewords/chat/route.ts'],
+  remove_player_if_game_open: ['src/lib/codewords.ts'],
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {
