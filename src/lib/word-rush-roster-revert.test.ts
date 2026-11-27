@@ -31,7 +31,7 @@ describe('revertWordRushRosterAfterFailedPlayerDelete', () => {
     const client = {
       rpc: async (name: string, args: Record<string, unknown>) => (
         calls.push({ name, args }),
-        { data: null, error: null }
+        { data: { status: 'restored' }, error: null }
       ),
     } as unknown as SupabaseClient
     await revertWordRushRosterAfterFailedPlayerDelete(client, 'GAME', snapshot)
@@ -51,10 +51,38 @@ describe('revertWordRushRosterAfterFailedPlayerDelete', () => {
     ])
   })
 
+  it.each(['restored', 'not_current_session', 'no_seat'])('reports a %s answer', async (status) => {
+    const client = { rpc: async () => ({ data: { status }, error: null }) } as unknown as SupabaseClient
+    expect(await revertWordRushRosterAfterFailedPlayerDelete(client, 'GAME', snapshot)).toBe(status)
+  })
+
+  it('retries a transport error and reports `failed` only after every attempt (the roster is not restored)', async () => {
+    let calls = 0
+    const down = {
+      rpc: async () => (calls++, { data: null, error: { message: 'unreachable' } }),
+    } as unknown as SupabaseClient
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await revertWordRushRosterAfterFailedPlayerDelete(down, 'GAME', snapshot)).toBe('failed')
+      expect(calls).toBe(3)
+    } finally {
+      log.mockRestore()
+    }
+    let n = 0
+    const flaky = {
+      rpc: async () =>
+        n++ === 0 ? { data: null, error: { message: 'blip' } } : { data: { status: 'restored' }, error: null },
+    } as unknown as SupabaseClient
+    expect(await revertWordRushRosterAfterFailedPlayerDelete(flaky, 'GAME', snapshot)).toBe('restored')
+  })
+
   it('leaves the prompt setter alone when the removal did not reassign it', async () => {
     const calls: Array<Record<string, unknown>> = []
     const client = {
-      rpc: async (_n: string, args: Record<string, unknown>) => (calls.push(args), { data: null, error: null }),
+      rpc: async (_n: string, args: Record<string, unknown>) => (
+        calls.push(args),
+        { data: { status: 'restored' }, error: null }
+      ),
     } as unknown as SupabaseClient
     const { setter_after: _unused, ...untouched } = snapshot
     void _unused

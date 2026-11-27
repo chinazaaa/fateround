@@ -18,6 +18,7 @@ const ALLOWED: Record<string, string[]> = {
   remove_player_if_game_open: ['src/lib/codewords.ts'],
   start_two_truths_game: ['src/app/api/games/[code]/start/route.ts'],
   word_rush_restore_roster_member: ['src/lib/word-rush-server.ts'],
+  finish_rounds_of_finished_session: ['src/lib/admin-end-game.ts'],
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

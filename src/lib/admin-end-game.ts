@@ -64,14 +64,25 @@ async function finishGameRounds(
   endedAt: string,
   startedNoLaterThan?: string
 ): Promise<string | null> {
-  let update = supabase
-    .from('rounds')
-    .update({ status: 'finished', ended_at: endedAt })
-    .eq('game_id', gameId)
-    .eq('status', 'active')
-  if (startedNoLaterThan) update = update.lte('started_at', startedNoLaterThan)
-  const { error } = await update
-  if (error) return internalErrorMessage('admin-end-game', error)
+  if (startedNoLaterThan) {
+    // The cleanup of an already FINISHED session: decided in the database, bound to that session under the games row
+    // lock (it must still be finished with exactly this finished_at), so a replayed session's live round is never
+    // finished by a late cleanup. A timestamp cutoff alone cannot identify the session (the clocks differ).
+    const { data, error } = await supabase.rpc('finish_rounds_of_finished_session', {
+      p_game_id: gameId,
+      p_finished_at: startedNoLaterThan,
+    })
+    if (error) return internalErrorMessage('admin-end-game', error)
+    // A replayed or missing game has nothing left to clean up for this session (and its new rounds are not ours).
+    if ((data as { status?: string } | null)?.status !== 'finished_session') return null
+  } else {
+    const { error } = await supabase
+      .from('rounds')
+      .update({ status: 'finished', ended_at: endedAt })
+      .eq('game_id', gameId)
+      .eq('status', 'active')
+    if (error) return internalErrorMessage('admin-end-game', error)
+  }
   if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId, startedNoLaterThan))) {
     return 'Could not reveal every Two Truths round'
   }

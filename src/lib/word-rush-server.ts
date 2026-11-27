@@ -1067,22 +1067,39 @@ export type WordRushRosterSnapshot = {
   setter_after?: string | null
 }
 
+/**
+ * `restored` (put back), `not_current_session` (the session was replaced: nothing of the old one is ours to restore),
+ * `no_seat` (the player no longer has a seat, so there is nothing to put back) or `failed` (the database could not be
+ * reached after every attempt: the roster still lacks a player who kept their seat, which the caller must not call done).
+ */
+export type WordRushRestoreResult = 'restored' | 'not_current_session' | 'no_seat' | 'failed'
+
+const RESTORE_ATTEMPTS = 3
+
 export async function revertWordRushRosterAfterFailedPlayerDelete(
   supabase: SupabaseClient,
   gameId: string,
   snapshot: WordRushRosterSnapshot
-): Promise<void> {
-  // One database step (word_rush_restore_roster_member): it re-adds just this player under the session row lock, and
-  // restores the prompt setter only if it is still the one the removal assigned.
-  await supabase.rpc('word_rush_restore_roster_member', {
-    p_game_id: gameId,
-    p_session_id: snapshot.session_id,
-    p_player_id: snapshot.removed_player_id,
-    p_index: snapshot.removed_index,
-    p_restore_setter: 'setter_after' in snapshot,
-    p_setter_after: snapshot.setter_after ?? null,
-    p_setter_before: snapshot.prompt_setter_player_id,
-  })
+): Promise<WordRushRestoreResult> {
+  // One database step (word_rush_restore_roster_member): it re-adds just this player under the games + session row
+  // locks (the same order as the seat removal), and restores the prompt setter only if it is still the one the removal
+  // assigned. Idempotent, so a transport error is simply retried.
+  for (let attempt = 0; attempt < RESTORE_ATTEMPTS; attempt++) {
+    const { data, error } = await supabase.rpc('word_rush_restore_roster_member', {
+      p_game_id: gameId,
+      p_session_id: snapshot.session_id,
+      p_player_id: snapshot.removed_player_id,
+      p_index: snapshot.removed_index,
+      p_restore_setter: 'setter_after' in snapshot,
+      p_setter_after: snapshot.setter_after ?? null,
+      p_setter_before: snapshot.prompt_setter_player_id,
+    })
+    if (error) continue
+    const status = (data as { status?: string } | null)?.status
+    if (status === 'restored' || status === 'not_current_session' || status === 'no_seat') return status
+  }
+  console.error(`word-rush: restoring the roster of ${gameId} after a retained leave failed`)
+  return 'failed'
 }
 
 export async function assignWordRushTeam(

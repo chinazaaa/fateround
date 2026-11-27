@@ -219,7 +219,10 @@ begin
      or v_game.sessions_played is distinct from p_sessions_played
      or v_game.session_started_at is distinct from p_session_started_at
      or v_game.host_player_id is distinct from p_outgoing_player_id
-     or v_game.pending_host_player_id is not null
+     -- (No clause for a pending nominee: a nominee only keeps the game alive while it is ELIGIBLE, and an eligible
+     -- nominee is itself an eligible player, covered by the roster check below. A nominee who became a spectator / bot
+     -- therefore no longer blocks the end, so the host leaving alone still ends the game BEFORE their seat and results
+     -- are deleted, instead of the settlement finishing it afterwards without them.)
      or exists (
        select 1 from public.players
        where game_id = v_id and is_bot = false and spectator = false and id <> p_outgoing_player_id
@@ -232,6 +235,7 @@ begin
     set status = 'finished',
         finished_at = v_now,
         result_reason = 'host_ended',
+        pending_host_player_id = null,
         finish_bookkeeping = case
           when p_track_bookkeeping then jsonb_build_object('finished_at', v_now, 'attempts', 0)
           else finish_bookkeeping
@@ -392,6 +396,13 @@ begin
   if p_game_id is null or p_session_id is null or p_player_id is null or p_index is null or p_restore_setter is null then
     raise exception 'word_rush_restore_roster_member: game id, session id, player id, index and setter flag are required';
   end if;
+  -- Same lock order as remove_player_if_game_open (games row first, then the rest): a seat delete that is committing
+  -- holds this lock, so the seat check below sees its result, and a restored roster entry can never outlive a
+  -- committed seat delete.
+  perform 1 from public.games where id = upper(p_game_id) for no key update;
+  if not found then
+    return jsonb_build_object('status', 'not_current_session');
+  end if;
   select * into v_session from public.word_rush_sessions
     where game_id = upper(p_game_id) and id = p_session_id for update;
   if not found then
@@ -420,3 +431,38 @@ $$;
 
 revoke execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid) from public, anon, authenticated;
 grant execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid) to service_role;
+
+-- Finish the still-active rounds of a FINISHED session, bound to that session in the same transaction: the games row is
+-- locked FOR SHARE (a Play Again / restart UPDATE of it waits) and must still be finished with exactly the finished_at
+-- the caller names, so a replayed session's live round is never touched. The started_at cutoff stays as a second bound.
+create or replace function public.finish_rounds_of_finished_session(
+  p_game_id text,
+  p_finished_at timestamptz
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_game public.games%rowtype;
+begin
+  if p_game_id is null or p_finished_at is null then
+    raise exception 'finish_rounds_of_finished_session: game id and finished_at are required';
+  end if;
+  select * into v_game from public.games where id = upper(p_game_id) for share;
+  if not found then
+    return jsonb_build_object('status', 'game_missing');
+  end if;
+  if v_game.status <> 'finished' or v_game.finished_at is distinct from p_finished_at then
+    return jsonb_build_object('status', 'not_current_session');
+  end if;
+  update public.rounds
+    set status = 'finished', ended_at = p_finished_at
+    where game_id = upper(p_game_id) and status = 'active' and started_at <= p_finished_at;
+  return jsonb_build_object('status', 'finished_session');
+end;
+$$;
+
+revoke execute on function public.finish_rounds_of_finished_session(text, timestamptz) from public, anon, authenticated;
+grant execute on function public.finish_rounds_of_finished_session(text, timestamptz) to service_role;

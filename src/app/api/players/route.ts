@@ -1869,7 +1869,13 @@ export async function DELETE(req: NextRequest) {
     // The removal's own failure is what the caller sees. If it had ALREADY deleted the seat (Codewords deletes the seat,
     // then its team reconcile can fail), the handoff is unresolved too, and the response says so alongside the original
     // error; if the seat is still there, the removal error stands alone and the leave can simply be repeated.
-    if (settled !== 'unresolved' || !ctx.seatMayBeRemoved) return res
+    if (settled !== 'unresolved') return res
+    // Whether the seat may be gone is known for the paths that track it. Every other per-game removal only reports an
+    // error, and a delete whose response was lost can still have committed, so read the seat back: only a seat that is
+    // verifiably still there leaves the error standing alone (the leave can be repeated); a missing or unreadable seat
+    // means the old resume token cannot retry and the handoff is unresolved.
+    if (!ctx.seatMayBeRemoved && (await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)) === 'present')
+      return res
     const original = (await res
       .clone()
       .json()
@@ -1900,6 +1906,18 @@ export async function DELETE(req: NextRequest) {
     },
     { status: 500 }
   )
+}
+
+/** Whether a player's seat still exists (`unknown` when it cannot be read). */
+async function seatPresence(gameId: string, playerId: string): Promise<'present' | 'absent' | 'unknown'> {
+  const { data, error } = await getSupabaseAdmin()
+    .from('players')
+    .select('id')
+    .eq('id', playerId)
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (error) return 'unknown'
+  return data ? 'present' : 'absent'
 }
 
 /** The host linkage and session captured BEFORE the leave writes anything (the seat delete nulls host_player_id). */
@@ -2180,7 +2198,8 @@ async function removePlayer(
         hostUserId: gameRow.host_user_id ?? null,
         session: { startedAt: gameRow.session_started_at ?? null, sessionsPlayed: gameRow.sessions_played ?? null },
       }
-      if ((gameRow.status === 'waiting' || gameRow.status === 'active') && !gameRow.pending_host_player_id) {
+      // Also with a pending nominee: the database counts a nominee only while it is eligible (a spectator is no successor).
+      if (gameRow.status === 'waiting' || gameRow.status === 'active') {
         const ended = await endGameIfHostAlone(leavingHost)
         // Nothing is removed yet: a failed end must not fall through and delete the host from a live game.
         if (ended === 'error') {
@@ -2427,16 +2446,6 @@ async function removePlayer(
   }
 
   // After a delete that reported an error, only a read-back tells "rejected" from "committed, response lost".
-  const seatPresence = async (): Promise<'present' | 'absent' | 'unknown'> => {
-    const { data, error } = await getSupabaseAdmin()
-      .from('players')
-      .select('id')
-      .eq('id', playerId)
-      .eq('game_id', id)
-      .maybeSingle()
-    if (error) return 'unknown'
-    return data ? 'present' : 'absent'
-  }
 
   {
     ctx.seatMayBeRemoved = true
@@ -2450,7 +2459,7 @@ async function removePlayer(
     )
     let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
     if (removal.error) {
-      const presence = await seatPresence()
+      const presence = await seatPresence(id, playerId)
       // Absent: the delete committed and only its response was lost, so the leave went through.
       seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
     } else if (removal.gameFinished) {
@@ -2460,7 +2469,15 @@ async function removePlayer(
     if (seat !== 'deleted') {
       // Roster compensation only when the seat is CONFIRMED to remain; an unknown outcome leaves it as it is.
       if (seat === 'retained' && wordRushRollback) {
-        await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+        const restored = await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+        // The seat stayed but the roster could not be put back: not a completed leave (a repeat goes through the
+        // finished-game branch, which does not compensate), so say so instead of answering success.
+        if (restored === 'failed') {
+          return NextResponse.json(
+            { error: 'Could not finish leaving the game: your place in the round could not be restored.' },
+            { status: 500 }
+          )
+        }
       }
       if (removal.error) return NextResponse.json({ error: removal.error }, { status: 500 })
       return retainedLeaveResponse(ctx, id, playerId)
