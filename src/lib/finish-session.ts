@@ -21,13 +21,19 @@ export type FinishResult = { won: boolean; already?: boolean; error?: string; ro
  * row under its lock and answers `lost` for another round (a rematch after the snapshot). Only the keys the caller
  * knows are sent.
  */
-export type FinishRound = { sessionStartedAt?: string | null; sessionsPlayed?: number | null }
+export type FinishRound = {
+  sessionStartedAt?: string | null
+  sessionsPlayed?: number | null
+  /** The time limit an expiry was decided with: a later extension changes it, so the finish answers `lost`. */
+  gameDurationSeconds?: number | null
+}
 
 export function roundPayload(round?: FinishRound): Record<string, unknown> | null {
   if (!round) return null
   return {
     ...(round.sessionStartedAt !== undefined ? { session_started_at: round.sessionStartedAt } : {}),
     ...(round.sessionsPlayed !== undefined ? { sessions_played: round.sessionsPlayed } : {}),
+    ...(round.gameDurationSeconds !== undefined ? { game_duration_seconds: round.gameDurationSeconds } : {}),
   }
 }
 

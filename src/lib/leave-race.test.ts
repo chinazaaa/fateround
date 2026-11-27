@@ -78,11 +78,18 @@ function finishRpc(tables: Tables, name: string, args: Record<string, unknown>):
     game.status = 'finished'
     return true
   }
-  const round = args.p_round as { session_started_at?: unknown; sessions_played?: unknown } | null | undefined
+  const round = args.p_round as
+    | { session_started_at?: unknown; sessions_played?: unknown; game_duration_seconds?: unknown }
+    | null
+    | undefined
   if (
     round &&
     (('sessions_played' in round && (game.sessions_played ?? null) !== round.sessions_played) ||
-      ('session_started_at' in round && (game.session_started_at ?? null) !== round.session_started_at))
+      ('session_started_at' in round && (game.session_started_at ?? null) !== round.session_started_at) ||
+      // (a fixture game row that carries no time limit is not compared)
+      ('game_duration_seconds' in round &&
+        game.game_duration_seconds !== undefined &&
+        game.game_duration_seconds !== round.game_duration_seconds))
   ) {
     return { status: 'lost', reason: 'round', games_flipped: false }
   }
@@ -847,6 +854,23 @@ function scrabbleTables(): Tables {
   }
 }
 
+describe('removeUnoPlayer — a finished round', () => {
+  it('a Team-Up leaver whose departure committed (left_player_ids) but whose rows remain gets its cleanup', async () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished', left_player_ids: ['A'] })
+    expect(await removeUnoPlayer(makeDb(t).supabase, 'G', 'A', 'A')).toEqual({ error: null })
+    expect(t.players.map((p) => p.id)).not.toContain('A')
+    expect(t.uno_player_hands.map((h) => h.player_id)).not.toContain('A')
+  })
+
+  it('a seat that never left stays retained in a finished round', async () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished', left_player_ids: ['A'] })
+    expect(await removeUnoPlayer(makeDb(t).supabase, 'G', 'B', 'B')).toEqual({ error: null, retained: true })
+    expect(t.players.map((p) => p.id)).toContain('B')
+  })
+})
+
 describe('removeScrabblePlayer — a reopened lobby', () => {
   it('deletes the seat of a leaver in a waiting lobby whose finished session is still around', async () => {
     const t = scrabbleTables()
@@ -885,7 +909,7 @@ describe('removeScrabblePlayer — a reopened lobby', () => {
     const t = scrabbleTables()
     t.games[0].status = 'finished'
     t.scrabble_sessions[0].phase = 'finished'
-    expect(await removeScrabblePlayer(makeDb(t).supabase, 'G', 'B', 'B')).toEqual({ error: null })
+    expect(await removeScrabblePlayer(makeDb(t).supabase, 'G', 'B', 'B')).toEqual({ error: null, retained: true })
     expect(t.players.map((p) => p.id)).toContain('B')
     expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B', 'C'])
   })
@@ -1216,6 +1240,32 @@ describe('Mercy knockout — committed in the same transaction as the move that 
     expect(JSON.stringify(t.uno_player_hands)).toBe(before)
     expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
     expect(t.uno_sessions[0].phase).toBe('swap_target')
+  })
+
+  it('a Roulette caster who has left does not block the Mercy finish: no write names the departed caster', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_no_mercy_win: 'last_standing' })
+    // A cast the Roulette and left (seat and hand row gone); B reveals the matching card as their 25th.
+    t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id === 'B' || h.player_id === 'C')
+    Object.assign(t.uno_sessions[0], {
+      turn_order: ['B', 'C'],
+      current_turn_index: 0,
+      phase: 'color_roulette',
+      color_roulette_player_id: 'B',
+      required_color: 'red',
+      last_play_player_id: 'A',
+      draw_pile: [card('hit')],
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 24 }, (_, i) => ({ ...card(`B${i}`), color: 'blue' }))
+    const db = makeDb(t)
+    const calls = spy(db)
+    expect(await processUnoDraw(db.supabase, 'G', 'B')).toEqual({})
+    const finish = calls.filter((c) => c.name === 'finish_uno_session')
+    expect(finish).toHaveLength(1)
+    expect((finish[0].args.p_hand_writes as { player_id: string }[]).map((w) => w.player_id)).not.toContain('A')
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(t.uno_sessions[0].winner_player_id).toBe('C')
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
   })
 
   it('a 0-rotation that hands a seat 25 cards commits the rotation and the knockout together', async () => {
@@ -1794,7 +1844,7 @@ describe('every Uno finish site is one finish_uno_session call', () => {
         t.uno_sessions[0].phase = 'finished'
       },
     })
-    expect(await removeUnoPlayer(hooked.supabase, 'G', 'B', 'B')).toEqual({ error: null })
+    expect(await removeUnoPlayer(hooked.supabase, 'G', 'B', 'B')).toEqual({ error: null, retained: true })
     expect(t.players.map((p) => p.id)).toContain('B')
     expect(t.uno_player_hands.map((h) => h.player_id)).toContain('B')
     expect(t.games[0].uno_series_scores).toEqual({})
@@ -2108,6 +2158,26 @@ describe('round binding of the Scrabble host finish and expiry', () => {
     expect(t.scrabble_sessions[0].phase).toBe('finished')
   })
 
+  it('an expiry decided with an older time limit loses to a host extension: the round keeps running', async () => {
+    const t = rackless()
+    // The caller's snapshot says 60 s (expired); the host extended the game to 120 s before the finish claim.
+    Object.assign(t.games[0], { game_duration_seconds: 120 })
+    const snapshot = {
+      id: 'G',
+      status: 'active',
+      session_started_at: '2020-01-01T00:00:00.000Z',
+      sessions_played: 1,
+      game_duration_seconds: 60,
+    }
+    expect(await finishExpiredScrabbleGame(makeDb(t).supabase, snapshot as never)).toEqual({ finished: false })
+    expect(t.scrabble_sessions[0].phase).toBe('playing')
+    expect(t.games[0].status).toBe('active')
+    // not extended: the same expiry finishes the round
+    t.games[0].game_duration_seconds = 60
+    expect(await finishExpiredScrabbleGame(makeDb(t).supabase, snapshot as never)).toEqual({ finished: true })
+    expect(t.scrabble_sessions[0].phase).toBe('finished')
+  })
+
   it('an expiry for the earlier round, after a replay left the old finished session in place, is not "finished"', async () => {
     const t = rackless()
     // Play Again: the games row is back to waiting with a new round identity; the finished session row is retained.
@@ -2152,7 +2222,7 @@ describe('Uno: optional attribution, committed timer finish, retained seats', ()
         Object.assign(t.uno_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
       },
     })
-    expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
     expect(t.players.map((p) => p.id)).toContain('C')
     expect(t.uno_player_hands.map((h) => h.player_id)).toContain('C')
   })
@@ -2175,7 +2245,7 @@ describe('Uno: optional attribution, committed timer finish, retained seats', ()
         Object.assign(t.scrabble_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
       },
     })
-    expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
     expect(t.players.map((p) => p.id)).toContain('C')
     expect(t.scrabble_player_state.map((x) => x.player_id)).toContain('C')
   })

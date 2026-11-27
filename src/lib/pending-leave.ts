@@ -1,7 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { completePendingRummyRemoval } from '@/lib/rummy'
-import { isCheckersGame, isChessGame, isDraughts10Game, isRummyGame, isWhotGame, parseGameType } from '@/lib/game-types'
+import {
+  isCheckersGame,
+  isChessGame,
+  isDraughts10Game,
+  isRummyGame,
+  isUnoGame,
+  isWhotGame,
+  parseGameType,
+} from '@/lib/game-types'
 
 /**
  * A forfeiting leave commits the finished session (and the games row) BEFORE the leaver's seat is
@@ -38,6 +46,7 @@ export async function completePendingFinishedLeave(
   }
 
   if (isWhotGame(gameType)) return completePendingWhotLeave(supabase, gameId, playerId)
+  if (isUnoGame(gameType)) return completePendingUnoLeave(supabase, gameId, playerId)
 
   if (isChessGame(gameType)) {
     return completePendingForfeit(supabase, 'chess_sessions', ['player_white_id', 'player_black_id'], {
@@ -137,4 +146,43 @@ async function completePendingForfeit(
 
   const { error } = await supabase.from('players').delete().eq('id', ctx.playerId).eq('game_id', ctx.gameId)
   return error ? fail(ctx.scope, error) : { error: null }
+}
+
+/**
+ * Uno Team-Up: a leave keeps the leaver's seat in turn_order (teams derive from seat parity) and COMMITS the departure
+ * as membership in left_player_ids before it deletes the rows. A seat in left_player_ids whose player row is still
+ * there is therefore pending cleanup; a finisher or a seat that never left is not in that list and stays retained.
+ */
+async function completePendingUnoLeave(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<PendingLeaveResult | null> {
+  const { data: session, error: sessionError } = await supabase
+    .from('uno_sessions')
+    .select('left_player_ids')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (sessionError) return fail('uno', sessionError)
+  if (!session || !((session as { left_player_ids?: string[] | null }).left_player_ids ?? []).includes(playerId)) {
+    return null
+  }
+
+  const { data: seat, error: seatError } = await supabase
+    .from('players')
+    .select('id')
+    .eq('id', playerId)
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (seatError) return fail('uno', seatError)
+  if (!seat) return null
+
+  const { error: handError } = await supabase
+    .from('uno_player_hands')
+    .delete()
+    .eq('game_id', gameId)
+    .eq('player_id', playerId)
+  if (handError) return fail('uno', handError)
+  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+  return error ? fail('uno', error) : { error: null }
 }

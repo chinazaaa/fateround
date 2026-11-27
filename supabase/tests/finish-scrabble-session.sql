@@ -190,19 +190,31 @@ do $$
 declare
   v_v timestamptz := pg_temp.mk('GSD', 13);
 begin
-  update public.games set session_started_at = '2026-02-01T00:00:00Z', sessions_played = 3 where id = 'GSD';
+  update public.games set session_started_at = '2026-02-01T00:00:00Z', sessions_played = 3, game_duration_seconds = 120 where id = 'GSD';
   perform pg_temp.assert_eq('6d other round (started_at)', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null,
     '{"session_started_at":"2026-01-01T00:00:00Z"}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d other round (sessions_played)', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":2}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d round mismatch is flagged as such', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":2}'::jsonb)->>'reason', 'round');
   perform pg_temp.assert_eq('6d stale version has no round reason', public.finish_scrabble_session('GSD', v_v - interval '1 microsecond', '{}'::jsonb, '[]'::jsonb)->>'reason', null);
   perform pg_temp.assert_eq('6d round shape', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"x":1}'::jsonb)->>'status', 'invalid');
+  -- malformed fields are `invalid` (never a cast error); a valid value naming another round / limit stays `lost`
+  perform pg_temp.assert_eq('6d text sessions_played', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":"bad"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d fractional sessions_played', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":1.5}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d huge sessions_played', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":99999999999}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d unparsable started_at', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"session_started_at":"not a date"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d numeric started_at', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"session_started_at":5}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d text duration', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"game_duration_seconds":"x"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d explicit null is compared (game has a value)', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":null}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d older time limit (extension happened)', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"game_duration_seconds":60}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d older time limit reason', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"game_duration_seconds":60}'::jsonb)->>'reason', 'round');
+  perform pg_temp.assert_eq('6d finish: fractional score', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(131), 'score', 1.5)))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d finish: huge clock', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(131), 'clock_ms_remaining', 99999999999)))->>'status', 'invalid');
   perform pg_temp.assert_eq('6d nothing written', (pg_temp.sess('GSD')).phase, 'playing');
   update public.scrabble_sessions set phase = 'finished' where game_id = 'GSD';
   perform pg_temp.assert_eq('6d already finished but another round', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":2}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d game untouched', (pg_temp.g('GSD')).status, 'active');
   perform pg_temp.assert_eq('6d matching round', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null,
-    '{"sessions_played":3,"session_started_at":"2026-02-01T00:00:00Z"}'::jsonb)->>'status', 'already_finished');
+    '{"sessions_played":3,"session_started_at":"2026-02-01T00:00:00Z","game_duration_seconds":120}'::jsonb)->>'status', 'already_finished');
   perform pg_temp.assert_eq('6d flipped', (pg_temp.g('GSD')).status, 'finished');
   update public.games set status = 'waiting', finished_at = null, finish_bookkeeping = null where id = 'GSD';
   perform pg_temp.assert_eq('6d replay: no flip', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb)->>'games_flipped', 'false');
@@ -225,6 +237,13 @@ begin
   perform pg_temp.assert_eq('6e still playing', (pg_temp.sess('GSE')).phase, 'playing');
   perform pg_temp.assert_eq('6e state', ((pg_temp.st('GSE', 14, 1)).score, (pg_temp.st('GSE', 14, 1)).rack, (pg_temp.st('GSE', 14, 1)).clock_ms_remaining, (pg_temp.st('GSE', 14, 1)).timed_out)::text, '(77,"[""Q""]",5,t)');
   -- an empty patch still advances the version
+  -- integer columns are validated before the cast: fractional / out-of-range is `invalid`; negative scores and a null clock stay valid
+  perform pg_temp.assert_eq('6e fractional score', public.apply_scrabble_move('GSE', (pg_temp.sess('GSE')).updated_at, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(141), 'score', 1.5)))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6e huge score', public.apply_scrabble_move('GSE', (pg_temp.sess('GSE')).updated_at, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(141), 'score', 99999999999)))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6e fractional clock', public.apply_scrabble_move('GSE', (pg_temp.sess('GSE')).updated_at, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(141), 'clock_ms_remaining', 2.5)))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6e negative score and null clock are valid', public.apply_scrabble_move('GSE', (pg_temp.sess('GSE')).updated_at, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(141), 'score', -3, 'clock_ms_remaining', null)))->>'status', 'applied');
+  perform pg_temp.assert_eq('6e negative score stored', (pg_temp.st('GSE', 14, 1)).score, -3);
+  update public.scrabble_player_state set score = 77 where game_id = 'GSE' and player_id = pg_temp.pid(141);
   v_v2 := (pg_temp.sess('GSE')).updated_at;
   perform pg_temp.assert_eq('6e empty patch', public.apply_scrabble_move('GSE', v_v2, '{}'::jsonb, '[]'::jsonb)->>'status', 'applied');
   perform pg_temp.assert_eq('6e empty patch advances the version', (pg_temp.sess('GSE')).updated_at > v_v2, true);

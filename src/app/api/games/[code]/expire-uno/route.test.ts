@@ -2,9 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('server-only', () => ({}))
-const state = vi.hoisted(() => ({ finished: false, finishError: false, afterStatus: 'active' as string, reads: 0 }))
+const state = vi.hoisted(() => ({
+  finished: false,
+  finishError: false,
+  roundMismatch: false,
+  afterStatus: 'active' as string,
+  afterRound: 3 as number,
+  reads: 0,
+}))
 vi.mock('@/lib/uno', () => ({
-  finishExpiredUnoGame: async () => (state.finishError ? { won: false, error: 'x' } : { won: state.finished }),
+  finishExpiredUnoGame: async () =>
+    state.finishError
+      ? { won: false, error: 'x' }
+      : state.roundMismatch
+        ? { won: false, roundMismatch: true }
+        : { won: state.finished },
   unoGameSessionExpired: () => true,
 }))
 vi.mock('@/lib/supabase-admin', () => {
@@ -24,9 +36,10 @@ vi.mock('@/lib/supabase-admin', () => {
                       game_type: 'uno',
                       session_started_at: 'x',
                       game_duration_seconds: 1,
+                      sessions_played: 3,
                     },
                   }
-                : { data: { status: state.afterStatus } }
+                : { data: { status: state.afterStatus, sessions_played: state.afterRound, session_started_at: 'x' } }
             },
           }),
         }),
@@ -46,6 +59,8 @@ describe('POST /api/games/[code]/expire-uno', () => {
   beforeEach(() => {
     state.reads = 0
     state.finishError = false
+    state.roundMismatch = false
+    state.afterRound = 3
   })
 
   it('a landed finish answers success', async () => {
@@ -63,10 +78,24 @@ describe('POST /api/games/[code]/expire-uno', () => {
     expect(await res.json()).toEqual({ expired: true, finished: true })
   })
 
-  it('a real failed finish stays a 500', async () => {
+  it('a lost claim while the game is still running (a move won it) is a 409 conflict, not a 500', async () => {
     state.finished = false
     state.afterStatus = 'active'
-    expect((await call()).status).toBe(500)
+    expect((await call()).status).toBe(409)
+  })
+
+  it('a round mismatch (a rematch started after the read) is a 409 before any status reread', async () => {
+    state.roundMismatch = true
+    state.afterStatus = 'finished'
+    expect((await call()).status).toBe(409)
+    expect(state.reads).toBe(1)
+  })
+
+  it('a lost claim whose reread shows a DIFFERENT finished round is a 409, not a success', async () => {
+    state.finished = false
+    state.afterStatus = 'finished'
+    state.afterRound = 4
+    expect((await call()).status).toBe(409)
   })
 
   it('a finish that errored is a 500 even if the game row already reads finished', async () => {

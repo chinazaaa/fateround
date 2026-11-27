@@ -67,11 +67,16 @@ describe('removal from a finished game', () => {
     // those too — which would leave someone who deliberately left a finished game still
     // getting "Play again? 🔁" when the host reopened the lobby. The score tables hang off the
     // player row, not these, so dropping them costs the standings nothing.
-    expect(deleteHandler).toMatch(/from\('push_subscriptions'\)\.delete\(\)/)
-    expect(deleteHandler).toMatch(/from\('mobile_push_tokens'\)\.delete\(\)/)
-    const unsub = deleteHandler.search(/push_subscriptions'\)\.delete/)
+    // The deletes live in ONE helper (`unsubscribeRetainedPlayer`) shared by the finished-game guard and by a leave that
+    // loses a race to a finish (Uno / Scrabble helpers report `retained`).
+    expect(ROUTE).toMatch(/async function unsubscribeRetainedPlayer[\s\S]*?from\('push_subscriptions'\)\.delete\(\)/)
+    expect(ROUTE).toMatch(/async function unsubscribeRetainedPlayer[\s\S]*?from\('mobile_push_tokens'\)\.delete\(\)/)
+    const unsub = deleteHandler.search(/await unsubscribeRetainedPlayer\(/)
     const retained = deleteHandler.search(/retained: true/)
+    expect(unsub, 'must run before the early return').toBeGreaterThan(-1)
     expect(unsub, 'must run before the early return').toBeLessThan(retained)
+    // every retained outcome of a removal helper unsubscribes too
+    expect((deleteHandler.match(/await unsubscribeRetainedPlayer\(/g) ?? []).length).toBeGreaterThanOrEqual(3)
   })
 
   it('still deletes mid-game — a player who walks out forfeits rather than places', () => {

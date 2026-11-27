@@ -2945,7 +2945,8 @@ async function processUnoColorRouletteReveal(
   // this into Roulette Master (>=5) and Roulette Executioner (>=8).
   const casterId = session.last_play_player_id ?? null
   const rouletteHands: UnoHandWrite[] = [{ player_id: playerId, cards: targetHand }]
-  if (revealCount > 0 && casterId && casterId !== playerId) {
+  // (a caster who has since left has no hand row: finish / move payloads never name a seat that is gone)
+  if (revealCount > 0 && casterId && casterId !== playerId && hands.some((h) => h.player_id === casterId)) {
     const casterStats = { ...currentUnoStats(hands, casterId) }
     bumpMaxU(casterStats, 'uno_hs_max_roulette_dealt', revealCount)
     rouletteHands.push({ player_id: casterId, stats: casterStats })
@@ -3462,7 +3463,13 @@ export async function finishExpiredUnoGame(
     "Time's up!",
     game.uno_team_mode === true,
     // The expiry was decided from THIS snapshot: the finish applies only to that round (not a later rematch).
-    { round: { sessionStartedAt: game.session_started_at ?? null, sessionsPlayed: game.sessions_played ?? undefined } }
+    {
+      round: {
+        sessionStartedAt: game.session_started_at ?? null,
+        sessionsPlayed: game.sessions_played ?? undefined,
+        gameDurationSeconds: game.game_duration_seconds ?? null,
+      },
+    }
   )
   return finished.already ? { won: true } : finished
 }
@@ -3498,7 +3505,7 @@ export async function removeUnoPlayer(
   gameId: string,
   playerId: string,
   playerNameArg?: string
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; retained?: boolean }> {
   for (let attempt = 0; attempt < UNO_REMOVE_MAX_ATTEMPTS; attempt++) {
     const result = await removeUnoPlayerOnce(supabase, gameId, playerId, playerNameArg)
     if (result !== 'retry') return result
@@ -3511,7 +3518,7 @@ async function removeUnoPlayerOnce(
   gameId: string,
   playerId: string,
   playerNameArg?: string
-): Promise<{ error: string | null } | 'retry'> {
+): Promise<{ error: string | null; retained?: boolean } | 'retry'> {
   const { data: sessionRaw, error: lookupError } = await supabase
     .from('uno_sessions')
     .select('*')
@@ -3533,7 +3540,11 @@ async function removeUnoPlayerOnce(
   // The round was published while this leave was retrying and the seat was never removed from the live session:
   // the finished result keeps its seats (the players route retains them for a finished game). A seat that is
   // already out of the turn order still gets its cleanup below.
-  if (session?.phase === 'finished' && removedIndex >= 0) return { error: null }
+  // A Team-Up leaver whose departure COMMITTED (left_player_ids) but whose rows are still there is pending cleanup,
+  // not a result seat: it falls through to the cleanup below. Unmarked seats stay retained.
+  if (session?.phase === 'finished' && removedIndex >= 0 && !unoLeftPlayerIds(session).includes(playerId)) {
+    return { error: null, retained: true }
+  }
 
   if (session && removedIndex >= 0 && session.phase !== 'finished') {
     const { data: gameRow } = await supabase
@@ -3608,7 +3619,8 @@ async function removeUnoPlayerOnce(
           removePlayerId: playerId,
         })
         if (finished.error) return { error: finished.error }
-        return finished.won || finished.already ? { error: null } : 'retry'
+        if (finished.won) return { error: null }
+        return finished.already ? { error: null, retained: true } : 'retry'
       }
 
       const { data: teamClaimed, error: teamError } = await supabase
@@ -3687,7 +3699,8 @@ async function removeUnoPlayerOnce(
       // Fewer than two active seats remain: the round ends and the leaver's rows go in the same transaction.
       const finished = await finishUnoRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
       if (finished.error) return { error: finished.error }
-      return finished.won || finished.already ? { error: null } : 'retry'
+      if (finished.won) return { error: null }
+      return finished.already ? { error: null, retained: true } : 'retry'
     }
 
     const { data: claimed, error: sessionError } = await supabase

@@ -10,7 +10,7 @@ import { initializeScrabbleGame } from './scrabble'
 
 type Row = { data: unknown; error: unknown }
 
-function makeMockSupabase(opts: { session: unknown }) {
+function makeMockSupabase(opts: { session: unknown; failStateInsert?: boolean }) {
   const ops: Array<{ table: string; op: string }> = []
 
   function chain(result: Row): Promise<Row> & Record<string, unknown> {
@@ -40,6 +40,9 @@ function makeMockSupabase(opts: { session: unknown }) {
         },
         insert() {
           ops.push({ table, op: 'insert' })
+          if (opts.failStateInsert && table === 'scrabble_player_state') {
+            return chain({ data: null, error: { message: 'violates foreign key constraint' } })
+          }
           return chain({ data: null, error: null })
         },
         update() {
@@ -84,5 +87,23 @@ describe('initializeScrabbleGame — never wipes a game in progress', () => {
     const result = await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])
 
     expect(result.error).not.toBe('Game already in progress')
+  })
+})
+
+describe('initializeScrabbleGame — the session is written only after the seats exist', () => {
+  it('writes the player states BEFORE the session', async () => {
+    const { supabase, ops } = makeMockSupabase({ session: { id: 'S1', phase: 'finished' } })
+    await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])
+    const stateInsert = ops.findIndex((o) => o.table === 'scrabble_player_state' && o.op === 'insert')
+    const sessionWrite = ops.findIndex((o) => o.table === 'scrabble_sessions' && o.op !== 'delete')
+    expect(stateInsert).toBeGreaterThan(-1)
+    expect(sessionWrite).toBeGreaterThan(stateInsert)
+  })
+
+  it('a seat whose player row is gone (a leave cleaning up the lobby) fails the deal without publishing the round', async () => {
+    const { supabase, ops } = makeMockSupabase({ session: { id: 'S1', phase: 'finished' }, failStateInsert: true })
+    const result = await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])
+    expect(result.error).toBeTruthy()
+    expect(ops.some((o) => o.table === 'scrabble_sessions' && o.op !== 'delete')).toBe(false)
   })
 })

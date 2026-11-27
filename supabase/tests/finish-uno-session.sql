@@ -181,12 +181,19 @@ begin
   -- a series that is already won is not extended
   perform pg_temp.mk('GU7', 7, true);
   update public.games set uno_series_winner_id = 'someone', uno_series_scores = '{"x":5}' where id = 'GU7';
-  perform public.finish_uno_session('GU7', (pg_temp.sess('GU7')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(71)::text, 'points', 50));
+  v_out := public.finish_uno_session('GU7', (pg_temp.sess('GU7')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(71)::text, 'points', 50));
+  perform pg_temp.assert_eq('7 series already won: a valid finish, not a rejected one', v_out->>'status', 'finished');
   perform pg_temp.assert_eq('7 series already won: untouched', (pg_temp.g('GU7')).uno_series_scores, '{"x":5}'::jsonb);
   -- series scoring off: no points
   perform pg_temp.mk('GU8', 8, false);
-  perform public.finish_uno_session('GU8', (pg_temp.sess('GU8')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(81)::text, 'points', 50));
+  v_out := public.finish_uno_session('GU8', (pg_temp.sess('GU8')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(81)::text, 'points', 50));
+  perform pg_temp.assert_eq('8 scoring off: a valid finish, not a rejected one', v_out->>'status', 'finished');
   perform pg_temp.assert_eq('8 scoring off: no points', (pg_temp.g('GU8')).uno_series_scores, '{}'::jsonb);
+  -- series points are validated as integers BEFORE the cast: a fractional / out-of-range value is `invalid`, not an error
+  perform pg_temp.mk('GUG', 16, true);
+  perform pg_temp.assert_eq('8b fractional points', public.finish_uno_session('GUG', (pg_temp.sess('GUG')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(161)::text, 'points', 1.5))->>'status', 'invalid');
+  perform pg_temp.assert_eq('8b huge points', public.finish_uno_session('GUG', (pg_temp.sess('GUG')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(161)::text, 'points', 99999999999))->>'status', 'invalid');
+  perform pg_temp.assert_eq('8b nothing written', (pg_temp.sess('GUG')).phase, 'playing');
 end $$;
 
 -- 6b. An already finished round never removes anyone from the published result, and re-awards nothing.
@@ -242,13 +249,23 @@ do $$
 declare
   v_v timestamptz := pg_temp.mk('GUD', 13, true);
 begin
-  update public.games set session_started_at = '2026-02-01T00:00:00Z', sessions_played = 3 where id = 'GUD';
+  update public.games set session_started_at = '2026-02-01T00:00:00Z', sessions_played = 3, game_duration_seconds = 120 where id = 'GUD';
   perform pg_temp.assert_eq('6d other round (started_at)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
     '{"session_started_at":"2026-01-01T00:00:00Z"}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d other round (sessions_played)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
     '{"sessions_played":2}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d round mismatch is flagged as such', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"sessions_played":2}'::jsonb)->>'reason', 'round');
   perform pg_temp.assert_eq('6d round shape', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"x":1}'::jsonb)->>'status', 'invalid');
+  -- malformed fields are `invalid` (never a cast error); a valid value naming another round / limit stays `lost`
+  perform pg_temp.assert_eq('6d text sessions_played', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"sessions_played":"bad"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d fractional sessions_played', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"sessions_played":1.5}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d huge sessions_played', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"sessions_played":99999999999}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d unparsable started_at', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"session_started_at":"not a date"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d numeric started_at', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"session_started_at":5}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d text duration', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"game_duration_seconds":"x"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d explicit null is compared (game has a value)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"sessions_played":null}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d older time limit (extension happened)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"game_duration_seconds":60}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d older time limit reason', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"game_duration_seconds":60}'::jsonb)->>'reason', 'round');
   perform pg_temp.assert_eq('6d nothing written', (pg_temp.sess('GUD')).phase, 'playing');
   -- the round check also guards the already-finished branch
   update public.uno_sessions set phase = 'finished' where game_id = 'GUD';
@@ -257,7 +274,7 @@ begin
   perform pg_temp.assert_eq('6d game untouched', (pg_temp.g('GUD')).status, 'active');
   -- matching round: finishes (here: repairs the flip)
   perform pg_temp.assert_eq('6d matching round', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
-    '{"sessions_played":3,"session_started_at":"2026-02-01T00:00:00Z"}'::jsonb)->>'status', 'already_finished');
+    '{"sessions_played":3,"session_started_at":"2026-02-01T00:00:00Z","game_duration_seconds":120}'::jsonb)->>'status', 'already_finished');
   perform pg_temp.assert_eq('6d flipped', (pg_temp.g('GUD')).status, 'finished');
   -- a replayed game (waiting) with the finished session row left over is NOT flipped again
   update public.games set status = 'waiting', finished_at = null, finish_bookkeeping = null where id = 'GUD';

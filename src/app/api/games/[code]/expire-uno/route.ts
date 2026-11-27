@@ -28,10 +28,25 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
 
   const finish = await finishExpiredUnoGame(supabase, game)
   if (finish.error) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
+  // The expiry was decided about an earlier round (a rematch started): nothing was finished for it.
+  if (finish.roundMismatch) {
+    return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
+  }
   if (!finish.won) {
-    // The finish may have lost its CAS to another finisher: if the game did end, that is success.
-    const { data: after } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
-    if (after?.status !== 'finished') return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
+    // The finish lost its claim. Success only when the SAME round is confirmed finished (another finisher won); a
+    // game that is still running (a move won the claim) or a different round (a rematch) is a conflict, not a failure.
+    const { data: after } = await supabase
+      .from('games')
+      .select('status, sessions_played, session_started_at')
+      .eq('id', gameId)
+      .maybeSingle()
+    const sameRound =
+      !!after &&
+      (after.sessions_played ?? null) === (game.sessions_played ?? null) &&
+      (after.session_started_at ?? null) === (game.session_started_at ?? null)
+    if (!(after?.status === 'finished' && sameRound)) {
+      return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
+    }
   }
 
   return NextResponse.json({ expired: true, finished: true })

@@ -188,3 +188,30 @@ describe('completePendingFinishedLeave: whot', () => {
     expect(ids(db.tables)).toEqual(['a', 'b', 'w'])
   })
 })
+
+describe('completePendingFinishedLeave: Uno Team-Up', () => {
+  const build = () =>
+    makeDb({
+      uno_sessions: [{ game_id: 'G', phase: 'finished', left_player_ids: ['a'] }],
+      uno_player_hands: [
+        { game_id: 'G', player_id: 'a' },
+        { game_id: 'G', player_id: 'b' },
+      ],
+      players: [seat('a', 'Ann'), seat('b', 'Bob')],
+    })
+
+  it('finishes the cleanup of a committed departure (left_player_ids) whose rows are still there', async () => {
+    const db = build()
+    expect(await completePendingFinishedLeave(db.client, 'uno', 'G', 'a', 'Ann')).toEqual({ error: null })
+    expect(ids(db.tables)).toEqual(['b'])
+    expect(db.tables.uno_player_hands.map((h) => h.player_id)).toEqual(['b'])
+    // a repeat has nothing left to do
+    expect(await completePendingFinishedLeave(db.client, 'uno', 'G', 'a', 'Ann')).toBeNull()
+  })
+
+  it('leaves an unmarked seat (a finisher / winner) retained', async () => {
+    const db = build()
+    expect(await completePendingFinishedLeave(db.client, 'uno', 'G', 'b', 'Bob')).toBeNull()
+    expect(ids(db.tables)).toEqual(['a', 'b'])
+  })
+})

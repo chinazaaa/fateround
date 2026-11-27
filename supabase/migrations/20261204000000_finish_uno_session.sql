@@ -90,12 +90,34 @@ begin
   -- The finish must apply only to the round the caller decided about (an expiry decided from a snapshot must never
   -- finish a LATER round after a rematch): compare the round identity under the same lock.
   if p_round is not null then
+    -- Every supplied field is validated BEFORE it is cast or compared (a malformed value is `invalid`, never a cast
+    -- error); an omitted key is not compared, an explicit null is compared as NULL.
     if jsonb_typeof(p_round) <> 'object'
-       or exists (select 1 from jsonb_object_keys(p_round) k where k not in ('session_started_at', 'sessions_played')) then
+       or exists (
+         select 1 from jsonb_object_keys(p_round) k
+         where k not in ('session_started_at', 'sessions_played', 'game_duration_seconds')
+       )
+       or (p_round ? 'sessions_played' and not (
+            jsonb_typeof(p_round->'sessions_played') = 'null'
+            or (jsonb_typeof(p_round->'sessions_played') = 'number' and (p_round->>'sessions_played') ~ '^-?[0-9]{1,9}$')))
+       or (p_round ? 'game_duration_seconds' and not (
+            jsonb_typeof(p_round->'game_duration_seconds') = 'null'
+            or (jsonb_typeof(p_round->'game_duration_seconds') = 'number' and (p_round->>'game_duration_seconds') ~ '^-?[0-9]{1,9}$')))
+       or (p_round ? 'session_started_at' and jsonb_typeof(p_round->'session_started_at') not in ('null', 'string')) then
       return jsonb_build_object('status', 'invalid', 'reason', 'round', 'games_flipped', false);
     end if;
+    if p_round ? 'session_started_at' and jsonb_typeof(p_round->'session_started_at') = 'string' then
+      begin
+        perform (p_round->>'session_started_at')::timestamptz;
+      exception when others then
+        return jsonb_build_object('status', 'invalid', 'reason', 'round', 'games_flipped', false);
+      end;
+    end if;
+    -- The round identity (a rematch changes it) AND the time limit the expiry was decided with (a host extension
+    -- changes it): a decision made about another round / an older limit must not finish this one.
     if (p_round ? 'sessions_played' and v_game.sessions_played is distinct from (p_round->>'sessions_played')::integer)
-       or (p_round ? 'session_started_at' and v_game.session_started_at is distinct from (p_round->>'session_started_at')::timestamptz) then
+       or (p_round ? 'session_started_at' and v_game.session_started_at is distinct from (p_round->>'session_started_at')::timestamptz)
+       or (p_round ? 'game_duration_seconds' and v_game.game_duration_seconds is distinct from (p_round->>'game_duration_seconds')::integer) then
       return jsonb_build_object('status', 'lost', 'reason', 'round', 'games_flipped', false);
     end if;
   end if;
@@ -159,7 +181,7 @@ begin
        or jsonb_typeof(p_series->'winner_id') is distinct from 'string'
        or coalesce(p_series->>'winner_id', '') = ''
        or jsonb_typeof(p_series->'points') is distinct from 'number'
-       or (p_series->>'points') !~ '^[0-9]+$'
+       or (p_series->>'points') !~ '^[0-9]{1,9}$'
        or not exists (
          select 1 from public.uno_player_hands h where h.game_id = v_id and h.player_id::text = p_series->>'winner_id'
        ) then

@@ -178,6 +178,8 @@ export async function finishExpiredScrabbleGame(
   const { error, skipped } = await finishScrabbleByTimeLimit(supabase, game.id, {
     sessionStartedAt: game.session_started_at ?? null,
     sessionsPlayed: game.sessions_played ?? undefined,
+    // An extension changes the limit but not the round: the finish must lose when the limit moved after this decision.
+    gameDurationSeconds: game.game_duration_seconds ?? null,
   })
   if (error) return { finished: false, error }
   // `skipped`: a normal play / pass won the claim and the round is still running: not finished, not an error.
@@ -590,12 +592,9 @@ export async function initializeScrabbleGame(
     updated_at: new Date().toISOString(),
   }
 
-  const { error: sessionError } = existing
-    ? await supabase.from('scrabble_sessions').update(sessionRow).eq('game_id', gameId)
-    : await supabase.from('scrabble_sessions').insert({ ...sessionRow, game_id: gameId })
-  if (sessionError) return { error: internalErrorMessage('scrabble', sessionError) }
-
-  // Re-deal player racks from scratch (handles rematch by clearing prior rows).
+  // Re-deal player racks from scratch (handles rematch by clearing prior rows). The states go in BEFORE the session
+  // is (re)written: a seat whose player row is gone (a leave cleaning up a reopened lobby) fails the insert here, and
+  // the round is never published with a seat that has no state or player row.
   await supabase.from('scrabble_player_state').delete().eq('game_id', gameId)
   const stateRows = turnOrder.map((pid, idx) => ({
     game_id: gameId,
@@ -608,6 +607,11 @@ export async function initializeScrabbleGame(
   }))
   const { error: stateError } = await supabase.from('scrabble_player_state').insert(stateRows)
   if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
+
+  const { error: sessionError } = existing
+    ? await supabase.from('scrabble_sessions').update(sessionRow).eq('game_id', gameId)
+    : await supabase.from('scrabble_sessions').insert({ ...sessionRow, game_id: gameId })
+  if (sessionError) return { error: internalErrorMessage('scrabble', sessionError) }
 
   return {}
 }
@@ -1085,7 +1089,7 @@ export async function removeScrabblePlayer(
   gameId: string,
   playerId: string,
   playerName?: string
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; retained?: boolean }> {
   for (let attempt = 0; attempt < SCRABBLE_REMOVE_MAX_ATTEMPTS; attempt++) {
     const result = await removeScrabblePlayerOnce(supabase, gameId, playerId, playerName)
     if (result !== 'retry') return result
@@ -1098,7 +1102,7 @@ async function removeScrabblePlayerOnce(
   gameId: string,
   playerId: string,
   playerName?: string
-): Promise<{ error: string | null } | 'retry'> {
+): Promise<{ error: string | null; retained?: boolean } | 'retry'> {
   const { data: sessionRaw, error: lookupError } = await supabase
     .from('scrabble_sessions')
     .select('*')
@@ -1124,7 +1128,7 @@ async function removeScrabblePlayerOnce(
       .eq('id', gameId)
       .maybeSingle()
     if (gameError) return { error: internalErrorMessage('scrabble', gameError) }
-    if (gameRow?.status !== 'waiting') return { error: null }
+    if (gameRow?.status !== 'waiting') return { error: null, retained: true }
     reopenedLobby = true
   }
 
@@ -1207,7 +1211,8 @@ async function removeScrabblePlayerOnce(
       // Not enough players to keep going: the round ends and the leaver's rows go in the same transaction.
       const finished = await finishScrabbleRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
       if (finished.error) return { error: finished.error }
-      return finished.won || finished.already ? { error: null } : 'retry'
+      if (finished.won) return { error: null }
+      return finished.already ? { error: null, retained: true } : 'retry'
     }
 
     const { data: claimed, error: sessionError } = await supabase
@@ -1226,9 +1231,14 @@ async function removeScrabblePlayerOnce(
 
   // Lobby, spectator, already-finished, or not in the turn order — just drop their state + row.
   if (reopenedLobby && session) {
-    // The finished session still lists the seat: drop it too, so the lobby never shows a seat for a departed player.
-    // Compare-and-set like every other leave: a concurrent leave that rewrote turn_order first makes this one retry
-    // against the fresh order instead of reporting success while the seat is still listed.
+    // ONE mechanism shared with the start: the leaver's player row (and its state rows, by cascade) go FIRST. A deal
+    // that lands afterwards cannot seat them (the state insert violates the player foreign key, and the initializer
+    // writes the session only after its states), and a deal that landed before changes the session version, so the
+    // seat removal below loses and the retry takes the live-round leave path against the new round. Cleanup therefore
+    // never deletes rows of a deal it did not read as live.
+    await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
+    const { error: rowError } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
+    if (rowError) return { error: internalErrorMessage('scrabble', rowError) }
     const { data: seatUpdated, error: seatError } = await supabase
       .from('scrabble_sessions')
       .update({ turn_order: order.filter((id) => id !== playerId) })
@@ -1237,6 +1247,7 @@ async function removeScrabblePlayerOnce(
       .select('game_id')
     if (seatError) return { error: internalErrorMessage('scrabble', seatError) }
     if (!seatUpdated || seatUpdated.length === 0) return 'retry'
+    return { error: null }
   }
   await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
