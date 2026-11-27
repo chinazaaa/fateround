@@ -2,10 +2,13 @@ import { describe, it, expect, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // The last-round finish goes through the game-finish module; only its outcome matters here.
-const finish = vi.hoisted(() => ({ won: true }))
+const finish = vi.hoisted(() => ({ won: true, opts: null as unknown }))
 vi.mock('@/lib/game-finish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/game-finish')>()),
-  markGameFinished: async () => ({ error: null, won: finish.won, bookkeeping: 'none' }),
+  markGameFinished: async (_s: unknown, _g: string, _t: unknown, opts: unknown) => {
+    finish.opts = opts
+    return { error: null, won: finish.won, bookkeeping: 'none' }
+  },
   recoverFinishBookkeeping: async () => ({ state: 'none' }),
 }))
 
@@ -22,6 +25,7 @@ describe('revertWordRushRosterAfterFailedPlayerDelete', () => {
     session_id: 'S-OLD',
     removed_player_id: 'a',
     removed_index: 0,
+    turn_index: 2,
     prompt_setter_player_id: 'a',
     setter_after: 'b',
   }
@@ -43,6 +47,7 @@ describe('revertWordRushRosterAfterFailedPlayerDelete', () => {
           p_session_id: 'S-OLD',
           p_player_id: 'a',
           p_index: 0,
+          p_turn_index: 2,
           p_restore_setter: true,
           p_setter_after: 'b',
           p_setter_before: 'a',
@@ -142,6 +147,7 @@ describe('syncWordRushAfterPlayerRemoved snapshot', () => {
       session_id: 'S-1',
       removed_player_id: 'b',
       removed_index: 1,
+      turn_index: 0,
       prompt_setter_player_id: 'a',
     })
     expect(result.rollback).not.toHaveProperty('roster')
@@ -223,6 +229,20 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     } finally {
       finish.won = true
     }
+  })
+
+  it('a team game finish is bound to the session whose claim it won (a stale call cannot finish a replacement session)', async () => {
+    finish.opts = null
+    const result = await syncWordRushAfterPlayerRemoved(
+      clientFor(individualSession({ mode: 'team', roster: ['a', 'b', 'c'], active_team: 1 }), true),
+      'GAME',
+      'b'
+    )
+    expect(result.ownFinish).toBe(true)
+    expect(finish.opts).toMatchObject({
+      roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: 'S-1' } },
+      trackBookkeeping: true,
+    })
   })
 
   it('ending a round that is not the last is not a finish', async () => {

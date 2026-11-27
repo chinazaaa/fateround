@@ -832,7 +832,15 @@ async function finishWordRushGame(
     .select('id')
   if (error) return internalFailure('word-rush:finish', error)
   if (!claimed?.length) return {}
-  const { won } = await markGameFinished(supabase, gameId, undefined, { trackBookkeeping: true })
+  // Bound to the session this claim won: a stale call must never finish a replacement session started on the same game
+  // id (the round finalizer binds its finish the same way; the function also writes the bookkeeping marker itself).
+  const { won } = await markGameFinished(supabase, gameId, undefined, {
+    roundGuard: {
+      rpc: 'word_rush_finish_game_for_session',
+      params: { p_session_id: (claimed[0] as { id: string }).id },
+    },
+    trackBookkeeping: true,
+  })
   return { finished: won }
 }
 
@@ -997,6 +1005,7 @@ export async function syncWordRushAfterPlayerRemoved(
     session_id: session.id,
     removed_player_id: removedPlayerId,
     removed_index: session.roster.indexOf(removedPlayerId),
+    turn_index: session.turn_index,
     prompt_setter_player_id: session.prompt_setter_player_id,
     ...('prompt_setter_player_id' in sessionPatch
       ? { setter_after: sessionPatch.prompt_setter_player_id ?? null }
@@ -1061,6 +1070,8 @@ export type WordRushRosterSnapshot = {
   session_id: string
   removed_player_id: string
   removed_index: number
+  /** The turn the removal happened in: the prompt setter is only put back while that turn still awaits its prompt. */
+  turn_index: number
   /** The prompt setter before the removal. */
   prompt_setter_player_id: string | null
   /** The prompt setter THIS removal assigned, when it reassigned it (absent: it did not touch the setter). */
@@ -1090,6 +1101,7 @@ export async function revertWordRushRosterAfterFailedPlayerDelete(
       p_session_id: snapshot.session_id,
       p_player_id: snapshot.removed_player_id,
       p_index: snapshot.removed_index,
+      p_turn_index: snapshot.turn_index,
       p_restore_setter: 'setter_after' in snapshot,
       p_setter_after: snapshot.setter_after ?? null,
       p_setter_before: snapshot.prompt_setter_player_id,

@@ -300,6 +300,12 @@ begin
     delete from public.participants where game_id = upper(p_game_id) and name = p_participant_name;
   end if;
   delete from public.players where id = p_player_id and game_id = upper(p_game_id);
+  -- A Word Rush roster entry never outlives the seat it belongs to: whichever order two overlapping leaves of the same
+  -- player run in (a compensating restore may have re-added the entry just before this delete), the entry goes with the
+  -- seat, under the same games row lock the restore takes first.
+  update public.word_rush_sessions
+    set roster = array_remove(roster, p_player_id), updated_at = now()
+    where game_id = upper(p_game_id) and p_player_id = any (roster);
   return jsonb_build_object('status', 'deleted');
 end;
 $$;
@@ -384,7 +390,8 @@ create or replace function public.word_rush_restore_roster_member(
   p_index integer,
   p_restore_setter boolean,
   p_setter_after uuid,
-  p_setter_before uuid
+  p_setter_before uuid,
+  p_turn_index integer
 )
 returns jsonb
 language plpgsql
@@ -396,8 +403,9 @@ declare
   v_len integer;
   v_at integer;
 begin
-  if p_game_id is null or p_session_id is null or p_player_id is null or p_index is null or p_restore_setter is null then
-    raise exception 'word_rush_restore_roster_member: game id, session id, player id, index and setter flag are required';
+  if p_game_id is null or p_session_id is null or p_player_id is null or p_index is null or p_restore_setter is null
+     or p_turn_index is null then
+    raise exception 'word_rush_restore_roster_member: game id, session id, player id, index, turn and setter flag are required';
   end if;
   -- Same lock order as remove_player_if_game_open (games row first, then the rest): a seat delete that is committing
   -- holds this lock, so the seat check below sees its result, and a restored roster entry can never outlive a
@@ -423,7 +431,10 @@ begin
           else coalesce(roster[1:v_at], '{}'::uuid[]) || array[p_player_id] || coalesce(roster[v_at + 1:v_len], '{}'::uuid[])
         end,
         prompt_setter_player_id = case
-          when p_restore_setter and prompt_setter_player_id is not distinct from p_setter_after then p_setter_before
+          -- Only while the SAME prompt is still unresolved: once the new setter has submitted it (phase playing) or the
+          -- game moved to another turn, the setter must stay as it is.
+          when p_restore_setter and phase = 'awaiting_prompt' and turn_index = p_turn_index
+               and prompt_setter_player_id is not distinct from p_setter_after then p_setter_before
           else prompt_setter_player_id
         end,
         updated_at = now()
@@ -432,8 +443,8 @@ begin
 end;
 $$;
 
-revoke execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid) from public, anon, authenticated;
-grant execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid) to service_role;
+revoke execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid, integer) from public, anon, authenticated;
+grant execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid, integer) to service_role;
 
 -- Finish the still-active rounds of a FINISHED session, bound to that session in the same transaction: the games row is
 -- locked FOR SHARE (a Play Again / restart UPDATE of it waits) and must still be finished with exactly the finished_at

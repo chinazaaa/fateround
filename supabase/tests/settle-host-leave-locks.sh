@@ -33,6 +33,9 @@
 # Case G (a Word Rush roster restore vs a committing seat removal): the restore shares the removal's games row lock, so it
 # waits and then answers `no_seat`; a restored roster entry never outlives a committed seat delete.
 #
+# Case H (the opposite order): a seat delete behind a roster restore waits for it, then deletes the seat AND clears the roster
+# entry, so no entry outlives a committed seat delete.
+#
 # Case F (Two Truths start vs a host leaving alone): start_two_truths_game() takes the games row lock BEFORE it writes the
 # roster. A blocker holds the submitter's player row so the start is stuck mid-way while already holding the game lock;
 # end_game_if_host_alone() is observed WAITING on it (without the early lock it would run at once, see the seeded
@@ -49,14 +52,14 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 RUN="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 APP="shl-$RUN"
 GATE=$(( (0x${RUN} % 2000000000) + 1 ))
-GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"
+GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
-HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"
+HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; WRSEAT2="$(new_uuid)"
 WORKERS=()
 
 cleanup() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -218,7 +221,7 @@ grep -q "settled" "$OUT_E" || fail "case E: expected 'settled', got '$(cat "$OUT
 # session timestamp the start writes, so a `continue` can only come from the roster check, not from a session mismatch.
 SESSION_TS="2026-01-01T00:00:00Z"
 psqlq <<SQL
-insert into public.games (id, title, host_token, game_type, status) values ('$GF', 'lock test F', 'tok-$RUN-f', 'two_truths', 'waiting');
+insert into public.games (id, title, host_token, game_type, status, session_started_at) values ('$GF', 'lock test F', 'tok-$RUN-f', 'two_truths', 'waiting', '$SESSION_TS');
 insert into public.players (id, game_id, name, joined_at, spectator) values ('$TTHOST', '$GF', 'Host', now() - interval '5 minutes', false), ('$TTSUB', '$GF', 'Submitter', now(), true);
 update public.games set host_player_id = '$TTHOST' where id = '$GF';
 SQL
@@ -271,7 +274,7 @@ PGAPPNAME="$APP-rm" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
 RM_PID=$!
 wait_for "the removal holds its uncommitted delete" "select exists (select 1 from pg_stat_activity where application_name = '$APP-rm' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_G=$(mktemp)
-PGAPPNAME="$APP-restore" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.word_rush_restore_roster_member('$GG', '$WRSESS', '$WRSEAT', 0, false, null, null)->>'status'" >"$OUT_G" 2>&1 &
+PGAPPNAME="$APP-restore" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.word_rush_restore_roster_member('$GG', '$WRSESS', '$WRSEAT', 0, false, null, null, 0)->>'status'" >"$OUT_G" 2>&1 &
 RESTORE_PID=$!
 wait_for "the restore waits for the removal (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-restore' and wait_event_type = 'Lock')"
 open_gate
@@ -279,5 +282,34 @@ reap "$RM_PID" "removal (case G)"
 reap "$RESTORE_PID" "restore (case G): $(cat "$OUT_G")"
 [ "$(cat "$OUT_G")" = "no_seat" ] || fail "case G: expected 'no_seat', got '$(cat "$OUT_G")'"
 [ "$(psqlq -c "select cardinality(roster) from public.word_rush_sessions where id = '$WRSESS'")" = "1" ] || fail "case G: the roster gained a player whose seat was deleted"
+
+# ---- Case H: a seat delete behind a roster restore (the opposite order of case G) -------------------------------
+# Two leaves of the same player overlap: the first one's compensating restore re-adds the roster entry and is still
+# committing when the second one's seat delete arrives. The delete waits for the restore (the games row lock), then
+# deletes the seat AND takes the player off the roster, so no roster entry outlives the committed seat delete.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('$GH', 'lock test H', 'tok-$RUN-h', 'word_rush', 'active');
+insert into public.players (id, game_id, name) values ('$WRSEAT2', '$GH', 'Leaver');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, roster)
+  values ('$WRSESS2', '$GH', 'individual', 'automatic', 1, 3, 60, '{}');
+SQL
+start_gate
+PGAPPNAME="$APP-restore2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+  begin;
+  select public.word_rush_restore_roster_member('$GH', '$WRSESS2', '$WRSEAT2', 0, false, null, null, 0);
+  select pg_advisory_xact_lock($GATE);
+  commit;" >/dev/null 2>&1 &
+RESTORE2_PID=$!
+wait_for "the restore holds its uncommitted roster write" "select exists (select 1 from pg_stat_activity where application_name = '$APP-restore2' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_H=$(mktemp)
+PGAPPNAME="$APP-rm2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_player_if_game_open('$GH', '$WRSEAT2')->>'status'" >"$OUT_H" 2>&1 &
+RM2_PID=$!
+wait_for "the seat delete waits for the restore (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-rm2' and wait_event_type = 'Lock')"
+open_gate
+reap "$RESTORE2_PID" "restore (case H)"
+reap "$RM2_PID" "removal (case H): $(cat "$OUT_H")"
+[ "$(cat "$OUT_H")" = "deleted" ] || fail "case H: expected 'deleted', got '$(cat "$OUT_H")'"
+[ "$(psqlq -c "select count(*) from public.players where id = '$WRSEAT2'")" = "0" ] || fail "case H: the seat was not deleted"
+[ "$(psqlq -c "select cardinality(roster) from public.word_rush_sessions where id = '$WRSESS2'")" = "0" ] || fail "case H: a roster entry outlived the committed seat delete"
 
 echo "ok"

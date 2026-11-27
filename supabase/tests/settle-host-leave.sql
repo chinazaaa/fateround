@@ -414,26 +414,46 @@ select pg_temp.assert_eq('16b service role only', has_function_privilege('anon',
 
 -- 17. word_rush_restore_roster_member: re-adds ONE seated player at their position, never a saved copy of the roster.
 select pg_temp.mk('STU', 'active');
-insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, roster, prompt_setter_player_id)
-  values ('aaaaaaaa-0000-4000-8000-00000000000a', 'STU', 'individual', 'manual', 1, 3, 60,
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id)
+  values ('aaaaaaaa-0000-4000-8000-00000000000a', 'STU', 'individual', 'manual', 1, 3, 60, 'awaiting_prompt',
           array[pg_temp.early('STU')], pg_temp.early('STU'));
 -- Saved roster was [late, early, host]; late is the failed leaver (still seated). The host left since (seat deleted, off the
 -- roster) and must NOT come back: the CURRENT roster is [early].
-select pg_temp.assert_eq('17 restored', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'))->>'status', 'restored');
+select pg_temp.assert_eq('17 restored', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'), 0)->>'status', 'restored');
 select pg_temp.assert_eq('17 only the leaver is put back, at their position', (select roster from public.word_rush_sessions where game_id = 'STU'), array[pg_temp.late('STU'), pg_temp.early('STU')]);
 select pg_temp.assert_eq('17 setter restored while it is still the one the removal assigned', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), pg_temp.late('STU'));
-select pg_temp.assert_eq('17 idempotent', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'))->>'status', 'restored');
+select pg_temp.assert_eq('17 idempotent', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'), 0)->>'status', 'restored');
 select pg_temp.assert_eq('17 no duplicate', (select cardinality(roster) from public.word_rush_sessions where game_id = 'STU'), 2);
 -- A player with no seat is NEVER put back (they left in the meantime).
-select pg_temp.assert_eq('17 no seat: refused', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', '00000000-0000-0000-0000-0000000000ff', 0, false, null, null)->>'status', 'no_seat');
+select pg_temp.assert_eq('17 no seat: refused', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', '00000000-0000-0000-0000-0000000000ff', 0, false, null, null, 0)->>'status', 'no_seat');
 select pg_temp.assert_eq('17 the departed host is not restored', (select pg_temp.hostid('STU') = any (roster) from public.word_rush_sessions where game_id = 'STU'), false);
 select pg_temp.assert_eq('17 restore locks the games row first (same order as the seat removal)',
-  pg_get_functiondef('public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid)'::regprocedure) ~* 'from public.games where id = upper\(p_game_id\) for no key update;', true);
+  pg_get_functiondef('public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid, integer)'::regprocedure) ~* 'from public.games where id = upper\(p_game_id\) for no key update;', true);
+-- The setter is put back only while the SAME prompt is still unresolved (same turn, still awaiting the prompt).
+update public.word_rush_sessions set prompt_setter_player_id = pg_temp.early('STU'), phase = 'playing' where game_id = 'STU';
+select public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'), 0);
+select pg_temp.assert_eq('17 the new setter already submitted its prompt (phase playing): setter untouched', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), pg_temp.early('STU'));
+update public.word_rush_sessions set phase = 'awaiting_prompt', turn_index = 1 where game_id = 'STU';
+select public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'), 0);
+select pg_temp.assert_eq('17 another turn: setter untouched', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), pg_temp.early('STU'));
+update public.word_rush_sessions set turn_index = 0 where game_id = 'STU';
+select public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'), 0);
+select pg_temp.assert_eq('17 same turn, still awaiting the prompt: setter restored', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), pg_temp.late('STU'));
+update public.word_rush_sessions set prompt_setter_player_id = pg_temp.early('STU') where game_id = 'STU';
 -- A setter someone else changed since is left alone.
 update public.word_rush_sessions set prompt_setter_player_id = ('00000000-0000-0000-0000-0000000003' || lpad(ascii('U')::text, 2, '0'))::uuid where game_id = 'STU';
-select public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'));
+select public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'), 0);
 select pg_temp.assert_eq('17 foreign setter untouched', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), ('00000000-0000-0000-0000-0000000003' || lpad(ascii('U')::text, 2, '0'))::uuid);
+-- 18. A committed seat delete takes the player off the Word Rush roster in the same transaction (whichever order two
+--     overlapping leaves ran in: a compensating restore may have re-added the entry just before).
+select pg_temp.mk('STZ', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, roster)
+  values ('cccccccc-0000-4000-8000-00000000000c', 'STZ', 'individual', 'automatic', 1, 3, 60, array[pg_temp.late('STZ'), pg_temp.early('STZ')]);
+select public.remove_player_if_game_open('STZ', pg_temp.late('STZ'));
+select pg_temp.assert_eq('18 the entry leaves the roster with the seat', (select roster from public.word_rush_sessions where game_id = 'STZ'), array[pg_temp.early('STZ')]);
+select pg_temp.assert_eq('18 nobody else is touched', (select count(*) from public.players where game_id = 'STZ' and id = pg_temp.early('STZ')), 1::bigint);
+
 -- A replaced session (another id) matches nothing.
-select pg_temp.assert_eq('17 other session', public.word_rush_restore_roster_member('STU', 'bbbbbbbb-0000-4000-8000-00000000000b', pg_temp.late('STU'), 0, false, null, null)->>'status', 'not_current_session');
+select pg_temp.assert_eq('17 other session', public.word_rush_restore_roster_member('STU', 'bbbbbbbb-0000-4000-8000-00000000000b', pg_temp.late('STU'), 0, false, null, null, 0)->>'status', 'not_current_session');
 
 rollback;

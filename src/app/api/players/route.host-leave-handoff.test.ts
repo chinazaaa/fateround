@@ -400,7 +400,8 @@ async function rpc(name: string, args: Record<string, unknown>) {
       return { data: { status: 'not_current_session' }, error: null }
     }
     for (const r of tables.rounds ?? []) {
-      if (r.game_id === game.id && r.status === 'active' && (r.started_at as string) <= a.p_finished_at) {
+      // Every active round of the (locked, still finished with this finished_at) game: no clock comparison.
+      if (r.game_id === game.id && r.status === 'active') {
         Object.assign(r, { status: 'finished', ended_at: a.p_finished_at })
         roundUpdateLog.push({ status: 'finished' })
       }
@@ -809,8 +810,8 @@ describe('DELETE /api/players: no-successor end and its cleanup', () => {
     ]
     const res = await leave()
     expect(res.status).toBe(200)
-    expect(tables.rounds.find((r) => r.id === 'old')?.status).toBe('finished')
-    expect(tables.rounds.find((r) => r.id === 'newer')?.status).toBe('active')
+    // Both rounds close, whatever clock stamped them (a skewed app clock must not leave a live round open).
+    expect(tables.rounds.map((r) => r.status)).toEqual(['finished', 'finished'])
   })
 
   it('does not touch rounds of a live game (Play Again) when the host leaves', async () => {
@@ -833,8 +834,15 @@ describe('DELETE /api/players: no-successor end and its cleanup', () => {
     ]
     const res = await leave()
     expect(res.status).toBe(200)
-    expect(tables.rounds.find((r) => r.id === 'old')?.status).toBe('finished')
-    expect(tables.rounds.find((r) => r.id === 'newer')?.status).toBe('active')
+    expect(tables.rounds.map((r) => r.status)).toEqual(['finished', 'finished'])
+  })
+
+  it('a cleanup for a DIFFERENT finished_at (an older finish of a replayed game) leaves every round alone', async () => {
+    setup('trivia', { status: 'finished', result_reason: 'host_ended', finished_at: 'F2', sessions_played: 2 })
+    tables.rounds = [{ id: 'r', game_id: 'ABCD', status: 'active', started_at: '2000-01-01T00:00:00.000Z' }]
+    const res = await rpc('finish_rounds_of_finished_session', { p_game_id: 'ABCD', p_finished_at: 'F1' })
+    expect((res.data as { status: string }).status).toBe('not_current_session')
+    expect(tables.rounds[0].status).toBe('active')
   })
 })
 
@@ -1380,7 +1388,13 @@ describe('DELETE /api/players: a forfeit cleanup whose delete response was lost'
 describe('DELETE /api/players: Word Rush — a finish THIS leave caused vs an independent finish', () => {
   const finishNow = () =>
     Object.assign(tables.games[0], { status: 'finished', result_reason: null, finished_at: 'WR-FINISH' })
-  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
 
   it('the last unanswered player leaving finishes the game: the seat is deleted, the roster is NOT reverted, nothing is retained', async () => {
     setup('word_rush')
@@ -1429,7 +1443,13 @@ describe('DELETE /api/players: Word Rush — a finish THIS leave caused vs an in
 })
 
 describe('DELETE /api/players: the Word Rush roster is restored only for a CONFIRMED rejected delete', () => {
-  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
 
   it('confirmed rejection (the seat is still there): the roster is restored', async () => {
     setup('word_rush')
@@ -1509,7 +1529,13 @@ describe('DELETE /api/players: joiners mode removes the participant and the seat
 })
 
 describe('DELETE /api/players: the lost response of a delete that the SQL guards refused', () => {
-  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
 
   it('a finish that wins and a lost response overlap: the seat is NOT deleted, so it is retained and the roster restored', async () => {
     setup('word_rush')
@@ -1542,7 +1568,13 @@ describe('DELETE /api/players: a failed Word Rush session read changes nothing',
 })
 
 describe('DELETE /api/players: the own-finish flag never overrides an independent finish reason', () => {
-  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
 
   it('own-finish flag + a matching session + an independent finish reason: the seat is kept and the roster restored', async () => {
     setup('word_rush')
@@ -1569,7 +1601,13 @@ describe('DELETE /api/players: a joiners-mode delete whose response was lost sti
 })
 
 describe('DELETE /api/players: a failed Word Rush roster restore is not a completed leave', () => {
-  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
   const finishFirst = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
 
   it('the seat is kept but the roster could not be put back: 500, never the 200 retained answer', async () => {
@@ -1594,7 +1632,13 @@ describe('DELETE /api/players: a failed Word Rush roster restore is not a comple
 })
 
 describe('DELETE /api/players: a restore that finds no seat is not a retained leave', () => {
-  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
 
   it('the guarded delete refused (a finish won) but another removal deleted the seat before the restore: the seat is gone, not retained', async () => {
     setup('word_rush')
@@ -1613,7 +1657,13 @@ describe('DELETE /api/players: a restore that finds no seat is not a retained le
 })
 
 describe('DELETE /api/players: an own finish is refused while its bookkeeping is still owed', () => {
-  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
 
   it('the leaver keeps the seat (and the rows that cascade off it) until the finish bookkeeping marker is cleared', async () => {
     setup('word_rush')

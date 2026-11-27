@@ -315,7 +315,11 @@ export async function finishExpiredAnonymousSession(
   if (error) return 'error'
   // The session-bound finish lost: another request finished the expired session, and the room may already have been
   // reopened with a NEW session. Only a room that is still finished is reported as finished.
-  if (!won && currentStatus !== undefined && currentStatus !== 'finished') return 'superseded'
+  if (!won) {
+    // The status read after the lost update failed: nothing confirms what state the room is in.
+    if (currentStatus === undefined) return 'error'
+    if (currentStatus !== 'finished') return 'superseded'
+  }
 
   // The room IS finished at this point — only the post-finish message/ban wipe failed,
   // and that cannot un-finish it. Folding it into the return value would report a
