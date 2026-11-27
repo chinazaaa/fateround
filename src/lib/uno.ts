@@ -972,7 +972,14 @@ async function finishByLowestHand(
   // Writes that belong to this finish. Nothing is written before the finish claim wins: `patch` rides in the
   // claiming session UPDATE itself, and `handWrites` (the hands `hands` already reflects, e.g. a partial
   // penalty draw) are written only AFTER the claim, so a lost or failed claim leaves hands and piles untouched.
-  extra?: { patch?: Partial<UnoSession>; handWrites?: { playerId: string; cards: UnoCard[] }[]; round?: FinishRound }
+  extra?: {
+    patch?: Partial<UnoSession>
+    handWrites?: { playerId: string; cards: UnoCard[] }[]
+    /** Stats-only writes (a knockout's attribution) and the spectator flags that belong to this finish. */
+    statsWrites?: { player_id: string; stats: Record<string, number> }[]
+    spectatorIds?: string[]
+    round?: FinishRound
+  }
 ): Promise<FinishResult> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
@@ -1008,7 +1015,11 @@ async function finishByLowestHand(
   const eliminatedCount = (extra?.patch?.eliminated_player_ids ?? session.eliminated_player_ids ?? []).length
   return finishUnoRound(supabase, gameId, session, {
     patch: { ...extra?.patch, winner_player_id: winnerId, status_message: statusMessage },
-    hands: (extra?.handWrites ?? []).map((w) => ({ player_id: w.playerId, cards: w.cards })),
+    hands: [
+      ...(extra?.handWrites ?? []).map((w) => ({ player_id: w.playerId, cards: w.cards })),
+      ...(extra?.statsWrites ?? []),
+    ],
+    spectatorIds: extra?.spectatorIds,
     series: seriesAward(winnerId, hands, eliminatedCount, {
       turn_order: extra?.patch?.turn_order ?? session.turn_order,
       left_player_ids: extra?.patch?.left_player_ids ?? session.left_player_ids,
@@ -1533,6 +1544,25 @@ function planMercyKnockout(input: {
 }
 
 /**
+ * Whether a player may appear in a payload built from `session` as an optional credit (caster / setter stats,
+ * knockout attribution): seated in the claimed session, not marked left, and holding a hand row. Seat membership is
+ * what makes this reliable: a leave changes the session version first, so a seat that is in the claimed session's
+ * turn order cannot have left by the time the claim wins; a hand-row check alone cannot cover that interval.
+ */
+function creditableSeat(
+  session: Pick<UnoSession, 'turn_order' | 'left_player_ids'>,
+  hands: UnoPlayerHand[],
+  playerId: string | null | undefined
+): playerId is string {
+  return (
+    !!playerId &&
+    (session.turn_order ?? []).includes(playerId) &&
+    !unoLeftPlayerIds(session).includes(playerId) &&
+    hands.some((h) => h.player_id === playerId)
+  )
+}
+
+/**
  * Commits a move TOGETHER with the Mercy knockouts its final hands trigger (a forced draw, a 0-rotation, a roulette
  * reveal, a 7-swap): the session patch, every hand write, the knockout bookkeeping, the spectator flags and the
  * attribution are ONE transaction, or ONE finish when the knockout ends the round. A finish can therefore never
@@ -1572,7 +1602,7 @@ async function commitMoveWithKnockouts(
     // Attribution is optional: a setter who has since left has no hand row, and the knockout must still commit.
     const credited =
       victim.attributionId && victim.attributionId !== victim.playerId
-        ? hands.some((h) => h.player_id === victim.attributionId)
+        ? creditableSeat(session, hands, victim.attributionId)
           ? victim.attributionId
           : null
         : null
@@ -1607,6 +1637,38 @@ async function commitMoveWithKnockouts(
     }
   }
   const merged = mergeHandWrites(writes)
+  if (!endsRound && move.knockouts.length > 0) {
+    // A continuing move whose seat was just knocked out must not leave the turn (or a draw / Roulette decision owned by
+    // that seat) on a spectator with no way to resolve it: pass play to the next surviving seat.
+    const eliminatedNow = state.eliminated_player_ids ?? []
+    const turnIndex = patch.current_turn_index ?? session.current_turn_index
+    const seatId = (session.turn_order ?? [])[turnIndex]
+    if (seatId && eliminatedNow.includes(seatId)) {
+      const direction = (patch.direction ?? session.direction) < 0 ? -1 : 1
+      const nextIndex = unoNextTurnIndex(
+        { ...session, eliminated_player_ids: eliminatedNow },
+        withHandWrites(hands, merged),
+        turnIndex,
+        1,
+        direction
+      )
+      const nextId = (session.turn_order ?? [])[nextIndex]
+      const pendingUno = patch.uno_pending_player ?? session.uno_pending_player
+      patch = {
+        ...patch,
+        current_turn_index: nextIndex,
+        phase: 'playing',
+        color_roulette_player_id: null,
+        color_roulette_reveals: null,
+        draw_penalty: 0,
+        draw_penalty_kind: null,
+        draw_stack_chain: 0,
+        drawn_card_id: null,
+        ...(pendingUno && eliminatedNow.includes(pendingUno) ? { uno_pending_player: null, uno_called: false } : {}),
+        status_message: `${patch.status_message ?? ''} · ${playerName(playerNames, nextId)}'s turn`.replace(/^ · /, ''),
+      }
+    }
+  }
   if (endsRound) {
     const finished = await finishUnoRound(supabase, gameId, session, {
       patch,
@@ -2174,6 +2236,16 @@ export async function processUnoPlayMulti(
     }
   }
 
+  // The UNO-call marker follows the mover's FINAL hand: an auto-resolved Draw Two chain that comes back to the mover
+  // makes them draw, so one card after the play may be three cards after the draw (no call is owed then).
+  if (autoDraw && autoDraw.playerId === playerId) {
+    const owesAfterDraw = autoDraw.hand.length === 1
+    patch = {
+      ...patch,
+      uno_pending_player: owesAfterDraw ? playerId : null,
+      uno_called: owesAfterDraw ? callUno : false,
+    }
+  }
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
   const moverStats = foldUnoPlay(currentUnoStats(hands, playerId), cards, hand, wentOut, {
@@ -2371,15 +2443,47 @@ export async function processUnoDraw(
         rankHands = updateHand(rankHands, missed.playerId, missed.hand)
         handWrites.push({ playerId: missed.playerId, cards: missed.hand })
       }
+      // The Mercy limit applies BEFORE ranking: a drawer whose partial payout reached it is knocked out (zeroed hand,
+      // elimination, spectator flag, the setter's credit) in the same finish and cannot win on a low total.
+      let rankSession = session
+      let extraPatch: Partial<UnoSession> = { draw_pile: drawPile, discard_pile: discardPile }
+      let statsWrites: { player_id: string; stats: Record<string, number> }[] = []
+      let spectatorIds: string[] | undefined
+      if (newHand.length >= UNO_MERCY_HAND_LIMIT) {
+        const setterId = session.last_play_player_id
+        const plan = planMercyKnockout({
+          state: {
+            turn_order: session.turn_order,
+            eliminated_player_ids: session.eliminated_player_ids,
+            finish_order: session.finish_order,
+            draw_pile: drawPile,
+            status_message: session.status_message,
+          },
+          playerId,
+          koCards: newHand,
+          playerNames,
+          winCondition: rules.noMercyWin,
+          attribution:
+            setterId && setterId !== playerId && creditableSeat(session, hands, setterId)
+              ? { player_id: setterId, stats: { ...currentUnoStats(hands, setterId) } }
+              : null,
+        })
+        rankHands = updateHand(rankHands, playerId, [])
+        handWrites[0] = { playerId, cards: [] }
+        extraPatch = { ...extraPatch, eliminated_player_ids: plan.nextEliminated }
+        rankSession = { ...session, eliminated_player_ids: plan.nextEliminated }
+        statsWrites = plan.hands.filter((w) => w.stats && w.player_id !== playerId) as typeof statsWrites
+        spectatorIds = [playerId]
+      }
       const ended = await finishByLowestHand(
         supabase,
         gameId,
-        session,
+        rankSession,
         rankHands,
         playerNames,
         `Deck ran out mid-penalty (${drawn.length}/${penalty}) —`,
         rules.teamMode,
-        { patch: { draw_pile: drawPile, discard_pile: discardPile }, handWrites }
+        { patch: extraPatch, handWrites, statsWrites, spectatorIds }
       )
       return finishOutcome(ended)
     }
@@ -2502,7 +2606,7 @@ export async function processUnoDraw(
     forced &&
     session.last_play_player_id &&
     session.last_play_player_id !== playerId &&
-    hands.some((h) => h.player_id === session.last_play_player_id)
+    creditableSeat(session, hands, session.last_play_player_id)
   ) {
     const setterId = session.last_play_player_id
     const setterStats = { ...currentUnoStats(hands, setterId) }
@@ -2957,7 +3061,7 @@ async function processUnoColorRouletteReveal(
   const casterId = session.last_play_player_id ?? null
   const rouletteHands: UnoHandWrite[] = [{ player_id: playerId, cards: targetHand }]
   // (a caster who has since left has no hand row: finish / move payloads never name a seat that is gone)
-  if (revealCount > 0 && casterId && casterId !== playerId && hands.some((h) => h.player_id === casterId)) {
+  if (revealCount > 0 && casterId !== playerId && creditableSeat(session, hands, casterId)) {
     const casterStats = { ...currentUnoStats(hands, casterId) }
     bumpMaxU(casterStats, 'uno_hs_max_roulette_dealt', revealCount)
     rouletteHands.push({ player_id: casterId, stats: casterStats })
@@ -3353,7 +3457,13 @@ async function expireUnoTurn(
     // The delegate ended the round because the game timer ran out (a committed finish): for a turn expiry that is
     // success, not a version-conflict skip (the finish itself changed the version).
     if (result.error === UNO_TIMES_UP_ERROR) return {}
-    const { data: fresh } = await supabase.from('uno_sessions').select('updated_at').eq('game_id', gameId).maybeSingle()
+    const { data: fresh, error: rereadError } = await supabase
+      .from('uno_sessions')
+      .select('updated_at')
+      .eq('game_id', gameId)
+      .maybeSingle()
+    // A failed reread cannot establish that the caller sent an invalid action: it is a database failure.
+    if (rereadError) return { error: internalErrorMessage('uno', rereadError) }
     if (fresh && fresh.updated_at !== expectedUpdatedAt) return { skipped: true }
     return result
   }

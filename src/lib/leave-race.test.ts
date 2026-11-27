@@ -465,6 +465,22 @@ describe('processUnoExpireTurn — settlement of the delegated result', () => {
     expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({ skipped: true, conflict: true })
   })
 
+  it('a failed settlement reread is an internal error, never a 400-style validation error', async () => {
+    const t = expiredTables()
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || ++reads !== 1) return
+        // another move advances the turn before the delegate reads it: the delegate answers "Not your turn"
+        t.uno_sessions[0].current_turn_index = 1
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:05.000Z'
+      },
+      // the delegate's own load works; only the settlement's one-column reread fails
+      failSelect: (tb) => tb === 'uno_sessions' && reads >= 2,
+    })
+    expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+  })
+
   it('a poke before the turn is due is a plain skip, not a conflict', async () => {
     const t = expiredTables()
     t.uno_sessions[0].turn_deadline_at = new Date(Date.now() + 60_000).toISOString()
@@ -871,6 +887,33 @@ describe('removeUnoPlayer — a finished round', () => {
   })
 })
 
+describe('removeScrabblePlayer — no session at lookup', () => {
+  it('a first deal that commits after the lookup (and listed the leaver) makes the leave retry on the live path', async () => {
+    const t = scrabbleTables()
+    const row = t.scrabble_sessions[0]
+    t.scrabble_sessions = []
+    let dealt = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'scrabble_sessions' || dealt) return
+        dealt = true
+        // the deal commits right after the lookup returned no session
+        t.scrabble_sessions = [{ ...row }]
+      },
+    })
+    expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B'])
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+
+  it('without a session anywhere the leave simply removes the rows', async () => {
+    const t = scrabbleTables()
+    t.scrabble_sessions = []
+    expect(await removeScrabblePlayer(makeDb(t).supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+})
+
 describe('removeScrabblePlayer — a reopened lobby', () => {
   it('deletes the seat of a leaver in a waiting lobby whose finished session is still around', async () => {
     const t = scrabbleTables()
@@ -1266,6 +1309,147 @@ describe('Mercy knockout — committed in the same transaction as the move that 
     expect(t.uno_sessions[0].phase).toBe('finished')
     expect(t.uno_sessions[0].winner_player_id).toBe('C')
     expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
+  })
+
+  it('a caster who already left the claimed session seats (hand row still there) is neither credited nor written', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_no_mercy_win: 'last_standing' })
+    // A's leave committed (turn_order shrank) but A's hand row has not been deleted yet: a hand-row check alone would
+    // still credit A, and the cleanup deleting the row before the finish validates would reject the whole payload.
+    t.uno_player_hands = t.uno_player_hands.filter((h) => ['A', 'B', 'C'].includes(h.player_id as string))
+    Object.assign(t.uno_sessions[0], {
+      turn_order: ['B', 'C'],
+      current_turn_index: 0,
+      phase: 'color_roulette',
+      color_roulette_player_id: 'B',
+      required_color: 'red',
+      last_play_player_id: 'A',
+      draw_pile: [card('hit')],
+    })
+    t.uno_player_hands.find((h) => h.player_id === 'B')!.cards = Array.from({ length: 24 }, (_, i) => ({
+      ...card(`B${i}`),
+      color: 'blue',
+    }))
+    const db = makeDb(t)
+    const calls = spy(db)
+    expect(await processUnoDraw(db.supabase, 'G', 'B')).toEqual({})
+    const finish = calls.filter((c) => c.name === 'finish_uno_session')
+    expect(finish).toHaveLength(1)
+    expect((finish[0].args.p_hand_writes as { player_id: string }[]).map((w) => w.player_id)).not.toContain('A')
+    expect(t.uno_player_hands.find((h) => h.player_id === 'A')!.stats).toBeUndefined()
+  })
+
+  it('a continuing Roulette reveal that knocks the revealer out passes the turn on and clears the decision', async () => {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    Object.assign(t.uno_sessions[0], {
+      phase: 'color_roulette',
+      color_roulette_player_id: 'B',
+      color_roulette_reveals: 3,
+      current_turn_index: 1,
+      required_color: 'red',
+      last_play_player_id: 'A',
+      // a non-matching card (blue) is revealed: the hunt would continue with B, who is knocked out by it
+      draw_pile: [{ ...card('miss'), color: 'blue' }],
+    })
+    t.uno_player_hands[1].cards = Array.from({ length: 24 }, (_, i) => ({ ...card(`B${i}`), color: 'blue' }))
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'B')).toEqual({})
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
+    expect(t.uno_sessions[0].phase).toBe('playing')
+    expect(t.uno_sessions[0].color_roulette_player_id).toBeNull()
+    expect(t.uno_sessions[0].current_turn_index).toBe(2)
+  })
+
+  it('a voluntary draw that knocks the drawer out does not leave the turn (or the drawn card) on them', async () => {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('playable')],
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 24 }, (_, i) => ({ ...card(`A${i}`), color: 'blue' }))
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A'])
+    expect(t.uno_sessions[0].drawn_card_id ?? null).toBeNull()
+    expect(t.uno_sessions[0].current_turn_index).toBe(1)
+  })
+
+  it('a partial-draw finish applies the Mercy limit BEFORE ranking: the knocked-out drawer cannot win', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], {
+      uno_mode: 'no_mercy',
+      uno_series_scoring: true,
+      uno_series_target: 100000,
+      uno_series_scores: {},
+    })
+    // A holds 24 cards (all zero-point), owes six, and only one card is left: A reaches 25 and is eliminated
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [{ id: 'last', color: 'blue', kind: 'number', value: 0 }],
+      discard_pile: [],
+      draw_penalty: 6,
+      draw_penalty_kind: 'draw6',
+      last_play_player_id: 'C',
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 24 }, (_, i) => ({
+      id: `A${i}`,
+      color: 'blue',
+      kind: 'number',
+      value: 0,
+    }))
+    t.uno_player_hands[1].cards = [card('B1'), card('B2')]
+    t.uno_player_hands[2].cards = [card('C1')]
+    t.uno_player_hands[3].cards = [card('D1'), card('D2'), card('D3')]
+    const db = makeDb(t)
+    const calls = spy(db)
+    expect(await processUnoDraw(db.supabase, 'G', 'A')).toEqual({})
+    const finish = calls.filter((c) => c.name === 'finish_uno_session')
+    expect(finish).toHaveLength(1)
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    // on raw totals A (0 points) would have won; the knocked-out drawer ranks behind everyone
+    expect(t.uno_sessions[0].winner_player_id).toBe('C')
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A'])
+    expect(t.players.find((p) => p.id === 'A')!.spectator).toBe(true)
+    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(0)
+    expect((t.uno_player_hands[2].stats as Record<string, number>).uno_hs_knockouts).toBe(1)
+  })
+
+  it('a partial-draw finish that leaves the drawer below the limit keeps the plain lowest-hand finish', async () => {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [{ id: 'last', color: 'blue', kind: 'number', value: 0 }],
+      discard_pile: [],
+      draw_penalty: 6,
+      draw_penalty_kind: 'draw6',
+    })
+    t.uno_player_hands[0].cards = [{ id: 'A0', color: 'blue', kind: 'number', value: 0 }]
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
+    expect(t.uno_sessions[0].winner_player_id).toBe('A')
+  })
+
+  it('a Multi-Play chain that makes the mover draw clears the UNO-call marker when the final hand has more than one card', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_multi_play_mode: 'same_color' })
+    t.uno_sessions[0].turn_order = ['A', 'B']
+    t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id === 'A' || h.player_id === 'B')
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('d1'), card('d2'), card('d3')],
+    })
+    // one card is left after the play (an UNO call would be owed) but the chain makes A draw two
+    t.uno_player_hands[0].cards = [
+      { id: 's1', color: 'red', kind: 'skip' },
+      { id: 'x2', color: 'red', kind: 'draw2' },
+      { id: 's2', color: 'red', kind: 'skip' },
+      card('keep'),
+    ]
+    expect(await processUnoPlayMulti(makeDb(t).supabase, 'G', 'A', ['s1', 'x2', 's2'])).toEqual({})
+    expect(t.uno_sessions[0].uno_pending_player ?? null).toBeNull()
+    expect(t.uno_sessions[0].uno_called ?? false).toBe(false)
   })
 
   const kind = (id: string, k: string) => ({ id, color: 'red', kind: k })

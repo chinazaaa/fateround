@@ -1221,11 +1221,10 @@ async function removeScrabblePlayerOnce(
 
   // Lobby, spectator, already-finished, or not in the turn order — just drop their state + row.
   if (reopenedLobby && session) {
-    // ONE mechanism shared with the start: the leaver's player row (and its state rows, by cascade) go FIRST. A deal
-    // that lands afterwards cannot seat them (the state insert violates the player foreign key, and the initializer
-    // writes the session only after its states), and a deal that landed before changes the session version, so the
-    // seat removal below loses and the retry takes the live-round leave path against the new round. Cleanup therefore
-    // never deletes rows of a deal it did not read as live.
+    // The leaver's player row (and its state rows, by cascade) go FIRST. A deal that lands afterwards cannot seat
+    // them (`deal_scrabble_session` rejects a seat whose player row is gone), and a deal that landed before changes
+    // the session version, so the seat removal below loses and the retry takes the live-round leave path against
+    // the new round.
     await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
     const { error: rowError } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
     if (rowError) return { error: internalErrorMessage('scrabble', rowError) }
@@ -1241,5 +1240,16 @@ async function removeScrabblePlayerOnce(
   }
   await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: error ? internalErrorMessage('scrabble', error) : null }
+  if (error) return { error: internalErrorMessage('scrabble', error) }
+  // This path took no lock: a first deal that committed after the lookup (and accepted the leaver, whose row still
+  // existed) may now list a seat whose rows were just deleted. Success only when no session lists the leaver; the
+  // retry then takes the live-round path, which removes the seat from the turn order.
+  const { data: after, error: afterError } = await supabase
+    .from('scrabble_sessions')
+    .select('turn_order')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (afterError) return { error: internalErrorMessage('scrabble', afterError) }
+  if (((after?.turn_order as string[] | null) ?? []).includes(playerId)) return 'retry'
+  return { error: null }
 }

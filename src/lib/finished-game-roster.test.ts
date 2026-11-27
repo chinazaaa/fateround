@@ -79,6 +79,10 @@ describe('removal from a finished game', () => {
     expect((deleteHandler.match(/await unsubscribeRetainedPlayer\(/g) ?? []).length).toBeGreaterThanOrEqual(3)
   })
 
+  it('lets the host repair a pending Uno departure in a finished game (Uno is a forfeit-cleanup engine)', () => {
+    expect(deleteHandler).toMatch(/isUnoGame\(hostGameType\)/)
+  })
+
   it('still deletes mid-game — a player who walks out forfeits rather than places', () => {
     // The guard must key on 'finished' alone. Widening it to 'active' would leave abandoned
     // seats blocking turn order for the rest of the game.

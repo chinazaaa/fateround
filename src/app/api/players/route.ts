@@ -1896,6 +1896,7 @@ export async function DELETE(req: NextRequest) {
       const forfeitCleanup =
         isRummyGame(hostGameType) ||
         isWhotGame(hostGameType) ||
+        isUnoGame(hostGameType) ||
         isChessGame(hostGameType) ||
         isCheckersGame(hostGameType) ||
         isDraughts10Game(hostGameType)
@@ -2039,7 +2040,7 @@ export async function DELETE(req: NextRequest) {
    */
   if ((game as { status?: string }).status === 'finished') {
     /**
-     * Exception: a forfeiting leave (Rummy, Whot, Chess, Checkers, Draughts10) commits the finished
+     * Exception: a forfeiting leave (Rummy, Whot, Uno, Chess, Checkers, Draughts10) commits the finished
      * session before it deletes the leaver's seat; if that cleanup failed, the leaver is gone from
      * the session but still holds a seat. A repeat leave must finish the cleanup rather than be
      * answered "retained". Finishers and spectators leave no such trace and fall through below.

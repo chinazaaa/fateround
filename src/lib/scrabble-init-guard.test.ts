@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { initializeScrabbleGame } from './scrabble'
+import { INTERNAL_ERROR_MESSAGE } from './api-errors'
 
 // Dealing a round is ONE database call (`deal_scrabble_session`): the function owns the decisions that used to be
 // scattered app-side statements. It refuses to re-deal a session that is still `playing` (a live game's scores must
@@ -88,7 +89,7 @@ describe('initializeScrabbleGame — one transactional deal', () => {
 
   it('a database failure is the generic error', async () => {
     const { supabase } = makeMockSupabase({ rpcError: 'boom' })
-    expect((await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).error).toBeTruthy()
+    expect((await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).error).toBe(INTERNAL_ERROR_MESSAGE)
   })
 
   it('rejects an out-of-range player count before touching the database', async () => {
