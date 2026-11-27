@@ -11,7 +11,11 @@ let roster: Array<Record<string, unknown>> = []
 let updated = false
 
 const supabase = makeSupabaseStub({
-  games: ({ op }) => {
+  games: ({ op, payload }) => {
+    // The start claim (and its release) is a games update too; it is not the start write under test.
+    if (op === 'update' && payload && 'start_claimed_at' in (payload as object)) {
+      return { data: [{ id: 'ABCD' }], error: null }
+    }
     if (op === 'update') updated = true
     return { data: gameRow({ status: 'waiting', game_type: 'anonymous_messages' }), error: null }
   },

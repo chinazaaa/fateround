@@ -1,0 +1,11 @@
+-- Serialise POST /api/games/[code]/start (see src/lib/game-start-claim.ts).
+--
+-- The route checked status = 'waiting' and then, many awaits later, seeded the session and flipped
+-- the game to 'active'. Two overlapping starts (host double-tap, client retry) both passed the check,
+-- so games that seed their rounds with a plain insert ended up with them twice (Trivia: 10 rounds
+-- became 30 with three rounds "active" at once), and the rest answered the loser with a 500.
+--
+-- A start now claims the lobby first with one conditional UPDATE on this column; it is released when
+-- the attempt ends and a claim older than a minute is treated as abandoned. Server-only: no anon
+-- column grant is added, so clients can neither read nor write it.
+alter table public.games add column if not exists start_claimed_at timestamptz;

@@ -32,7 +32,11 @@ vi.mock('server-only', () => ({}))
 let game: Record<string, unknown> | null = gameRow({ status: 'waiting' })
 
 const supabase = makeSupabaseStub({
-  games: () => ({ data: game, error: null }),
+  games: ({ op, payload }) =>
+    // The start claim is a conditional games update that answers with the rows it claimed.
+    op === 'update' && payload && 'start_claimed_at' in (payload as object)
+      ? { data: [{ id: 'ABCD' }], error: null }
+      : { data: game, error: null },
   // No players seated: the first check past the auth triplet, so a 400 here proves
   // authorization passed without running any of the per-game-type start logic.
   players: () => ({ data: [], error: null }),

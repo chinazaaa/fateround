@@ -1,6 +1,7 @@
 import type { EliminationConfig } from '@/types/elimination'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { withGameNotification } from '@/lib/push-route'
+import { claimGameStart, releaseGameStart } from '@/lib/game-start-claim'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { generateRoundsByGender, generateNRounds } from '@/lib/utils'
@@ -216,7 +217,7 @@ import { pickCustomQuickDrawPrompts, pickQuickDrawPrompts } from '@/lib/quick-dr
 import { appearanceCountsForParticipants, mergeUsageMaps, parsePoolUsage, poolUsageToMap } from '@/lib/pool-usage'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { recordSeenContent, fetchSeenContentForPlayers } from '@/lib/seen-content'
-import { assertHostWith } from '@/lib/game-admin'
+import { assertHostWith, type GameRow } from '@/lib/game-admin'
 import { triviaQuestionKey } from '@/lib/trivia-questions'
 import { wyrQuestionKey } from '@/lib/pool-key'
 import { codewordPoolKey } from '@/lib/codewords-pool'
@@ -353,6 +354,19 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   if (auth.error) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const game = auth.game
 
+  // The status check above is not atomic with the writes below, so two overlapping starts (a
+  // double-tap, a client retry) would each seed the session: doubled rounds, a 500 for the loser.
+  // Claim the lobby first; only one overlapping request gets to run the start.
+  const claim = await claimGameStart(getSupabaseAdmin(), code.toUpperCase())
+  if (!claim.ok) return NextResponse.json({ error: 'Game already started' }, { status: 409 })
+  try {
+    return await startClaimedGame(code, raw, game)
+  } finally {
+    await releaseGameStart(getSupabaseAdmin(), code.toUpperCase(), claim.token)
+  }
+}
+
+async function startClaimedGame(code: string, raw: z.infer<typeof startBodySchema>, game: GameRow) {
   const gameType = parseGameType(game.game_type)
   const poolUsage = parsePoolUsage(game.pool_usage)
   const customWyrUsage = poolUsageToMap(poolUsage.wyr)
