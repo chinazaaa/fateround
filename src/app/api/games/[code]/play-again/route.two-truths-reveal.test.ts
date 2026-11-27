@@ -13,12 +13,18 @@ vi.mock('next/server', async (importOriginal) => ({
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/push', () => ({ notifyGameEvent: async () => {} }))
 
-const cleanup = vi.hoisted(() => ({ calls: 0, error: null as string | null }))
+const cleanup = vi.hoisted(() => ({
+  calls: 0,
+  error: null as string | null,
+  superseded: false,
+  args: [] as unknown[],
+}))
 vi.mock('@/lib/admin-end-game', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/admin-end-game')>()),
-  completeHostLeftCleanup: async () => {
+  completeHostLeftCleanup: async (_admin: unknown, _gameId: string, bind: unknown) => {
     cleanup.calls++
-    return { finished: true, error: cleanup.error }
+    cleanup.args.push(bind)
+    return { finished: true, error: cleanup.error, ...(cleanup.superseded ? { superseded: true } : {}) }
   },
 }))
 
@@ -48,6 +54,8 @@ beforeAll(async () => {
 beforeEach(() => {
   cleanup.calls = 0
   cleanup.error = null
+  cleanup.superseded = false
+  cleanup.args = []
   writes.length = 0
 })
 
@@ -62,6 +70,15 @@ describe('POST /api/games/[code]/play-again — a host-left Two Truths finish', 
     const res = await post()
     expect(res.status).toBe(409)
     expect(cleanup.calls).toBe(1)
+    expect(writes).toEqual([])
+  })
+
+  it('binds the cleanup to the finish this request read, and a superseded finish refuses the reset', async () => {
+    current = hostEnded({ finished_at: '2026-02-02T00:00:00.000Z' })
+    cleanup.superseded = true
+    const res = await post()
+    expect(cleanup.args).toEqual([{ finishedAt: '2026-02-02T00:00:00.000Z' }])
+    expect(res.status).toBe(409)
     expect(writes).toEqual([])
   })
 

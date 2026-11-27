@@ -251,3 +251,47 @@ describe('revealFinishedTtlRounds limited to the rounds a database function conf
     expect(calls.some((c) => c[0] === 'lte')).toBe(false)
   })
 })
+
+describe('a Two Truths round is activated through the locked database function only', () => {
+  const makeSupabase = (answer: { data: unknown; error: unknown }) => {
+    const rpcCalls: Array<{ fn: string; args: unknown }> = []
+    const writes: string[] = []
+    const table = (rows: unknown) => {
+      const q: Record<string, unknown> = {}
+      for (const m of ['select', 'eq', 'in', 'order', 'neq']) q[m] = () => q
+      q.maybeSingle = () => Promise.resolve({ data: rows, error: null })
+      q.update = () => {
+        writes.push('update')
+        return q
+      }
+      q.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(res)
+      return q
+    }
+    const supabase = {
+      from: (t: string) =>
+        t === 'games'
+          ? table({ id: 'ABCD', game_type: 'two_truths', status: 'active', current_round_number: 1 })
+          : table([{ id: 'r1', game_id: 'ABCD', round_number: 1, status: 'pending', participant_ids: [] }]),
+      rpc: async (fn: string, args: unknown) => {
+        rpcCalls.push({ fn, args })
+        return answer
+      },
+    } as unknown as Parameters<typeof syncTwoTruthsGameState>[0]
+    return { supabase, rpcCalls, writes }
+  }
+
+  it('activates the pending pointer round through activate_ttl_round, naming the game, round and number', async () => {
+    const { supabase, rpcCalls, writes } = makeSupabase({ data: { status: 'activated' }, error: null })
+    expect((await syncTwoTruthsGameState(supabase, 'ABCD')).code).toBe('synced_pointer')
+    expect(rpcCalls).toEqual([
+      { fn: 'activate_ttl_round', args: { p_game_id: 'ABCD', p_round_id: 'r1', p_round_number: 1 } },
+    ])
+    // No direct status write: the round is opened only by the function that holds the games row lock.
+    expect(writes).toEqual([])
+  })
+
+  it('a refused activation (the game finished meanwhile) opens nothing', async () => {
+    const { supabase } = makeSupabase({ data: { status: 'not_active' }, error: null })
+    expect((await syncTwoTruthsGameState(supabase, 'ABCD')).code).toBe('not_finished')
+  })
+})

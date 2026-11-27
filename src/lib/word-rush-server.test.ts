@@ -156,6 +156,7 @@ describe('individual round finalization is resumable', () => {
       answerReads: 0,
       awardOutcomes: [] as string[],
       gameFinishFailed: false,
+      finishArgs: [] as Array<Record<string, unknown>>,
       events: [] as string[],
       failFactsReads: opts.failFactsReads ?? 0,
       failures: [] as Array<Record<string, unknown>>,
@@ -164,6 +165,7 @@ describe('individual round finalization is resumable', () => {
     const client = {
       rpc: (fn: string, args: Record<string, unknown>) => {
         if (fn === 'word_rush_finish_game_for_session') {
+          state.finishArgs.push(args)
           if (opts.failGameFinish && !state.gameFinishFailed) {
             state.gameFinishFailed = true
             return Promise.resolve({ data: null, error: { message: 'boom' } })
@@ -361,6 +363,25 @@ describe('individual round finalization is resumable', () => {
     }
     return { client: client as unknown as SupabaseClient, state }
   }
+
+  it('the last-round finish names the leaver whose seat deletion it owes (recorded with the finish), and only then', async () => {
+    const owed = {
+      session_id: 'S-old',
+      turn_index: 0,
+      setter_id: SETTER,
+      is_last: true,
+      awarded: false,
+      leaver_id: 'p1',
+    }
+    const withLeaver = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: owed } })
+    await processWordRushExpireTurn(withLeaver.client, GAME)
+    expect(withLeaver.state.finishArgs[0]).toMatchObject({ p_session_id: 'S-old', p_leaver_player_id: 'p1' })
+    const { leaver_id: _l, ...noLeaver } = owed
+    const without = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: noLeaver } })
+    await processWordRushExpireTurn(without.client, GAME)
+    expect(without.state.finishArgs[0]).toMatchObject({ p_session_id: 'S-old' })
+    expect(without.state.finishArgs[0]).not.toHaveProperty('p_leaver_player_id')
+  })
 
   it('applies the points and the game finish in the same request when nothing fails', async () => {
     const { client, state } = makeStatefulClient()

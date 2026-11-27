@@ -749,6 +749,8 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       p_rounds: roundRows,
       p_lies: built.lies,
       p_min_submitters: TTL_MIN_PLAYERS,
+      // The lobby generation this start was prepared from (statements read, rounds built): a Play Again since is `lost`.
+      p_sessions_played: game.sessions_played ?? null,
     })
     if (gameError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })

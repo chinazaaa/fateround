@@ -415,6 +415,7 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
       finished: true,
       error: null,
+      superseded: true,
     })
     expect(recorded.deletes).toEqual([])
     expect(recorded.roundUpdates).toBe(0)

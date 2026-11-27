@@ -2062,6 +2062,18 @@ async function endGameIfHostAlone(h: HostHandoff): Promise<'finished' | 'closed'
   return 'error'
 }
 
+/**
+ * The seat removal found the leaving host alone and FINISHED the game instead of deleting the seat (one locked check in
+ * remove_player_if_game_open): this owes the finish what any host-left finish owes (its bookkeeping and the session-bound
+ * cleanup), bound to the finish the database just wrote.
+ */
+async function completeHostEndedByRemoval(h: HostHandoff | null, gameId: string, finishedAt: string) {
+  const admin = getSupabaseAdmin()
+  if (h) await runHostLeftBookkeeping(admin, h, finishedAt)
+  const cleanup = await completeHostLeftCleanup(admin, gameId, { finishedAt })
+  if (cleanup.error) console.error(`players: cleanup after host-left finish failed for ${gameId}`, cleanup.error)
+}
+
 /** A leave of a finished game keeps the seat (the result stays intact); the leaver just stops being pushed to. */
 async function retainedLeaveResponse(ctx: { seatRetained: boolean }, gameId: string, playerId: string) {
   await Promise.all([
@@ -2308,7 +2320,13 @@ async function removePlayer(
     // "not deleted" answer clears this. A later failure (the team reconcile, or the delete's own error) must not hide an
     // unresolved handoff, and nothing may imply a retry works unless the seat is known to remain.
     ctx.seatMayBeRemoved = true
-    const { error, gameFinished } = await removeCodewordsPlayer(getSupabaseAdmin(), id, playerId)
+    const { error, gameFinished, hostEnded } = await removeCodewordsPlayer(
+      getSupabaseAdmin(),
+      id,
+      playerId,
+      ctx.handoff ? { session: ctx.handoff.session, trackBookkeeping: false } : undefined
+    )
+    if (hostEnded) await completeHostEndedByRemoval(ctx.handoff, id, hostEnded.finishedAt)
     // The game finished after this request read it: the seat belongs to a result and was NOT deleted (a definite answer).
     if (!error && gameFinished) {
       ctx.seatMayBeRemoved = false
@@ -2482,7 +2500,10 @@ async function removePlayer(
         playerId,
         ownFinish,
         game!.participant_mode === 'joiners' ? player.name : undefined,
-        expectedSession
+        expectedSession,
+        // The host leaving: if nobody else is eligible the database finishes the game and keeps the seat, in the same
+        // locked check that would delete it.
+        ctx.handoff ? { session: ctx.handoff.session, trackBookkeeping: isWordRushGame(gameType) } : undefined
       )
     let removal = await removeOnce()
     // An own finish is refused while its bookkeeping marker is owed (the deletion is recorded for this exact seat and
@@ -2500,6 +2521,7 @@ async function removePlayer(
     if (removal.sessionChanged) {
       return NextResponse.json({ error: 'The game changed while you were leaving — try again' }, { status: 500 })
     }
+    if (removal.hostEnded) await completeHostEndedByRemoval(ctx.handoff, id, removal.hostEnded.finishedAt)
     let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
     // Word Rush: the roster change made for this removal is put back by ONE database step that also decides, under the
     // games + session row locks, whether the seat survived (`restored`), was deleted (`no_seat`: nothing to restore),
