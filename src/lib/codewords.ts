@@ -698,11 +698,14 @@ export async function removePlayerIfGameOpen(
    * Set when THIS leave already finished the game (Word Rush: the last unanswered player leaving ends the last round).
    * The seat is then deleted from that finished game, but only while it is still the session `session` names.
    */
-  ownFinish?: { startedAt: string | null; sessionsPlayed: number | null }
+  ownFinish?: { startedAt: string | null; sessionsPlayed: number | null },
+  /** Joiners mode: the participant row (by name) that goes with the seat, deleted in the same transaction. */
+  participantName?: string
 ): Promise<{ error: string | null; gameFinished: boolean }> {
   const { data, error } = await supabase.rpc('remove_player_if_game_open', {
     p_game_id: gameId,
     p_player_id: playerId,
+    ...(participantName !== undefined ? { p_participant_name: participantName } : {}),
     ...(ownFinish
       ? {
           p_own_finish: true,

@@ -45,8 +45,10 @@ export async function completePendingFinishedLeave(
   if (isRummyGame(gameType)) {
     const res = await completePendingRummyRemoval(supabase, gameId, playerId, playerName)
     if (!res) return null
-    // The Rummy removal deletes the hand and the seat inside it: an error may come after the delete was attempted.
-    return res.error ? { error: res.error, status: res.conflict ? 409 : 500, deleteAttempted: true } : { error: null }
+    // Only an error from the seat DELETE itself is uncertain; the session / seat reads and the hand delete fail before it.
+    return res.error
+      ? { error: res.error, status: res.conflict ? 409 : 500, deleteAttempted: res.seatDeleteIssued === true }
+      : { error: null }
   }
 
   if (isWhotGame(gameType)) return completePendingWhotLeave(supabase, gameId, playerId)

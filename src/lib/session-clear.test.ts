@@ -167,6 +167,15 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     expect(spy).not.toHaveBeenCalled()
   })
 
+  it('binds the finish to the session it saw expire (a restarted room is never finished or wiped)', async () => {
+    const m = makeMockSupabase()
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe(true)
+    expect(markGameFinished).toHaveBeenCalledWith(m.supabase, 'GAME', undefined, {
+      onlyIfActive: true,
+      onlySessionStartedAt: EXPIRED.session_started_at,
+    })
+  })
+
   it('reports failure and logs nothing when the finish itself fails', async () => {
     markGameFinished.mockResolvedValueOnce({ error: { message: 'db down' }, won: false })
     const m = makeMockSupabase()

@@ -1,78 +1,70 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
+
+// The last-round finish goes through the game-finish module; only its outcome matters here.
+const finish = vi.hoisted(() => ({ won: true }))
+vi.mock('@/lib/game-finish', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/game-finish')>()),
+  markGameFinished: async () => ({ error: null, won: finish.won, bookkeeping: 'none' }),
+  recoverFinishBookkeeping: async () => ({ state: 'none' }),
+}))
+
 import { revertWordRushRosterAfterFailedPlayerDelete, syncWordRushAfterPlayerRemoved } from './word-rush-server'
 
 /**
- * A failed player delete reverts the roster change made for it. Between the removal RPC and the revert a finish,
- * Play Again and Start can replace the session row (same game id, a NEW id), so the revert must be bound to the
- * session the snapshot was taken on, or it would write the old roster / prompt setter onto the new session.
+ * A failed player delete compensates the roster change made for it. The compensation is ONE database step
+ * (word_rush_restore_roster_member) that re-adds just the removed player, bound to the session the snapshot was taken
+ * on: a finish + Play Again + Start replaces the session row (a new id under the same game id), and a player who left
+ * in the meantime must not be put back without a seat (the whole saved roster is never rewritten).
  */
-
-type Call = { op: 'update'; patch: Record<string, unknown>; filters: Array<[string, unknown]> }
-
-function recordingClient() {
-  const calls: Call[] = []
-  const client = {
-    from: () => {
-      const filters: Array<[string, unknown]> = []
-      let patch: Record<string, unknown> = {}
-      const api: Record<string, unknown> = {
-        update: (p: Record<string, unknown>) => ((patch = p), api),
-        eq: (k: string, v: unknown) => (filters.push([k, v]), api),
-        then: (resolve: (v: unknown) => void) => {
-          calls.push({ op: 'update', patch, filters })
-          resolve({ error: null })
-        },
-      }
-      return api
-    },
-  } as unknown as SupabaseClient
-  return { client, calls }
-}
-
 describe('revertWordRushRosterAfterFailedPlayerDelete', () => {
-  const snapshot = { session_id: 'S-OLD', roster: ['a', 'b'], prompt_setter_player_id: 'a' }
+  const snapshot = {
+    session_id: 'S-OLD',
+    removed_player_id: 'a',
+    removed_index: 0,
+    prompt_setter_player_id: 'a',
+    setter_after: 'b',
+  }
 
-  it('is bound to the session the snapshot was taken on (and the game)', async () => {
-    const { client, calls } = recordingClient()
-    await revertWordRushRosterAfterFailedPlayerDelete(client, 'GAME', snapshot)
-    expect(calls).toHaveLength(1)
-    expect(calls[0].filters).toContainEqual(['game_id', 'GAME'])
-    expect(calls[0].filters).toContainEqual(['id', 'S-OLD'])
-    expect(calls[0].patch).toMatchObject({ roster: ['a', 'b'], prompt_setter_player_id: 'a' })
-  })
-
-  it('a replaced session (a different id) is not matched, so its roster is never overwritten', async () => {
-    // Model the table: the session row now has a NEW id; an update filtered on the old id matches nothing.
-    const row: Record<string, unknown> = {
-      id: 'S-NEW',
-      game_id: 'GAME',
-      roster: ['x', 'y', 'z'],
-      prompt_setter_player_id: null,
-    }
+  it('asks the database to re-add ONLY the removed player, bound to the session and the game', async () => {
+    const calls: Array<{ name: string; args: Record<string, unknown> }> = []
     const client = {
-      from: () => {
-        const filters: Array<[string, unknown]> = []
-        let patch: Record<string, unknown> = {}
-        const api: Record<string, unknown> = {
-          update: (p: Record<string, unknown>) => ((patch = p), api),
-          eq: (k: string, v: unknown) => (filters.push([k, v]), api),
-          then: (resolve: (v: unknown) => void) => {
-            if (filters.every(([k, v]) => row[k] === v)) Object.assign(row, patch)
-            resolve({ error: null })
-          },
-        }
-        return api
-      },
+      rpc: async (name: string, args: Record<string, unknown>) => (
+        calls.push({ name, args }),
+        { data: null, error: null }
+      ),
     } as unknown as SupabaseClient
     await revertWordRushRosterAfterFailedPlayerDelete(client, 'GAME', snapshot)
-    expect(row.roster).toEqual(['x', 'y', 'z'])
-    expect(row.prompt_setter_player_id).toBeNull()
+    expect(calls).toEqual([
+      {
+        name: 'word_rush_restore_roster_member',
+        args: {
+          p_game_id: 'GAME',
+          p_session_id: 'S-OLD',
+          p_player_id: 'a',
+          p_index: 0,
+          p_restore_setter: true,
+          p_setter_after: 'b',
+          p_setter_before: 'a',
+        },
+      },
+    ])
+  })
+
+  it('leaves the prompt setter alone when the removal did not reassign it', async () => {
+    const calls: Array<Record<string, unknown>> = []
+    const client = {
+      rpc: async (_n: string, args: Record<string, unknown>) => (calls.push(args), { data: null, error: null }),
+    } as unknown as SupabaseClient
+    const { setter_after: _unused, ...untouched } = snapshot
+    void _unused
+    await revertWordRushRosterAfterFailedPlayerDelete(client, 'GAME', untouched)
+    expect(calls[0].p_restore_setter).toBe(false)
   })
 })
 
 describe('syncWordRushAfterPlayerRemoved snapshot', () => {
-  it('records the session id with the roster it will restore', async () => {
+  it('records the session id and the removed player (with their position) it will restore', async () => {
     const session = {
       id: 'S-1',
       game_id: 'GAME',
@@ -117,7 +109,14 @@ describe('syncWordRushAfterPlayerRemoved snapshot', () => {
       },
     } as unknown as SupabaseClient
     const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
-    expect(result.rollback).toEqual({ session_id: 'S-1', roster: ['a', 'b', 'c'], prompt_setter_player_id: 'a' })
+    // Only the removed player (and where they were) is recorded, never a copy of the whole roster.
+    expect(result.rollback).toMatchObject({
+      session_id: 'S-1',
+      removed_player_id: 'b',
+      removed_index: 1,
+      prompt_setter_player_id: 'a',
+    })
+    expect(result.rollback).not.toHaveProperty('roster')
   })
 })
 
@@ -154,7 +153,7 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   /** `claimWins`: the compare-and-set that closes the round matches a row (this removal won it). */
   const clientFor = (session: Record<string, unknown>, claimWins: boolean) =>
     ({
-      rpc: async () => ({ data: 'not_pending', error: null }),
+      rpc: async () => ({ data: 'applied', error: null }),
       from: (table: string) => {
         let updating = false
         const api: unknown = new Proxy(
@@ -186,6 +185,16 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')
     expect(result.error).toBeUndefined()
     expect(result.ownFinish).toBe(true)
+  })
+
+  it("an independent finish of the GAME that landed first (the game transition is lost) is not this removal's finish", async () => {
+    finish.won = false
+    try {
+      const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')
+      expect(result.ownFinish).toBe(false)
+    } finally {
+      finish.won = true
+    }
   })
 
   it('ending a round that is not the last is not a finish', async () => {

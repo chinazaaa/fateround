@@ -32,11 +32,15 @@ vi.mock('@/lib/codewords', async (importOriginal) => ({
 // whether it ENDED the game) is scripted, and the roster revert is recorded.
 const wordRush = vi.hoisted(() => ({
   sync: {} as { rollback?: unknown; ownFinish?: boolean },
+  syncCalls: 0,
   reverts: [] as unknown[],
 }))
 vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/word-rush-server')>()),
-  syncWordRushAfterPlayerRemoved: async () => wordRush.sync,
+  syncWordRushAfterPlayerRemoved: async () => {
+    wordRush.syncCalls++
+    return wordRush.sync
+  },
   revertWordRushRosterAfterFailedPlayerDelete: async (_s: unknown, _g: string, snapshot: unknown) => {
     wordRush.reverts.push(snapshot)
   },
@@ -74,6 +78,8 @@ let failPlayerDelete = false
 let playerDeleteLosesResponse = false
 /** Reading the players table fails (the read-back after an ambiguous delete cannot tell what happened). */
 let failPlayersRead = false
+/** The games read that captures the Word Rush session identity before the roster change fails. */
+let failGamesSessionRead = false
 /** Runs right after a players delete committed (and its ON DELETE SET NULL ran): e.g. a claim lands. */
 let afterPlayerDelete: (() => void) | null = null
 /** Runs once, right after the FIRST games read (the one that authorises the leave). */
@@ -105,6 +111,7 @@ function builder(table: string) {
   const filters: ((r: Row) => boolean)[] = []
   let patch: Row | null = null
   let deleting = false
+  let selectedCols: string | undefined
   let orderBy: { col: string; asc: boolean } | null = null
   let limitTo: number | null = null
   const match = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)))
@@ -133,6 +140,9 @@ function builder(table: string) {
       return { data: rows.map((r) => ({ ...r })), error: null }
     }
     if (table === 'players' && failPlayersRead) return { data: null, error: { message: 'read failed' } }
+    if (table === 'games' && failGamesSessionRead && selectedCols === 'session_started_at, sessions_played') {
+      return { data: null, error: { message: 'read failed' } }
+    }
     let out = match().map((r) => ({ ...r }))
     // The roster read relies on the database ordering and limiting it; model both.
     if (orderBy) {
@@ -148,7 +158,7 @@ function builder(table: string) {
     return { data: out, error: null }
   }
   const api: Record<string, unknown> = {
-    select: () => api,
+    select: (cols?: string) => ((selectedCols = cols), api),
     order: (col: string, opts?: { ascending?: boolean }) => ((orderBy = { col, asc: opts?.ascending !== false }), api),
     limit: (n: number) => ((limitTo = n), api),
     eq: (k: string, v: unknown) => (filters.push((r) => r[k] === v), api),
@@ -193,6 +203,8 @@ let settleAttempts: SettleArgs[] = []
 let deleteCommitsButErrors = false
 /** Every remove_player_if_game_open call's arguments. */
 let removeArgs: Array<Record<string, unknown>> = []
+/** The participant name each ACCEPTED removal deleted together with the seat (joiners mode). */
+let participantDeletes: Array<string | null> = []
 const FINISHED_AT = '2026-05-05T05:05:05.000Z'
 /**
  * A model of public.settle_host_leave (supabase/migrations/20261203900000_settle_host_leave.sql; the SQL itself is
@@ -307,12 +319,9 @@ async function rpc(name: string, args: Record<string, unknown>) {
       p_own_finish?: boolean
       p_session_started_at?: string | null
       p_sessions_played?: number | null
+      p_participant_name?: string
     }
     removeArgs.push(a)
-    if (deleteCommitsButErrors) {
-      deletePlayers([a.p_player_id])
-      return { data: null, error: { message: 'response lost' } }
-    }
     const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
     if (!g) return { data: { status: 'game_missing' }, error: null }
     // A finish this leave caused is deleted through only while the game is still the inspected session.
@@ -320,7 +329,14 @@ async function rpc(name: string, args: Record<string, unknown>) {
       a.p_own_finish === true &&
       g.sessions_played === (a.p_sessions_played ?? null) &&
       ((g.session_started_at as string | null) ?? null) === (a.p_session_started_at ?? null)
-    if (g.status === 'finished' && !own) return { data: { status: 'game_finished' }, error: null }
+    const blocked = g.status === 'finished' && !own
+    // The SQL decides first and applies only the writes it permits; a lost response replaces only the ANSWER.
+    if (deleteCommitsButErrors) {
+      if (!blocked) deletePlayers([a.p_player_id])
+      return { data: null, error: { message: 'response lost' } }
+    }
+    if (blocked) return { data: { status: 'game_finished' }, error: null }
+    participantDeletes.push(a.p_participant_name ?? null)
     deletePlayers([a.p_player_id])
     afterPlayerDelete?.()
     return { data: { status: 'deleted' }, error: null }
@@ -440,10 +456,13 @@ beforeEach(() => {
   settleAttempts = []
   deleteCommitsButErrors = false
   removeArgs = []
+  participantDeletes = []
   playerDeleteLosesResponse = false
   failPlayersRead = false
   wordRush.sync = {}
+  wordRush.syncCalls = 0
   wordRush.reverts = []
+  failGamesSessionRead = false
   removal.reconcileError = null
   removal.uno.error = null
   removal.scrabble.error = null
@@ -1375,6 +1394,66 @@ describe('DELETE /api/players: the Word Rush roster is restored only for a CONFI
     expect(body.handoff).toBe('unresolved')
     expect(body.error).not.toMatch(/try again|retry/i)
     expect(wordRush.reverts).toEqual([])
+  })
+})
+
+describe('DELETE /api/players: joiners mode removes the participant and the seat in ONE guarded database step', () => {
+  it('passes the participant name to the same conditional removal, and deletes both', async () => {
+    setup('trivia', { participant_mode: 'joiners' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(removeArgs[0]).toMatchObject({ p_participant_name: 'Host' })
+    expect(participantDeletes).toEqual(['Host'])
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+  })
+
+  it('a finish that lands before the delete keeps BOTH rows and answers a retained leave', async () => {
+    setup('trivia', { participant_mode: 'joiners' })
+    beforeSeatDelete = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(participantDeletes).toEqual([])
+  })
+
+  it('other modes never pass a participant name', async () => {
+    setup('trivia')
+    await leave()
+    expect(removeArgs[0]).not.toHaveProperty('p_participant_name')
+  })
+})
+
+describe('DELETE /api/players: the lost response of a delete that the SQL guards refused', () => {
+  const rollback = { session_id: 'WRS', removed_player_id: HOST_PID, removed_index: 0, prompt_setter_player_id: null }
+
+  it('a finish that wins and a lost response overlap: the seat is NOT deleted, so it is retained and the roster restored', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    beforeSeatDelete = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    deleteCommitsButErrors = true
+    const res = await leave()
+    // The answer was lost, but the read-back proves the seat survived: a plain repeatable error, roster restored.
+    expect(res.status).toBe(500)
+    expect(((await res.json()) as { handoff?: string }).handoff).toBeUndefined()
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(wordRush.reverts).toEqual([rollback])
+  })
+})
+
+describe('DELETE /api/players: a failed Word Rush session read changes nothing', () => {
+  it('stops BEFORE the roster is touched: nothing is synced, deleted or reverted, and the leave can be repeated', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback: { session_id: 'WRS' }, ownFinish: true }
+    failGamesSessionRead = true
+    const res = await leave()
+    expect(res.status).toBe(500)
+    expect(wordRush.syncCalls).toBe(0)
+    expect(wordRush.reverts).toEqual([])
+    expect(removeArgs).toEqual([])
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    // Nothing was removed, so no handoff is claimed to be unresolved.
+    expect(((await res.json()) as { handoff?: string }).handoff).toBeUndefined()
   })
 })
 
