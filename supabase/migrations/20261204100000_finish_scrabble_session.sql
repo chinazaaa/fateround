@@ -30,7 +30,7 @@
 -- Execute is revoked from public / anon / authenticated and granted to service_role only. NULL arguments for the
 -- required parameters raise.
 --
--- Additive: two new functions, nothing existing is altered.
+-- Additive: two new functions (the finish and the non-finishing move), nothing existing is altered.
 
 create or replace function public.finish_scrabble_session(
   p_game_id text,
@@ -188,22 +188,19 @@ $$;
 revoke execute on function public.finish_scrabble_session(text, timestamptz, jsonb, jsonb, uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.finish_scrabble_session(text, timestamptz, jsonb, jsonb, uuid, jsonb) to service_role;
 
--- A mover's rack / score / clock write for a move that does NOT end the round, refused once the round is finished
--- and bound to the state row the move loaded.
--- The move's session claim and the mover's state write are separate statements. A finish that landed in between
--- (published from the states it read) must not have its scores changed afterwards, and a rematch that landed in
--- between must not have its NEW round's rack / score overwritten by a delayed write of the old round: a rematch
--- re-deals every player's state row (new row ids), so the write targets the row id the move loaded and finds no row
--- (`stale`) in a later round. The write takes the same session row lock the finish takes, so it either lands before
--- the finish or is refused (`finished`) after it.
--- p_patch keys: rack (array), score (number), clock_ms_remaining (number | null), timed_out (boolean), stats (object).
--- Outcome: written | finished | stale (the row is gone or belongs to another round: the move is moot) | invalid
--- (a malformed patch or an unknown game / session). NULL game id / player id / patch / state id raise.
-create or replace function public.scrabble_write_state_if_open(
+-- A NON-finishing move is the same shape in miniature, and so the same atomicity applies: apply_scrabble_move() claims
+-- the session by version and applies the session patch (bag, board, turn, ...) AND the mover's state row (rack, score,
+-- clock) in ONE transaction. Without it a move was a session claim followed by a separate mover write, so a finish or
+-- another move could act on the new session version while the player states still held the old rack / score (a round
+-- published from pre-move scores, an exchange that committed the bag but not the rack, a delayed write landing on a
+-- rematch). Outcome: applied | lost (stale version, or the round is already finished) | invalid (malformed payload,
+-- unknown / protected column, a move that tries to set phase `finished` -- only finish_scrabble_session ends a round).
+-- A state write for a player who has since left matches no row and is ignored. NULL required arguments raise.
+create or replace function public.apply_scrabble_move(
   p_game_id text,
-  p_player_id uuid,
-  p_patch jsonb,
-  p_state_id uuid
+  p_expected_updated_at timestamptz,
+  p_session_patch jsonb,
+  p_state_writes jsonb
 )
 returns jsonb
 language plpgsql
@@ -212,44 +209,85 @@ set search_path = public, pg_temp
 as $$
 declare
   v_id text;
-  v_phase text;
+  v_session public.scrabble_sessions%rowtype;
+  v_bad text;
+  v_cols text;
+  v_elem jsonb;
 begin
-  if p_game_id is null or p_player_id is null or p_patch is null or p_state_id is null then
-    raise exception 'scrabble_write_state_if_open: game id, player id, patch and state row id are required';
+  if p_game_id is null or p_expected_updated_at is null or p_session_patch is null or p_state_writes is null then
+    raise exception 'apply_scrabble_move: game id, expected version, session patch and state writes are required';
   end if;
   v_id := upper(p_game_id);
-  if jsonb_typeof(p_patch) is distinct from 'object'
-     or exists (
-       select 1 from jsonb_object_keys(p_patch) k
-       where k not in ('rack', 'score', 'clock_ms_remaining', 'timed_out', 'stats')
-     )
-     or (p_patch ? 'score' and jsonb_typeof(p_patch->'score') is distinct from 'number')
-     or (p_patch ? 'rack' and jsonb_typeof(p_patch->'rack') is distinct from 'array')
-     or (p_patch ? 'clock_ms_remaining' and jsonb_typeof(p_patch->'clock_ms_remaining') not in ('number', 'null'))
-     or (p_patch ? 'timed_out' and jsonb_typeof(p_patch->'timed_out') is distinct from 'boolean')
-     or (p_patch ? 'stats' and jsonb_typeof(p_patch->'stats') is distinct from 'object') then
-    return jsonb_build_object('status', 'invalid');
-  end if;
-  select phase into v_phase from public.scrabble_sessions where game_id = v_id for update;
+
+  select * into v_session from public.scrabble_sessions where game_id = v_id for update;
   if not found then
-    return jsonb_build_object('status', 'invalid');
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_missing');
   end if;
-  if v_phase = 'finished' then
-    return jsonb_build_object('status', 'finished');
+  if v_session.phase = 'finished' or v_session.updated_at <> p_expected_updated_at then
+    return jsonb_build_object('status', 'lost');
   end if;
-  update public.scrabble_player_state
-    set score = coalesce((p_patch->>'score')::integer, score),
-        rack = coalesce(p_patch->'rack', rack),
-        clock_ms_remaining = case when p_patch ? 'clock_ms_remaining' then (p_patch->>'clock_ms_remaining')::integer else clock_ms_remaining end,
-        timed_out = coalesce((p_patch->>'timed_out')::boolean, timed_out),
-        stats = coalesce(p_patch->'stats', stats)
-    where id = p_state_id and game_id = v_id and player_id = p_player_id;
-  if not found then
-    return jsonb_build_object('status', 'stale');
+
+  if jsonb_typeof(p_session_patch) is distinct from 'object' or jsonb_typeof(p_state_writes) is distinct from 'array' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
   end if;
-  return jsonb_build_object('status', 'written');
+  select string_agg(k, ',') into v_bad
+    from jsonb_object_keys(p_session_patch) as k
+    where k in ('id', 'game_id', 'created_at', 'updated_at')
+       or not exists (
+         select 1 from information_schema.columns c
+         where c.table_schema = 'public' and c.table_name = 'scrabble_sessions' and c.column_name = k
+       );
+  if v_bad is not null then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
+  end if;
+  if p_session_patch->>'phase' = 'finished' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
+  end if;
+
+  for v_elem in select * from jsonb_array_elements(p_state_writes) loop
+    if jsonb_typeof(v_elem) <> 'object'
+       or (v_elem->>'player_id') is null
+       or jsonb_typeof(v_elem->'player_id') <> 'string'
+       or (v_elem->>'player_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or exists (
+         select 1 from jsonb_object_keys(v_elem) k
+         where k not in ('player_id', 'score', 'rack', 'clock_ms_remaining', 'timed_out', 'stats')
+       )
+       or (v_elem ? 'score' and jsonb_typeof(v_elem->'score') <> 'number')
+       or (v_elem ? 'rack' and jsonb_typeof(v_elem->'rack') <> 'array')
+       or (v_elem ? 'clock_ms_remaining' and jsonb_typeof(v_elem->'clock_ms_remaining') not in ('number', 'null'))
+       or (v_elem ? 'timed_out' and jsonb_typeof(v_elem->'timed_out') <> 'boolean')
+       or (v_elem ? 'stats' and jsonb_typeof(v_elem->'stats') <> 'object') then
+      return jsonb_build_object('status', 'invalid', 'reason', 'state_write');
+    end if;
+  end loop;
+  if (select count(distinct (e->>'player_id')::uuid) from jsonb_array_elements(p_state_writes) e) <> jsonb_array_length(p_state_writes) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'state_write_duplicate');
+  end if;
+
+  select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_patch) as k;
+  if v_cols is not null then
+    execute format(
+      'update public.scrabble_sessions s set (%1$s) = (select %1$s from jsonb_populate_record(null::public.scrabble_sessions, $1)) where s.game_id = $2',
+      v_cols
+    ) using p_session_patch, v_id;
+  else
+    update public.scrabble_sessions set updated_at = updated_at where game_id = v_id;
+  end if;
+
+  for v_elem in select * from jsonb_array_elements(p_state_writes) loop
+    update public.scrabble_player_state
+      set score = coalesce((v_elem->>'score')::integer, score),
+          rack = coalesce(v_elem->'rack', rack),
+          clock_ms_remaining = case when v_elem ? 'clock_ms_remaining' then (v_elem->>'clock_ms_remaining')::integer else clock_ms_remaining end,
+          timed_out = coalesce((v_elem->>'timed_out')::boolean, timed_out),
+          stats = coalesce(v_elem->'stats', stats)
+      where game_id = v_id and player_id = (v_elem->>'player_id')::uuid;
+  end loop;
+
+  return jsonb_build_object('status', 'applied');
 end;
 $$;
 
-revoke execute on function public.scrabble_write_state_if_open(text, uuid, jsonb, uuid) from public, anon, authenticated;
-grant execute on function public.scrabble_write_state_if_open(text, uuid, jsonb, uuid) to service_role;
+revoke execute on function public.apply_scrabble_move(text, timestamptz, jsonb, jsonb) from public, anon, authenticated;
+grant execute on function public.apply_scrabble_move(text, timestamptz, jsonb, jsonb) to service_role;

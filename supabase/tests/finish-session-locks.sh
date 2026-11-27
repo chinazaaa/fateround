@@ -47,6 +47,8 @@ P3=00000000-0000-0000-0000-00000000f003
 P4=00000000-0000-0000-0000-00000000f004
 P5=00000000-0000-0000-0000-00000000f005
 P6=00000000-0000-0000-0000-00000000f006
+P7=00000000-0000-0000-0000-00000000f007
+P8=00000000-0000-0000-0000-00000000f008
 
 # ---- Case A: Uno ---------------------------------------------------------------------------------------------
 psqlq <<SQL
@@ -93,10 +95,10 @@ wait_for "second finisher answered" "select not exists (select 1 from pg_stat_ac
 [ "$(psqlq -c "select score from public.scrabble_player_state where game_id = 'FINLS' and player_id = '$P3'")" = "7" ] || fail "case B: scores not written once"
 [ "$(psqlq -c "select status from public.games where id = 'FINLS'")" = "finished" ] || fail "case B: game not finished"
 
-# ---- Case C: a mover's state write racing a finish ---------------------------------------------------------
-# scrabble_write_state_if_open() takes the same session row lock as the finish. Session F runs finish_scrabble_session()
-# (scores 7 / 21) and keeps its transaction open; session W runs a mover write (score 999) for the same game. W must be
-# observed WAITING on F and, once F commits, be refused with `finished`: the published score stays 7.
+# ---- Case C: a move racing a finish -------------------------------------------------------------------------
+# apply_scrabble_move() takes the same session row lock as the finish. Session F runs finish_scrabble_session()
+# (score 7) and keeps its transaction open; session W runs a move (score 999) claimed against the SAME version. W must
+# be observed WAITING on F and, once F commits, answer `lost` (the round is finished): the published score stays 7.
 psqlq <<SQL
 insert into public.games (id, title, host_token, game_type, status) values ('FINLM', 'lock test M', 'tok-finlm', 'scrabble', 'active');
 insert into public.players (id, game_id, name) values ('$P5', 'FINLM', 'A'), ('$P6', 'FINLM', 'B');
@@ -109,11 +111,32 @@ start_gate
 PGAPPNAME=fin-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_F; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
 wait_for "finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_M=$(mktemp)
-PGAPPNAME=fin-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.scrabble_write_state_if_open('FINLM', '$P5', '{\"score\":999}'::jsonb, (select id from public.scrabble_player_state where game_id = 'FINLM' and player_id = '$P5'))->>'status'" >"$OUT_M" 2>&1 &
-wait_for "the mover write waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-second' and wait_event_type = 'Lock')"
+PGAPPNAME=fin-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.apply_scrabble_move('FINLM', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P5\",\"score\":999}]'::jsonb)->>'status'" >"$OUT_M" 2>&1 &
+wait_for "the move waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-second' and wait_event_type = 'Lock')"
 open_gate
-wait_for "the mover write answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-second')"
-[ "$(cat "$OUT_M")" = "finished" ] || fail "case C: expected the mover write to be refused with 'finished', got '$(cat "$OUT_M")'"
+wait_for "the move answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-second')"
+[ "$(cat "$OUT_M")" = "lost" ] || fail "case C: expected the move to be 'lost', got '$(cat "$OUT_M")'"
 [ "$(psqlq -c "select score from public.scrabble_player_state where game_id = 'FINLM' and player_id = '$P5'")" = "7" ] || fail "case C: the published score was changed after the finish"
+
+# ---- Case D: an Uno move racing a finish ------------------------------------------------------------------------
+# Same shape as case C for apply_uno_move(): the move waits on the finish's session lock and then answers `lost`.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('FINLV', 'lock test V', 'tok-finlv', 'uno', 'active');
+insert into public.players (id, game_id, name) values ('$P7', 'FINLV', 'A'), ('$P8', 'FINLV', 'B');
+insert into public.uno_sessions (game_id, turn_order, phase) values ('FINLV', array['$P7'::uuid, '$P8'::uuid], 'playing');
+insert into public.uno_player_hands (game_id, player_id, cards, player_order) values ('FINLV', '$P7', '[{"id":"a"}]', 0), ('FINLV', '$P8', '[{"id":"x"}]', 1);
+SQL
+VER=$(psqlq -c "select updated_at from public.uno_sessions where game_id = 'FINLV'")
+CALL_V="select public.finish_uno_session('FINLV', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P7\",\"cards\":[]}]'::jsonb, null, null, null)->>'status'"
+start_gate
+PGAPPNAME=fin-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_V; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+wait_for "uno finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_V=$(mktemp)
+PGAPPNAME=fin-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.apply_uno_move('FINLV', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P7\",\"cards\":[{\"id\":\"zz\"}]}]'::jsonb)->>'status'" >"$OUT_V" 2>&1 &
+wait_for "the uno move waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-second' and wait_event_type = 'Lock')"
+open_gate
+wait_for "the uno move answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-second')"
+[ "$(cat "$OUT_V")" = "lost" ] || fail "case D: expected the move to be 'lost', got '$(cat "$OUT_V")'"
+[ "$(psqlq -c "select cards::text from public.uno_player_hands where game_id = 'FINLV' and player_id = '$P7'")" = "[]" ] || fail "case D: the move overwrote the finished hand"
 
 echo "finish-session-locks: ok"

@@ -24,8 +24,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not a Word Tiles game' }, { status: 400 })
   }
 
-  const { error } = await processScrabbleExpireTurn(supabase, code)
+  const { error, skipped } = await processScrabbleExpireTurn(supabase, code)
   if (error) return NextResponse.json({ error }, { status: actionErrorStatus(error) })
+  // The expiry lost its claim to another action: nothing was expired, so no notification and a retryable 409.
+  if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
 
   scheduleTurnNotification(code, game)
 

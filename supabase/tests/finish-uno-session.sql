@@ -279,6 +279,57 @@ begin
   perform pg_temp.assert_eq('6e finished_at kept', (pg_temp.g('GUE')).finished_at, '2026-03-01T00:00:00Z'::timestamptz);
 end $$;
 
+-- 6f. apply_uno_move: the session claim, the hands / stats and the spectator flag commit together.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GUF', 15, false);
+  v_v2 timestamptz;
+  v_out jsonb;
+begin
+  v_out := public.apply_uno_move('GUF', v_v, '{"status_message":"moved","current_turn_index":1,"phase":"choose_color"}'::jsonb,
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(151), 'cards', '[{"id":"z"}]'::jsonb, 'stats', '{"k":1}'::jsonb),
+                      jsonb_build_object('player_id', pg_temp.pid(152), 'stats', '{"k":2}'::jsonb)),
+    array[pg_temp.pid(153)]);
+  perform pg_temp.assert_eq('6f applied', v_out->>'status', 'applied');
+  perform pg_temp.assert_eq('6f session', ((pg_temp.sess('GUF')).status_message, (pg_temp.sess('GUF')).current_turn_index, (pg_temp.sess('GUF')).phase)::text, '(moved,1,choose_color)');
+  perform pg_temp.assert_eq('6f version advanced', (pg_temp.sess('GUF')).updated_at > v_v, true);
+  perform pg_temp.assert_eq('6f hand A', pg_temp.hand('GUF', 15, 1), '[{"id":"z"}]'::jsonb);
+  perform pg_temp.assert_eq('6f stats A', (select stats from public.uno_player_hands where game_id = 'GUF' and player_id = pg_temp.pid(151)), '{"k":1}'::jsonb);
+  perform pg_temp.assert_eq('6f hand B untouched, stats set', (pg_temp.hand('GUF', 15, 2), (select stats from public.uno_player_hands where game_id = 'GUF' and player_id = pg_temp.pid(152)))::text, '("[{""id"": ""b1""}]","{""k"": 2}")');
+  perform pg_temp.assert_eq('6f spectator', (select spectator from public.players where id = pg_temp.pid(153)), true);
+  v_v2 := (pg_temp.sess('GUF')).updated_at;
+  perform pg_temp.assert_eq('6f empty patch', public.apply_uno_move('GUF', v_v2, '{}'::jsonb, '[]'::jsonb)->>'status', 'applied');
+  perform pg_temp.assert_eq('6f empty patch advances the version', (pg_temp.sess('GUF')).updated_at > v_v2, true);
+  -- stale version: lost, nothing written
+  perform pg_temp.assert_eq('6f stale', public.apply_uno_move('GUF', v_v, '{"status_message":"stale"}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(151), 'cards', '[]'::jsonb)))->>'status', 'lost');
+  perform pg_temp.assert_eq('6f stale: nothing written', pg_temp.hand('GUF', 15, 1), '[{"id":"z"}]'::jsonb);
+  -- malformed
+  perform pg_temp.assert_eq('6f phase finished', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{"phase":"finished"}'::jsonb, '[]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f protected column', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{"updated_at":"2020-01-01"}'::jsonb, '[]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f unknown column', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{"nope":1}'::jsonb, '[]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f null player id', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[{"player_id":null,"cards":[]}]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f bad key', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(151), 'owner', 'x')))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f duplicate (mixed case)', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb,
+    '[{"player_id":"abcdef00-0000-0000-0000-00000000abcd","cards":[]},{"player_id":"ABCDEF00-0000-0000-0000-00000000ABCD","stats":{}}]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f null spectator', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb, array[null]::uuid[])->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f malformed: nothing written', pg_temp.hand('GUF', 15, 1), '[{"id":"z"}]'::jsonb);
+  -- a hand write for a player who left is ignored, not rejected
+  perform pg_temp.assert_eq('6f departed player ignored', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb,
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'cards', '[]'::jsonb)))->>'status', 'applied');
+  -- a finished round accepts no move
+  update public.uno_sessions set phase = 'finished' where game_id = 'GUF';
+  perform pg_temp.assert_eq('6f finished round', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6f unknown game', public.apply_uno_move('NOPE', v_v, '{}'::jsonb, '[]'::jsonb)->>'status', 'invalid');
+  begin perform public.apply_uno_move(null, v_v, '{}'::jsonb, '[]'::jsonb); raise exception 'FAIL 6f: null game id accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.apply_uno_move('GUF', null, '{}'::jsonb, '[]'::jsonb); raise exception 'FAIL 6f: null version accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.apply_uno_move('GUF', v_v, null, '[]'::jsonb); raise exception 'FAIL 6f: null patch accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.apply_uno_move('GUF', v_v, '{}'::jsonb, null); raise exception 'FAIL 6f: null hands accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+
 -- 7. NULL arguments raise (the required ones).
 do $$
 declare
@@ -300,5 +351,9 @@ select pg_temp.assert_eq('priv anon', has_function_privilege('anon', 'public.fin
 select pg_temp.assert_eq('priv authenticated', has_function_privilege('authenticated', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb)', 'execute'), false);
 select pg_temp.assert_eq('priv public', has_function_privilege('public', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb)', 'execute'), false);
 select pg_temp.assert_eq('priv service_role', has_function_privilege('service_role', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb)', 'execute'), true);
+
+select pg_temp.assert_eq('priv move anon', has_function_privilege('anon', 'public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[])', 'execute'), false);
+select pg_temp.assert_eq('priv move authenticated', has_function_privilege('authenticated', 'public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[])', 'execute'), false);
+select pg_temp.assert_eq('priv move service_role', has_function_privilege('service_role', 'public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[])', 'execute'), true);
 
 rollback;

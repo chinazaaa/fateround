@@ -31,7 +31,16 @@
 -- Execute is revoked from public / anon / authenticated and granted to service_role only (the API routes call it
 -- with the service role). NULL arguments for the required parameters raise.
 --
--- Additive: one new function, nothing existing is altered.
+-- A NON-finishing move is the same shape in miniature, and so the same atomicity applies: apply_uno_move() claims the
+-- session by version, applies the session patch AND the move's hand / stats rows AND the out player's spectator flag in
+-- ONE transaction. Without it a move was a session claim followed by separate hand writes, and another request (a finish
+-- computing its award, a leave, the next player's move) could act on the new session version while the hands still held
+-- the old cards. Outcome: applied | lost (stale version, or the round is already finished) | invalid (malformed payload,
+-- unknown / protected column, a move that tries to set phase `finished` -- only finish_uno_session ends a round).
+-- A hand write for a player who has since left matches no row and is ignored (the move is not rejected for it);
+-- null / mistyped / duplicated ids are rejected exactly as in the finish function.
+--
+-- Additive: two new functions, nothing existing is altered.
 
 create or replace function public.finish_uno_session(
   p_game_id text,
@@ -221,3 +230,99 @@ $$;
 
 revoke execute on function public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb) to service_role;
+
+create or replace function public.apply_uno_move(
+  p_game_id text,
+  p_expected_updated_at timestamptz,
+  p_session_patch jsonb,
+  p_hand_writes jsonb,
+  p_spectator_ids uuid[] default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_session public.uno_sessions%rowtype;
+  v_bad text;
+  v_cols text;
+  v_elem jsonb;
+begin
+  if p_game_id is null or p_expected_updated_at is null or p_session_patch is null or p_hand_writes is null then
+    raise exception 'apply_uno_move: game id, expected version, session patch and hand writes are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  select * into v_session from public.uno_sessions where game_id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_missing');
+  end if;
+  if v_session.phase = 'finished' or v_session.updated_at <> p_expected_updated_at then
+    return jsonb_build_object('status', 'lost');
+  end if;
+
+  if jsonb_typeof(p_session_patch) is distinct from 'object' or jsonb_typeof(p_hand_writes) is distinct from 'array' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
+  end if;
+  select string_agg(k, ',') into v_bad
+    from jsonb_object_keys(p_session_patch) as k
+    where k in ('id', 'game_id', 'created_at', 'updated_at')
+       or not exists (
+         select 1 from information_schema.columns c
+         where c.table_schema = 'public' and c.table_name = 'uno_sessions' and c.column_name = k
+       );
+  if v_bad is not null then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
+  end if;
+  if p_session_patch->>'phase' = 'finished' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
+  end if;
+
+  for v_elem in select * from jsonb_array_elements(p_hand_writes) loop
+    if jsonb_typeof(v_elem) <> 'object'
+       or (v_elem->>'player_id') is null
+       or jsonb_typeof(v_elem->'player_id') <> 'string'
+       or (v_elem->>'player_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or exists (select 1 from jsonb_object_keys(v_elem) k where k not in ('player_id', 'cards', 'stats'))
+       or (v_elem ? 'cards' and jsonb_typeof(v_elem->'cards') <> 'array')
+       or (v_elem ? 'stats' and jsonb_typeof(v_elem->'stats') <> 'object') then
+      return jsonb_build_object('status', 'invalid', 'reason', 'hand_write');
+    end if;
+  end loop;
+  if (select count(distinct (e->>'player_id')::uuid) from jsonb_array_elements(p_hand_writes) e) <> jsonb_array_length(p_hand_writes) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'hand_write_duplicate');
+  end if;
+  if p_spectator_ids is not null and array_position(p_spectator_ids, null) is not null then
+    return jsonb_build_object('status', 'invalid', 'reason', 'spectators');
+  end if;
+
+  select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_patch) as k;
+  if v_cols is not null then
+    execute format(
+      'update public.uno_sessions s set (%1$s) = (select %1$s from jsonb_populate_record(null::public.uno_sessions, $1)) where s.game_id = $2',
+      v_cols
+    ) using p_session_patch, v_id;
+  else
+    -- an empty patch still advances the version (the move happened)
+    update public.uno_sessions set updated_at = updated_at where game_id = v_id;
+  end if;
+
+  for v_elem in select * from jsonb_array_elements(p_hand_writes) loop
+    update public.uno_player_hands
+      set cards = coalesce(v_elem->'cards', cards),
+          stats = coalesce(v_elem->'stats', stats)
+      where game_id = v_id and player_id = (v_elem->>'player_id')::uuid;
+  end loop;
+
+  if p_spectator_ids is not null then
+    update public.players set spectator = true where game_id = v_id and id = any (p_spectator_ids);
+  end if;
+
+  return jsonb_build_object('status', 'applied');
+end;
+$$;
+
+revoke execute on function public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[]) from public, anon, authenticated;
+grant execute on function public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[]) to service_role;
