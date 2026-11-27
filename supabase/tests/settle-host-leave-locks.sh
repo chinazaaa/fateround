@@ -56,8 +56,11 @@ GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RU
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
 HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; WRSEAT2="$(new_uuid)"
 WORKERS=()
+# Every worker's output lives in ONE run-specific directory that cleanup removes (no temp files are left behind).
+OUT_DIR="$(mktemp -d)"
 
 cleanup() {
+  rm -rf "$OUT_DIR"
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
   psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH')" >/dev/null 2>&1 || true
 }
@@ -102,7 +105,7 @@ PGAPPNAME="$APP-join" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   commit;" >/dev/null 2>&1 &
 JOIN_PID=$!
 wait_for "join holds its uncommitted insert" "select exists (select 1 from pg_stat_activity where application_name = '$APP-join' and wait_event_type = 'Lock' and wait_event = 'advisory')"
-OUT_A=$(mktemp)
+OUT_A="$OUT_DIR/out_a"
 PGAPPNAME="$APP-end" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GA', '$HOST', null, 1, false)->>'status'" >"$OUT_A" 2>&1 &
 END_PID=$!
 wait_for "end_game_if_host_alone waits on the join" "select exists (select 1 from pg_stat_activity where application_name = '$APP-end' and wait_event_type = 'Lock')"
@@ -120,7 +123,7 @@ insert into public.games (id, title, host_token, game_type, status) values ('$GB
 insert into public.players (id, game_id, name, joined_at) values ('$OTHER', '$GB', 'Other', now());
 SQL
 start_gate
-OUT_S=$(mktemp)
+OUT_S="$OUT_DIR/out_s"
 PGAPPNAME="$APP-settle" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   begin;
   select public.settle_host_leave('$GB', '$GONE', null, null, 1, false);
@@ -144,7 +147,7 @@ insert into public.games (id, title, host_token, game_type, status) values ('$GC
 insert into public.players (id, game_id, name, joined_at) values ('$OTHER2', '$GC', 'Other', now());
 SQL
 start_gate
-OUT_S2=$(mktemp)
+OUT_S2="$OUT_DIR/out_s2"
 PGAPPNAME="$APP-settle2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   begin;
   select public.settle_host_leave('$GC', '$GONE', null, null, 1, false);
@@ -175,7 +178,7 @@ PGAPPNAME="$APP-finish" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   commit;" >/dev/null 2>&1 &
 FINISH_PID=$!
 wait_for "the finish holds its uncommitted update" "select exists (select 1 from pg_stat_activity where application_name = '$APP-finish' and wait_event_type = 'Lock' and wait_event = 'advisory')"
-OUT_R=$(mktemp)
+OUT_R="$OUT_DIR/out_r"
 PGAPPNAME="$APP-remove" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_player_if_game_open('$GD', '$SEATED')->>'status'" >"$OUT_R" 2>&1 &
 REMOVE_PID=$!
 wait_for "the removal waits for the finish" "select exists (select 1 from pg_stat_activity where application_name = '$APP-remove' and wait_event_type = 'Lock')"
@@ -195,7 +198,7 @@ insert into public.players (id, game_id, name, joined_at) values ('$NOMINEE', '$
 update public.games set pending_host_player_id = '$NOMINEE' where id = '$GE';
 SQL
 start_gate
-OUT_E=$(mktemp)
+OUT_E="$OUT_DIR/out_e"
 PGAPPNAME="$APP-settle3" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
   begin;
   select public.settle_host_leave('$GE', '$GONE', null, null, 1, false)->>'status';
@@ -236,7 +239,7 @@ PGAPPNAME="$APP-blocker" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   commit;" >/dev/null 2>&1 &
 BLOCKER_PID=$!
 wait_for "the blocker holds the submitter row" "select exists (select 1 from pg_stat_activity where application_name = '$APP-blocker' and wait_event_type = 'Lock' and wait_event = 'advisory')"
-OUT_START=$(mktemp)
+OUT_START="$OUT_DIR/out_start"
 PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
   select public.start_two_truths_game('$GF', array['$TTSUB'::uuid], '$SESSION_TS',
     jsonb_build_array(jsonb_build_object('game_id', '$GF', 'round_number', 1, 'participant_ids', '[]'::jsonb,
@@ -244,7 +247,7 @@ PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
     jsonb_build_array(jsonb_build_object('round_number', 1, 'lie_index', 1)), 1)->>'status'" >"$OUT_START" 2>&1 &
 START_PID=$!
 wait_for "the start is stuck on the submitter row" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock')"
-OUT_F=$(mktemp)
+OUT_F="$OUT_DIR/out_f"
 PGAPPNAME="$APP-endf" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GF', '$TTHOST', '$SESSION_TS', 1, false)->>'status'" >"$OUT_F" 2>&1 &
 ENDF_PID=$!
 wait_for "end_game_if_host_alone waits for the start" "select exists (select 1 from pg_stat_activity where application_name = '$APP-endf' and wait_event_type = 'Lock')"
@@ -276,7 +279,7 @@ PGAPPNAME="$APP-rm" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   commit;" >/dev/null 2>&1 &
 RM_PID=$!
 wait_for "the removal holds its uncommitted delete" "select exists (select 1 from pg_stat_activity where application_name = '$APP-rm' and wait_event_type = 'Lock' and wait_event = 'advisory')"
-OUT_G=$(mktemp)
+OUT_G="$OUT_DIR/out_g"
 PGAPPNAME="$APP-restore" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.word_rush_restore_roster_member('$GG', '$WRSESS', '$WRSEAT', 0, false, null, null, 0)->>'status'" >"$OUT_G" 2>&1 &
 RESTORE_PID=$!
 wait_for "the restore waits for the removal (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-restore' and wait_event_type = 'Lock')"
@@ -311,7 +314,7 @@ PGAPPNAME="$APP-restore2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   commit;" >/dev/null 2>&1 &
 RESTORE2_PID=$!
 wait_for "the restore holds its uncommitted roster write" "select exists (select 1 from pg_stat_activity where application_name = '$APP-restore2' and wait_event_type = 'Lock' and wait_event = 'advisory')"
-OUT_H=$(mktemp)
+OUT_H="$OUT_DIR/out_h"
 PGAPPNAME="$APP-rm2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_player_if_game_open('$GH', '$WRSEAT2')->>'status'" >"$OUT_H" 2>&1 &
 RM2_PID=$!
 wait_for "the seat delete waits for the restore (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-rm2' and wait_event_type = 'Lock')"

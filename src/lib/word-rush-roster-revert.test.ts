@@ -133,7 +133,10 @@ describe('syncWordRushAfterPlayerRemoved snapshot', () => {
             get: (_t, prop) => {
               if (prop === 'maybeSingle')
                 return async () => ({ data: table === 'games' ? { status: 'active' } : session, error: null })
-              if (prop === 'then') return (resolve: (v: unknown) => void) => resolve({ data: [], error: null })
+              if (prop === 'update') return () => api
+              // The forward roster write names the inspected session and must match it.
+              if (prop === 'then')
+                return (resolve: (v: unknown) => void) => resolve({ data: [{ id: 'S-1' }], error: null })
               return () => api
             },
           }
@@ -189,7 +192,14 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   const sessionUpdateFilters: Array<Array<[string, unknown]>> = []
   /** The patch of each update to word_rush_sessions, index-aligned with sessionUpdateFilters. */
   const sessionUpdatePatches: Array<Record<string, unknown>> = []
-  const clientFor = (session: Record<string, unknown>, claimWins: boolean, failClear = false) => {
+  const clientFor = (
+    session: Record<string, unknown>,
+    claimWins: boolean,
+    failClear = false,
+    staleRoster = false,
+    identities: Array<{ session_started_at: string | null; sessions_played: number | null }> = []
+  ) => {
+    let gameReads = 0
     sessionUpdateFilters.length = 0
     sessionUpdatePatches.length = 0
     return {
@@ -197,17 +207,28 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
       from: (table: string) => {
         let updating = false
         let clearing = false
+        let rosterWrite = false
         const filters: Array<[string, unknown]> = []
         const api: unknown = new Proxy(
           {},
           {
             get: (_t, prop) => {
               if (prop === 'maybeSingle')
-                return async () => ({ data: table === 'games' ? { status: 'active' } : session, error: null })
+                return async () => ({
+                  data:
+                    table === 'games'
+                      ? {
+                          status: 'active',
+                          ...(identities.length ? identities[Math.min(gameReads++, identities.length - 1)] : {}),
+                        }
+                      : session,
+                  error: null,
+                })
               if (prop === 'update')
                 return (patch: Record<string, unknown>) => {
                   updating = true
                   clearing = patch.round_finalize === null
+                  rosterWrite = 'roster' in patch
                   if (table === 'word_rush_sessions') {
                     sessionUpdateFilters.push(filters)
                     sessionUpdatePatches.push(patch)
@@ -222,7 +243,10 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
               if (prop === 'then')
                 return (resolve: (v: unknown) => void) =>
                   resolve({
-                    data: updating && table === 'word_rush_sessions' && claimWins ? [{ id: 'S-1' }] : [],
+                    data:
+                      updating && table === 'word_rush_sessions' && (claimWins || (rosterWrite && !staleRoster))
+                        ? [{ id: 'S-1' }]
+                        : [],
                     error: failClear && clearing ? { message: 'clear failed' } : null,
                   })
               return () => api
@@ -273,6 +297,27 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     } finally {
       finish.bookkeeping = 'none'
     }
+  })
+
+  it('a forward roster write that matches no session row (the session was replaced) is stale: nothing proceeds, it is re-read, then reported', async () => {
+    const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), false, false, true), 'GAME', 'b')
+    expect(result.rollback).toBeUndefined()
+    expect(result.ownFinish).toBeUndefined()
+    expect(result.error).toMatch(/changed while you were leaving/i)
+  })
+
+  it('a start / replay between the game read and the session load is detected (identity re-read) and the reconciliation reads again', async () => {
+    const A = { session_started_at: null, sessions_played: 1 }
+    const B = { session_started_at: '2026-01-01T00:00:00Z', sessions_played: 1 }
+    // reads: attempt 1 (before: A, after the load: B -> stale), attempt 2 (before: B, after: B -> consistent)
+    const result = await syncWordRushAfterPlayerRemoved(
+      clientFor(individualSession(), false, false, false, [A, B, B, B]),
+      'GAME',
+      'b'
+    )
+    expect(result.error).toBeUndefined()
+    expect(result.gameSession).toEqual({ startedAt: '2026-01-01T00:00:00Z', sessionsPlayed: 1 })
+    expect(result.rollback).toBeDefined()
   })
 
   it('reports the game session its reconciliation was decided against (its own read)', async () => {

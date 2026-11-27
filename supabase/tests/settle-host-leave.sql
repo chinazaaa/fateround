@@ -122,8 +122,10 @@ select pg_temp.assert_eq('8 reason reported', pg_temp.settle('ST8')->>'result_re
 --    a nominee, and the linkage (bound to the inspected session) is left alone.
 select pg_temp.mk('ST9', 'active');
 update public.games set sessions_played = 3, host_user_id = '11111111-1111-1111-1111-111111111111' where id = 'ST9';
-select pg_temp.assert_eq('9 status', pg_temp.settle('ST9', true, 1)->>'status', 'nominated');
-select pg_temp.assert_eq('9 changed flag', pg_temp.settle('ST9', true, 1)->>'session_changed', 'true');
+create temp table st9_first as select pg_temp.settle('ST9', true, 1) as r;
+select pg_temp.assert_eq('9 status (the call that nominates)', (select r->>'status' from st9_first), 'nominated');
+select pg_temp.assert_eq('9 changed flag (the call that nominates)', (select r->>'session_changed' from st9_first), 'true');
+select pg_temp.assert_eq('9 the repeat settles and still reports the change', pg_temp.settle('ST9', true, 1)->>'status', 'settled');
 -- The linkage belongs to the inspected session only: a replayed session keeps it, the nomination still happens.
 select pg_temp.assert_eq('9 linkage of another session kept', (pg_temp.g('ST9')).host_user_id, '11111111-1111-1111-1111-111111111111'::uuid);
 
@@ -308,6 +310,29 @@ select pg_temp.assert_eq('14b owed: seat kept', (select count(*) from public.pla
 update public.games set finish_bookkeeping = null where id = 'STY';
 select pg_temp.assert_eq('14b bookkeeping completed: deleted',
   public.remove_player_if_game_open('STY', pg_temp.late('STY'), true, (pg_temp.g('STY')).session_started_at, (pg_temp.g('STY')).sessions_played)->>'status', 'deleted');
+
+-- 14b2. A Word Rush own finish whose bookkeeping is owed records the deletion for THIS seat and finish; it is due once the
+--       marker clears, even for a call that is no longer an own-finish call (the repeat leave).
+select pg_temp.mk('ST!', 'finished');
+update public.games set finished_at = '2026-03-03T00:00:00Z', finish_bookkeeping = jsonb_build_object('finished_at', now(), 'attempts', 0) where id = 'ST!';
+select pg_temp.assert_eq('14b2 refused while owed', public.remove_player_if_game_open('ST!', pg_temp.late('ST!'), true, (pg_temp.g('ST!')).session_started_at, (pg_temp.g('ST!')).sessions_played)->>'status', 'game_finished');
+select pg_temp.assert_eq('14b2 recorded for the seat and the finish', (select count(*) from public.word_rush_pending_seat_deletions where game_id = 'ST!' and player_id = pg_temp.late('ST!') and finished_at = '2026-03-03T00:00:00Z'), 1::bigint);
+select pg_temp.assert_eq('14b2 another seat is not recorded', (select count(*) from public.word_rush_pending_seat_deletions where game_id = 'ST!' and player_id = pg_temp.early('ST!')), 0::bigint);
+select pg_temp.assert_eq('14b2 still owed: a plain repeat leave is refused', public.remove_player_if_game_open('ST!', pg_temp.late('ST!'))->>'status', 'game_finished');
+update public.games set finish_bookkeeping = null where id = 'ST!';
+select pg_temp.assert_eq('14b2 an unrecorded seat of the same finished game is still retained', public.remove_player_if_game_open('ST!', pg_temp.early('ST!'))->>'status', 'game_finished');
+select pg_temp.assert_eq('14b2 marker cleared: the recorded deletion is due for a plain repeat leave', public.remove_player_if_game_open('ST!', pg_temp.late('ST!'))->>'status', 'deleted');
+select pg_temp.assert_eq('14b2 the record went with the seat', (select count(*) from public.word_rush_pending_seat_deletions where game_id = 'ST!'), 0::bigint);
+-- A record for a DIFFERENT finish (the game was replayed and finished again) is never honoured; an independent finish records nothing.
+select pg_temp.mk('ST#', 'finished');
+update public.games set finished_at = '2026-03-03T00:00:00Z' where id = 'ST#';
+insert into public.word_rush_pending_seat_deletions (game_id, player_id, finished_at) values ('ST#', pg_temp.late('ST#'), '2020-01-01T00:00:00Z');
+select pg_temp.assert_eq('14b2 a record of another finish is not honoured', public.remove_player_if_game_open('ST#', pg_temp.late('ST#'))->>'status', 'game_finished');
+select pg_temp.mk('ST%', 'finished');
+update public.games set result_reason = 'admin_ended', finished_at = now(), finish_bookkeeping = jsonb_build_object('finished_at', now(), 'attempts', 0) where id = 'ST%';
+select public.remove_player_if_game_open('ST%', pg_temp.late('ST%'), true, (pg_temp.g('ST%')).session_started_at, (pg_temp.g('ST%')).sessions_played);
+select pg_temp.assert_eq('14b2 an independent finish records nothing', (select count(*) from public.word_rush_pending_seat_deletions where game_id = 'ST%'), 0::bigint);
+select pg_temp.assert_eq('14b2 the table is closed to anon and authenticated', has_table_privilege('anon', 'public.word_rush_pending_seat_deletions', 'select') or has_table_privilege('authenticated', 'public.word_rush_pending_seat_deletions', 'select'), false);
 
 -- 14c. Joiners mode: the participant row goes with the seat in ONE transaction, and a finish keeps BOTH.
 select pg_temp.mk('STR', 'active');

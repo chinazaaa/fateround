@@ -36,7 +36,7 @@ describe('service-role-only database functions', () => {
   it.each(Object.entries(ALLOWED))('%s is called only from the audited files', (fn, allowed) => {
     const callers = files
       .filter((f) => new RegExp(`\\.rpc\\(\\s*['"]${fn}['"]`).test(readFileSync(f, 'utf8')))
-      .map((f) => relative(process.cwd(), f))
+      .map((f) => relative(process.cwd(), f).replaceAll('\\', '/'))
       .sort()
     expect(callers).toEqual([...allowed].sort())
   })

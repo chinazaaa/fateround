@@ -254,6 +254,20 @@ $$;
 revoke execute on function public.end_game_if_host_alone(text, uuid, timestamptz, integer, boolean) from public, anon, authenticated;
 grant execute on function public.end_game_if_host_alone(text, uuid, timestamptz, integer, boolean) to service_role;
 
+-- A Word Rush leave that wins its own last-round finish while that finish's bookkeeping is still owed keeps the seat (the
+-- leaver's rows are read by the bookkeeping). The deletion is recorded here for the exact seat AND finish, so a repeat leave
+-- (or the immediate retry once the marker clears) completes it. Rows go with the seat or the game (ON DELETE CASCADE).
+-- Service role only: RLS on, no policies, no grants.
+create table if not exists public.word_rush_pending_seat_deletions (
+  game_id text not null references public.games(id) on delete cascade,
+  player_id uuid not null references public.players(id) on delete cascade,
+  finished_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  primary key (game_id, player_id)
+);
+alter table public.word_rush_pending_seat_deletions enable row level security;
+revoke all on public.word_rush_pending_seat_deletions from public, anon, authenticated;
+
 -- Remove a player's seat only while the game is still open. The caller's own status read can be stale by the time it
 -- deletes (another request finishes the game in between), and deleting a seat of a FINISHED game erases that
 -- player's row from the result (the score tables cascade off it). The game row is locked FOR NO KEY UPDATE, which
@@ -287,6 +301,8 @@ declare
   v_game public.games%rowtype;
   v_participant_id uuid;
   v_deleted integer;
+  v_same_session boolean;
+  v_pending boolean;
 begin
   if p_game_id is null or p_player_id is null or p_own_finish is null then
     raise exception 'remove_player_if_game_open: game id, player id and own-finish flag are required';
@@ -295,15 +311,32 @@ begin
   if not found then
     return jsonb_build_object('status', 'game_missing');
   end if;
-  if v_game.status = 'finished'
-     and not (p_own_finish
-              and v_game.result_reason is null
-              -- The leaver's Word Rush rows (answers, team rows) cascade off the seat and are read by the owed
-              -- post-finish bookkeeping: the seat stays until that has completed (the marker is cleared).
-              and v_game.finish_bookkeeping is null
-              and v_game.sessions_played is not distinct from p_sessions_played
-              and v_game.session_started_at is not distinct from p_session_started_at) then
-    return jsonb_build_object('status', 'game_finished');
+  if v_game.status = 'finished' then
+    v_same_session := p_own_finish
+      and v_game.result_reason is null
+      and v_game.sessions_played is not distinct from p_sessions_played
+      and v_game.session_started_at is not distinct from p_session_started_at;
+    -- A deletion recorded earlier for this exact seat and THIS finish (see word_rush_pending_seat_deletions) is due once
+    -- the finish bookkeeping has completed.
+    v_pending := v_game.result_reason is null
+      and exists (
+        select 1 from public.word_rush_pending_seat_deletions
+        where game_id = v_game.id and player_id = p_player_id and finished_at is not distinct from v_game.finished_at
+      );
+    -- The leaver's Word Rush rows (answers, team rows) cascade off the seat and are read by the owed post-finish
+    -- bookkeeping: the seat stays until that has completed (the marker is cleared).
+    if v_game.finish_bookkeeping is not null then
+      if v_same_session and v_game.finished_at is not null
+         and exists (select 1 from public.players where id = p_player_id and game_id = v_game.id) then
+        insert into public.word_rush_pending_seat_deletions (game_id, player_id, finished_at)
+          values (v_game.id, p_player_id, v_game.finished_at)
+          on conflict (game_id, player_id) do update set finished_at = excluded.finished_at;
+      end if;
+      return jsonb_build_object('status', 'game_finished');
+    end if;
+    if not (v_same_session or v_pending) then
+      return jsonb_build_object('status', 'game_finished');
+    end if;
   end if;
   if v_game.status <> 'finished' and p_check_session
      and (v_game.sessions_played is distinct from p_sessions_played
