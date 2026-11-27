@@ -75,7 +75,10 @@ function mockSupabase(
       if (name === 'finish_rounds_of_finished_session') {
         recorded.roundUpdates += 1
         recorded.roundBounds.push(args.p_finished_at)
-        return { data: { status: opts.roundStatus ?? 'finished_session' }, error: opts.roundError ?? null }
+        return {
+          data: { status: opts.roundStatus ?? 'finished_session', round_ids: ['r1', 'r2'] },
+          error: opts.roundError ?? null,
+        }
       }
       if (name === 'wipe_finished_session_rows') {
         recorded.deletes.push(args.p_kind)
@@ -304,7 +307,7 @@ describe('cleanupFinishedSession — the one session-bound cleanup', () => {
     expect(recorded.roundUpdates).toBe(1)
     expect(recorded.roundBounds).toEqual([FINISHED_AT])
     // The database confirmed this IS the current finished session, so no timestamp cutoff is applied (the round and finish clocks differ).
-    expect(revealFinishedTtlRounds).toHaveBeenCalledWith(supabase, 'G')
+    expect(revealFinishedTtlRounds).toHaveBeenCalledWith(supabase, 'G', undefined, ['r1', 'r2'])
   })
 
   it.each([

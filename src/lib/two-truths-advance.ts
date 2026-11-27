@@ -211,10 +211,15 @@ export async function revealFinishedTtlRounds(
   gameId: string,
   // Bound to rounds of an already-finished session (see adminEndGame): a new session's finished round under the
   // same game id must not be revealed by a late cleanup of the old one.
-  startedNoLaterThan?: string
+  startedNoLaterThan?: string,
+  // The rounds a database function confirmed (under the games row lock) belong to the finished session: the reveal is
+  // limited to exactly these, so a replay's rounds under the same game id are never revealed by a late cleanup.
+  onlyRoundIds?: string[]
 ): Promise<boolean> {
+  if (onlyRoundIds && onlyRoundIds.length === 0) return true
   let roundsQuery = supabase.from('rounds').select('id, ttl_metadata').eq('game_id', gameId).eq('status', 'finished')
   if (startedNoLaterThan) roundsQuery = roundsQuery.lte('started_at', startedNoLaterThan)
+  if (onlyRoundIds) roundsQuery = roundsQuery.in('id', onlyRoundIds)
   const { data: rounds, error: roundsError } = await roundsQuery
 
   // A failed select yields no rows, which is indistinguishable from "nothing to reveal" once it

@@ -405,7 +405,15 @@ async function rpc(name: string, args: Record<string, unknown>) {
         roundUpdateLog.push({ status: 'finished' })
       }
     }
-    return { data: { status: 'finished_session' }, error: null }
+    return {
+      data: {
+        status: 'finished_session',
+        round_ids: (tables.rounds ?? [])
+          .filter((r) => r.game_id === game.id && r.status === 'finished')
+          .map((r) => r.id),
+      },
+      error: null,
+    }
   }
   if (name !== 'wipe_finished_session_rows') return { data: true, error: null }
   const a = args as { p_game_id: string; p_finished_at: string; p_kind: string }
@@ -1607,6 +1615,53 @@ describe('DELETE /api/players: a failed Word Rush roster restore is not a comple
     const res = await leave()
     expect(res.status).toBe(200)
     expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+  })
+})
+
+describe('DELETE /api/players: a replaced Word Rush session is decided by the seat itself', () => {
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
+  const finishFirst = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+
+  it('not_current_session + the seat still there: a retained leave', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    beforeSeatDelete = finishFirst
+    wordRush.forced = 'not_current_session'
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+  })
+
+  it('not_current_session + the seat gone (a second leave deleted it): NOT retained, unresolved when settlement is down', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    beforeSeatDelete = finishFirst
+    wordRush.forced = 'not_current_session'
+    wordRush.beforeRestore = () => deletePlayers([HOST_PID])
+    settleFailBudget = 99
+    const body = (await (await leave()).json()) as { retained?: boolean; handoff?: string; error?: string }
+    expect(body.retained).toBeUndefined()
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).not.toMatch(/try again|retry/i)
+  })
+
+  it('not_current_session + the seat unreadable: neither retained nor gone', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    beforeSeatDelete = finishFirst
+    wordRush.forced = 'not_current_session'
+    wordRush.beforeRestore = () => {
+      failPlayersRead = true
+    }
+    const res = await leave()
+    expect(res.status).toBe(500)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBeUndefined()
   })
 })
 

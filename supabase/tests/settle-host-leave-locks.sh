@@ -214,11 +214,14 @@ grep -q "settled" "$OUT_E" || fail "case E: expected 'settled', got '$(cat "$OUT
 
 # ---- Case F: a Two Truths start vs a host leaving alone ---------------------------------------------------------
 # The submitter is seeded as a SPECTATOR: before the start the host is alone (end_game_if_host_alone would finish the
-# game), after it the submitter plays. A blocker holds the submitter's player row, so the start (which takes the games
-# row lock FIRST, then writes the roster) is stuck on that row while already holding the game lock. The end check is
-# observed WAITING on the start (it would otherwise run at once, see the spectator roster, and finish the game), and
-# once everything commits it sees the started roster: `continue`, the game active. The end check passes the very
-# session timestamp the start writes, so a `continue` can only come from the roster check, not from a session mismatch.
+# game), after it the submitter plays. A blocker holds the submitter's player row, so the start is stuck mid-way. What
+# this case proves is the OBSERVABLE contract: while the start is in flight the end check waits for it, and afterwards
+# it sees the started roster (`continue`, the game still active) instead of an intermediate one. The wait can come from
+# the start's explicit `for update` on the games row or, if the round insert's foreign-key check on `games` ran first,
+# from that FK's KEY SHARE: the repository does not fix that order, so this case does not by itself isolate the explicit
+# lock. That lock is pinned by the function-definition check in settle-host-leave.sql (group 16). The end check passes
+# the very session timestamp the start writes (and the game is seeded with it), so a `continue` can only come from the
+# roster check, not from a session mismatch.
 SESSION_TS="2026-01-01T00:00:00Z"
 psqlq <<SQL
 insert into public.games (id, title, host_token, game_type, status, session_started_at) values ('$GF', 'lock test F', 'tok-$RUN-f', 'two_truths', 'waiting', '$SESSION_TS');
@@ -240,11 +243,11 @@ PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
       'submitter_player_id', '$TTSUB', 'status', 'active', 'ttl_metadata', '{\"statements\":[\"a\",\"b\",\"c\"],\"lie_index\":null}'::jsonb)),
     jsonb_build_array(jsonb_build_object('round_number', 1, 'lie_index', 1)), 1)->>'status'" >"$OUT_START" 2>&1 &
 START_PID=$!
-wait_for "the start is stuck on the submitter row (holding the game lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock')"
+wait_for "the start is stuck on the submitter row" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock')"
 OUT_F=$(mktemp)
 PGAPPNAME="$APP-endf" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GF', '$TTHOST', '$SESSION_TS', 1, false)->>'status'" >"$OUT_F" 2>&1 &
 ENDF_PID=$!
-wait_for "end_game_if_host_alone waits for the start (the game lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-endf' and wait_event_type = 'Lock')"
+wait_for "end_game_if_host_alone waits for the start" "select exists (select 1 from pg_stat_activity where application_name = '$APP-endf' and wait_event_type = 'Lock')"
 [ "$(psqlq -c "select status from public.games where id = '$GF'")" = "waiting" ] || fail "case F: the game changed while the start was in flight"
 open_gate
 reap "$BLOCKER_PID" "blocker"
@@ -296,7 +299,14 @@ SQL
 start_gate
 PGAPPNAME="$APP-restore2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   begin;
-  select public.word_rush_restore_roster_member('$GH', '$WRSESS2', '$WRSEAT2', 0, false, null, null, 0);
+  do \$\$ begin
+    if (public.word_rush_restore_roster_member('$GH', '$WRSESS2', '$WRSEAT2', 0, false, null, null, 0)->>'status') is distinct from 'restored' then
+      raise exception 'case H: the restore did not restore';
+    end if;
+    if not exists (select 1 from public.word_rush_sessions where id = '$WRSESS2' and '$WRSEAT2'::uuid = any (roster)) then
+      raise exception 'case H: the restored entry is not on the roster inside the restore transaction';
+    end if;
+  end \$\$;
   select pg_advisory_xact_lock($GATE);
   commit;" >/dev/null 2>&1 &
 RESTORE2_PID=$!

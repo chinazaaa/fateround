@@ -231,3 +231,23 @@ describe('two truths reveal', () => {
     expect(res.code).not.toBe('reveal_pending')
   })
 })
+
+describe('revealFinishedTtlRounds limited to the rounds a database function confirmed', () => {
+  it('an empty confirmed list reveals nothing and reads nothing', async () => {
+    const from = vi.fn()
+    await expect(revealFinishedTtlRounds({ from } as never, 'ABCD', undefined, [])).resolves.toBe(true)
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('selects only the confirmed round ids (and applies no started_at cutoff)', async () => {
+    const calls: Array<[string, ...unknown[]]> = []
+    const chain: Record<string, unknown> = {}
+    for (const m of ['select', 'eq', 'lte', 'in']) {
+      chain[m] = (...args: unknown[]) => (calls.push([m, ...args]), chain)
+    }
+    chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve)
+    await revealFinishedTtlRounds({ from: () => chain } as never, 'ABCD', undefined, ['r1', 'r2'])
+    expect(calls).toContainEqual(['in', 'id', ['r1', 'r2']])
+    expect(calls.some((c) => c[0] === 'lte')).toBe(false)
+  })
+})
