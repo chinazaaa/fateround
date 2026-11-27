@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 vi.mock('server-only', () => ({}))
-const state = vi.hoisted(() => ({ result: {} as { error?: string; skipped?: boolean } }))
+const state = vi.hoisted(() => ({ result: {} as { error?: string; skipped?: boolean; conflict?: boolean } }))
 vi.mock('@/lib/uno', () => ({ processUnoExpireTurn: async () => state.result }))
 vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () => ({
@@ -32,6 +32,13 @@ describe('POST /api/uno/expire-turn', () => {
     expect((await call()).status).toBe(500)
     state.result = { error: 'No current player' }
     expect((await call()).status).toBe(400)
+  })
+
+  it('answers a lost claim with 409 while a not-yet-due skip stays 200', async () => {
+    state.result = { skipped: true, conflict: true }
+    expect((await call()).status).toBe(409)
+    state.result = { skipped: true }
+    expect((await call()).status).toBe(200)
   })
 
   it('reports a skip as a 200 skipped body', async () => {

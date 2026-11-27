@@ -28,5 +28,8 @@ export async function POST(req: NextRequest) {
   const result = await processUnoExpireTurn(supabase, code)
   if (result.error) return NextResponse.json({ error: result.error }, { status: actionErrorStatus(result.error) })
 
+  // A lost claim (another request moved or finished the round first) is a conflict; a not-yet-due poke stays a 200 skip.
+  if (result.conflict) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
+
   return NextResponse.json({ ok: true, skipped: result.skipped ?? false })
 }

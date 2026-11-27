@@ -20,7 +20,7 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 
 cleanup() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'fin-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('FINLU', 'FINLS', 'FINLM')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('FINLU', 'FINLS', 'FINLM', 'FINLV')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 cleanup

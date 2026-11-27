@@ -1114,7 +1114,19 @@ async function removeScrabblePlayerOnce(
   // The round was published while this leave was retrying and the seat was never removed from the live session:
   // the finished result keeps its seats (the players route retains them for a finished game). A seat that is
   // already out of the turn order still gets its cleanup below.
-  if (session?.phase === 'finished' && removedIndex >= 0) return { error: null }
+  // A reopened lobby (Play Again: games.status is back to 'waiting', the finished session row is still around) is
+  // not a published result: its seats are ordinary lobby seats and the leave must delete them.
+  let reopenedLobby = false
+  if (session?.phase === 'finished' && removedIndex >= 0) {
+    const { data: gameRow, error: gameError } = await supabase
+      .from('games')
+      .select('status')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (gameError) return { error: internalErrorMessage('scrabble', gameError) }
+    if (gameRow?.status !== 'waiting') return { error: null }
+    reopenedLobby = true
+  }
 
   // In an active game and actually in the turn order: rewrite the turn order.
   if (session && removedIndex >= 0 && session.phase !== 'finished') {
@@ -1213,6 +1225,15 @@ async function removeScrabblePlayerOnce(
   }
 
   // Lobby, spectator, already-finished, or not in the turn order — just drop their state + row.
+  if (reopenedLobby && session) {
+    // The finished session still lists the seat: drop it too, so the lobby never shows a seat for a departed player.
+    const { error: seatError } = await supabase
+      .from('scrabble_sessions')
+      .update({ turn_order: order.filter((id) => id !== playerId) })
+      .eq('game_id', gameId)
+      .eq('updated_at', session.updated_at)
+    if (seatError) return { error: internalErrorMessage('scrabble', seatError) }
+  }
   await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
   return { error: error ? internalErrorMessage('scrabble', error) : null }
