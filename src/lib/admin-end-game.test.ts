@@ -339,7 +339,7 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
 
   it('runs the shared cleanup bound to the session finished_at', async () => {
     const { supabase, recorded } = mockSupabase({ gameRow: FINISHED })
-    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished: true, error: null })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished: true, hostEnded: true, error: null })
     expect(recorded.roundBounds).toEqual([FINISHED_AT])
     expect(revealFinishedTtlRounds).toHaveBeenCalledTimes(1)
   })
@@ -365,7 +365,7 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
     ['a finished game with no finished_at', { ...FINISHED, finished_at: null }, true],
   ])('touches nothing for %s', async (_name, gameRow, finished) => {
     const { supabase, recorded } = mockSupabase({ gameRow })
-    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished, error: null })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished, hostEnded: false, error: null })
     expect(recorded.roundUpdates).toBe(0)
     expect(recorded.deletes).toEqual([])
     expect(revealFinishedTtlRounds).not.toHaveBeenCalled()

@@ -3,7 +3,7 @@ import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createPlayerSchema, updatePlayerSchema, deletePlayerSchema } from '@/lib/validation'
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { completeHostLeftCleanup } from '@/lib/admin-end-game'
-import { runPostFinishBookkeeping } from '@/lib/game-finish'
+import { recoverFinishBookkeeping } from '@/lib/game-finish'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
@@ -1907,6 +1907,7 @@ type SettleOutcome = {
   game_status?: string
   finished_now?: boolean
   finished_at?: string
+  result_reason?: string | null
 }
 
 const SETTLE_ATTEMPTS = 3
@@ -1929,7 +1930,8 @@ async function settleHostLeave(
       p_outgoing_host_user_id: h.hostUserId,
       p_session_started_at: h.session.startedAt,
       p_sessions_played: h.session.sessionsPlayed,
-      p_track_bookkeeping: isWordRushGame(parseGameType(h.gameType)),
+      // Every host-left finish writes the durable bookkeeping marker (Play Again refuses to reset while it is owed).
+      p_track_bookkeeping: true,
     })
     if (!error && data) outcome = data as SettleOutcome
   }
@@ -1967,10 +1969,11 @@ async function settleHostLeave(
   }
 
   if (outcome.status === 'finished') {
-    // The finish THIS call committed owes the bookkeeping every finish owes (room points, round facts, tournament work),
-    // exactly as `markGameFinished` would have run it. The session-bound cleanup is idempotent and runs for whoever
-    // finished it.
-    if (outcome.finished_now && outcome.finished_at) await runHostLeftBookkeeping(admin, h, outcome.finished_at)
+    // A host-left finish owes its post-finish bookkeeping (room points, round facts, tournament work). The finish itself
+    // wrote the durable marker, bound to its own finished_at, so resuming is a lease claim on that marker: it does
+    // nothing for a finish without one (someone else's), runs once for one that is owed (a repeat after a lost response
+    // included), and cannot award twice. The session-bound cleanup is idempotent too.
+    if (outcome.result_reason === 'host_ended') await resumeHostLeftBookkeeping(admin, h.gameId)
     const cleanup = await completeHostLeftCleanup(admin, h.gameId)
     // The seat is gone, so a failed cleanup has no later leave to retry it: surface it for an operator.
     if (cleanup.error) console.error(`players: cleanup after host-left finish failed for ${h.gameId}`, cleanup.error)
@@ -1978,16 +1981,15 @@ async function settleHostLeave(
   return 'ok'
 }
 
-/**
- * The post-finish bookkeeping for a finish committed by the database function, run the way `markGameFinished` runs it
- * for any other finish (Word Rush: under its durable lease, the marker having been written by the finishing statement;
- * every other game: the side effects inline, best-effort). Never throws.
- */
-async function runHostLeftBookkeeping(admin: ReturnType<typeof getSupabaseAdmin>, h: HostHandoff, finishedAt: string) {
+/** Resume the bookkeeping a host-left finish owes (see settleHostLeave); never throws. */
+async function resumeHostLeftBookkeeping(admin: ReturnType<typeof getSupabaseAdmin>, gameId: string) {
   try {
-    await runPostFinishBookkeeping(admin, h.gameId, finishedAt, isWordRushGame(parseGameType(h.gameType)))
+    const resumed = await recoverFinishBookkeeping(admin, gameId)
+    if (resumed.state === 'error') {
+      console.error(`players: resuming post-finish bookkeeping failed for ${gameId}`, resumed.error)
+    }
   } catch (err) {
-    console.error(`players: post-finish bookkeeping after the host-left finish failed for ${h.gameId}`, err)
+    console.error(`players: resuming post-finish bookkeeping threw for ${gameId}`, err)
   }
 }
 
@@ -1995,7 +1997,7 @@ async function runHostLeftBookkeeping(admin: ReturnType<typeof getSupabaseAdmin>
  * A host who leaves while nobody else is eligible ends the game BEFORE the removal, so the finished game keeps their
  * seat. `end_game_if_host_alone` reads the roster and finishes under FOR UPDATE on the game row (a join holds KEY SHARE
  * on it through its foreign key, so a joiner either is seen or waits), bound to the session the leave inspected, with
- * `host_ended` (and, for Word Rush, its bookkeeping marker) written by the same UPDATE. Returns 'finished' (including a repeat after a
+ * `host_ended` and the bookkeeping marker written by the same UPDATE. Returns 'finished' (including a repeat after a
  * lost response), 'continue' (remove the seat and settle the handoff against the current row) or 'error'.
  */
 async function endGameIfHostAlone(h: HostHandoff): Promise<'finished' | 'closed' | 'continue' | 'error'> {
@@ -2006,19 +2008,12 @@ async function endGameIfHostAlone(h: HostHandoff): Promise<'finished' | 'closed'
       p_outgoing_player_id: h.playerId,
       p_session_started_at: h.session.startedAt,
       p_sessions_played: h.session.sessionsPlayed,
-      p_track_bookkeeping: isWordRushGame(parseGameType(h.gameType)),
+      p_track_bookkeeping: true,
     })
     if (error || !data) continue
-    const { status, finished_now, finished_at } = data as {
-      status?: string
-      finished_now?: boolean
-      finished_at?: string
-    }
-    if (status === 'finished') {
-      // A 'finished' answer falls into the finished-game branch, which cleans up; this call's own finish owes its bookkeeping.
-      if (finished_now && finished_at) await runHostLeftBookkeeping(admin, h, finished_at)
-      return 'finished'
-    }
+    const { status } = data as { status?: string }
+    // A 'finished' answer falls into the finished-game branch, which cleans up and resumes the owed bookkeeping.
+    if (status === 'finished') return 'finished'
     // Finished for another reason (read under the lock): the host's seat belongs to a result and must not be removed.
     return (data as { game_status?: string }).game_status === 'finished' ? 'closed' : 'continue'
   }
@@ -2219,6 +2214,8 @@ async function removePlayer(
     if (leavingHost) {
       const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), id)
       if (cleanup.error) return NextResponse.json({ error: cleanup.error }, { status: 500 })
+      // A repeat of a leave whose end response was lost resumes the bookkeeping the finish's marker owes.
+      if (cleanup.hostEnded) await resumeHostLeftBookkeeping(getSupabaseAdmin(), id)
     }
     const pending = await completePendingFinishedLeave(
       getSupabaseAdmin(),

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { withGameNotification } from '@/lib/push-route'
+import { recoverFinishBookkeeping } from '@/lib/game-finish'
 import { playAgainSchema } from '@/lib/validation'
 import {
   parseGameType,
@@ -250,6 +251,20 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
   }
 
+  // A finish that still owes its post-finish bookkeeping (a host-left finish writes the durable marker, for every game
+  // type) must complete it before the reset: the bookkeeping reads this game's rows, and the reset deletes them. Resume
+  // it here; if it is still owed or held by a live runner, refuse so Play Again can simply be retried. A game with no
+  // marker answers `none` immediately. This reads a snapshot: `begin_play_again_reset` below re-checks it atomically.
+  if (game.status === 'finished') {
+    const owed = await recoverFinishBookkeeping(getSupabaseAdmin(), gameId)
+    if (owed.state !== 'none' && owed.state !== 'done') {
+      return NextResponse.json(
+        { error: 'The previous game is still being finalized — try again in a moment' },
+        { status: 409 }
+      )
+    }
+  }
+
   // Exiting the ready-up ring back to the normal lobby ("Return to lobby" while the ring
   // is armed): the game is already reset (waiting), so just drop the ring flag and KEEP
   // everyone's seats — players who tapped "ready" stay ready instead of being reset to
@@ -379,124 +394,172 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     poolUsage = nextPoolUsage
   }
 
-  if (rawParticipants !== undefined) {
-    if (!canReplaceHostParticipantList(game)) {
-      return NextResponse.json({ error: 'This game mode does not support replacing the name list' }, { status: 400 })
+  // The FIRST write of the reset: one atomic database step that checks the game is still exactly the game this request
+  // read (status AND session identity: `session_started_at` + `sessions_played` change on every start and every reset),
+  // that no bookkeeping is owed (a host-left finish may have committed since the snapshot above) and that no other
+  // reset is running, and marks this reset as started. While it is marked, a host-left finish refuses to commit, so
+  // nothing can finish against a reset in progress. The game's visible state does not change until the final update, so
+  // a failed reset leaves the previous state in place and is simply retried (the marker is released below).
+  const begun = await getSupabaseAdmin().rpc('begin_play_again_reset', {
+    p_game_id: gameId,
+    p_status: game.status,
+    p_session_started_at: game.session_started_at ?? null,
+    p_sessions_played: game.sessions_played ?? null,
+  })
+  if (begun.error) {
+    return NextResponse.json({ error: internalErrorMessage('games/code/play-again', begun.error) }, { status: 500 })
+  }
+  const begunStatus = (begun.data as { status?: string; token?: string } | null)?.status
+  const resetToken = (begun.data as { token?: string } | null)?.token
+  if (begunStatus !== 'started' || !resetToken) {
+    const messages: Record<string, [string, number]> = {
+      bookkeeping_owed: ['The previous game is still being finalized — try again in a moment', 409],
+      changed: ['The game changed while you were resetting it — try again', 409],
+      in_progress: ['A reset is already running — try again in a moment', 409],
+      game_missing: ['Game not found', 404],
+    }
+    const [message, status] = messages[begunStatus ?? ''] ?? ['Could not start the reset', 500]
+    return NextResponse.json({ error: message }, { status })
+  }
+
+  try {
+    return await resetGame(resetToken)
+  } finally {
+    // Idempotent and bound to THIS reset: a success already cleared the marker in its final update, a failure (or the
+    // secret-board path, which has no final games update) releases it here so the host can retry at once.
+    await getSupabaseAdmin()
+      .rpc('abort_play_again_reset', { p_game_id: gameId, p_token: resetToken })
+      .then(
+        () => {},
+        () => {}
+      )
+  }
+
+  async function resetGame(token: string): Promise<NextResponse> {
+    if (rawParticipants !== undefined) {
+      if (!canReplaceHostParticipantList(game)) {
+        return NextResponse.json({ error: 'This game mode does not support replacing the name list' }, { status: 400 })
+      }
+
+      const nextParticipants = parseHostPoolParticipants(rawParticipants, gameType, genderBased)
+      if (!nextParticipants) {
+        return NextResponse.json({ error: 'Add at least one valid name' }, { status: 400 })
+      }
+
+      const { error: replaceError } = await replaceHostParticipantList(supabase, gameId, nextParticipants)
+      if (replaceError) return NextResponse.json({ error: replaceError }, { status: 500 })
+
+      poolUsage = applyParticipantListUpdate(game, nextParticipants, poolUsage).poolUsage
     }
 
-    const nextParticipants = parseHostPoolParticipants(rawParticipants, gameType, genderBased)
-    if (!nextParticipants) {
-      return NextResponse.json({ error: 'Add at least one valid name' }, { status: 400 })
-    }
+    gameUpdate.pool_usage = poolUsage
 
-    const { error: replaceError } = await replaceHostParticipantList(supabase, gameId, nextParticipants)
-    if (replaceError) return NextResponse.json({ error: replaceError }, { status: 500 })
+    const admin = getSupabaseAdmin()
 
-    poolUsage = applyParticipantListUpdate(game, nextParticipants, poolUsage).poolUsage
-  }
+    const { error: votesError } = await admin.from('votes').delete().eq('game_id', gameId)
+    if (votesError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', votesError) }, { status: 500 })
 
-  gameUpdate.pool_usage = poolUsage
-
-  const admin = getSupabaseAdmin()
-
-  const { error: votesError } = await admin.from('votes').delete().eq('game_id', gameId)
-  if (votesError)
-    return NextResponse.json({ error: internalErrorMessage('games/code/play-again', votesError) }, { status: 500 })
-
-  const { error: confessionsError } = await admin.from('confessions').delete().eq('game_id', gameId)
-  if (confessionsError)
-    return NextResponse.json(
-      { error: internalErrorMessage('games/code/play-again', confessionsError) },
-      { status: 500 }
-    )
-
-  if (isTriviaGame(gameType)) {
-    const { error: clearError } = await clearTriviaSessionData(getSupabaseAdmin(), gameId)
-    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
-  }
-
-  const { error: roundsError } = await admin.from('rounds').delete().eq('game_id', gameId)
-  if (roundsError)
-    return NextResponse.json({ error: internalErrorMessage('games/code/play-again', roundsError) }, { status: 500 })
-
-  const { error: poolError } = await admin.from('wst_quote_pool').delete().eq('game_id', gameId)
-  if (poolError)
-    return NextResponse.json({ error: internalErrorMessage('games/code/play-again', poolError) }, { status: 500 })
-
-  const { error: pqError } = await admin.from('player_questions').delete().eq('game_id', gameId)
-  if (pqError)
-    return NextResponse.json({ error: internalErrorMessage('games/code/play-again', pqError) }, { status: 500 })
-
-  const { error: playerNamesError } = await admin
-    .from('participants')
-    .delete()
-    .eq('game_id', gameId)
-    .not('submitted_by_player_id', 'is', null)
-  if (playerNamesError)
-    return NextResponse.json(
-      { error: internalErrorMessage('games/code/play-again', playerNamesError) },
-      { status: 500 }
-    )
-
-  const { error: hotSeatError } = await admin.from('hot_seat_submissions').delete().eq('game_id', gameId)
-  if (hotSeatError)
-    return NextResponse.json({ error: internalErrorMessage('games/code/play-again', hotSeatError) }, { status: 500 })
-
-  if (isAnonymousMessagesGame(gameType)) {
-    const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
-    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
-  }
-
-  if (isSecretMessageGame(gameType)) {
-    const { error: reopenError } = await reopenSecretMessageBoard(supabase, gameId)
-    if (reopenError) return NextResponse.json({ error: reopenError }, { status: 500 })
-    const { data: updatedSecret, error: secretFetchError } = await supabase
-      .from('games')
-      .select()
-      .eq('id', gameId)
-      .single()
-    if (secretFetchError)
+    const { error: confessionsError } = await admin.from('confessions').delete().eq('game_id', gameId)
+    if (confessionsError)
       return NextResponse.json(
-        { error: internalErrorMessage('games/code/play-again', secretFetchError) },
+        { error: internalErrorMessage('games/code/play-again', confessionsError) },
         { status: 500 }
       )
-    return NextResponse.json({ success: true, game: updatedSecret })
-  }
 
-  // Per-game session cleanup. Exactly one clearer matches the game type (or none for
-  // poll games); the special-cased games above (trivia / anonymous / secret) are not
-  // in the registry. Several of these tables are RLS-locked to anon writes — admin client.
-  const clearSession = (SESSION_CLEARERS as Partial<Record<GameType, SessionClearer>>)[gameType]
-  if (clearSession) {
-    const { error: clearError, poolUsage: clearedPoolUsage } = await clearSession(getSupabaseAdmin(), gameId)
-    if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
-    // Some clearers (e.g. describe_it) carry forward usage state that must survive
-    // the final `games` update below — fold it in rather than letting it be clobbered.
-    if (clearedPoolUsage) {
-      gameUpdate.pool_usage = { ...(gameUpdate.pool_usage as Record<string, unknown>), ...clearedPoolUsage }
+    if (isTriviaGame(gameType)) {
+      const { error: clearError } = await clearTriviaSessionData(getSupabaseAdmin(), gameId)
+      if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
     }
+
+    const { error: roundsError } = await admin.from('rounds').delete().eq('game_id', gameId)
+    if (roundsError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', roundsError) }, { status: 500 })
+
+    const { error: poolError } = await admin.from('wst_quote_pool').delete().eq('game_id', gameId)
+    if (poolError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', poolError) }, { status: 500 })
+
+    const { error: pqError } = await admin.from('player_questions').delete().eq('game_id', gameId)
+    if (pqError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', pqError) }, { status: 500 })
+
+    const { error: playerNamesError } = await admin
+      .from('participants')
+      .delete()
+      .eq('game_id', gameId)
+      .not('submitted_by_player_id', 'is', null)
+    if (playerNamesError)
+      return NextResponse.json(
+        { error: internalErrorMessage('games/code/play-again', playerNamesError) },
+        { status: 500 }
+      )
+
+    const { error: hotSeatError } = await admin.from('hot_seat_submissions').delete().eq('game_id', gameId)
+    if (hotSeatError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', hotSeatError) }, { status: 500 })
+
+    if (isAnonymousMessagesGame(gameType)) {
+      const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
+      if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
+    }
+
+    if (isSecretMessageGame(gameType)) {
+      const { error: reopenError } = await reopenSecretMessageBoard(supabase, gameId)
+      if (reopenError) return NextResponse.json({ error: reopenError }, { status: 500 })
+      const { data: updatedSecret, error: secretFetchError } = await supabase
+        .from('games')
+        .select()
+        .eq('id', gameId)
+        .single()
+      if (secretFetchError)
+        return NextResponse.json(
+          { error: internalErrorMessage('games/code/play-again', secretFetchError) },
+          { status: 500 }
+        )
+      return NextResponse.json({ success: true, game: updatedSecret })
+    }
+
+    // Per-game session cleanup. Exactly one clearer matches the game type (or none for
+    // poll games); the special-cased games above (trivia / anonymous / secret) are not
+    // in the registry. Several of these tables are RLS-locked to anon writes — admin client.
+    const clearSession = (SESSION_CLEARERS as Partial<Record<GameType, SessionClearer>>)[gameType]
+    if (clearSession) {
+      const { error: clearError, poolUsage: clearedPoolUsage } = await clearSession(getSupabaseAdmin(), gameId)
+      if (clearError) return NextResponse.json({ error: clearError }, { status: 500 })
+      // Some clearers (e.g. describe_it) carry forward usage state that must survive
+      // the final `games` update below — fold it in rather than letting it be clobbered.
+      if (clearedPoolUsage) {
+        gameUpdate.pool_usage = { ...(gameUpdate.pool_usage as Record<string, unknown>), ...clearedPoolUsage }
+      }
+    }
+
+    // Service role: `players` is RLS read-only for anon (core-gameplay lockdown), so the
+    // anon client silently updates 0 rows here — leaving everyone auto-ready. Use admin.
+    const { error: spectatorResetError } = await resetSpectatorsForLobby(
+      getSupabaseAdmin(),
+      gameId,
+      hostPlayerId ? [hostPlayerId] : []
+    )
+    if (spectatorResetError) return NextResponse.json({ error: spectatorResetError }, { status: 500 })
+
+    const { data: updated, error: gameError } = await getSupabaseAdmin()
+      .from('games')
+      .update({ ...gameUpdate, reset_started_at: null })
+      .eq('id', gameId)
+      .eq('reset_started_at', token)
+      .select()
+      .single()
+
+    // No row matched the token: this reset's marker expired and another reset took over; leave the game to it.
+    if (gameError?.code === 'PGRST116') {
+      return NextResponse.json({ error: 'The reset was superseded — try again' }, { status: 409 })
+    }
+    if (gameError)
+      return NextResponse.json({ error: internalErrorMessage('games/code/play-again', gameError) }, { status: 500 })
+
+    return NextResponse.json({ success: true, game: updated })
   }
-
-  // Service role: `players` is RLS read-only for anon (core-gameplay lockdown), so the
-  // anon client silently updates 0 rows here — leaving everyone auto-ready. Use admin.
-  const { error: spectatorResetError } = await resetSpectatorsForLobby(
-    getSupabaseAdmin(),
-    gameId,
-    hostPlayerId ? [hostPlayerId] : []
-  )
-  if (spectatorResetError) return NextResponse.json({ error: spectatorResetError }, { status: 500 })
-
-  const { data: updated, error: gameError } = await getSupabaseAdmin()
-    .from('games')
-    .update(gameUpdate)
-    .eq('id', gameId)
-    .select()
-    .single()
-
-  if (gameError)
-    return NextResponse.json({ error: internalErrorMessage('games/code/play-again', gameError) }, { status: 500 })
-
-  return NextResponse.json({ success: true, game: updated })
 }
 
 export const POST = withGameNotification('lobby_reopened', handlePost)
