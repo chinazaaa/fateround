@@ -29,8 +29,9 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ expired: false, finished: false })
   }
 
-  const finished = await finishExpiredScrabbleGame(supabase, game)
-  if (!finished) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
+  const result = await finishExpiredScrabbleGame(supabase, game)
+  if (result.error) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
 
-  return NextResponse.json({ expired: true, finished: true })
+  // `finished: false` here means a play / pass won the claim and the round is still running (the client re-checks).
+  return NextResponse.json({ expired: true, finished: result.finished })
 }

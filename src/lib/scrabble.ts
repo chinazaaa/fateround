@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
-import { markGameFinished } from '@/lib/game-finish'
+import { callFinishRpc, type FinishResult } from '@/lib/finish-session'
 import { SCRABBLE_RACK_SIZE } from '@/lib/scrabble-constants'
 import {
   currentTurnPlayerId,
@@ -90,9 +90,10 @@ export function scrabbleGameSessionExpired(
 }
 
 /** Finalize a scrabble game now: tally final scores (rack penalties applied, as at
- *  a normal game end), pick the winner by score, and flip the session + game to
- *  finished. Shared by the time-limit auto-end and the host's early-end so both
- *  produce a proper winner and final scores. `reason` prefixes the status message. */
+ *  a normal game end), pick the winner by score, and finish the session + game in ONE
+ *  database transaction (see finish_scrabble_session). Shared by the time-limit auto-end
+ *  and the host's early-end so both produce a proper winner and final scores. `reason`
+ *  prefixes the status message. */
 async function finalizeScrabbleSession(
   supabase: SupabaseClient,
   gameId: string,
@@ -101,49 +102,35 @@ async function finalizeScrabbleSession(
   const { session, error: loadError } = await loadSession(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
-  // Already finished: scores are written exactly once by whoever claimed the session, so do NOT tally again.
-  // Only complete the games-row flip (idempotent single-winner CAS) in case the claimer's flip failed.
-  if (session.phase === 'finished') return completeGameFlip(supabase, gameId)
 
-  const { data: statesRaw } = await supabase.from('scrabble_player_state').select('*').eq('game_id', gameId)
-  const states = (statesRaw ?? []) as ScrabblePlayerState[]
-  const { data: playersRaw } = await supabase.from('players').select('id,name').eq('game_id', gameId)
-  const names = new Map((playersRaw ?? []).map((p) => [p.id as string, p.name as string]))
+  let finished: FinishResult
+  if (session.phase === 'finished') {
+    // Already finished: the function never re-tallies, it only completes the games-row flip (repair path).
+    finished = await finishScrabbleRound(supabase, gameId, session, { patch: {} })
+  } else {
+    const { data: statesRaw } = await supabase.from('scrabble_player_state').select('*').eq('game_id', gameId)
+    const states = seatedStates(session, (statesRaw ?? []) as ScrabblePlayerState[])
+    const { data: playersRaw } = await supabase.from('players').select('id,name').eq('game_id', gameId)
+    const names = new Map((playersRaw ?? []).map((p) => [p.id as string, p.name as string]))
 
-  const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
-  const result = finalizeScores(states, names, null, tileSet.values)
-
-  // Claim the session FIRST so finalize runs exactly once: if a play/pass finish (or
-  // another finalize call) already moved the row from this exact state we lose the
-  // CAS and bail before applying rack penalties — no double-penalizing.
-  const persisted = await persistSession(
-    supabase,
-    gameId,
-    {
-      phase: 'finished',
-      winner_player_id: result.winnerPlayerId,
-      is_tie: result.isTie,
-      status_message: `${reason} ${result.statusMessage}`,
-      turn_deadline_at: null,
-    },
-    session.updated_at
-  )
-  if (persisted.error) return { error: persisted.error }
-  if (!persisted.won) {
-    // Lost the claim. If the round is finished now, someone else ended it (success). If it is still
-    // running, a play/pass moved the session first and THIS request did not end the round.
-    const { session: after } = await loadSession(supabase, gameId)
-    return after?.phase === 'finished' ? { error: null } : { error: null, skipped: true }
+    const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
+    const result = finalizeScores(states, names, null, tileSet.values)
+    finished = await finishScrabbleRound(supabase, gameId, session, {
+      patch: {
+        winner_player_id: result.winnerPlayerId,
+        is_tie: result.isTie,
+        status_message: `${reason} ${result.statusMessage}`,
+      },
+      states: scoreWrites(states, result.finalScores),
+    })
   }
-
-  await persistFinalScores(supabase, states, result.finalScores)
-  return completeGameFlip(supabase, gameId)
-}
-
-/** Flip games.status active -> finished once (single-winner CAS). A failed flip is an error, not a clean finish. */
-async function completeGameFlip(supabase: SupabaseClient, gameId: string): Promise<{ error: string | null }> {
-  const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
-  return { error: flipped.error ? internalErrorMessage('scrabble', flipped.error) : null }
+  if (finished.error) return { error: finished.error }
+  if (finished.won || finished.already) return { error: null }
+  // Lost the claim. If the round is finished now, someone else ended it (success). If it is still
+  // running, a play/pass moved the session first and THIS request did not end the round.
+  const { session: after, error: rereadError } = await loadSession(supabase, gameId)
+  if (rereadError) return { error: rereadError }
+  return after?.phase === 'finished' ? { error: null } : { error: null, skipped: true }
 }
 
 /** End the game now because the session clock ran out. */
@@ -166,11 +153,13 @@ export async function finishScrabbleGameEarly(
 export async function finishExpiredScrabbleGame(
   supabase: SupabaseClient,
   game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds'>
-): Promise<boolean> {
-  if (game.status !== 'active') return false
-  if (!scrabbleGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return false
-  const { error } = await finishScrabbleByTimeLimit(supabase, game.id)
-  return !error
+): Promise<{ finished: boolean; error?: string }> {
+  if (game.status !== 'active') return { finished: false }
+  if (!scrabbleGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return { finished: false }
+  const { error, skipped } = await finishScrabbleByTimeLimit(supabase, game.id)
+  if (error) return { finished: false, error }
+  // `skipped`: a normal play / pass won the claim and the round is still running: not finished, not an error.
+  return { finished: !skipped }
 }
 
 export async function extendScrabbleGameDuration(
@@ -364,6 +353,16 @@ async function persistSession(
   return { won: (data?.length ?? 0) > 0 }
 }
 
+/**
+ * Only seats still in the session's turn order count. A leave that has already shrunk turn_order but not yet
+ * deleted its state row must not be ranked (a stale high score would win), tallied or written. Chess-clock seats
+ * that flagged out stay in turn_order, so they remain ranked.
+ */
+function seatedStates(session: ScrabbleSession, states: ScrabblePlayerState[]): ScrabblePlayerState[] {
+  const seated = new Set(session.turn_order ?? [])
+  return states.filter((s) => seated.has(s.player_id))
+}
+
 async function loadPlayerStates(supabase: SupabaseClient, gameId: string): Promise<ScrabblePlayerState[]> {
   const { data } = await supabase
     .from('scrabble_player_state')
@@ -426,18 +425,58 @@ function finalizeScores(
   return { finalScores, winnerPlayerId, isTie, statusMessage }
 }
 
-/** Persist the final per-player scores. Racks are left as-is for the results screen. */
-async function persistFinalScores(
-  supabase: SupabaseClient,
+type ScrabbleStateWrite = {
+  player_id: string
+  score?: number
+  rack?: string[]
+  clock_ms_remaining?: number | null
+  timed_out?: boolean
+}
+
+/**
+ * The final per-player state writes. Racks are left as-is for the results screen; `mover` merges the mover's own
+ * state changes (rack, clock, ...) into that player's entry, the final score winning over the move's score.
+ */
+function scoreWrites(
   states: ScrabblePlayerState[],
-  finalScores: Map<string, number>
-): Promise<void> {
-  for (const s of states) {
-    await supabase
-      .from('scrabble_player_state')
-      .update({ score: finalScores.get(s.player_id) ?? s.score })
-      .eq('id', s.id)
-  }
+  finalScores: Map<string, number>,
+  mover?: { playerId: string; write: Omit<ScrabbleStateWrite, 'player_id'> }
+): ScrabbleStateWrite[] {
+  return states.map((s) => ({
+    player_id: s.player_id,
+    ...(mover?.playerId === s.player_id ? mover.write : {}),
+    score: finalScores.get(s.player_id) ?? s.score,
+  }))
+}
+
+/** Everything one finish writes, applied by `finish_scrabble_session` in a single transaction (or not at all). */
+async function finishScrabbleRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: { updated_at: string },
+  o: { patch: Record<string, unknown>; states?: ScrabbleStateWrite[]; removePlayerId?: string }
+): Promise<FinishResult> {
+  const { phase: _phase, updated_at: _updatedAt, turn_deadline_at: _d, turn_started_at: _t, ...patch } = o.patch
+  void [_phase, _updatedAt, _d, _t]
+  return callFinishRpc(
+    supabase,
+    'finish_scrabble_session',
+    {
+      p_game_id: gameId,
+      p_expected_updated_at: session.updated_at,
+      p_session_patch: patch,
+      p_state_writes: o.states ?? [],
+      p_remove_player_id: o.removePlayerId ?? null,
+    },
+    'scrabble',
+    gameId
+  )
+}
+
+/** Action result for a finish: error -> error, landed -> success, lost CAS (or already finished) -> skipped. */
+function finishOutcome(finished: FinishResult): { error?: string; skipped?: boolean } {
+  if (finished.error) return { error: finished.error }
+  return finished.won ? {} : { skipped: true }
 }
 
 // ---------------------------------------------------------------------------
@@ -540,7 +579,7 @@ export async function processScrabblePlay(
   if (session.phase === 'finished') return { error: 'Game already finished' }
   if (currentTurnPlayerId(session) !== playerId) return { error: "It's not your turn" }
 
-  const states = await loadPlayerStates(supabase, gameId)
+  const states = seatedStates(session, await loadPlayerStates(supabase, gameId))
   const state = states.find((s) => s.player_id === playerId)
   if (!state) return { error: 'You are not in this game' }
 
@@ -617,36 +656,22 @@ export async function processScrabblePlay(
   if (wentOut) {
     const result = finalizeScores(states, names, playerId, tileSet.values)
 
-    // Claim the session FIRST so the endgame adjustment runs exactly once.
-    const persisted = await persistSession(
-      supabase,
-      gameId,
-      {
+    // The round ends on this play: session, the mover's rack / clock, every final score and the games flip are
+    // ONE transaction (finish_scrabble_session).
+    const finished = await finishScrabbleRound(supabase, gameId, session, {
+      patch: {
         board,
         bag,
         current_turn_index: wrapIndex,
         consecutive_passes: 0,
         last_move: lastMove,
-        phase: 'finished',
         winner_player_id: result.winnerPlayerId,
         is_tie: result.isTie,
         status_message: result.statusMessage,
-        turn_deadline_at: null,
-        turn_started_at: null,
       },
-      session.updated_at
-    )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-    const { error: stateError } = await supabase
-      .from('scrabble_player_state')
-      .update(moverStateWrite)
-      .eq('id', state.id)
-    if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
-
-    await persistFinalScores(supabase, states, result.finalScores)
-    await markGameFinished(supabase, gameId)
-    return {}
+      states: scoreWrites(states, result.finalScores, { playerId, write: { rack: newRack, ...(clockPatch ?? {}) } }),
+    })
+    return finishOutcome(finished)
   }
 
   // Next seat that can still play (chess mode skips flagged-out players).
@@ -655,34 +680,19 @@ export async function processScrabblePlay(
   // Chess mode: the mover just used the last live clock — end the game now.
   if (session.clock_mode === 'chess' && nextIndex === -1) {
     const result = finalizeScores(states, names, null, tileSet.values)
-    const persisted = await persistSession(
-      supabase,
-      gameId,
-      {
+    const finished = await finishScrabbleRound(supabase, gameId, session, {
+      patch: {
         board,
         bag,
         consecutive_passes: 0,
         last_move: lastMove,
-        phase: 'finished',
         winner_player_id: result.winnerPlayerId,
         is_tie: result.isTie,
         status_message: result.statusMessage,
-        turn_deadline_at: null,
-        turn_started_at: null,
       },
-      session.updated_at
-    )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-    const { error: stateError } = await supabase
-      .from('scrabble_player_state')
-      .update(moverStateWrite)
-      .eq('id', state.id)
-    if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
-
-    await persistFinalScores(supabase, states, result.finalScores)
-    await markGameFinished(supabase, gameId)
-    return {}
+      states: scoreWrites(states, result.finalScores, { playerId, write: { rack: newRack, ...(clockPatch ?? {}) } }),
+    })
+    return finishOutcome(finished)
   }
 
   const nextPlayerId = session.turn_order[nextIndex]
@@ -764,30 +774,23 @@ async function advanceScorelessTurn(
     const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
     const result = finalizeScores(states, names, null, tileSet.values)
 
-    // Claim the session FIRST so the endgame adjustment runs exactly once.
-    const persisted = await persistSession(
-      supabase,
-      gameId,
-      {
+    const finished = await finishScrabbleRound(supabase, gameId, session, {
+      patch: {
         bag,
         current_turn_index: nextIndex === -1 ? session.current_turn_index : nextIndex,
         consecutive_passes: consecutivePasses,
         last_move: lastMove,
-        phase: 'finished',
         winner_player_id: result.winnerPlayerId,
         is_tie: result.isTie,
         status_message: result.statusMessage,
-        turn_deadline_at: null,
-        turn_started_at: null,
       },
-      session.updated_at
-    )
-    if (!persisted.won) return { won: false, error: persisted.error }
-
-    await writeMoverClock()
-    await persistFinalScores(supabase, states, result.finalScores)
-    await markGameFinished(supabase, gameId)
-    return { won: true }
+      states: scoreWrites(
+        states,
+        result.finalScores,
+        clockPatch && moverState ? { playerId: moverState.player_id, write: clockPatch } : undefined
+      ),
+    })
+    return { won: finished.won, error: finished.error }
   }
 
   const nextPlayerId = session.turn_order[nextIndex]
@@ -824,7 +827,7 @@ export async function processScrabbleExchange(
   if (currentTurnPlayerId(session) !== playerId) return { error: "It's not your turn" }
   if (session.bag.length < SCRABBLE_RACK_SIZE) return { error: 'Not enough tiles in the bag to exchange' }
 
-  const states = await loadPlayerStates(supabase, gameId)
+  const states = seatedStates(session, await loadPlayerStates(supabase, gameId))
   const state = states.find((s) => s.player_id === playerId)
   if (!state) return { error: 'You are not in this game' }
 
@@ -872,7 +875,7 @@ export async function processScrabblePass(
   if (session.phase === 'finished') return { error: 'Game already finished' }
   if (currentTurnPlayerId(session) !== playerId) return { error: "It's not your turn" }
 
-  const states = await loadPlayerStates(supabase, gameId)
+  const states = seatedStates(session, await loadPlayerStates(supabase, gameId))
   const names = await loadPlayerNames(supabase, gameId)
   const { error, won } = await advanceScorelessTurn(supabase, gameId, session, states, names, 'pass', playerId, [
     ...session.bag,
@@ -897,7 +900,7 @@ export async function processScrabbleExpireTurn(supabase: SupabaseClient, gameId
 
   if (!session.turn_deadline_at || new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
 
-  const states = await loadPlayerStates(supabase, gameId)
+  const states = seatedStates(session, await loadPlayerStates(supabase, gameId))
   const names = await loadPlayerNames(supabase, gameId)
   const movingPlayerId = currentTurnPlayerId(session)
   const { error } = await advanceScorelessTurn(supabase, gameId, session, states, names, 'pass', movingPlayerId, [
@@ -913,7 +916,7 @@ async function processScrabbleChessTimeout(
   gameId: string,
   session: ScrabbleSession
 ): Promise<{ error?: string }> {
-  const states = await loadPlayerStates(supabase, gameId)
+  const states = seatedStates(session, await loadPlayerStates(supabase, gameId))
   const names = await loadPlayerNames(supabase, gameId)
   const moverId = currentTurnPlayerId(session)
   const moverState = states.find((s) => s.player_id === moverId)
@@ -934,27 +937,19 @@ async function processScrabbleChessTimeout(
     // Everyone has flagged out — end the game (standard rack penalty, winner by score).
     const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
     const result = finalizeScores(states, names, null, tileSet.values)
-    const persisted = await persistSession(
-      supabase,
-      gameId,
-      {
-        phase: 'finished',
+    const finished = await finishScrabbleRound(supabase, gameId, session, {
+      patch: {
         winner_player_id: result.winnerPlayerId,
         is_tie: result.isTie,
         status_message: `${flaggedName} ran out of time. ${result.statusMessage}`,
-        turn_deadline_at: null,
-        turn_started_at: null,
       },
-      session.updated_at
-    )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
-    await supabase
-      .from('scrabble_player_state')
-      .update({ clock_ms_remaining: 0, timed_out: true })
-      .eq('id', moverState.id)
-    await persistFinalScores(supabase, states, result.finalScores)
-    await markGameFinished(supabase, gameId)
-    return {}
+      states: scoreWrites(states, result.finalScores, {
+        playerId: moverState.player_id,
+        write: { clock_ms_remaining: 0, timed_out: true },
+      }),
+    })
+    // A lost race is benign for the timer: whoever won it moved or ended the game.
+    return finished.error ? { error: finished.error } : {}
   }
 
   const nextPlayerId = session.turn_order[nextIndex]
@@ -1124,6 +1119,13 @@ async function removeScrabblePlayerOnce(
       update.turn_deadline_at = computeDeadline(timerSeconds, Date.now())
     }
 
+    if (finishing) {
+      // Not enough players to keep going: the round ends and the leaver's rows go in the same transaction.
+      const finished = await finishScrabbleRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
+      if (finished.error) return { error: finished.error }
+      return finished.won || finished.already ? { error: null } : 'retry'
+    }
+
     const { data: claimed, error: sessionError } = await supabase
       .from('scrabble_sessions')
       .update(update)
@@ -1134,7 +1136,6 @@ async function removeScrabblePlayerOnce(
     if (!claimed || claimed.length === 0) return 'retry'
 
     await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
-    if (finishing) await markGameFinished(supabase, gameId)
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
     return { error: error ? internalErrorMessage('scrabble', error) : null }
   }

@@ -191,8 +191,28 @@ function makeChessSupabase(init: {
     return b
   }
 
+  // finish_scrabble_session: the whole finish (session, player states, games flip) in one step.
+  const rpc = (name: string, args: Record<string, unknown>) => {
+    if (name !== 'finish_scrabble_session') return Promise.resolve({ data: { status: 'none' }, error: null })
+    if (session.phase === 'finished') return Promise.resolve({ data: { status: 'already_finished' }, error: null })
+    if (session.updated_at !== args.p_expected_updated_at)
+      return Promise.resolve({ data: { status: 'lost' }, error: null })
+    Object.assign(session, args.p_session_patch as Row, {
+      phase: 'finished',
+      turn_deadline_at: null,
+      turn_started_at: null,
+    })
+    session.updated_at = `u${++bump}`
+    for (const w of args.p_state_writes as Row[]) {
+      const st = states.find((x) => x.player_id === w.player_id)
+      if (st) Object.assign(st, w)
+    }
+    games.status = 'finished'
+    return Promise.resolve({ data: { status: 'finished', games_flipped: true }, error: null })
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { supabase: { from: (t: string) => builder(t) } as any, session, states, games }
+  return { supabase: { from: (t: string) => builder(t), rpc } as any, session, states, games }
 }
 
 function chessSession(overrides: Row): Row {

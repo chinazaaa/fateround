@@ -22,6 +22,14 @@ function makeMock(opts: { session: unknown; players: { id: string; name: string 
   }
 
   const supabase = {
+    // A finishing leave is ONE finish_uno_session call: record its patch (the function forces phase = finished).
+    rpc(name: string, args: { p_session_patch?: Record<string, unknown> }) {
+      if (name === 'finish_uno_session') {
+        sessionUpdates.push({ ...args.p_session_patch, phase: 'finished', turn_deadline_at: null })
+        return Promise.resolve({ data: { status: 'finished', games_flipped: false }, error: null })
+      }
+      return Promise.resolve({ data: null, error: null })
+    },
     from(table: string) {
       return {
         select() {

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { INTERNAL_ERROR_MESSAGE, internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
-import { markGameFinished } from '@/lib/game-finish'
+import { callFinishRpc, type FinishResult } from '@/lib/finish-session'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, UnoCard, UnoCardColor, UnoColor, UnoPlayerHand, UnoSession } from '@/types'
 import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/player-limits'
@@ -999,39 +999,55 @@ async function finishByLowestHand(
     statusMessage = `${reasonPrefix} ${winnerName} wins — ${detail}.`
   }
 
-  const { data, error } = await supabase
-    .from('uno_sessions')
-    .update({
-      ...extra?.patch,
-      phase: 'finished',
-      winner_player_id: winnerId,
-      status_message: statusMessage,
-      turn_deadline_at: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-    .eq('updated_at', session.updated_at)
-    // Never re-finish a finished round: a second finisher must not re-rank or award series points again.
-    .neq('phase', 'finished')
-    .select('game_id')
-
-  // A database failure is not a lost race: it must surface as an error, not as a quiet skip.
-  if (error) return { won: false, error: internalErrorMessage('uno', error) }
-  if ((data?.length ?? 0) === 0) return { won: false }
-  // Hands first (room points read them in markGameFinished), only now that the claim has won.
-  for (const w of extra?.handWrites ?? []) {
-    const written = await writeHand(supabase, gameId, w.playerId, w.cards)
-    if (written.error) return { won: true, error: written.error }
-  }
-  if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, hands)
-  const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
-  // The session is already finished: a failed games-row flip must not read as a clean finish.
-  if (flipped.error) return { won: true, error: internalErrorMessage('uno', flipped.error) }
-  return { won: true }
+  // The ranking is decided here (in memory, on the post-draw hands the caller passes); the finish itself is ONE
+  // database transaction (see finish_uno_session): session + piles, final hands, series points, games flip.
+  const eliminatedCount = (extra?.patch?.eliminated_player_ids ?? session.eliminated_player_ids ?? []).length
+  return finishUnoRound(supabase, gameId, session, {
+    patch: { ...extra?.patch, winner_player_id: winnerId, status_message: statusMessage },
+    hands: (extra?.handWrites ?? []).map((w) => ({ player_id: w.playerId, cards: w.cards })),
+    series: seriesAward(winnerId, hands, eliminatedCount),
+  })
 }
 
-/** Three-state outcome of a finish write: it landed, it lost its CAS (`won: false`), or it failed (`error`). */
-type FinishResult = { won: boolean; error?: string }
+/** Everything one finish writes, applied by `finish_uno_session` in a single transaction (or not at all). */
+type UnoFinish = {
+  /** Session columns to set (the function forces phase = finished and clears the deadline). */
+  patch: Record<string, unknown>
+  /** Final hand rows / stats, by player. */
+  hands?: { player_id: string; cards?: UnoCard[]; stats?: Record<string, number> }[]
+  /** The round's series award; the function adds it only while scoring is on and no series winner exists. */
+  series?: { winner_id: string; points: number } | null
+  spectatorIds?: string[]
+  /** A leaver whose hand + players rows go in the same step. */
+  removePlayerId?: string
+}
+
+async function finishUnoRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: { updated_at: string },
+  o: UnoFinish
+): Promise<FinishResult> {
+  const { phase: _phase, updated_at: _updatedAt, turn_deadline_at: _deadline, ...patch } = o.patch
+  void _phase
+  void _updatedAt
+  void _deadline
+  return callFinishRpc(
+    supabase,
+    'finish_uno_session',
+    {
+      p_game_id: gameId,
+      p_expected_updated_at: session.updated_at,
+      p_session_patch: patch,
+      p_hand_writes: o.hands ?? [],
+      p_series: o.series ?? null,
+      p_spectator_ids: o.spectatorIds ?? null,
+      p_remove_player_id: o.removePlayerId ?? null,
+    },
+    'uno',
+    gameId
+  )
+}
 
 /** Action result for a finish that must end the request: error -> error, lost CAS -> skipped, landed -> success. */
 function finishOutcome(finished: FinishResult): { error?: string; skipped?: boolean } {
@@ -1357,67 +1373,34 @@ async function persistSession(
   return { won: (data?.length ?? 0) > 0 }
 }
 
-async function writeHand(
-  supabase: SupabaseClient,
-  gameId: string,
-  playerId: string,
-  cards: UnoCard[]
-): Promise<{ error: string | null }> {
-  const { error } = await supabase
-    .from('uno_player_hands')
-    .update({ cards })
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  return { error: error ? internalErrorMessage('uno', error) : null }
+async function writeHand(supabase: SupabaseClient, gameId: string, playerId: string, cards: UnoCard[]) {
+  await supabase.from('uno_player_hands').update({ cards }).eq('game_id', gameId).eq('player_id', playerId)
 }
 
 /** Bonus per opponent knocked out by the Mercy rule this round (No Mercy scoring only). */
 const UNO_KNOCKOUT_BONUS = 250
 
 /**
- * Optional UNO scoring: award points to the round winner and persist the running totals on the
- * games row. Called by every round-finish path when uno_series_scoring is on and no series
- * winner has been declared yet. Idempotent per round via `expectedUpdatedAt` — a losing CAS
- * write just skips the update.
+ * Optional UNO scoring: the round winner's award, computed in memory and applied (against the CURRENT totals,
+ * only while scoring is on and no series winner exists) by `finish_uno_session` inside the finish transaction.
  *
  * Points: sum of card values still in every opponent's hand (numbers = face, coloured actions
  * = 20, wilds = 50) PLUS 250 per player knocked out by Mercy during the round. When any
  * player reaches uno_series_target the id lands in uno_series_winner_id.
  */
-async function awardSeriesPoints(
-  supabase: SupabaseClient,
-  gameId: string,
-  winnerId: string,
-  hands: UnoPlayerHand[]
-): Promise<void> {
-  const { data: g } = await supabase
-    .from('games')
-    .select('uno_series_scoring, uno_series_target, uno_series_scores, uno_series_winner_id')
-    .eq('id', gameId)
-    .maybeSingle()
-  if (!g || g.uno_series_scoring !== true || g.uno_series_winner_id) return
-
+function seriesAward(
+  winnerId: string | null,
+  hands: UnoPlayerHand[],
+  eliminatedCount: number
+): { winner_id: string; points: number } | null {
+  if (!winnerId) return null
   // Points from opponents' hands (winner scores their own hand as 0, since it's empty).
   let handPoints = 0
   for (const h of hands) {
     if (h.player_id === winnerId) continue
     handPoints += unoHandSum((h.cards as UnoCard[]) ?? [])
   }
-  const { data: sess } = await supabase
-    .from('uno_sessions')
-    .select('eliminated_player_ids')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  const knockouts = ((sess?.eliminated_player_ids as string[] | null) ?? []).length
-  const roundPoints = handPoints + knockouts * UNO_KNOCKOUT_BONUS
-  const totals = { ...((g.uno_series_scores as Record<string, number> | null) ?? {}) }
-  totals[winnerId] = (totals[winnerId] ?? 0) + roundPoints
-
-  const target = Number(g.uno_series_target ?? 1000)
-  const seriesWinner = totals[winnerId] >= target ? winnerId : null
-  const patch: Record<string, unknown> = { uno_series_scores: totals }
-  if (seriesWinner) patch.uno_series_winner_id = seriesWinner
-  await supabase.from('games').update(patch).eq('id', gameId)
+  return { winner_id: winnerId, points: handPoints + eliminatedCount * UNO_KNOCKOUT_BONUS }
 }
 
 /**
@@ -1432,7 +1415,6 @@ async function applyMercyKnockout(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  handSize: number,
   playerNames: Map<string, string>,
   winCondition: UnoNoMercyWin,
   attributionPlayerId?: string | null
@@ -1445,7 +1427,6 @@ async function applyMercyKnockout(
       supabase,
       gameId,
       playerId,
-      handSize,
       playerNames,
       winCondition,
       attributionPlayerId
@@ -1458,7 +1439,6 @@ async function applyMercyKnockoutOnce(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  handSize: number,
   playerNames: Map<string, string>,
   winCondition: UnoNoMercyWin,
   attributionPlayerId?: string | null
@@ -1473,9 +1453,11 @@ async function applyMercyKnockoutOnce(
   if (!fresh || fresh.phase === 'finished') return 'done'
   const already = new Set<string>((fresh.eliminated_player_ids as string[] | null) ?? [])
   if (already.has(playerId)) return 'done'
+  // Revalidate on EVERY attempt against the current rows: the player must still be seated, and (below) their
+  // current hand must still reach the limit. A newer write (a leave, a rotation) can invalidate either.
+  if (!((fresh.turn_order as string[] | null) ?? []).includes(playerId)) return 'done'
   const nextEliminated = [...already, playerId]
   const name = playerName(playerNames, playerId)
-  const note = `${name} hit ${handSize} cards — knocked out (High Stakes 25-card limit)`
 
   // Return the KO'd player's hand to the draw pile so the deck can keep dealing to
   // survivors — otherwise the pile shrinks every round and a +10 landing on a near-empty
@@ -1489,6 +1471,8 @@ async function applyMercyKnockoutOnce(
     .eq('player_id', playerId)
     .maybeSingle()
   const koCards = ((koHandRow?.cards as UnoCard[] | null) ?? []).filter(Boolean)
+  if (koCards.length < UNO_MERCY_HAND_LIMIT) return 'done'
+  const note = `${name} hit ${koCards.length} cards — knocked out (High Stakes 25-card limit)`
   const currentPile = ((fresh.draw_pile as UnoCard[] | null) ?? []).filter(Boolean)
   const returnedPile = koCards.length > 0 ? shuffle([...currentPile, ...koCards]) : currentPile
 
@@ -1519,6 +1503,39 @@ async function applyMercyKnockoutOnce(
       : `${note} · everyone knocked out — no winner`
   }
 
+  // High Stakes Knockout / Double KO / Mass Extinction: credit the player who inflicted this knockout (the setter
+  // of the fatal draw penalty or the roulette caster). Best-effort — passed in by the caller.
+  let attributionWrite: { player_id: string; stats: Record<string, number> } | null = null
+  if (attributionPlayerId && attributionPlayerId !== playerId) {
+    const { data: attHandRow } = await supabase
+      .from('uno_player_hands')
+      .select('stats')
+      .eq('game_id', gameId)
+      .eq('player_id', attributionPlayerId)
+      .maybeSingle()
+    const attStats = { ...((attHandRow?.stats as Record<string, number> | null) ?? {}) }
+    attStats.uno_hs_knockouts = (attStats.uno_hs_knockouts ?? 0) + 1
+    attributionWrite = { player_id: attributionPlayerId, stats: attStats }
+  }
+
+  if (endsRound) {
+    // The knockout ends the round: the session, the zeroed hand, the attribution, the series points and the games
+    // flip are ONE transaction (finish_uno_session), so nothing can be published half-done.
+    const { data: handRows } = await supabase.from('uno_player_hands').select('*').eq('game_id', gameId)
+    const tallyHands = updateHand((handRows as UnoPlayerHand[]) ?? [], playerId, [])
+    const finishedBy = await finishUnoRound(supabase, gameId, fresh, {
+      patch,
+      hands: [
+        ...(koCards.length > 0 ? [{ player_id: playerId, cards: [] as UnoCard[] }] : []),
+        ...(attributionWrite ? [attributionWrite] : []),
+      ],
+      series: seriesAward((patch.winner_player_id as string | null) ?? null, tallyHands, nextEliminated.length),
+      spectatorIds: [playerId],
+    })
+    if (finishedBy.error) return 'done'
+    return finishedBy.won || finishedBy.already ? 'done' : 'retry'
+  }
+
   const { data: claimed, error: koError } = await supabase
     .from('uno_sessions')
     .update(patch)
@@ -1542,31 +1559,12 @@ async function applyMercyKnockoutOnce(
 
   await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
 
-  // High Stakes Knockout / Double KO / Mass Extinction: credit the player who inflicted this
-  // knockout (the setter of the fatal draw penalty or the roulette caster). Best-effort — pass
-  // `attributionPlayerId` from the caller (processUnoDraw / processUnoColorRoulette).
-  if (attributionPlayerId && attributionPlayerId !== playerId) {
-    const { data: attHandRow } = await supabase
-      .from('uno_player_hands')
-      .select('stats')
-      .eq('game_id', gameId)
-      .eq('player_id', attributionPlayerId)
-      .maybeSingle()
-    const attStats = { ...((attHandRow?.stats as Record<string, number> | null) ?? {}) }
-    attStats.uno_hs_knockouts = (attStats.uno_hs_knockouts ?? 0) + 1
+  if (attributionWrite) {
     await supabase
       .from('uno_player_hands')
-      .update({ stats: attStats })
+      .update({ stats: attributionWrite.stats })
       .eq('game_id', gameId)
-      .eq('player_id', attributionPlayerId)
-  }
-
-  if (endsRound) {
-    // Award series points to the last-standing winner. Reload hands for the point tally.
-    const { data: freshHands } = await supabase.from('uno_player_hands').select('*').eq('game_id', gameId)
-    const winnerId = (patch.winner_player_id as string | null) ?? null
-    if (winnerId) await awardSeriesPoints(supabase, gameId, winnerId, (freshHands as UnoPlayerHand[]) ?? [])
-    await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
+      .eq('player_id', attributionWrite.player_id)
   }
   return 'done'
 }
@@ -1856,6 +1854,41 @@ export async function processUnoPlay(
   // Surface a missed-UNO penalty in the status so the whole room sees the catch.
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
+  const moverStats = foldUnoPlay(currentUnoStats(hands, playerId), [card], hand, wentOut, {
+    calledUno: owesUno && callUno,
+    caught: !!missed,
+    stackedDraw2: card.kind === 'draw2' && session.draw_penalty_kind === 'draw2' && (session.draw_penalty ?? 0) > 0,
+    stackedAnyDraw: _drewOntoPendingStack,
+    playedSevenSwap: isSeven,
+    playedZeroPass: isZero,
+    threePlusStack: newChain >= 3,
+    rainbow: false,
+  })
+
+  if (patch.phase === 'finished') {
+    // The round ends on this play: the session, every changed hand (the mover's carries the folded stats), the
+    // series points, the out player's spectator flag and the games flip are ONE transaction.
+    const handWrites = rotatedWrites
+      ? rotatedWrites.map((w) => ({ player_id: w.playerId, cards: w.cards }))
+      : [
+          { player_id: playerId, cards: newHand },
+          ...(missed ? [{ player_id: missed.playerId, cards: missed.hand }] : []),
+        ]
+    const moverWrite = handWrites.find((w) => w.player_id === playerId)
+    const winnerId = (patch.winner_player_id ?? playerId) as string
+    const finished = await finishUnoRound(supabase, gameId, session, {
+      patch,
+      hands: handWrites.map((w) => (w === moverWrite ? { ...w, stats: moverStats } : w)),
+      series: seriesAward(
+        winnerId,
+        updateHand(hands, playerId, newHand),
+        (patch.eliminated_player_ids ?? session.eliminated_player_ids ?? []).length
+      ),
+      spectatorIds: [playerId],
+    })
+    return finishOutcome(finished)
+  }
+
   const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
@@ -1873,46 +1906,14 @@ export async function processUnoPlay(
     for (const w of rotatedWrites) {
       if (w.playerId === playerId) continue
       if (w.cards.length >= UNO_MERCY_HAND_LIMIT) {
-        await applyMercyKnockout(supabase, gameId, w.playerId, w.cards.length, playerNames, rules.noMercyWin, playerId)
+        await applyMercyKnockout(supabase, gameId, w.playerId, playerNames, rules.noMercyWin, playerId)
       }
     }
   }
 
-  // Fold this play's trophy counters. `session` is pre-write, so its pending penalty reads the
-  // stack this Draw Two landed on; `missed` means this move caught a forgotten UNO call.
-  // High Stakes stack detection: ANY Draw card played onto a pending draw penalty counts
-  // (cross-kind chains are legal here). Classic games only fold this when it also stacks a
-  // Draw Two — the No-Mercy-only kinds can't appear in a Classic deck, so cross-kind stacks
-  // never trigger there.
-  const drewOntoPendingStack = _drewOntoPendingStack
-  // Double Stack participation credit for the mover — when this play brings chain to 3+.
-  const inThreePlusStack = newChain >= 3
-  await writeUnoStats(
-    supabase,
-    gameId,
-    playerId,
-    foldUnoPlay(currentUnoStats(hands, playerId), [card], hand, wentOut, {
-      calledUno: owesUno && callUno,
-      caught: !!missed,
-      stackedDraw2: card.kind === 'draw2' && session.draw_penalty_kind === 'draw2' && (session.draw_penalty ?? 0) > 0,
-      stackedAnyDraw: drewOntoPendingStack,
-      playedSevenSwap: isSeven,
-      playedZeroPass: isZero,
-      threePlusStack: inThreePlusStack,
-      rainbow: false,
-    })
-  )
+  await writeUnoStats(supabase, gameId, playerId, moverStats)
 
-  if (wentOut) {
-    await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
-    if (patch.phase === 'finished') {
-      const winnerId = patch.winner_player_id ?? playerId
-      // Read fresh hands so opponents' post-play totals are captured (this move emptied `newHand`).
-      const freshHands = updateHand(hands, playerId, newHand)
-      await awardSeriesPoints(supabase, gameId, winnerId as string, freshHands)
-      await markGameFinished(supabase, gameId)
-    }
-  }
+  if (wentOut) await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
 
   return {}
 }
@@ -2115,39 +2116,47 @@ export async function processUnoPlayMulti(
 
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
+  const moverStats = foldUnoPlay(currentUnoStats(hands, playerId), cards, hand, wentOut, {
+    calledUno: owesUno && callUno,
+    caught: !!missed,
+    stackedDraw2:
+      session.draw_penalty_kind === 'draw2' && (session.draw_penalty ?? 0) > 0 && cards.some((c) => c.kind === 'draw2'),
+    // "Rainbow" is a single set spanning all four colours (same-value cards of every colour).
+    rainbow: new Set(cards.filter((c) => c.color !== 'wild').map((c) => c.color)).size >= 4,
+  })
+  // AUTO-resolve drew for the target (its hand already folds in any missed-UNO penalty for them).
+  const handWrites: { player_id: string; cards: UnoCard[]; stats?: Record<string, number> }[] = [
+    { player_id: playerId, cards: newHand, stats: moverStats },
+  ]
+  if (autoDraw) handWrites.push({ player_id: autoDraw.playerId, cards: autoDraw.hand })
+  if (missed && missed.playerId !== autoDraw?.playerId) {
+    handWrites.push({ player_id: missed.playerId, cards: missed.hand })
+  }
+
+  if (patch.phase === 'finished') {
+    // The round ends on this play: session, hands (the mover's with its stats), series points, the out player's
+    // spectator flag and the games flip are ONE transaction.
+    const winnerId = (patch.winner_player_id ?? playerId) as string
+    const finished = await finishUnoRound(supabase, gameId, session, {
+      patch,
+      hands: handWrites,
+      series: seriesAward(
+        winnerId,
+        updateHand(hands, playerId, newHand),
+        (patch.eliminated_player_ids ?? session.eliminated_player_ids ?? []).length
+      ),
+      spectatorIds: [playerId],
+    })
+    return finishOutcome(finished)
+  }
+
   const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at)
   if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
-  await writeHand(supabase, gameId, playerId, newHand)
-  // AUTO-resolve drew for the target (its hand already folds in any missed-UNO penalty for them).
-  if (autoDraw) await writeHand(supabase, gameId, autoDraw.playerId, autoDraw.hand)
-  if (missed && missed.playerId !== autoDraw?.playerId) await writeHand(supabase, gameId, missed.playerId, missed.hand)
+  for (const w of handWrites) await writeHand(supabase, gameId, w.player_id, w.cards)
+  await writeUnoStats(supabase, gameId, playerId, moverStats)
 
-  // Fold this multi-play's trophy counters. "Rainbow" is a single set spanning all four colours
-  // (same-value cards of every colour); a Draw Two laid onto a pending Draw-Two stack counts.
-  await writeUnoStats(
-    supabase,
-    gameId,
-    playerId,
-    foldUnoPlay(currentUnoStats(hands, playerId), cards, hand, wentOut, {
-      calledUno: owesUno && callUno,
-      caught: !!missed,
-      stackedDraw2:
-        session.draw_penalty_kind === 'draw2' &&
-        (session.draw_penalty ?? 0) > 0 &&
-        cards.some((c) => c.kind === 'draw2'),
-      rainbow: new Set(cards.filter((c) => c.color !== 'wild').map((c) => c.color)).size >= 4,
-    })
-  )
-
-  if (wentOut) {
-    await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
-    if (patch.phase === 'finished') {
-      const winnerId = patch.winner_player_id ?? playerId
-      await awardSeriesPoints(supabase, gameId, winnerId as string, updateHand(hands, playerId, newHand))
-      await markGameFinished(supabase, gameId)
-    }
-  }
+  if (wentOut) await supabase.from('players').update({ spectator: true }).eq('id', playerId).eq('game_id', gameId)
 
   return {}
 }
@@ -2437,15 +2446,7 @@ export async function processUnoDraw(
   // to whoever played the Draw card that set the pending penalty (see last_play_player_id).
   if (rules.mode === 'no_mercy' && newHand.length >= UNO_MERCY_HAND_LIMIT) {
     const attributionPlayerId = forced ? (session.last_play_player_id ?? null) : null
-    await applyMercyKnockout(
-      supabase,
-      gameId,
-      playerId,
-      newHand.length,
-      playerNames,
-      rules.noMercyWin,
-      attributionPlayerId
-    )
+    await applyMercyKnockout(supabase, gameId, playerId, playerNames, rules.noMercyWin, attributionPlayerId)
   }
 
   return {}
@@ -2869,7 +2870,7 @@ async function processUnoColorRouletteReveal(
     // check as the match branch. Attribution: the Colour Roulette caster.
     if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
       const casterId = session.last_play_player_id ?? null
-      await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
+      await applyMercyKnockout(supabase, gameId, playerId, playerNames, rules.noMercyWin, casterId)
     }
     return {}
   }
@@ -2913,7 +2914,7 @@ async function processUnoColorRouletteReveal(
   // Mercy: revealing a huge stack of cards can push the target past the knockout limit.
   // Attribution: the Colour Roulette caster (whoever played the wild that queued this phase).
   if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
-    await applyMercyKnockout(supabase, gameId, playerId, targetHand.length, playerNames, rules.noMercyWin, casterId)
+    await applyMercyKnockout(supabase, gameId, playerId, playerNames, rules.noMercyWin, casterId)
   }
   return {}
 }
@@ -3170,10 +3171,10 @@ export async function processUnoSwap(
   // the swapper's own hand was already at the limit, so attribute that back to the swapper.
   if (rules.mode === 'no_mercy') {
     if (theirCards.length >= UNO_MERCY_HAND_LIMIT) {
-      await applyMercyKnockout(supabase, gameId, playerId, theirCards.length, playerNames, rules.noMercyWin, null)
+      await applyMercyKnockout(supabase, gameId, playerId, playerNames, rules.noMercyWin, null)
     }
     if (myCards.length >= UNO_MERCY_HAND_LIMIT) {
-      await applyMercyKnockout(supabase, gameId, targetId, myCards.length, playerNames, rules.noMercyWin, playerId)
+      await applyMercyKnockout(supabase, gameId, targetId, playerNames, rules.noMercyWin, playerId)
     }
   }
 
@@ -3378,19 +3379,21 @@ export async function finishExpiredUnoGame(
     return { won: false, error: internalErrorMessage('uno', sessionRes.error ?? handsRes.error) }
   const session = sessionRes.data as UnoSession | null
   if (!session) return { won: false }
-  // The session already finished (a concurrent finisher claimed it): do not re-rank or award series points
-  // again. Only complete the games-row flip — a single-winner CAS, so the post-finish bookkeeping runs once.
-  if (session.phase === 'finished') {
-    const flipped = await markGameFinished(supabase, gameId, undefined, { onlyIfActive: true })
-    return flipped.error ? { won: false, error: internalErrorMessage('uno', flipped.error) } : { won: flipped.won }
-  }
-
   const playerNames = new Map<string, string>()
   for (const p of playersRes.data ?? []) playerNames.set(p.id, p.name)
 
   const hands = (handsRes.data as UnoPlayerHand[]) ?? []
-  // `won: false` when the finish lost its CAS, `error` when it failed: the round is not known to be over.
-  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", game.uno_team_mode === true)
+  // An already finished round only gets its games-row flip completed by the function (no re-rank, no re-award).
+  const finished = await finishByLowestHand(
+    supabase,
+    gameId,
+    session,
+    hands,
+    playerNames,
+    "Time's up!",
+    game.uno_team_mode === true
+  )
+  return finished.already ? { won: true } : finished
 }
 
 // ── Host mode ─────────────────────────────────────────────────────────────────
@@ -3520,6 +3523,16 @@ async function removeUnoPlayerOnce(
           : `${removedName} left — game over.`
       }
 
+      if (teamUpdate.phase === 'finished') {
+        // The leaver's whole team is gone: the round ends and the leaver's rows go in the same transaction.
+        const finished = await finishUnoRound(supabase, gameId, session, {
+          patch: teamUpdate,
+          removePlayerId: playerId,
+        })
+        if (finished.error) return { error: finished.error }
+        return finished.won || finished.already ? { error: null } : 'retry'
+      }
+
       const { data: teamClaimed, error: teamError } = await supabase
         .from('uno_sessions')
         .update(teamUpdate)
@@ -3529,7 +3542,6 @@ async function removeUnoPlayerOnce(
       if (teamError) return { error: internalErrorMessage('uno', teamError) }
       if (!teamClaimed || teamClaimed.length === 0) return 'retry'
       await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
-      if (teamUpdate.phase === 'finished') await markGameFinished(supabase, gameId)
       const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
       return { error: error ? internalErrorMessage('uno', error) : null }
     }
@@ -3593,6 +3605,13 @@ async function removeUnoPlayerOnce(
       }
     }
 
+    if (finishing) {
+      // Fewer than two active seats remain: the round ends and the leaver's rows go in the same transaction.
+      const finished = await finishUnoRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
+      if (finished.error) return { error: finished.error }
+      return finished.won || finished.already ? { error: null } : 'retry'
+    }
+
     const { data: claimed, error: sessionError } = await supabase
       .from('uno_sessions')
       .update(update)
@@ -3603,7 +3622,6 @@ async function removeUnoPlayerOnce(
     if (!claimed || claimed.length === 0) return 'retry'
 
     await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
-    if (finishing) await markGameFinished(supabase, gameId)
     const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
     return { error: error ? internalErrorMessage('uno', error) : null }
   }
@@ -3646,24 +3664,16 @@ export async function processUnoTeamLeaveDecision(
     const winNames = [winnerId, winnerMate]
       .filter((id): id is string => !!id && !leftIds.includes(id))
       .map((id) => playerName(playerNames, id))
-    const persisted = await persistSession(
-      supabase,
-      gameId,
-      {
-        phase: 'finished',
+    const finished = await finishUnoRound(supabase, gameId, session, {
+      patch: {
         team_decider_id: null,
         winner_player_id: winnerId,
-        turn_deadline_at: null,
         status_message: winNames.length
           ? `${deciderName} forfeited — ${winNames.join(' & ')} win!`
           : `${deciderName} forfeited — game over.`,
       },
-      timerSeconds,
-      session.updated_at
-    )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-    await markGameFinished(supabase, gameId)
-    return {}
+    })
+    return finishOutcome(finished)
   }
 
   // Continue solo: resume play. The departed teammate's hand is already gone, so the turn
