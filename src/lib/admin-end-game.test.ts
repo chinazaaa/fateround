@@ -32,7 +32,12 @@ type Recorded = {
 const FINISHED_AT = '2026-01-01T00:00:00.000Z'
 
 function mockSupabase(
-  opts: { deleteError?: { message: string }; roundError?: { message: string }; gameRow?: Record<string, unknown> } = {}
+  opts: {
+    deleteError?: { message: string }
+    roundError?: { message: string }
+    roundStatus?: string
+    gameRow?: Record<string, unknown>
+  } = {}
 ): {
   supabase: SupabaseClient
   recorded: Recorded
@@ -66,6 +71,12 @@ function mockSupabase(
     // The session wipe is one database function (wipe_finished_session_rows): it records the kind of wipe and the
     // finished_at it is bound to, and fails when the test asks for a failing wipe.
     rpc: async (name: string, args: { p_kind: string; p_finished_at: string }) => {
+      // The post-finish round cleanup is one database function bound to the finished session.
+      if (name === 'finish_rounds_of_finished_session') {
+        recorded.roundUpdates += 1
+        recorded.roundBounds.push(args.p_finished_at)
+        return { data: { status: opts.roundStatus ?? 'finished_session' }, error: opts.roundError ?? null }
+      }
       if (name === 'wipe_finished_session_rows') {
         recorded.deletes.push(args.p_kind)
         recorded.deleteBounds.push(args.p_finished_at)
@@ -281,6 +292,12 @@ describe('adminEndGame — an unguarded end that cannot reveal says the game is 
 })
 
 describe('cleanupFinishedSession — the one session-bound cleanup', () => {
+  it('a replayed (or missing) game is not this session: its rounds are left alone and nothing is revealed', async () => {
+    const { supabase } = mockSupabase({ roundStatus: 'not_current_session' })
+    expect(await cleanupFinishedSession(supabase, 'G', 'two_truths', FINISHED_AT)).toBeNull()
+    expect(revealFinishedTtlRounds).not.toHaveBeenCalled()
+  })
+
   it('finishes the rounds of the finished session only, and reveals Two Truths for the same bound', async () => {
     const { supabase, recorded } = mockSupabase()
     expect(await cleanupFinishedSession(supabase, 'G', 'two_truths', FINISHED_AT)).toBeNull()

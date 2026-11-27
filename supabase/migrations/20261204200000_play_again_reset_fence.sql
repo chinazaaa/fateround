@@ -197,7 +197,8 @@ begin
      or v_game.sessions_played is distinct from p_sessions_played
      or v_game.session_started_at is distinct from p_session_started_at
      or v_game.host_player_id is distinct from p_outgoing_player_id
-     or v_game.pending_host_player_id is not null
+     -- (No clause for a pending nominee: only an ELIGIBLE one keeps the game alive, and it is itself an eligible player,
+     -- covered by the roster check below; a nominee who became a spectator / bot no longer blocks the end.)
      -- A Play Again reset is in progress (its deletes may be running): never commit a finish against it.
      or (v_game.reset_started_at is not null and v_game.reset_started_at > now() - interval '60 seconds')
      or exists (
@@ -212,6 +213,7 @@ begin
     set status = 'finished',
         finished_at = v_now,
         result_reason = 'host_ended',
+        pending_host_player_id = null,
         finish_bookkeeping = case
           when p_track_bookkeeping then jsonb_build_object('finished_at', v_now, 'attempts', 0)
           else finish_bookkeeping
