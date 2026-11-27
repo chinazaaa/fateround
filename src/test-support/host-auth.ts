@@ -83,6 +83,7 @@ export type StubChain = {
   in: (...args: unknown[]) => StubChain
   is: (...args: unknown[]) => StubChain
   not: (...args: unknown[]) => StubChain
+  or: (...args: unknown[]) => StubChain
   gt: (...args: unknown[]) => StubChain
   gte: (...args: unknown[]) => StubChain
   lt: (...args: unknown[]) => StubChain
@@ -164,6 +165,7 @@ export function makeSupabaseStub(resolvers: Record<string, Resolver>) {
       in: recordFilter('in'),
       is: recordFilter('is'),
       not: recordFilter('not'),
+      or: recordFilter('or'),
       gt: recordFilter('gt'),
       gte: recordFilter('gte'),
       lt: recordFilter('lt'),
