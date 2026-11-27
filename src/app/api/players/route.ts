@@ -86,7 +86,6 @@ import {
   assertHostGame,
   assertHostWith,
   assertPlayer,
-  deleteJoinerPair,
   findJoinerParticipant,
   pollGenderForPlayer,
   syncImportParticipantBallot,
@@ -2405,17 +2404,21 @@ async function removePlayer(
   let ownFinish: { startedAt: string | null; sessionsPlayed: number | null } | undefined
   if (isWordRushGame(gameType)) {
     const admin = getSupabaseAdmin()
-    const { data: before } = await admin
+    const { data: before, error: beforeError } = await admin
       .from('games')
       .select('session_started_at, sessions_played')
       .eq('id', id)
       .maybeSingle()
+    // Nothing has changed yet: a failed read leaves the seat and the roster as they are, so the leave can be repeated.
+    if (beforeError || !before) {
+      return NextResponse.json({ error: 'Could not finish leaving the game — try again' }, { status: 500 })
+    }
     const sync = await syncWordRushAfterPlayerRemoved(admin, id, playerId)
     if (sync.error) {
       return NextResponse.json({ error: sync.error }, { status: sync.internal ? 500 : 400 })
     }
     wordRushRollback = sync.rollback
-    if (sync.ownFinish && before) {
+    if (sync.ownFinish) {
       ownFinish = { startedAt: before.session_started_at ?? null, sessionsPlayed: before.sessions_played ?? null }
     }
   }
@@ -2432,20 +2435,16 @@ async function removePlayer(
     return data ? 'present' : 'absent'
   }
 
-  if (game!.participant_mode === 'joiners') {
-    const { error } = await deleteJoinerPair(getSupabaseAdmin(), id, player)
-    if (error) {
-      // Compensate (restore the roster) only for a CONFIRMED rejection; an ambiguous result keeps the roster change.
-      const presence = await seatPresence()
-      if (presence === 'present' && wordRushRollback) {
-        await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
-      }
-      if (presence !== 'present') ctx.seatMayBeRemoved = true
-      return NextResponse.json({ error: internalErrorMessage('players', { message: error }) }, { status: 500 })
-    }
-  } else {
+  {
     ctx.seatMayBeRemoved = true
-    const removal = await removePlayerIfGameOpen(getSupabaseAdmin(), id, playerId, ownFinish)
+    // Joiners mode removes the participant row together with the seat, in the same database transaction.
+    const removal = await removePlayerIfGameOpen(
+      getSupabaseAdmin(),
+      id,
+      playerId,
+      ownFinish,
+      game!.participant_mode === 'joiners' ? player.name : undefined
+    )
     let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
     if (removal.error) {
       const presence = await seatPresence()

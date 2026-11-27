@@ -219,10 +219,18 @@ export async function clearAnonymousRoomSessionData(
 async function finishAndClearSession(
   supabase: SupabaseClient,
   gameId: string,
-  onlyIfActive: boolean
+  onlyIfActive: boolean,
+  onlySessionStartedAt?: string | null
 ): Promise<FinishGameResult> {
   const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError, won, finishedAt } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
+  const {
+    error: gameError,
+    won,
+    finishedAt,
+  } = await markGameFinished(supabase, gameId, undefined, {
+    onlyIfActive,
+    ...(onlySessionStartedAt !== undefined ? { onlySessionStartedAt } : {}),
+  })
   if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
 
   let wipeUpTo = won ? finishedAt : undefined
@@ -245,9 +253,16 @@ async function finishAndClearSession(
 export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  {
+    onlyIfActive = false,
+    onlySessionStartedAt,
+  }: {
+    onlyIfActive?: boolean
+    /** Finish only the session that started at this time (requires onlyIfActive): a restarted room is left alone. */
+    onlySessionStartedAt?: string | null
+  } = {}
 ): Promise<FinishGameResult> {
-  return finishAndClearSession(supabase, gameId, onlyIfActive)
+  return finishAndClearSession(supabase, gameId, onlyIfActive, onlySessionStartedAt)
 }
 
 /** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
@@ -288,7 +303,12 @@ export async function finishExpiredAnonymousSession(
   if (game.status !== 'active') return false
   if (!anonymousSessionExpired(game.session_started_at)) return false
 
-  const { error, cleanupError } = await finishAnonymousRoomSession(supabase, game.id)
+  // Bound to the session the caller saw expire: a request that stalled while another one finished the expired session
+  // and reopened the room must not finish (and wipe) the NEW session. `onlyIfActive` alone cannot tell them apart.
+  const { error, cleanupError } = await finishAnonymousRoomSession(supabase, game.id, {
+    onlyIfActive: true,
+    onlySessionStartedAt: game.session_started_at ?? null,
+  })
   if (error) return false
 
   // The room IS finished at this point — only the post-finish message/ban wipe failed,

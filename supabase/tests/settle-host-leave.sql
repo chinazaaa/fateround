@@ -268,6 +268,25 @@ select pg_temp.assert_eq('14b own finish, other session start: refused',
 select pg_temp.assert_eq('14b independent finish (flag false): refused',
   public.remove_player_if_game_open('STN', pg_temp.early('STN'), false, (pg_temp.g('STN')).session_started_at, (pg_temp.g('STN')).sessions_played)->>'status', 'game_finished');
 select pg_temp.assert_eq('14b refused: seat kept', (select count(*) from public.players where id = pg_temp.early('STN')), 1::bigint);
+-- A finish WITH a reason (admin / host-ended / idle) is never this leave's own, even with the flag and a matching session.
+select pg_temp.mk('STO', 'finished');
+update public.games set result_reason = 'admin_ended' where id = 'STO';
+select pg_temp.assert_eq('14b own finish flag, but the finish has a reason: refused',
+  public.remove_player_if_game_open('STO', pg_temp.late('STO'), true, (pg_temp.g('STO')).session_started_at, (pg_temp.g('STO')).sessions_played)->>'status', 'game_finished');
+select pg_temp.assert_eq('14b reasoned finish: seat kept', (select count(*) from public.players where id = pg_temp.late('STO')), 1::bigint);
+
+-- 14c. Joiners mode: the participant row goes with the seat in ONE transaction, and a finish keeps BOTH.
+select pg_temp.mk('STR', 'active');
+insert into public.participants (game_id, name) values ('STR', 'Late'), ('STR', 'Early');
+select pg_temp.assert_eq('14c deleted', public.remove_player_if_game_open('STR', pg_temp.late('STR'), false, null, null, 'Late')->>'status', 'deleted');
+select pg_temp.assert_eq('14c participant gone', (select count(*) from public.participants where game_id = 'STR' and name = 'Late'), 0::bigint);
+select pg_temp.assert_eq('14c other participant kept', (select count(*) from public.participants where game_id = 'STR' and name = 'Early'), 1::bigint);
+select pg_temp.assert_eq('14c seat gone', (select count(*) from public.players where id = pg_temp.late('STR')), 0::bigint);
+update public.games set status = 'finished' where id = 'STR';
+select pg_temp.assert_eq('14c finished: refused', public.remove_player_if_game_open('STR', pg_temp.early('STR'), false, null, null, 'Early')->>'status', 'game_finished');
+select pg_temp.assert_eq('14c finished: participant kept', (select count(*) from public.participants where game_id = 'STR' and name = 'Early'), 1::bigint);
+select pg_temp.assert_eq('14c finished: seat kept', (select count(*) from public.players where id = pg_temp.early('STR')), 1::bigint);
+
 do $$ begin
   perform public.remove_player_if_game_open('STN', '00000000-0000-0000-0000-000000000001', null);
   raise exception 'FAIL: NULL own-finish flag accepted';
@@ -280,43 +299,91 @@ end $$;
 --     UPDATE (FOR SHARE let two concurrent removals deadlock).
 select pg_temp.assert_eq('15 election lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'for no key update;', true);
 select pg_temp.assert_eq('15 nominee check lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'spectator = false\s+(--[^\n]*\n\s*)*for no key update\s+\)\)', true);
-select pg_temp.assert_eq('15 removal lock', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer)'::regprocedure) ~* 'upper\(p_game_id\) for no key update', true);
-select pg_temp.assert_eq('15 removal does not take FOR SHARE', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer)'::regprocedure) ~* 'for share', false);
+select pg_temp.assert_eq('15 removal lock', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text)'::regprocedure) ~* 'upper\(p_game_id\) for no key update', true);
+select pg_temp.assert_eq('15 removal does not take FOR SHARE', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text)'::regprocedure) ~* 'for share', false);
 
--- 16. start_two_truths_game: the spectator flags and the status change are one unit under the game lock, and only a
---     waiting game starts (a finished game is never re-activated).
+-- 16. start_two_truths_game: ONE transaction under the games row lock. It checks the lobby and the submitted seats
+--     BEFORE writing anything (a rejected start writes nothing: no rounds, no keys, no flags), then creates the rounds
+--     and keys, applies the spectator flags and activates the game.
+create function pg_temp.rounds_for(gid text, variadic ids uuid[]) returns jsonb language sql as $$
+  select jsonb_agg(jsonb_build_object(
+    'game_id', gid, 'round_number', n, 'participant_ids', '[]'::jsonb, 'submitter_player_id', ids[n],
+    'status', case when n = 1 then 'active' else 'pending' end, 'ttl_metadata', '{"statements":["a","b","c"],"lie_index":null}'::jsonb))
+  from generate_series(1, array_length(ids, 1)) n
+$$;
+create function pg_temp.lies_for(n integer) returns jsonb language sql as $$
+  select jsonb_agg(jsonb_build_object('round_number', i, 'lie_index', 1)) from generate_series(1, n) i
+$$;
+create function pg_temp.start_tt(gid text, submitted uuid[], min_sub integer default 3) returns jsonb language sql as $$
+  select public.start_two_truths_game(gid, submitted, '2026-01-01T00:00:00Z',
+    pg_temp.rounds_for(gid, variadic submitted), pg_temp.lies_for(array_length(submitted, 1)), min_sub)
+$$;
 select pg_temp.mk('STP', 'waiting');
-select pg_temp.assert_eq('16 starts', public.start_two_truths_game('STP', array[pg_temp.early('STP')], '2026-01-01T00:00:00Z', 3)->>'status', 'started');
+select pg_temp.assert_eq('16 starts', pg_temp.start_tt('STP', array[pg_temp.late('STP'), pg_temp.early('STP'), ('00000000-0000-0000-0000-0000000003' || lpad(ascii('P')::text, 2, '0'))::uuid])->>'status', 'started');
 select pg_temp.assert_eq('16 active', (pg_temp.g('STP')).status, 'active');
 select pg_temp.assert_eq('16 round count', (pg_temp.g('STP')).rounds_count, 3);
-select pg_temp.assert_eq('16 submitter plays', (select spectator from public.players where id = pg_temp.early('STP')), false);
-select pg_temp.assert_eq('16 non-submitter watches', (select spectator from public.players where id = pg_temp.late('STP')), true);
-select pg_temp.assert_eq('16 second start is lost', public.start_two_truths_game('STP', array[pg_temp.late('STP')], '2026-02-02T00:00:00Z', 9)->>'status', 'lost');
-select pg_temp.assert_eq('16 lost writes nothing', (select spectator from public.players where id = pg_temp.late('STP')), true);
+select pg_temp.assert_eq('16 rounds created', (select count(*) from public.rounds where game_id = 'STP'), 3::bigint);
+select pg_temp.assert_eq('16 answer keys created', (select count(*) from public.ttl_round_lies l join public.rounds r on r.id = l.round_id where r.game_id = 'STP'), 3::bigint);
+select pg_temp.assert_eq('16 submitters play', (select count(*) from public.players where game_id = 'STP' and spectator = false), 3::bigint);
+select pg_temp.assert_eq('16 second start is lost', pg_temp.start_tt('STP', array[pg_temp.late('STP'), pg_temp.early('STP'), pg_temp.hostid('STP')])->>'status', 'lost');
+select pg_temp.assert_eq('16 lost writes no more rounds', (select count(*) from public.rounds where game_id = 'STP'), 3::bigint);
+
+-- A game that is no longer waiting is never re-activated, and gets NO round data at all.
 select pg_temp.mk('STQ', 'waiting');
 update public.games set status = 'finished' where id = 'STQ';
-select pg_temp.assert_eq('16 a finished game is not re-activated', public.start_two_truths_game('STQ', array[pg_temp.early('STQ')], now(), 3)->>'status', 'lost');
+select pg_temp.assert_eq('16 finished game: lost', pg_temp.start_tt('STQ', array[pg_temp.late('STQ'), pg_temp.early('STQ'), ('00000000-0000-0000-0000-0000000003' || lpad(ascii('Q')::text, 2, '0'))::uuid])->>'status', 'lost');
 select pg_temp.assert_eq('16 still finished', (pg_temp.g('STQ')).status, 'finished');
-select pg_temp.assert_eq('16 roster untouched', (select count(*) from public.players where game_id = 'STQ' and spectator = false), 3::bigint);
-select pg_temp.assert_eq('16 missing game', public.start_two_truths_game('NOPE2', array[pg_temp.early('STQ')], now(), 3)->>'status', 'game_missing');
+select pg_temp.assert_eq('16 finished game: no rounds', (select count(*) from public.rounds where game_id = 'STQ'), 0::bigint);
+select pg_temp.assert_eq('16 finished game: roster untouched', (select count(*) from public.players where game_id = 'STQ' and spectator = false), 3::bigint);
+
+-- A submitter whose seat is gone (left since the route counted): rejected, nothing written.
+select pg_temp.mk('STS', 'waiting');
+select pg_temp.assert_eq('16 missing submitter seat', pg_temp.start_tt('STS', array[pg_temp.late('STS'), pg_temp.early('STS'), pg_temp.hostid('STS')])->>'status', 'submitters_changed');
+select pg_temp.assert_eq('16 rejected: still waiting', (pg_temp.g('STS')).status, 'waiting');
+select pg_temp.assert_eq('16 rejected: no rounds', (select count(*) from public.rounds where game_id = 'STS'), 0::bigint);
+select pg_temp.assert_eq('16 rejected: flags untouched', (select count(*) from public.players where game_id = 'STS' and spectator = false), 3::bigint);
+-- Too few submitters remain (every seat exists but the minimum is higher).
+select pg_temp.assert_eq('16 below the minimum', pg_temp.start_tt('STS', array[pg_temp.late('STS'), pg_temp.early('STS'), ('00000000-0000-0000-0000-0000000003' || lpad(ascii('S')::text, 2, '0'))::uuid], 4)->>'status', 'submitters_changed');
+select pg_temp.assert_eq('16 below the minimum: nothing written', (select count(*) from public.rounds where game_id = 'STS'), 0::bigint);
+select pg_temp.assert_eq('16 missing game', pg_temp.start_tt('NOPE2', array[pg_temp.late('STS'), pg_temp.early('STS'), pg_temp.late('STQ')])->>'status', 'game_missing');
 do $$ begin
-  perform public.start_two_truths_game('STP', array[]::uuid[], now(), 3);
+  perform public.start_two_truths_game('STS', array[]::uuid[], now(), '[]'::jsonb, '[]'::jsonb, 3);
   raise exception 'FAIL: empty submitter list accepted';
 exception when raise_exception then
   if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
 do $$ begin
-  perform public.start_two_truths_game('STP', null, now(), 3);
+  perform public.start_two_truths_game('STS', null, now(), '[]'::jsonb, '[]'::jsonb, 3);
   raise exception 'FAIL: NULL submitters accepted';
 exception when raise_exception then
   if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
--- The start's own UPDATE of the games row would lock it anyway, so no outside session can tell the explicit lock apart;
--- it matters INSIDE the function (the status is checked and the roster changed under one lock), hence the definition check.
-select pg_temp.assert_eq('16 start locks the game first', pg_get_functiondef('public.start_two_truths_game(text, uuid[], timestamptz, integer)'::regprocedure) ~* 'where id = v_id for update;', true);
-select pg_temp.assert_eq('16 service role only',
-  (select string_agg(r, ',' order by r) from (select grantee::regrole::text r from information_schema.routine_privileges rp
-     join pg_roles on pg_roles.rolname = rp.grantee where rp.routine_name = 'start_two_truths_game' and rp.privilege_type = 'EXECUTE' and rp.grantee in ('anon','authenticated','service_role')) x),
-  'service_role');
+-- The explicit lock matters INSIDE the function (check, then write, under one lock); no outside session can tell it
+-- apart from the row lock of its own final UPDATE, hence the definition check (the lock script covers the ordering).
+select pg_temp.assert_eq('16 start locks the game first', pg_get_functiondef('public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer)'::regprocedure) ~* 'where id = v_id for update;', true);
+-- EFFECTIVE privileges (inherited PUBLIC grants included), not just direct grants.
+select pg_temp.assert_eq('16 anon cannot execute', has_function_privilege('anon', 'public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer)', 'execute'), false);
+select pg_temp.assert_eq('16 authenticated cannot execute', has_function_privilege('authenticated', 'public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer)', 'execute'), false);
+select pg_temp.assert_eq('16 service_role can execute', has_function_privilege('service_role', 'public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer)', 'execute'), true);
+
+-- 17. word_rush_restore_roster_member: re-adds ONE seated player at their position, never a saved copy of the roster.
+select pg_temp.mk('STU', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, roster, prompt_setter_player_id)
+  values ('aaaaaaaa-0000-4000-8000-00000000000a', 'STU', 'individual', 'manual', 1, 3, 60,
+          array[pg_temp.early('STU'), pg_temp.hostid('STU')], pg_temp.early('STU'));
+-- Saved roster was [late, early, host]; late is the failed leaver (still seated), host left since (no seat, not on the roster).
+select pg_temp.assert_eq('17 restored', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'))->>'status', 'restored');
+select pg_temp.assert_eq('17 only the leaver is put back, at their position', (select roster from public.word_rush_sessions where game_id = 'STU'), array[pg_temp.late('STU'), pg_temp.early('STU'), pg_temp.hostid('STU')]);
+select pg_temp.assert_eq('17 setter restored while it is still the one the removal assigned', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), pg_temp.late('STU'));
+select pg_temp.assert_eq('17 idempotent', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'))->>'status', 'restored');
+select pg_temp.assert_eq('17 no duplicate', (select cardinality(roster) from public.word_rush_sessions where game_id = 'STU'), 3);
+-- A player with no seat is NEVER put back (they left in the meantime).
+select pg_temp.assert_eq('17 no seat: refused', public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', '00000000-0000-0000-0000-0000000000ff', 0, false, null, null)->>'status', 'no_seat');
+-- A setter someone else changed since is left alone.
+update public.word_rush_sessions set prompt_setter_player_id = ('00000000-0000-0000-0000-0000000003' || lpad(ascii('U')::text, 2, '0'))::uuid where game_id = 'STU';
+select public.word_rush_restore_roster_member('STU', 'aaaaaaaa-0000-4000-8000-00000000000a', pg_temp.late('STU'), 0, true, pg_temp.early('STU'), pg_temp.late('STU'));
+select pg_temp.assert_eq('17 foreign setter untouched', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), ('00000000-0000-0000-0000-0000000003' || lpad(ascii('U')::text, 2, '0'))::uuid);
+-- A replaced session (another id) matches nothing.
+select pg_temp.assert_eq('17 other session', public.word_rush_restore_roster_member('STU', 'bbbbbbbb-0000-4000-8000-00000000000b', pg_temp.late('STU'), 0, false, null, null)->>'status', 'not_current_session');
 
 rollback;

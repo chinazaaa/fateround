@@ -112,7 +112,7 @@ async function runRoundFinalization(
   supabase: SupabaseClient,
   gameId: string,
   pending: WordRushRoundFinalize
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{ error?: string; internal?: boolean; gameFinishWon?: boolean }> {
   const { data: finalGuesses, error: finalError } = await supabase
     .from('word_rush_answers')
     .select('player_id, created_at, text')
@@ -158,6 +158,7 @@ async function runRoundFinalization(
   // durable `games.finish_bookkeeping` marker in the same statement and the bookkeeping runs under a
   // lease (see recoverFinishBookkeeping); every other way this game can finish (admin, idle reaper)
   // does the same. A resumed attempt that lost the flip recovers whatever its predecessor left owed.
+  let gameFinishWon = false
   if (pending.is_last) {
     // Bound to this session: a finalizer that outlives Play Again must not finish the new game.
     const finished = await markGameFinished(supabase, gameId, undefined, {
@@ -165,6 +166,8 @@ async function runRoundFinalization(
       trackBookkeeping: true,
     })
     if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
+    // Only the request that flipped the GAME row owns the finish; an independent finish that landed first made this a loss.
+    gameFinishWon = finished.won
     const bookkeeping = finished.won ? finished.bookkeeping : (await recoverFinishBookkeeping(supabase, gameId)).state
     // Only a runner that saw the bookkeeping through may clear the marker (which lets Play Again reset).
     if (bookkeeping !== 'none' && bookkeeping !== 'done') return { error: 'Game finish is still in progress' }
@@ -178,7 +181,7 @@ async function runRoundFinalization(
     .eq('id', pending.session_id)
     .eq('round_finalize->>turn_index', String(pending.turn_index))
   if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
-  return {}
+  return { gameFinishWon }
 }
 
 async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
@@ -750,9 +753,10 @@ async function endIndividualRound(
   // can be admitted: finalization reads the final answer set. It is safe to fail from here on — the
   // marker stays and the next request that loads the session resumes it (see loadSession). The
   // round itself has ended, so report success to this caller.
-  await runRoundFinalization(supabase, gameId, pending)
-  // `finished`: THIS call won the compare-and-set that ended the session's last round, so the game finish is its own.
-  return { finished: isLastRound }
+  const finalized = await runRoundFinalization(supabase, gameId, pending)
+  // `finished`: THIS call closed the last round AND its finalization won the game-row transition, so the game finish is
+  // its own (an independent finish that landed first, or a finalization that must be resumed, is not).
+  return { finished: isLastRound && finalized.gameFinishWon === true }
 }
 
 /**
@@ -828,8 +832,8 @@ async function finishWordRushGame(
     .select('id')
   if (error) return internalFailure('word-rush:finish', error)
   if (!claimed?.length) return {}
-  await markGameFinished(supabase, gameId, undefined, { trackBookkeeping: true })
-  return { finished: true }
+  const { won } = await markGameFinished(supabase, gameId, undefined, { trackBookkeeping: true })
+  return { finished: won }
 }
 
 export async function finishWordRushGameEarly(
@@ -970,11 +974,6 @@ export async function syncWordRushAfterPlayerRemoved(
   const newRoster = session.roster.filter((id) => id !== removedPlayerId)
   if (newRoster.length === session.roster.length) return {}
 
-  const rollback: WordRushRosterSnapshot = {
-    session_id: session.id,
-    roster: session.roster,
-    prompt_setter_player_id: session.prompt_setter_player_id,
-  }
   const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
 
   // Only pick a new letter-setter before letters are live — during playing keep the
@@ -990,6 +989,18 @@ export async function syncWordRushAfterPlayerRemoved(
     } else {
       sessionPatch.prompt_setter_player_id = null
     }
+  }
+
+  // What a failed delete must put back: ONLY this player (at their old position) and, if this removal reassigned the
+  // prompt setter, the setter it replaced. Never the whole saved roster: other players may leave in between.
+  const rollback: WordRushRosterSnapshot = {
+    session_id: session.id,
+    removed_player_id: removedPlayerId,
+    removed_index: session.roster.indexOf(removedPlayerId),
+    prompt_setter_player_id: session.prompt_setter_player_id,
+    ...('prompt_setter_player_id' in sessionPatch
+      ? { setter_after: sessionPatch.prompt_setter_player_id ?? null }
+      : {}),
   }
 
   const { error: updateError } = await supabase
@@ -1043,12 +1054,17 @@ export async function syncWordRushAfterPlayerRemoved(
 /**
  * The roster change made before a player delete, with the id of the session it was made on. A finish + Play Again +
  * Start between the removal and a revert replaces the session row (a new id under the same game id), so the revert is
- * bound to the snapshot's session and can never write the old roster / prompt setter onto a new one.
+ * bound to the snapshot's session and can never write onto a new one. It names ONE player: the revert re-adds only
+ * that player, so another player who left the roster in the meantime is never put back without a seat.
  */
 export type WordRushRosterSnapshot = {
   session_id: string
-  roster: string[]
+  removed_player_id: string
+  removed_index: number
+  /** The prompt setter before the removal. */
   prompt_setter_player_id: string | null
+  /** The prompt setter THIS removal assigned, when it reassigned it (absent: it did not touch the setter). */
+  setter_after?: string | null
 }
 
 export async function revertWordRushRosterAfterFailedPlayerDelete(
@@ -1056,15 +1072,17 @@ export async function revertWordRushRosterAfterFailedPlayerDelete(
   gameId: string,
   snapshot: WordRushRosterSnapshot
 ): Promise<void> {
-  await supabase
-    .from('word_rush_sessions')
-    .update({
-      roster: snapshot.roster,
-      prompt_setter_player_id: snapshot.prompt_setter_player_id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
-    .eq('id', snapshot.session_id)
+  // One database step (word_rush_restore_roster_member): it re-adds just this player under the session row lock, and
+  // restores the prompt setter only if it is still the one the removal assigned.
+  await supabase.rpc('word_rush_restore_roster_member', {
+    p_game_id: gameId,
+    p_session_id: snapshot.session_id,
+    p_player_id: snapshot.removed_player_id,
+    p_index: snapshot.removed_index,
+    p_restore_setter: 'setter_after' in snapshot,
+    p_setter_after: snapshot.setter_after ?? null,
+    p_setter_before: snapshot.prompt_setter_player_id,
+  })
 }
 
 export async function assignWordRushTeam(

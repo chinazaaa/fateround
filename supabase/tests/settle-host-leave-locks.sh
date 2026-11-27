@@ -30,9 +30,10 @@
 # locks the nominee FOR NO KEY UPDATE, so a spectator update waits until the settlement commits (this one fails without
 # the lock: the update would commit in between and leave an ineligible nominee).
 #
-# Case F (Two Truths start vs a host leaving alone): start_two_truths_game() changes the spectator flags and the status
-# under the games row lock; end_game_if_host_alone() is observed WAITING on it, and then sees the started roster
-# (`continue`, game still active) instead of an intermediate one.
+# Case F (Two Truths start vs a host leaving alone): start_two_truths_game() takes the games row lock BEFORE it writes the
+# roster. A blocker holds the submitter's player row so the start is stuck mid-way while already holding the game lock;
+# end_game_if_host_alone() is observed WAITING on it (without the early lock it would run at once, see the seeded
+# spectator roster and finish the game) and then sees the started roster (`continue`, game still active).
 #
 # Sessions are coordinated through pg_stat_activity and an advisory-lock gate, not timing. Fixtures are committed (two
 # sessions cannot share a transaction) and removed on exit. Every identifier is run-specific (worker names, fixture game
@@ -206,29 +207,44 @@ reap "$FLAG2_PID" "nominee spectator update"
 grep -q "settled" "$OUT_E" || fail "case E: expected 'settled', got '$(cat "$OUT_E")'"
 
 # ---- Case F: a Two Truths start vs a host leaving alone ---------------------------------------------------------
-# The start applies the spectator flags and the status change in one unit under the games row lock, so
-# end_game_if_host_alone either runs before it (the game is still waiting and the submitter is an eligible player) or
-# after it commits (and sees the finished roster). It never reads a half-changed roster.
+# The submitter is seeded as a SPECTATOR: before the start the host is alone (end_game_if_host_alone would finish the
+# game), after it the submitter plays. A blocker holds the submitter's player row, so the start (which takes the games
+# row lock FIRST, then writes the roster) is stuck on that row while already holding the game lock. The end check is
+# observed WAITING on the start (it would otherwise run at once, see the spectator roster, and finish the game), and
+# once everything commits it sees the started roster: `continue`, the game active. The end check passes the very
+# session timestamp the start writes, so a `continue` can only come from the roster check, not from a session mismatch.
+SESSION_TS="2026-01-01T00:00:00Z"
 psqlq <<SQL
 insert into public.games (id, title, host_token, game_type, status) values ('$GF', 'lock test F', 'tok-$RUN-f', 'two_truths', 'waiting');
-insert into public.players (id, game_id, name, joined_at) values ('$TTHOST', '$GF', 'Host', now() - interval '5 minutes'), ('$TTSUB', '$GF', 'Submitter', now());
+insert into public.players (id, game_id, name, joined_at, spectator) values ('$TTHOST', '$GF', 'Host', now() - interval '5 minutes', false), ('$TTSUB', '$GF', 'Submitter', now(), true);
 update public.games set host_player_id = '$TTHOST' where id = '$GF';
 SQL
 start_gate
-OUT_F=$(mktemp)
-PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+PGAPPNAME="$APP-blocker" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   begin;
-  select public.start_two_truths_game('$GF', array['$TTSUB'::uuid], now(), 3);
+  select 1 from public.players where id = '$TTSUB' for update;
   select pg_advisory_xact_lock($GATE);
   commit;" >/dev/null 2>&1 &
+BLOCKER_PID=$!
+wait_for "the blocker holds the submitter row" "select exists (select 1 from pg_stat_activity where application_name = '$APP-blocker' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_START=$(mktemp)
+PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
+  select public.start_two_truths_game('$GF', array['$TTSUB'::uuid], '$SESSION_TS',
+    jsonb_build_array(jsonb_build_object('game_id', '$GF', 'round_number', 1, 'participant_ids', '[]'::jsonb,
+      'submitter_player_id', '$TTSUB', 'status', 'active', 'ttl_metadata', '{\"statements\":[\"a\",\"b\",\"c\"],\"lie_index\":null}'::jsonb)),
+    jsonb_build_array(jsonb_build_object('round_number', 1, 'lie_index', 1)), 1)->>'status'" >"$OUT_START" 2>&1 &
 START_PID=$!
-wait_for "the start holds its uncommitted writes" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock' and wait_event = 'advisory')"
-PGAPPNAME="$APP-endf" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GF', '$TTHOST', null, 1, false)->>'status'" >"$OUT_F" 2>&1 &
+wait_for "the start is stuck on the submitter row (holding the game lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock')"
+OUT_F=$(mktemp)
+PGAPPNAME="$APP-endf" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GF', '$TTHOST', '$SESSION_TS', 1, false)->>'status'" >"$OUT_F" 2>&1 &
 ENDF_PID=$!
-wait_for "end_game_if_host_alone waits for the start" "select exists (select 1 from pg_stat_activity where application_name = '$APP-endf' and wait_event_type = 'Lock')"
+wait_for "end_game_if_host_alone waits for the start (the game lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-endf' and wait_event_type = 'Lock')"
+[ "$(psqlq -c "select status from public.games where id = '$GF'")" = "waiting" ] || fail "case F: the game changed while the start was in flight"
 open_gate
-reap "$START_PID" "two truths start"
+reap "$BLOCKER_PID" "blocker"
+reap "$START_PID" "two truths start: $(cat "$OUT_START")"
 reap "$ENDF_PID" "end_game_if_host_alone (case F)"
+[ "$(cat "$OUT_START")" = "started" ] || fail "case F: the start did not complete: '$(cat "$OUT_START")'"
 [ "$(cat "$OUT_F")" = "continue" ] || fail "case F: expected 'continue' (the submitter plays), got '$(cat "$OUT_F")'"
 [ "$(psqlq -c "select status from public.games where id = '$GF'")" = "active" ] || fail "case F: the started game was finished from an intermediate roster"
 

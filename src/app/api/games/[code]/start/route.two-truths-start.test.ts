@@ -70,13 +70,20 @@ beforeEach(() => {
 const start = () => POST(jsonRequest(`/api/games/${GAME_CODE}/start`, { hostToken: HOST_TOKEN }), codeParams())
 
 describe('POST /api/games/[code]/start — Two Truths', () => {
-  it('starts through ONE database step with the submitters, never as separate spectator / status writes', async () => {
+  it('starts through ONE database call that carries the rounds, answer keys and submitters (nothing is written separately)', async () => {
     const res = await start()
     expect(res.status).toBe(200)
-    const call = rpcCalls.find((c) => c.name === 'start_two_truths_game')
-    expect(call?.args).toMatchObject({ p_game_id: 'ABCD', p_rounds_count: 3 })
+    const calls = rpcCalls.filter((c) => c.name === 'start_two_truths_game')
+    expect(calls).toHaveLength(1)
+    const args = calls[0].args
+    expect(args).toMatchObject({ p_game_id: 'ABCD', p_min_submitters: 3 })
+    // One round (and one answer key) per submitter.
+    expect((args.p_rounds as unknown[]).length).toBe(3)
+    expect((args.p_lies as unknown[]).length).toBe(3)
     // Only the players who submitted statements play; the fourth watches.
-    expect([...(call!.args.p_submitted_player_ids as string[])].sort()).toEqual([A, B, C])
+    expect([...(args.p_submitted_player_ids as string[])].sort()).toEqual([A, B, C])
+    // The rounds are created INSIDE that call: the route makes no other database call for them.
+    expect(rpcCalls.map((c) => c.name)).toEqual(['start_two_truths_game'])
     expect(writes).not.toContain('players:update')
     expect(writes).not.toContain('games:update')
   })
@@ -86,6 +93,13 @@ describe('POST /api/games/[code]/start — Two Truths', () => {
     const res = await start()
     expect(res.status).toBe(409)
     expect(writes).not.toContain('games:update')
+  })
+
+  it('a submitter who left while the game was starting answers 409 (the database wrote nothing)', async () => {
+    startAnswer = { data: { status: 'submitters_changed' }, error: null }
+    const res = await start()
+    expect(res.status).toBe(409)
+    expect(((await res.json()) as { error: string }).error).toMatch(/left/i)
   })
 
   it('a database error answers 500', async () => {

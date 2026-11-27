@@ -110,6 +110,10 @@ begin
           where id = v_game.pending_host_player_id and game_id = v_id and is_bot = false and spectator = false
           -- Locked, like the election below: a concurrent spectator / bot update of the nominee waits until this
           -- transaction commits, so a nominee judged eligible here is still eligible when the settlement lands.
+          -- Lock order: games row, then the nominee. remove_player_if_game_open follows it (games row first). A removal
+          -- helper that deletes a player directly (the per-game engines, not changed here) locks the player first and then
+          -- needs this games row for ON DELETE SET NULL; if the nominee leaves that way during this settlement,
+          -- PostgreSQL aborts one of the two (the settle call is retried by the app; a leave reports an error and is repeatable).
           for no key update
         ))
      or (v_game.host_player_id is not null
@@ -251,12 +255,15 @@ create or replace function public.remove_player_if_game_open(
   p_game_id text,
   p_player_id uuid,
   -- The seat's own leave finished the game (Word Rush: removing the last unanswered player ends the last round).
-  -- Honoured ONLY while the game is still the session the caller inspected: the finish is then this leave's own, and
-  -- the leaver's seat goes with it instead of being kept. An independent finish never matches (the finishing claim is
-  -- a compare-and-set, so a leave that won it is the only finisher of that session).
+  -- Honoured ONLY while the game is still the session the caller inspected AND was finished without a reason (a game's
+  -- natural end): the finish is then this leave's own, and the leaver's seat goes with it instead of being kept. An
+  -- admin / host-ended / idle finish carries a result_reason and never matches.
   p_own_finish boolean default false,
   p_session_started_at timestamptz default null,
-  p_sessions_played integer default null
+  p_sessions_played integer default null,
+  -- Joiners mode: the participant row that goes with the seat. Deleted in the same transaction, under the same lock,
+  -- so a finish either keeps BOTH rows or loses to the delete of both (never one without the other).
+  p_participant_name text default null
 )
 returns jsonb
 language plpgsql
@@ -275,28 +282,39 @@ begin
   end if;
   if v_game.status = 'finished'
      and not (p_own_finish
+              and v_game.result_reason is null
               and v_game.sessions_played is not distinct from p_sessions_played
               and v_game.session_started_at is not distinct from p_session_started_at) then
     return jsonb_build_object('status', 'game_finished');
+  end if;
+  -- The participant first (a player row may reference it), the seat second: one transaction, so a failure of either
+  -- rolls back both.
+  if p_participant_name is not null then
+    delete from public.participants where game_id = upper(p_game_id) and name = p_participant_name;
   end if;
   delete from public.players where id = p_player_id and game_id = upper(p_game_id);
   return jsonb_build_object('status', 'deleted');
 end;
 $$;
 
-revoke execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer) from public, anon, authenticated;
-grant execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer) to service_role;
+revoke execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text) from public, anon, authenticated;
+grant execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text) to service_role;
 
--- Two Truths start: the spectator flags and the status change are ONE unit under the games row lock (every other
--- start path only READS eligibility, then flips the status). Without it a host leave during a start read a roster
--- where the submitters were still spectators, finished the game, and the start's final status write (which filtered
--- on the id only) then re-activated the finished row. 'lost' = the game is no longer waiting (changed under the
--- caller): nothing is written. Lock order is the same as settle_host_leave / end_game_if_host_alone: games row first.
+-- Two Truths start: ONE transaction under the games row lock. It re-checks that the game is still waiting and that
+-- every submitter still has a seat (and that enough of them remain) BEFORE it writes anything, then creates the
+-- rounds and their answer keys (create_ttl_rounds), applies the spectator flags and activates the game. A rejected
+-- start writes nothing at all. Without it a host leave landing between the separate writes read a half-changed
+-- roster, finished the game, and the final status write (which filtered on the id only) re-activated the finished
+-- row; and a finish landing before the rounds were created still got round data written to a finished game.
+-- Statuses: started | lost (no longer waiting) | submitters_changed (a submitter's seat is gone, or too few remain) |
+-- game_missing. Lock order is the same as settle_host_leave / end_game_if_host_alone: games row first.
 create or replace function public.start_two_truths_game(
   p_game_id text,
   p_submitted_player_ids uuid[],
   p_session_started_at timestamptz,
-  p_rounds_count integer
+  p_rounds jsonb,
+  p_lies jsonb,
+  p_min_submitters integer
 )
 returns jsonb
 language plpgsql
@@ -306,10 +324,14 @@ as $$
 declare
   v_id text;
   v_status text;
+  v_seated integer;
+  v_rounds integer;
 begin
-  if p_game_id is null or p_session_started_at is null or p_rounds_count is null
-     or p_submitted_player_ids is null or coalesce(array_length(p_submitted_player_ids, 1), 0) = 0 then
-    raise exception 'start_two_truths_game: game id, submitters, session start and round count are required';
+  if p_game_id is null or p_session_started_at is null or p_rounds is null or p_lies is null
+     or p_min_submitters is null or p_min_submitters < 1
+     or p_submitted_player_ids is null or coalesce(array_length(p_submitted_player_ids, 1), 0) = 0
+     or jsonb_typeof(p_rounds) <> 'array' or jsonb_array_length(p_rounds) = 0 then
+    raise exception 'start_two_truths_game: game id, submitters, session start, rounds, lies and minimum are required';
   end if;
   v_id := upper(p_game_id);
   select status into v_status from public.games where id = v_id for update;
@@ -319,6 +341,15 @@ begin
   if v_status <> 'waiting' then
     return jsonb_build_object('status', 'lost', 'game_status', v_status);
   end if;
+  -- Recount the submitted seats under the lock: a submitter who left since the route read the roster would otherwise
+  -- start the game with a round whose submitter is gone (and possibly fewer players than the minimum).
+  select count(*) into v_seated from public.players
+    where game_id = v_id and id = any (p_submitted_player_ids);
+  if v_seated <> (select count(distinct x) from unnest(p_submitted_player_ids) x) or v_seated < p_min_submitters then
+    return jsonb_build_object('status', 'submitters_changed');
+  end if;
+  v_rounds := jsonb_array_length(p_rounds);
+  perform public.create_ttl_rounds(p_rounds, p_lies);
   -- Everyone watches, except the players who submitted statements (they are the guessers).
   update public.players set spectator = true where game_id = v_id;
   update public.players set spectator = false where game_id = v_id and id = any (p_submitted_player_ids);
@@ -326,12 +357,66 @@ begin
     set status = 'active',
         session_started_at = p_session_started_at,
         current_round_number = 1,
-        rounds_count = p_rounds_count
+        rounds_count = v_rounds
     where id = v_id;
   return jsonb_build_object('status', 'started');
 end;
 $$;
 
-revoke execute on function public.start_two_truths_game(text, uuid[], timestamptz, integer) from public, anon, authenticated;
-grant execute on function public.start_two_truths_game(text, uuid[], timestamptz, integer) to service_role;
+revoke execute on function public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer) from public, anon, authenticated;
+grant execute on function public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer) to service_role;
 
+-- Word Rush: put ONE removed player back on the session roster (a failed seat delete is compensated). Atomic under the
+-- session row lock, and deliberately NOT a write of a saved copy of the whole roster: a player who left in the meantime
+-- (seat deleted, roster entry removed) must not be restored without a seat. The prompt setter is restored only while it
+-- is still the one the removal assigned. A replaced session (another id) matches nothing.
+create or replace function public.word_rush_restore_roster_member(
+  p_game_id text,
+  p_session_id uuid,
+  p_player_id uuid,
+  p_index integer,
+  p_restore_setter boolean,
+  p_setter_after uuid,
+  p_setter_before uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_session public.word_rush_sessions%rowtype;
+  v_len integer;
+  v_at integer;
+begin
+  if p_game_id is null or p_session_id is null or p_player_id is null or p_index is null or p_restore_setter is null then
+    raise exception 'word_rush_restore_roster_member: game id, session id, player id, index and setter flag are required';
+  end if;
+  select * into v_session from public.word_rush_sessions
+    where game_id = upper(p_game_id) and id = p_session_id for update;
+  if not found then
+    return jsonb_build_object('status', 'not_current_session');
+  end if;
+  -- Only a player who still has a seat is put back.
+  if not exists (select 1 from public.players where id = p_player_id and game_id = upper(p_game_id)) then
+    return jsonb_build_object('status', 'no_seat');
+  end if;
+  v_len := coalesce(cardinality(v_session.roster), 0);
+  v_at := least(greatest(p_index, 0), v_len);
+  update public.word_rush_sessions
+    set roster = case
+          when p_player_id = any (roster) then roster
+          else coalesce(roster[1:v_at], '{}'::uuid[]) || array[p_player_id] || coalesce(roster[v_at + 1:v_len], '{}'::uuid[])
+        end,
+        prompt_setter_player_id = case
+          when p_restore_setter and prompt_setter_player_id is not distinct from p_setter_after then p_setter_before
+          else prompt_setter_player_id
+        end,
+        updated_at = now()
+    where id = v_session.id;
+  return jsonb_build_object('status', 'restored');
+end;
+$$;
+
+revoke execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.word_rush_restore_roster_member(text, uuid, uuid, integer, boolean, uuid, uuid) to service_role;

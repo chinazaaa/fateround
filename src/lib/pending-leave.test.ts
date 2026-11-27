@@ -229,3 +229,29 @@ describe('completePendingFinishedLeave: whot', () => {
     expect(ids(db.tables)).toEqual(['a', 'b', 'w'])
   })
 })
+
+describe('completePendingFinishedLeave: Rummy reports whether the seat DELETE was issued', () => {
+  const build = () =>
+    makeDb({
+      rummy_sessions: [{ game_id: 'G', turn_order: ['b'], phase: 'finished' }],
+      rummy_player_hands: [{ game_id: 'G', player_id: 'a' }],
+      players: [seat('a', 'Ann'), seat('b', 'Bob')],
+    })
+
+  it('an error before the seat delete (the hand delete fails) leaves deleteAttempted false: the seat is untouched', async () => {
+    const db = build()
+    db.failNext['rummy_player_hands:delete'] = 1
+    const res = await completePendingFinishedLeave(db.client, 'rummy', 'G', 'a', 'Ann')
+    expect(res).toMatchObject({ deleteAttempted: false })
+    expect(res && 'error' in res && res.error).toBeTruthy()
+    expect(ids(db.tables)).toEqual(['a', 'b'])
+  })
+
+  it('an error from the seat DELETE itself keeps deleteAttempted true (a lost response can still have committed)', async () => {
+    const db = build()
+    db.failNext['players:delete'] = 1
+    expect(await completePendingFinishedLeave(db.client, 'rummy', 'G', 'a', 'Ann')).toMatchObject({
+      deleteAttempted: true,
+    })
+  })
+})
