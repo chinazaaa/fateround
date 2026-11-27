@@ -28,10 +28,18 @@ vi.mock('@/lib/codewords', async (importOriginal) => ({
     outcome: { ended: false },
   }),
 }))
-// Word Rush's own per-player bookkeeping is not what these tests are about.
+// Word Rush's own per-player bookkeeping is not what these tests are about: the roster change the removal made (and
+// whether it ENDED the game) is scripted, and the roster revert is recorded.
+const wordRush = vi.hoisted(() => ({
+  sync: {} as { rollback?: unknown; ownFinish?: boolean },
+  reverts: [] as unknown[],
+}))
 vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/word-rush-server')>()),
-  syncWordRushAfterPlayerRemoved: async () => ({}),
+  syncWordRushAfterPlayerRemoved: async () => wordRush.sync,
+  revertWordRushRosterAfterFailedPlayerDelete: async (_s: unknown, _g: string, snapshot: unknown) => {
+    wordRush.reverts.push(snapshot)
+  },
 }))
 // The bookkeeping a host-left finish owes is resumed by claiming its durable marker (recoverFinishBookkeeping).
 const bookkeeping = vi.hoisted(() => ({ calls: [] as string[], state: 'none' as string, throws: false }))
@@ -53,7 +61,8 @@ function removed(r: { error: string | null; onCall: (() => void) | null }, playe
   removalCalls++
   if (!r.error && !keepSeat) deletePlayers([playerId])
   r.onCall?.()
-  return { error: r.error }
+  // The real engines report a seat they kept (a finisher's row) explicitly.
+  return { error: r.error, ...(keepSeat && !r.error ? { retained: true } : {}) }
 }
 /** The pre-removal end_game_if_host_alone call fails (a transport error). */
 let failEndCheck = false
@@ -61,6 +70,10 @@ let failEndCheck = false
 let keepSeat = false
 /** Deleting a players row fails (the forfeit cleanup cannot remove the seat). */
 let failPlayerDelete = false
+/** A players DELETE commits and then reports an error (its response was lost). */
+let playerDeleteLosesResponse = false
+/** Reading the players table fails (the read-back after an ambiguous delete cannot tell what happened). */
+let failPlayersRead = false
 /** Runs right after a players delete committed (and its ON DELETE SET NULL ran): e.g. a claim lands. */
 let afterPlayerDelete: (() => void) | null = null
 /** Runs once, right after the FIRST games read (the one that authorises the leave). */
@@ -103,6 +116,7 @@ function builder(table: string) {
       if (table === 'players') {
         deletePlayers(doomed.map((r) => r.id))
         afterPlayerDelete?.()
+        if (playerDeleteLosesResponse) return { data: null, error: { message: 'response lost' } }
       } else {
         tables[table] = (tables[table] ?? []).filter((r) => !doomed.includes(r))
       }
@@ -118,6 +132,7 @@ function builder(table: string) {
       if (table === 'games') gameUpdateLog.push({ patch, matched: rows.length })
       return { data: rows.map((r) => ({ ...r })), error: null }
     }
+    if (table === 'players' && failPlayersRead) return { data: null, error: { message: 'read failed' } }
     let out = match().map((r) => ({ ...r }))
     // The roster read relies on the database ordering and limiting it; model both.
     if (orderBy) {
@@ -176,6 +191,8 @@ let settleCalls: Array<{ args: SettleArgs; seatExisted: boolean }> = []
 let settleAttempts: SettleArgs[] = []
 /** The seat delete (remove_player_if_game_open) COMMITS but its response is lost. */
 let deleteCommitsButErrors = false
+/** Every remove_player_if_game_open call's arguments. */
+let removeArgs: Array<Record<string, unknown>> = []
 const FINISHED_AT = '2026-05-05T05:05:05.000Z'
 /**
  * A model of public.settle_host_leave (supabase/migrations/20261203900000_settle_host_leave.sql; the SQL itself is
@@ -207,8 +224,12 @@ function settleModel(a: SettleArgs) {
   }
   if (g.status !== 'waiting' && g.status !== 'active') return { status: 'settled' }
   const players = tables.players
+  // Eligible like the SQL: in this game, not a bot, not a spectator.
   const nominee =
-    g.pending_host_player_id && players.some((p) => p.id === g.pending_host_player_id && p.game_id === g.id)
+    g.pending_host_player_id &&
+    players.some(
+      (p) => p.id === g.pending_host_player_id && p.game_id === g.id && p.is_bot === false && p.spectator === false
+    )
   const other = g.host_player_id && g.host_player_id !== out && players.some((p) => p.id === g.host_player_id)
   if (nominee || other) {
     clear()
@@ -280,14 +301,26 @@ async function rpc(name: string, args: Record<string, unknown>) {
     beforeSeatDelete = null
     hook?.()
     if (failPlayerDelete) return { data: null, error: { message: 'delete failed' } }
-    const a = args as { p_game_id: string; p_player_id: string }
+    const a = args as {
+      p_game_id: string
+      p_player_id: string
+      p_own_finish?: boolean
+      p_session_started_at?: string | null
+      p_sessions_played?: number | null
+    }
+    removeArgs.push(a)
     if (deleteCommitsButErrors) {
       deletePlayers([a.p_player_id])
       return { data: null, error: { message: 'response lost' } }
     }
     const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
     if (!g) return { data: { status: 'game_missing' }, error: null }
-    if (g.status === 'finished') return { data: { status: 'game_finished' }, error: null }
+    // A finish this leave caused is deleted through only while the game is still the inspected session.
+    const own =
+      a.p_own_finish === true &&
+      g.sessions_played === (a.p_sessions_played ?? null) &&
+      ((g.session_started_at as string | null) ?? null) === (a.p_session_started_at ?? null)
+    if (g.status === 'finished' && !own) return { data: { status: 'game_finished' }, error: null }
     deletePlayers([a.p_player_id])
     afterPlayerDelete?.()
     return { data: { status: 'deleted' }, error: null }
@@ -407,6 +440,11 @@ beforeEach(() => {
   bookkeeping.throws = false
   settleAttempts = []
   deleteCommitsButErrors = false
+  removeArgs = []
+  playerDeleteLosesResponse = false
+  failPlayersRead = false
+  wordRush.sync = {}
+  wordRush.reverts = []
   removal.reconcileError = null
   removal.uno.error = null
   removal.scrabble.error = null
@@ -1037,7 +1075,10 @@ describe('DELETE /api/players: removal disposition is carried separately from th
     const res = await leave()
     expect(res.status).toBe(500)
     const body = (await res.json()) as { error: string; handoff?: string }
-    expect(body.error).toBe('cleanup failed')
+    // The original status and the removal's own message are kept (as `removalError`); the retry advice is not.
+    expect((body as { removalError?: string }).removalError).toBe('cleanup failed')
+    expect(body.error).toMatch(/unknown/i)
+    expect(body.error).not.toMatch(/try again|retry/i)
     expect(body.handoff).toBe('unresolved')
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
   })
@@ -1052,6 +1093,7 @@ describe('DELETE /api/players: removal disposition is carried separately from th
     // The delete may have committed behind the error: keep the original error AND report the handoff unresolved.
     expect(body.handoff).toBe('unresolved')
     expect(body.error).toBeTruthy()
+    expect(body.error).not.toMatch(/try again|retry/i)
   })
 
   it('a Codewords delete that COMMITTED but lost its response: original error preserved and handoff unresolved', async () => {
@@ -1063,6 +1105,8 @@ describe('DELETE /api/players: removal disposition is carried separately from th
     const body = (await res.json()) as { error: string; handoff?: string }
     expect(body.handoff).toBe('unresolved')
     expect(body.error).toBeTruthy()
+    // The seat is gone, so the old resume token cannot retry: the response must not advise it.
+    expect(body.error).not.toMatch(/try again|retry/i)
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
   })
 
@@ -1185,6 +1229,172 @@ describe('DELETE /api/players: a known-retained seat is never reported as an unr
     const body = (await res.json()) as { error: string; handoff?: string }
     expect(body.handoff).toBe('unresolved')
     expect(body.error).not.toMatch(/try again|retry/i)
+  })
+})
+
+describe('DELETE /api/players: a pending nominee counts only while it is ELIGIBLE (same rule as the SQL)', () => {
+  it('a spectator nominee with an eligible player remaining is replaced by the eligible player', async () => {
+    setup('uno', { pending_host_player_id: THIRD_PID, pending_host_nominated_at: 'T' })
+    tables.players.push(player(THIRD_PID, 'Third', 3, { spectator: true }))
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+
+  it('a bot nominee is replaced the same way', async () => {
+    setup('uno', { pending_host_player_id: THIRD_PID, pending_host_nominated_at: 'T' })
+    tables.players.push(player(THIRD_PID, 'Third', 3, { is_bot: true }))
+    await leave()
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+
+  it('an eligible nominee is kept', async () => {
+    setup('uno', { pending_host_player_id: THIRD_PID, pending_host_nominated_at: 'T' })
+    tables.players.push(player(THIRD_PID, 'Third', 3))
+    await leave()
+    expect(tables.games[0].pending_host_player_id).toBe(THIRD_PID)
+  })
+})
+
+describe('DELETE /api/players: an engine that KEEPS a finisher seat reports it, and a failed settlement is retryable', () => {
+  it('an active host who is already in finish_order keeps the seat: unreachable settlement answers a retryable error, not "you left"', async () => {
+    setup('uno')
+    keepSeat = true
+    settleFailBudget = 99
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBeUndefined()
+    expect(body.error).toMatch(/try again/i)
+    expect(body.error).not.toMatch(/you left|without a host/i)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+  })
+
+  it('a seat the engine really deleted is still reported unresolved when the settlement is unreachable', async () => {
+    setup('uno')
+    settleFailBudget = 99
+    const res = await leave()
+    expect(((await res.json()) as { handoff?: string }).handoff).toBe('unresolved')
+  })
+})
+
+describe('DELETE /api/players: a forfeit cleanup whose delete response was lost', () => {
+  it('carries the uncertain deletion into the handoff response (the old token cannot retry)', async () => {
+    setup('chess', { status: 'finished' })
+    tables.chess_sessions = [
+      {
+        game_id: 'ABCD',
+        status: 'finished',
+        player_white_id: HOST_PID,
+        player_black_id: OTHER_PID,
+        winner_player_id: OTHER_PID,
+        is_draw: false,
+        status_message: 'Host left — Other wins!',
+      },
+    ]
+    playerDeleteLosesResponse = true
+    settleFailBudget = 99
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string; removalError?: string }
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).not.toMatch(/try again|retry/i)
+    expect(body.removalError).toBeTruthy()
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+  })
+})
+
+describe('DELETE /api/players: Word Rush — a finish THIS leave caused vs an independent finish', () => {
+  const finishNow = () =>
+    Object.assign(tables.games[0], { status: 'finished', result_reason: null, finished_at: 'WR-FINISH' })
+  const rollback = { session_id: 'WRS', roster: [HOST_PID, OTHER_PID], prompt_setter_player_id: null }
+
+  it('the last unanswered player leaving finishes the game: the seat is deleted, the roster is NOT reverted, nothing is retained', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback, ownFinish: true }
+    // The removal's own finalization finishes the games row before the seat delete runs.
+    beforeSeatDelete = finishNow
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBeUndefined()
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+    expect(wordRush.reverts).toEqual([])
+    // The deletion is bound to the session the removal inspected.
+    expect(removeArgs[0]).toMatchObject({ p_own_finish: true, p_session_started_at: 'S1', p_sessions_played: 1 })
+  })
+
+  it('an INDEPENDENT finish that wins keeps the seat, reverts the roster and answers a retained leave', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    beforeSeatDelete = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(wordRush.reverts).toEqual([rollback])
+    expect(removeArgs[0].p_own_finish).toBeUndefined()
+  })
+
+  it('a finish this leave caused is not honoured for a REPLACED session (replay in between): the seat is kept and the roster reverted', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback, ownFinish: true }
+    beforeSeatDelete = () => Object.assign(tables.games[0], { status: 'finished', sessions_played: 2 })
+    const res = await leave()
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(wordRush.reverts).toEqual([rollback])
+  })
+
+  it('a leave that did not finish the game never passes the own-finish flag', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(removeArgs[0].p_own_finish).toBeUndefined()
+    expect(wordRush.reverts).toEqual([])
+  })
+})
+
+describe('DELETE /api/players: the Word Rush roster is restored only for a CONFIRMED rejected delete', () => {
+  const rollback = { session_id: 'WRS', roster: [HOST_PID, OTHER_PID], prompt_setter_player_id: null }
+
+  it('confirmed rejection (the seat is still there): the roster is restored', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    failPlayerDelete = true
+    const res = await leave()
+    expect(res.status).toBe(500)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(wordRush.reverts).toEqual([rollback])
+    expect(((await res.json()) as { handoff?: string }).handoff).toBeUndefined()
+  })
+
+  it('ambiguous: the delete COMMITTED and only its response was lost -> the leave went through, the roster is NOT restored', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    deleteCommitsButErrors = true
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+    expect(wordRush.reverts).toEqual([])
+    // ...and the handoff is settled against the deleted seat as for any other leave.
+    expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
+  })
+
+  it('ambiguous and the read-back fails too: nothing is restored and the handoff is reported unresolved', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    deleteCommitsButErrors = true
+    beforeSeatDelete = () => {
+      failPlayersRead = true
+    }
+    settleFailBudget = 99
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).not.toMatch(/try again|retry/i)
+    expect(wordRush.reverts).toEqual([])
   })
 })
 

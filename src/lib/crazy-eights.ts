@@ -1382,7 +1382,7 @@ export async function removeCrazyEightsPlayer(
   gameId: string,
   playerId: string,
   playerName?: string
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; retained?: boolean }> {
   const { data: sessionRaw } = await supabase
     .from('crazy_eights_sessions')
     .select('*')
@@ -1397,7 +1397,8 @@ export async function removeCrazyEightsPlayer(
   // mapping. So preserve their session slot, hand, and row; the client clears only its
   // own local session.
   if (session?.finish_order?.includes(playerId)) {
-    return { error: null }
+    // Reported explicitly: the seat was NOT deleted (the caller must not treat this leave as a removal).
+    return { error: null, retained: true }
   }
 
   const order = session ? [...(session.turn_order ?? [])] : []

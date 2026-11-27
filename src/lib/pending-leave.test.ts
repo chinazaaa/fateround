@@ -174,6 +174,47 @@ describe('completePendingFinishedLeave: whot', () => {
     expect(await completePendingFinishedLeave(db.client, 'whot', 'G', 'a', 'Ann')).toBeNull()
   })
 
+  it('reports whether a seat DELETE was attempted before the error (uncertain) or not (the seat is untouched)', async () => {
+    // Error BEFORE any delete of the seat: the hand delete fails.
+    const before = build()
+    before.failNext['players:delete'] = 1
+    await removeWhotPlayer(before.client, 'G', 'a', 'Ann')
+    before.failNext['whot_player_hands:delete'] = 1
+    const early = await completePendingFinishedLeave(before.client, 'whot', 'G', 'a', 'Ann')
+    expect(early).toMatchObject({ status: 500, deleteAttempted: false })
+    expect(ids(before.tables)).toEqual(['a', 'b'])
+
+    // Error AFTER the seat delete was issued: its outcome is uncertain.
+    const after = build()
+    after.failNext['players:delete'] = 1
+    await removeWhotPlayer(after.client, 'G', 'a', 'Ann')
+    after.failNext['players:delete'] = 1
+    const late = await completePendingFinishedLeave(after.client, 'whot', 'G', 'a', 'Ann')
+    expect(late).toMatchObject({ status: 500, deleteAttempted: true })
+  })
+
+  it('a forfeit cleanup whose seat delete errors reports the attempt', async () => {
+    const db = makeDb({
+      chess_sessions: [
+        {
+          game_id: 'G',
+          status: 'finished',
+          player_white_id: 'a',
+          player_black_id: 'b',
+          winner_player_id: 'b',
+          is_draw: false,
+          status_message: 'Ann left — Bob wins!',
+        },
+      ],
+      players: [seat('a', 'Ann'), seat('b', 'Bob')],
+    })
+    db.failNext['players:delete'] = 1
+    expect(await completePendingFinishedLeave(db.client, 'chess', 'G', 'a', 'Ann')).toMatchObject({
+      status: 500,
+      deleteAttempted: true,
+    })
+  })
+
   it('keeps the rows of everyone still in the session, finishers and spectators', async () => {
     const db = build()
     Object.assign(db.tables.whot_sessions[0], { phase: 'finished', finish_order: ['b'] })

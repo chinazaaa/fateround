@@ -108,6 +108,9 @@ begin
         and exists (
           select 1 from public.players
           where id = v_game.pending_host_player_id and game_id = v_id and is_bot = false and spectator = false
+          -- Locked, like the election below: a concurrent spectator / bot update of the nominee waits until this
+          -- transaction commits, so a nominee judged eligible here is still eligible when the settlement lands.
+          for no key update
         ))
      or (v_game.host_player_id is not null
          and v_game.host_player_id <> p_outgoing_player_id
@@ -246,7 +249,14 @@ grant execute on function public.end_game_if_host_alone(text, uuid, timestamptz,
 -- removal waits here instead, and still sees a finish that committed first.
 create or replace function public.remove_player_if_game_open(
   p_game_id text,
-  p_player_id uuid
+  p_player_id uuid,
+  -- The seat's own leave finished the game (Word Rush: removing the last unanswered player ends the last round).
+  -- Honoured ONLY while the game is still the session the caller inspected: the finish is then this leave's own, and
+  -- the leaver's seat goes with it instead of being kept. An independent finish never matches (the finishing claim is
+  -- a compare-and-set, so a leave that won it is the only finisher of that session).
+  p_own_finish boolean default false,
+  p_session_started_at timestamptz default null,
+  p_sessions_played integer default null
 )
 returns jsonb
 language plpgsql
@@ -254,16 +264,19 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  v_status text;
+  v_game public.games%rowtype;
 begin
-  if p_game_id is null or p_player_id is null then
-    raise exception 'remove_player_if_game_open: game id and player id are required';
+  if p_game_id is null or p_player_id is null or p_own_finish is null then
+    raise exception 'remove_player_if_game_open: game id, player id and own-finish flag are required';
   end if;
-  select status into v_status from public.games where id = upper(p_game_id) for no key update;
+  select * into v_game from public.games where id = upper(p_game_id) for no key update;
   if not found then
     return jsonb_build_object('status', 'game_missing');
   end if;
-  if v_status = 'finished' then
+  if v_game.status = 'finished'
+     and not (p_own_finish
+              and v_game.sessions_played is not distinct from p_sessions_played
+              and v_game.session_started_at is not distinct from p_session_started_at) then
     return jsonb_build_object('status', 'game_finished');
   end if;
   delete from public.players where id = p_player_id and game_id = upper(p_game_id);
@@ -271,5 +284,54 @@ begin
 end;
 $$;
 
-revoke execute on function public.remove_player_if_game_open(text, uuid) from public, anon, authenticated;
-grant execute on function public.remove_player_if_game_open(text, uuid) to service_role;
+revoke execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer) to service_role;
+
+-- Two Truths start: the spectator flags and the status change are ONE unit under the games row lock (every other
+-- start path only READS eligibility, then flips the status). Without it a host leave during a start read a roster
+-- where the submitters were still spectators, finished the game, and the start's final status write (which filtered
+-- on the id only) then re-activated the finished row. 'lost' = the game is no longer waiting (changed under the
+-- caller): nothing is written. Lock order is the same as settle_host_leave / end_game_if_host_alone: games row first.
+create or replace function public.start_two_truths_game(
+  p_game_id text,
+  p_submitted_player_ids uuid[],
+  p_session_started_at timestamptz,
+  p_rounds_count integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_status text;
+begin
+  if p_game_id is null or p_session_started_at is null or p_rounds_count is null
+     or p_submitted_player_ids is null or coalesce(array_length(p_submitted_player_ids, 1), 0) = 0 then
+    raise exception 'start_two_truths_game: game id, submitters, session start and round count are required';
+  end if;
+  v_id := upper(p_game_id);
+  select status into v_status from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'game_missing');
+  end if;
+  if v_status <> 'waiting' then
+    return jsonb_build_object('status', 'lost', 'game_status', v_status);
+  end if;
+  -- Everyone watches, except the players who submitted statements (they are the guessers).
+  update public.players set spectator = true where game_id = v_id;
+  update public.players set spectator = false where game_id = v_id and id = any (p_submitted_player_ids);
+  update public.games
+    set status = 'active',
+        session_started_at = p_session_started_at,
+        current_round_number = 1,
+        rounds_count = p_rounds_count
+    where id = v_id;
+  return jsonb_build_object('status', 'started');
+end;
+$$;
+
+revoke execute on function public.start_two_truths_game(text, uuid[], timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.start_two_truths_game(text, uuid[], timestamptz, integer) to service_role;
+

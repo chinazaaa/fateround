@@ -18,6 +18,7 @@ const ALLOWED: Record<string, string[]> = {
   begin_play_again_reset: ['src/app/api/games/[code]/play-again/route.ts'],
   abort_play_again_reset: ['src/app/api/games/[code]/play-again/route.ts'],
   remove_player_if_game_open: ['src/lib/codewords.ts'],
+  start_two_truths_game: ['src/app/api/games/[code]/start/route.ts'],
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

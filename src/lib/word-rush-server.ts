@@ -594,7 +594,7 @@ async function endTeamTurn(
   supabase: SupabaseClient,
   gameId: string,
   session: WordRushSession
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const totalTeamTurns = wordRushTotalTeamTurns(session.num_teams, session.total_rounds)
 
   const { count } = await supabase
@@ -665,7 +665,7 @@ async function endIndividualRound(
   supabase: SupabaseClient,
   gameId: string,
   session: WordRushSession
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const { data: correctGuesses, error: guessesError } = await supabase
     .from('word_rush_answers')
     .select('player_id, created_at, text')
@@ -751,7 +751,8 @@ async function endIndividualRound(
   // marker stays and the next request that loads the session resumes it (see loadSession). The
   // round itself has ended, so report success to this caller.
   await runRoundFinalization(supabase, gameId, pending)
-  return {}
+  // `finished`: THIS call won the compare-and-set that ended the session's last round, so the game finish is its own.
+  return { finished: isLastRound }
 }
 
 /**
@@ -811,7 +812,7 @@ async function finishWordRushGame(
   gameId: string,
   session: WordRushSession,
   message: string
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
     .update({
@@ -828,7 +829,7 @@ async function finishWordRushGame(
   if (error) return internalFailure('word-rush:finish', error)
   if (!claimed?.length) return {}
   await markGameFinished(supabase, gameId, undefined, { trackBookkeeping: true })
-  return {}
+  return { finished: true }
 }
 
 export async function finishWordRushGameEarly(
@@ -872,8 +873,12 @@ export async function processWordRushEndRoundEarly(
     return { error: 'Round already ended' }
   }
 
-  if (session.mode === 'team') return endTeamTurn(supabase, gameId, session)
-  return endIndividualRound(supabase, gameId, session)
+  // The `finished` marker is for the removal sync only; these callers report just the outcome.
+  const ended =
+    session.mode === 'team'
+      ? await endTeamTurn(supabase, gameId, session)
+      : await endIndividualRound(supabase, gameId, session)
+  return ended.error ? { error: ended.error, internal: ended.internal } : {}
 }
 
 export async function processWordRushExpireTurn(
@@ -887,8 +892,12 @@ export async function processWordRushExpireTurn(
   if (!session.turn_deadline_at) return {}
   if (new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
 
-  if (session.mode === 'team') return endTeamTurn(supabase, gameId, session)
-  return endIndividualRound(supabase, gameId, session)
+  // The `finished` marker is for the removal sync only; these callers report just the outcome.
+  const ended =
+    session.mode === 'team'
+      ? await endTeamTurn(supabase, gameId, session)
+      : await endIndividualRound(supabase, gameId, session)
+  return ended.error ? { error: ended.error, internal: ended.internal } : {}
 }
 
 function individualPlayingStatusMessage(
@@ -948,6 +957,8 @@ export async function syncWordRushAfterPlayerRemoved(
   error?: string
   internal?: boolean
   rollback?: WordRushRosterSnapshot
+  /** This removal ended the session's last round / the game itself (not an independent finish). */
+  ownFinish?: boolean
 }> {
   const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
   if (!game || game.status !== 'active') return {}
@@ -1004,7 +1015,7 @@ export async function syncWordRushAfterPlayerRemoved(
     if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(updatedSession, answers)) {
       const endResult = await endIndividualRound(supabase, gameId, updatedSession)
       if (endResult.error) return { ...endResult, rollback }
-      return { rollback }
+      return { rollback, ownFinish: endResult.finished === true }
     }
   }
 
@@ -1022,6 +1033,7 @@ export async function syncWordRushAfterPlayerRemoved(
     if (playable.size <= 1 || !playable.has(updatedSession.active_team)) {
       const endResult = await endTeamTurn(supabase, gameId, updatedSession)
       if (endResult.error) return { ...endResult, rollback }
+      return { rollback, ownFinish: endResult.finished === true }
     }
   }
 

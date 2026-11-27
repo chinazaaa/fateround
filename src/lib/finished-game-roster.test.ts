@@ -21,31 +21,43 @@ import { join } from 'node:path'
 
 const ROUTE = readFileSync(join(process.cwd(), 'src', 'app', 'api', 'players', 'route.ts'), 'utf8')
 
-/** The DELETE handler only — the file also serves POST/PATCH. */
+/**
+ * `removePlayer` only (the DELETE wrapper before it, `settleHostLeave` and `endGameIfHostAlone` also speak of a
+ * 'finished' game, but they are not the removal guard this file protects; the file also serves POST/PATCH).
+ */
 const deleteHandler = (() => {
-  const start = ROUTE.indexOf('export async function DELETE(')
-  expect(start, 'DELETE handler not found').toBeGreaterThan(-1)
+  const start = ROUTE.indexOf('async function removePlayer(')
+  expect(start, 'removePlayer not found').toBeGreaterThan(-1)
   return ROUTE.slice(start)
 })()
 
+/** The guard itself: the removal's own comparison of the game's status, not any other mention of 'finished'. */
+const GUARD = /\(game as \{ status\?: string \}\)\.status === 'finished'\) \{/
+
 describe('removal from a finished game', () => {
   it('is a no-op rather than a delete', () => {
-    // The guard, and the fact it returns the retained shape — not that they are adjacent.
-    // There is an unsubscribe step between them (see below).
-    expect(deleteHandler).toMatch(/if \(\(game as \{ status\?: string \}\)\.status === 'finished'\) \{/)
-    expect(deleteHandler).toMatch(/return NextResponse\.json\(\{ success: true, retained: true \}\)/)
+    // The guard, and the fact it answers through the retained shape (the shared helper) rather than deleting.
+    expect(deleteHandler).toMatch(GUARD)
+    const guardBlock = deleteHandler.slice(
+      deleteHandler.search(GUARD),
+      deleteHandler.indexOf('const gameType = parseGameType(')
+    )
+    expect(guardBlock).toMatch(/return retainedLeaveResponse\(ctx, id, playerId\)/)
+    expect(guardBlock).not.toMatch(/\.delete\(\)|removePlayerIfGameOpen\(/)
+    expect(ROUTE).toMatch(/ctx\.seatRetained = true\s+return NextResponse\.json\(\{ success: true, retained: true \}\)/)
   })
 
   it('answers 200, because the client navigates away either way', () => {
     // An error here would surface a failure toast on a perfectly ordinary "back to home".
-    const guard = /status === 'finished'\)[\s\S]{0,200}?NextResponse\.json\(([\s\S]{0,80}?)\)/.exec(deleteHandler)
-    expect(guard?.[1] ?? '', 'must not return an error status').not.toMatch(/status:\s*4\d\d|error:/)
+    const helper = /async function retainedLeaveResponse[\s\S]*?\n}\n/.exec(ROUTE)
+    expect(helper, 'retainedLeaveResponse not found').not.toBeNull()
+    expect(helper![0], 'the retained shape must not carry an error status').not.toMatch(/status:\s*[45]\d\d|error:/)
   })
 
   it('runs BEFORE the per-game removal branches', () => {
     // The load-bearing property. Every `isXGame(gameType)` branch calls its own removal helper
     // and returns, so a guard below even one of them silently misses that game.
-    const guardAt = deleteHandler.search(/status === 'finished'\) \{/)
+    const guardAt = deleteHandler.search(GUARD)
     expect(guardAt).toBeGreaterThan(-1)
 
     const branches = [...deleteHandler.matchAll(/\bif \(is[A-Z]\w*Game\(gameType\)\)/g)]
@@ -56,7 +68,8 @@ describe('removal from a finished game', () => {
   })
 
   it('runs before the generic delete too', () => {
-    const guardAt = deleteHandler.search(/status === 'finished'/)
+    const guardAt = deleteHandler.search(GUARD)
+    expect(guardAt).toBeGreaterThan(-1)
     // The generic removal is the conditional `remove_player_if_game_open` (it re-checks the status under a lock).
     const genericDelete = deleteHandler.search(/removePlayerIfGameOpen\(/)
     expect(genericDelete).toBeGreaterThan(guardAt)
@@ -69,11 +82,13 @@ describe('removal from a finished game', () => {
     // those too — which would leave someone who deliberately left a finished game still
     // getting "Play again? 🔁" when the host reopened the lobby. The score tables hang off the
     // player row, not these, so dropping them costs the standings nothing.
-    expect(deleteHandler).toMatch(/from\('push_subscriptions'\)\.delete\(\)/)
-    expect(deleteHandler).toMatch(/from\('mobile_push_tokens'\)\.delete\(\)/)
-    const unsub = deleteHandler.search(/push_subscriptions'\)\.delete/)
-    const retained = deleteHandler.search(/retained: true/)
-    expect(unsub, 'must run before the early return').toBeLessThan(retained)
+    // The retained shape is produced by one helper (the guard returns it), so the unsubscribe lives there.
+    const helper = /async function retainedLeaveResponse[\s\S]*?\n}\n/.exec(ROUTE)?.[0] ?? ''
+    expect(helper).toMatch(/from\('push_subscriptions'\)\.delete\(\)/)
+    expect(helper).toMatch(/from\('mobile_push_tokens'\)\.delete\(\)/)
+    expect(helper.search(/push_subscriptions'\)\.delete/), 'must run before the early return').toBeLessThan(
+      helper.search(/retained: true/)
+    )
   })
 
   it('still deletes mid-game — a player who walks out forfeits rather than places', () => {

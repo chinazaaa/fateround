@@ -96,6 +96,9 @@ begin
         and exists (
           select 1 from public.players
           where id = v_game.pending_host_player_id and game_id = v_id and is_bot = false and spectator = false
+          -- Locked, like the election below: a concurrent spectator / bot update of the nominee waits until this
+          -- transaction commits, so a nominee judged eligible here is still eligible when the settlement lands.
+          for no key update
         ))
      or (v_game.host_player_id is not null
          and v_game.host_player_id <> p_outgoing_player_id
