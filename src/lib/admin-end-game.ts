@@ -138,26 +138,34 @@ export async function completeHostLeftCleanup(
   supabase: SupabaseClient,
   gameId: string,
   bind: HostLeftCleanupBinding = {}
-): Promise<{ finished: boolean; hostEnded: boolean; error: string | null }> {
+): Promise<{ finished: boolean; hostEnded: boolean; error: string | null; superseded?: boolean }> {
   const { data: game, error } = await supabase
     .from('games')
     .select('status, game_type, result_reason, finished_at, session_started_at, sessions_played')
     .eq('id', gameId)
     .maybeSingle()
   if (error) return { finished: false, hostEnded: false, error: internalErrorMessage('admin-end-game', error) }
-  if (game?.status !== 'finished') return { finished: false, hostEnded: false, error: null }
+  // `superseded`: the caller named the finish / session it observed and the game is no longer in it.
+  if (game?.status !== 'finished') {
+    return {
+      finished: false,
+      hostEnded: false,
+      error: null,
+      ...(bind.finishedAt || bind.session ? { superseded: true } : {}),
+    }
+  }
   if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, hostEnded: false, error: null }
   // Not the finish this leave observed (the game was replayed and finished again since): that finish belongs to a later
   // leave, whose own cleanup handles it. Nothing is cleaned up on behalf of an older one.
   if (bind.finishedAt && Date.parse(bind.finishedAt) !== Date.parse(game.finished_at)) {
-    return { finished: true, hostEnded: false, error: null }
+    return { finished: true, hostEnded: false, error: null, superseded: true }
   }
   if (
     bind.session &&
     ((game.session_started_at ?? null) !== bind.session.startedAt ||
       (game.sessions_played ?? null) !== bind.session.sessionsPlayed)
   ) {
-    return { finished: true, hostEnded: false, error: null }
+    return { finished: true, hostEnded: false, error: null, superseded: true }
   }
   return {
     finished: true,

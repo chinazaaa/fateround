@@ -36,6 +36,9 @@
 # Case H (the opposite order): a seat delete behind a roster restore waits for it, then deletes the seat AND clears the roster
 # entry, so no entry outlives a committed seat delete.
 #
+# Case I (Two Truths activation vs the finish): the finish waits for a committing activation; afterwards no round can be
+# activated in the finished game.
+#
 # Case F (Two Truths start vs a host leaving alone): start_two_truths_game() takes the games row lock BEFORE it writes the
 # roster. A blocker holds the submitter's player row so the start is stuck mid-way while already holding the game lock;
 # end_game_if_host_alone() is observed WAITING on it (without the early lock it would run at once, see the seeded
@@ -51,10 +54,10 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 
 RUN="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 APP="shl-$RUN"
-GATE=$(( (0x${RUN} % 2000000000) + 1 ))
-GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"
+GATE=$(( ((0x${RUN} * 131 + $$) % 2000000000) + 1 ))
+GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
-HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; WRSEAT2="$(new_uuid)"
+HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; WRSEAT2="$(new_uuid)"
 WORKERS=()
 # Every worker's output lives in ONE run-specific directory that cleanup removes (no temp files are left behind).
 OUT_DIR="$(mktemp -d)"
@@ -62,7 +65,7 @@ OUT_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "$OUT_DIR"
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -84,7 +87,9 @@ reap() { # pid, description
 start_gate() {
   PGAPPNAME="$APP-gate" psql "$DB" -X -q -c "select pg_advisory_lock($GATE); select pg_sleep(120)" >/dev/null 2>&1 &
   GATE_PID=$!
-  wait_for "gate held" "select exists (select 1 from pg_locks where locktype = 'advisory' and granted and objid = $GATE)"
+  # THIS run's own holder (matched by its application name), not just "somebody holds the key": another run that happens to
+  # derive the same advisory key must not make this check pass while this run's holder is still queued behind it.
+  wait_for "gate held" "select exists (select 1 from pg_locks l join pg_stat_activity a on a.pid = l.pid where l.locktype = 'advisory' and l.granted and a.application_name = '$APP-gate')"
 }
 open_gate() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name = '$APP-gate'" >/dev/null
@@ -244,7 +249,7 @@ PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
   select public.start_two_truths_game('$GF', array['$TTSUB'::uuid], '$SESSION_TS',
     jsonb_build_array(jsonb_build_object('game_id', '$GF', 'round_number', 1, 'participant_ids', '[]'::jsonb,
       'submitter_player_id', '$TTSUB', 'status', 'active', 'ttl_metadata', '{\"statements\":[\"a\",\"b\",\"c\"],\"lie_index\":null}'::jsonb)),
-    jsonb_build_array(jsonb_build_object('round_number', 1, 'lie_index', 1)), 1)->>'status'" >"$OUT_START" 2>&1 &
+    jsonb_build_array(jsonb_build_object('round_number', 1, 'lie_index', 1)), 1, 1)->>'status'" >"$OUT_START" 2>&1 &
 START_PID=$!
 wait_for "the start is stuck on the submitter row" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock')"
 OUT_F="$OUT_DIR/out_f"
@@ -324,5 +329,34 @@ reap "$RM2_PID" "removal (case H): $(cat "$OUT_H")"
 [ "$(cat "$OUT_H")" = "deleted" ] || fail "case H: expected 'deleted', got '$(cat "$OUT_H")'"
 [ "$(psqlq -c "select count(*) from public.players where id = '$WRSEAT2'")" = "0" ] || fail "case H: the seat was not deleted"
 [ "$(psqlq -c "select cardinality(roster) from public.word_rush_sessions where id = '$WRSESS2'")" = "0" ] || fail "case H: a roster entry outlived the committed seat delete"
+
+# ---- Case I: a Two Truths round activation vs the finish ----------------------------------------------------------
+# activate_ttl_round() takes the games row FOR SHARE and needs an active game. A finish (UPDATE of the games row) is observed
+# WAITING on an activation that is committing, and once it commits the game is finished with the activated round open for
+# the cleanup to close; a later activation of another pending round then writes nothing (not_active).
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('$GI', 'lock test I', 'tok-$RUN-i', 'two_truths', 'active');
+insert into public.rounds (id, game_id, round_number, status, participant_ids) values
+  ('$RND1', '$GI', 1, 'pending', '{}'), ('$RND2', '$GI', 2, 'pending', '{}');
+SQL
+start_gate
+PGAPPNAME="$APP-activate" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+  begin;
+  select public.activate_ttl_round('$GI', '$RND1', 1);
+  select pg_advisory_xact_lock($GATE);
+  commit;" >/dev/null 2>&1 &
+ACTIVATE_PID=$!
+wait_for "the activation holds its uncommitted write" "select exists (select 1 from pg_stat_activity where application_name = '$APP-activate' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+PGAPPNAME="$APP-fin" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "update public.games set status = 'finished', finished_at = now() where id = '$GI'" >/dev/null 2>&1 &
+FIN_PID=$!
+wait_for "the finish waits for the activation (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-fin' and wait_event_type = 'Lock')"
+open_gate
+reap "$ACTIVATE_PID" "activation (case I)"
+reap "$FIN_PID" "finish (case I)"
+[ "$(psqlq -c "select status from public.rounds where id = '$RND1'")" = "active" ] || fail "case I: the activation that won the lock did not apply"
+[ "$(psqlq -c "select status from public.games where id = '$GI'")" = "finished" ] || fail "case I: the finish did not apply after the activation"
+[ "$(psqlq -c "select public.activate_ttl_round('$GI', '$RND2', 2)->>'status'")" = "not_active" ] || fail "case I: a round was activated in a finished game"
+[ "$(psqlq -c "select status from public.rounds where id = '$RND2'")" = "pending" ] || fail "case I: the second round was opened after the finish"
+[ "$(psqlq -c "select jsonb_array_length(public.finish_rounds_of_finished_session('$GI', (select finished_at from public.games where id = '$GI'))->'round_ids') ")" = "1" ] || fail "case I: the cleanup did not close exactly the activated round"
 
 echo "ok"

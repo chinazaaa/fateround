@@ -416,6 +416,7 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
       finished: true,
       hostEnded: false,
       error: null,
+      superseded: true,
     })
     expect(recorded.deletes).toEqual([])
     expect(recorded.roundUpdates).toBe(0)

@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { completePendingRummyRemoval } from '@/lib/rummy'
-import { removePlayerIfGameOpen } from '@/lib/codewords'
 import {
   isCheckersGame,
   isChessGame,
@@ -62,13 +61,17 @@ export async function completePendingFinishedLeave(
 
   if (isWhotGame(gameType)) return completePendingWhotLeave(supabase, gameId, playerId)
 
-  // Word Rush: a leave that won its own last-round finish while that finish's bookkeeping was still owed kept the seat and
-  // recorded the deletion for this exact seat and finish (word_rush_pending_seat_deletions). The database decides
-  // whether it is due now (same finish, bookkeeping completed); anything else answers `game_finished` and the seat stays.
+  // Word Rush: a leave that won its own last-round finish while that finish's bookkeeping was still owed kept the seat; the
+  // finish recorded the deletion for this exact seat and finish (word_rush_pending_seat_deletions).
   if (isWordRushGame(gameType)) {
-    const { error, gameFinished } = await removePlayerIfGameOpen(supabase, gameId, playerId)
-    if (error) return { error, status: 500, deleteAttempted: true }
-    return gameFinished ? null : { error: null }
+    // PENDING-ONLY and decided under the game lock: it needs the finish the record was made for, its completed bookkeeping
+    // and the record itself, so a live (reopened) game is never touched.
+    const { data, error } = await supabase.rpc('complete_word_rush_pending_seat_deletion', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+    })
+    if (error) return fail('word-rush', error, true)
+    return (data as { status?: string } | null)?.status === 'deleted' ? { error: null } : null
   }
 
   if (isChessGame(gameType)) {

@@ -705,9 +705,19 @@ export async function removePlayerIfGameOpen(
    * Word Rush: the session the caller reconciled the roster against. A live game that is no longer that session answers
    * `sessionChanged` and nothing is deleted, so the caller can reconcile the CURRENT session first.
    */
-  expectedSession?: { startedAt: string | null; sessionsPlayed: number | null }
-): Promise<{ error: string | null; gameFinished: boolean; sessionChanged?: boolean }> {
-  const identity = expectedSession ?? ownFinish
+  expectedSession?: { startedAt: string | null; sessionsPlayed: number | null },
+  /**
+   * The leaver is the game's host. When nobody else is eligible the DATABASE finishes the game (host_ended, bound to this
+   * session) and keeps the seat, in the same locked check that would delete it: `hostEnded` then carries the finish.
+   */
+  hostLeave?: { session: { startedAt: string | null; sessionsPlayed: number | null }; trackBookkeeping: boolean }
+): Promise<{
+  error: string | null
+  gameFinished: boolean
+  sessionChanged?: boolean
+  hostEnded?: { finishedAt: string }
+}> {
+  const identity = expectedSession ?? ownFinish ?? hostLeave?.session
   const { data, error } = await supabase.rpc('remove_player_if_game_open', {
     p_game_id: gameId,
     p_player_id: playerId,
@@ -715,22 +725,27 @@ export async function removePlayerIfGameOpen(
     ...(ownFinish ? { p_own_finish: true } : {}),
     ...(identity ? { p_session_started_at: identity.startedAt, p_sessions_played: identity.sessionsPlayed } : {}),
     ...(expectedSession ? { p_check_session: true } : {}),
+    ...(hostLeave ? { p_host_leave: true, p_track_bookkeeping: hostLeave.trackBookkeeping } : {}),
   })
   if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
-  const status = (data as { status?: string } | null)?.status
+  const answer = data as { status?: string; finished_at?: string } | null
+  const status = answer?.status
   return {
     error: null,
-    gameFinished: status === 'game_finished',
+    // `host_ended`: the game was finished instead of removing the host's seat, so nothing was deleted either.
+    gameFinished: status === 'game_finished' || status === 'host_ended',
     ...(status === 'session_changed' ? { sessionChanged: true } : {}),
+    ...(status === 'host_ended' && answer?.finished_at ? { hostEnded: { finishedAt: answer.finished_at } } : {}),
   }
 }
 
 export async function removeCodewordsPlayer(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string
-): Promise<{ error: string | null; gameFinished: boolean }> {
-  return removePlayerIfGameOpen(supabase, gameId, playerId)
+  playerId: string,
+  hostLeave?: { session: { startedAt: string | null; sessionsPlayed: number | null }; trackBookkeeping: boolean }
+): Promise<{ error: string | null; gameFinished: boolean; hostEnded?: { finishedAt: string } }> {
+  return removePlayerIfGameOpen(supabase, gameId, playerId, undefined, undefined, undefined, hostLeave)
 }
 
 export type CodewordsRemovalOutcome = {

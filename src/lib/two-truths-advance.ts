@@ -301,21 +301,22 @@ async function endActiveRound(supabase: SupabaseClient, roundId: string): Promis
   return true
 }
 
-async function syncGamePointer(supabase: SupabaseClient, gameId: string, roundNumber: number): Promise<boolean> {
-  const { error } = await supabase.from('games').update({ current_round_number: roundNumber }).eq('id', gameId)
-  return !error
-}
-
-async function activateRound(supabase: SupabaseClient, roundId: string): Promise<boolean> {
-  const now = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('rounds')
-    .update({ status: 'active', started_at: now, ended_at: null })
-    .eq('id', roundId)
-    .eq('status', 'pending')
-    .select('id')
-    .maybeSingle()
-  return !error && !!data
+/**
+ * Activate a pending round and move the game's round pointer to it, in ONE database step under the games row lock
+ * (activate_ttl_round): only while the game is still active. The finish cleanup takes the same lock and needs a finished
+ * game, so an advance that read an active game earlier can no longer open a round of a game that has since finished.
+ */
+async function activateRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: { id: string; round_number: number }
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('activate_ttl_round', {
+    p_game_id: gameId,
+    p_round_id: round.id,
+    p_round_number: round.round_number,
+  })
+  return !error && (data as { status?: string } | null)?.status === 'activated'
 }
 
 export async function syncTwoTruthsGameState(
@@ -446,21 +447,19 @@ export async function syncTwoTruthsGameState(
           return { ok: true, code: 'advanced_finish' }
         }
 
-        const activated = await activateRound(supabase, replacement.id)
+        const activated = await activateRound(supabase, gameId, replacement)
         if (!activated) return { ok: false, code: 'not_finished' }
-        await syncGamePointer(supabase, gameId, replacement.round_number)
         return { ok: true, code: 'advanced_next', nextRound: replacement.round_number }
       }
     }
 
-    const activated = await activateRound(supabase, nextRound.id)
+    const activated = await activateRound(supabase, gameId, nextRound)
     if (!activated) return { ok: false, code: 'not_finished' }
-    await syncGamePointer(supabase, gameId, nextRound.round_number)
     return { ok: true, code: 'advanced_next', nextRound: nextRound.round_number }
   }
 
   if (pointerRound && pointerRound.status === 'pending') {
-    const activated = await activateRound(supabase, pointerRound.id)
+    const activated = await activateRound(supabase, gameId, pointerRound)
     if (activated) return { ok: true, code: 'synced_pointer' }
   }
 

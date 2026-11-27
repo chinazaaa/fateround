@@ -21,6 +21,8 @@ const ALLOWED: Record<string, string[]> = {
   start_two_truths_game: ['src/app/api/games/[code]/start/route.ts'],
   word_rush_restore_roster_member: ['src/lib/word-rush-server.ts'],
   finish_rounds_of_finished_session: ['src/lib/admin-end-game.ts'],
+  activate_ttl_round: ['src/lib/two-truths-advance.ts'],
+  complete_word_rush_pending_seat_deletion: ['src/lib/pending-leave.ts'],
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

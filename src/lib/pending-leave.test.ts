@@ -257,8 +257,22 @@ describe('completePendingFinishedLeave: Rummy reports whether the seat DELETE wa
 })
 
 describe('completePendingFinishedLeave: Word Rush (a recorded own-finish deletion)', () => {
+  const rpcCalls: Array<{ fn: string; args: unknown }> = []
   const client = (answer: { data?: unknown; error?: { message: string } | null }) =>
-    ({ rpc: async () => ({ data: answer.data ?? null, error: answer.error ?? null }) }) as unknown as SupabaseClient
+    ({
+      rpc: async (fn: string, args: unknown) => {
+        rpcCalls.push({ fn, args })
+        return { data: answer.data ?? null, error: answer.error ?? null }
+      },
+    }) as unknown as SupabaseClient
+
+  it('asks the PENDING-ONLY function for exactly this game and seat (never the general leave)', async () => {
+    rpcCalls.length = 0
+    await completePendingFinishedLeave(client({ data: { status: 'deleted' } }), 'word_rush', 'G', 'a', 'Ann')
+    expect(rpcCalls).toEqual([
+      { fn: 'complete_word_rush_pending_seat_deletion', args: { p_game_id: 'G', p_player_id: 'a' } },
+    ])
+  })
 
   it('a due deletion (the database deleted the seat) completes the leave', async () => {
     expect(

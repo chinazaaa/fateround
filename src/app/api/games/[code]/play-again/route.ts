@@ -271,7 +271,12 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   // that failed must be completed first; otherwise it could never run again and the lies and guesses would be lost.
   // Idempotent, bound to the finished session; a failure refuses the reset so it can simply be retried.
   if (game.status === 'finished' && isTwoTruthsGame(gameType) && game.result_reason === 'host_ended') {
-    const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), gameId)
+    // Bound to the finish THIS request read: a game replayed (and perhaps ended again) since is another finish, whose own
+    // leave handles it, and its live rounds must not be deleted by this reset.
+    const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), gameId, { finishedAt: game.finished_at })
+    if (cleanup.superseded) {
+      return NextResponse.json({ error: 'The game changed while you were resetting it — try again' }, { status: 409 })
+    }
     if (cleanup.error) {
       return NextResponse.json(
         { error: 'The previous game is still being finalized — try again in a moment' },

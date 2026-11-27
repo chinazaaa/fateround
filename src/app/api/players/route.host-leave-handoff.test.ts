@@ -278,10 +278,12 @@ function settleModel(a: SettleArgs) {
   const seatExisted = tables.players.some((p) => p.id === out)
   settleCalls.push({ args: a, seatExisted })
   if (seatExisted) return { status: 'seat_retained', game_status: g.status, session_changed: changed }
+  // The departed host's linkage is released unless the game was REPLAYED; a Start in the same generation is the same session.
+  const replay = g.sessions_played !== a.p_sessions_played
   const clear = () => {
     if (
       a.p_outgoing_host_user_id &&
-      !changed &&
+      !replay &&
       g.host_user_id === a.p_outgoing_host_user_id &&
       (g.host_player_id == null || g.host_player_id === out)
     )
@@ -318,7 +320,7 @@ function settleModel(a: SettleArgs) {
     Object.assign(g, {
       pending_host_player_id: successor.id,
       pending_host_nominated_at: 'NOW',
-      host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !changed ? null : g.host_user_id,
+      host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !replay ? null : g.host_user_id,
     })
     return { status: 'nominated', nominee: successor.id }
   }
@@ -328,7 +330,7 @@ function settleModel(a: SettleArgs) {
     status: 'finished',
     finished_at: FINISHED_AT,
     result_reason: 'host_ended',
-    host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !changed ? null : g.host_user_id,
+    host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !replay ? null : g.host_user_id,
     pending_host_player_id: null,
   })
   return { status: 'finished', finished_now: true, finished_at: FINISHED_AT, result_reason: 'host_ended' }
@@ -427,6 +429,22 @@ async function rpc(name: string, args: Record<string, unknown>) {
     ) {
       return { data: { status: 'session_changed' }, error: null }
     }
+    // The host leaving ALONE: finished under the lock that would delete the seat; the seat is kept.
+    if (
+      (a as { p_host_leave?: boolean }).p_host_leave &&
+      g.status !== 'finished' &&
+      g.host_player_id === a.p_player_id &&
+      g.sessions_played === (a.p_sessions_played ?? null) &&
+      !tables.players.some((p) => p.game_id === g.id && p.id !== a.p_player_id && !p.is_bot && !p.spectator)
+    ) {
+      Object.assign(g, {
+        status: 'finished',
+        finished_at: FINISHED_AT,
+        result_reason: 'host_ended',
+        pending_host_player_id: null,
+      })
+      return { data: { status: 'host_ended', finished_at: FINISHED_AT }, error: null }
+    }
     const blocked = g.status === 'finished' && !own
     // The SQL decides first and applies only the writes it permits; a lost response replaces only the ANSWER.
     if (blocked) {
@@ -448,6 +466,20 @@ async function rpc(name: string, args: Record<string, unknown>) {
     deletePlayers([a.p_player_id])
     afterPlayerDelete?.()
     if (deleteCommitsButErrors) return { data: null, error: { message: 'response lost' } }
+    return { data: { status: 'deleted' }, error: null }
+  }
+  if (name === 'complete_word_rush_pending_seat_deletion') {
+    // PENDING-ONLY, under the game lock: the finish the record was made for, bookkeeping completed, the record itself.
+    const a = args as { p_game_id: string; p_player_id: string }
+    const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
+    const due =
+      !!g &&
+      g.status === 'finished' &&
+      (g.result_reason ?? null) === null &&
+      (g.finish_bookkeeping ?? null) === null &&
+      pendingDeletions.some((d) => d.player_id === a.p_player_id && d.finished_at === g.finished_at)
+    if (!due) return { data: { status: 'not_due' }, error: null }
+    deletePlayers([a.p_player_id])
     return { data: { status: 'deleted' }, error: null }
   }
   if (name === 'end_game_if_host_alone') {
@@ -1700,10 +1732,17 @@ describe('DELETE /api/players: the own-finish flag never overrides an independen
 describe('DELETE /api/players: a joiners-mode delete whose response was lost still committed BOTH rows', () => {
   it('deletes the participant and the seat, then reports the error; the read-back sees the seat gone and the leave goes through', async () => {
     setup('trivia', { participant_mode: 'joiners' })
+    tables.participants = [
+      { id: 'p-host', game_id: 'ABCD', name: 'Host' },
+      { id: 'p-same-name', game_id: 'ABCD', name: 'Host' },
+    ]
+    Object.assign(tables.players[0], { participant_id: 'p-host' })
     deleteCommitsButErrors = true
     const res = await leave()
     expect(res.status).toBe(200)
     expect(participantDeletes).toEqual(['Host'])
+    // Only the seat's OWN linked participant row went with it; a same-named participant of someone else stays.
+    expect(tables.participants.map((r) => r.id)).toEqual(['p-same-name'])
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
   })
 })
@@ -2138,9 +2177,33 @@ describe('DELETE /api/players: a stale settlement never selects a later finish f
         finished_at: '2030-05-05T00:00:00.000Z',
         result_reason: 'host_ended',
       })
+    tables.rounds = [{ id: 'later-round', game_id: 'ABCD', status: 'active' }]
     const res = await leave()
     expect(res.status).toBe(200)
     expect(wipeCalls).toEqual([])
+    // The later session's live round was never closed by the stale settlement.
+    expect(tables.rounds.map((r) => r.status)).toEqual(['active'])
+    expect(roundUpdateLog).toEqual([])
+  })
+})
+
+describe('DELETE /api/players: the last successor leaves between the end check and the seat removal', () => {
+  it('the removal finishes the game as host_ended in the same locked check, keeps the seat, and runs the finish bookkeeping and cleanup', async () => {
+    setup('trivia')
+    Object.assign(tables.games[0], { host_player_id: HOST_PID })
+    tables.rounds = [{ id: 'r1', game_id: 'ABCD', status: 'active' }]
+    // Eligible when the end check ran; gone by the time the seat removal runs.
+    beforeSeatDelete = () => {
+      tables.players = tables.players.filter((p) => p.id === HOST_PID)
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(removeArgs[0].p_host_leave).toBe(true)
+    expect(tables.games[0].status).toBe('finished')
+    expect(tables.games[0].result_reason).toBe('host_ended')
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    // The cleanup ran bound to the finish the database wrote.
+    expect(tables.rounds.map((r) => r.status)).toEqual(['finished'])
   })
 })
 

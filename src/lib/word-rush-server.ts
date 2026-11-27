@@ -162,7 +162,14 @@ async function runRoundFinalization(
   if (pending.is_last) {
     // Bound to this session: a finalizer that outlives Play Again must not finish the new game.
     const finished = await markGameFinished(supabase, gameId, undefined, {
-      roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: pending.session_id } },
+      roundGuard: {
+        rpc: 'word_rush_finish_game_for_session',
+        params: {
+          p_session_id: pending.session_id,
+          // The leaver whose seat deletion this finish owes, recorded in the same transaction as the finish.
+          ...(pending.leaver_id ? { p_leaver_player_id: pending.leaver_id } : {}),
+        },
+      },
       trackBookkeeping: true,
     })
     if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
@@ -606,7 +613,8 @@ export async function processWordRushSubmit(
 async function endTeamTurn(
   supabase: SupabaseClient,
   gameId: string,
-  session: WordRushSession
+  session: WordRushSession,
+  leaverId?: string
 ): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const totalTeamTurns = wordRushTotalTeamTurns(session.num_teams, session.total_rounds)
 
@@ -632,7 +640,7 @@ async function endTeamTurn(
 
   if (nextTurn >= totalTeamTurns) {
     const message = playable.size <= 1 ? 'Not enough teams left to continue' : 'All rounds complete!'
-    return finishWordRushGame(supabase, gameId, session, message)
+    return finishWordRushGame(supabase, gameId, session, message, leaverId)
   }
 
   const nextTeam = teamForTurnIndex(nextTurn, session.num_teams)
@@ -680,7 +688,8 @@ async function endTeamTurn(
 async function endIndividualRound(
   supabase: SupabaseClient,
   gameId: string,
-  session: WordRushSession
+  session: WordRushSession,
+  leaverId?: string
 ): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const { data: correctGuesses, error: guessesError } = await supabase
     .from('word_rush_answers')
@@ -730,6 +739,7 @@ async function endIndividualRound(
     turn_deadline_at: session.turn_deadline_at,
     turn_seconds: session.turn_seconds,
     awarded: false,
+    ...(leaverId ? { leaver_id: leaverId } : {}),
   }
 
   const { data: claimed, error } = await supabase
@@ -829,7 +839,8 @@ async function finishWordRushGame(
   supabase: SupabaseClient,
   gameId: string,
   session: WordRushSession,
-  message: string
+  message: string,
+  leaverId?: string
 ): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
@@ -853,7 +864,7 @@ async function finishWordRushGame(
   const { won } = await markGameFinished(supabase, gameId, undefined, {
     roundGuard: {
       rpc: 'word_rush_finish_game_for_session',
-      params: { p_session_id: session.id },
+      params: { p_session_id: session.id, ...(leaverId ? { p_leaver_player_id: leaverId } : {}) },
     },
     trackBookkeeping: true,
   })
@@ -1113,7 +1124,7 @@ async function syncWordRushRemoval(
 
     const answers = (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
     if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(updatedSession, answers)) {
-      const endResult = await endIndividualRound(supabase, gameId, updatedSession)
+      const endResult = await endIndividualRound(supabase, gameId, updatedSession, removedPlayerId)
       if (endResult.error) return { ...endResult, rollback }
       return { rollback, ownFinish: endResult.finished === true }
     }
@@ -1131,7 +1142,7 @@ async function syncWordRushRemoval(
     // end this turn now (endTeamTurn skips the dead team / finishes the game)
     // rather than letting it run out the clock.
     if (playable.size <= 1 || !playable.has(updatedSession.active_team)) {
-      const endResult = await endTeamTurn(supabase, gameId, updatedSession)
+      const endResult = await endTeamTurn(supabase, gameId, updatedSession, removedPlayerId)
       if (endResult.error) return { ...endResult, rollback }
       return { rollback, ownFinish: endResult.finished === true }
     }

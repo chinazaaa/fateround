@@ -44,6 +44,7 @@ declare
   v_game public.games%rowtype;
   v_changed boolean;
   v_ours boolean;
+  v_replayed boolean;
   v_successor uuid;
   v_now timestamptz;
 begin
@@ -67,8 +68,11 @@ begin
   end if;
 
   -- Whether the game's host linkage is still the outgoing host's (see the header). Decided once, under the lock.
+  -- Only a REPLAY (another Play Again generation) is another session as far as the linkage goes: a Start in the same
+  -- generation is the same session, so the departed host's linkage is still this leave's to release.
+  v_replayed := v_game.sessions_played is distinct from p_sessions_played;
   v_ours := p_outgoing_host_user_id is not null
-    and not v_changed
+    and not v_replayed
     and v_game.host_user_id = p_outgoing_host_user_id
     and (v_game.host_player_id is null
          or v_game.host_player_id = p_outgoing_player_id

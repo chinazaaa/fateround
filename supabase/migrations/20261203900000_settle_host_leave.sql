@@ -56,6 +56,7 @@ declare
   v_game public.games%rowtype;
   v_changed boolean;
   v_ours boolean;
+  v_replayed boolean;
   v_successor uuid;
   v_now timestamptz;
 begin
@@ -79,8 +80,11 @@ begin
   end if;
 
   -- Whether the game's host linkage is still the outgoing host's (see the header). Decided once, under the lock.
+  -- Only a REPLAY (another Play Again generation) is another session as far as the linkage goes: a Start in the same
+  -- generation is the same session, so the departed host's linkage is still this leave's to release.
+  v_replayed := v_game.sessions_played is distinct from p_sessions_played;
   v_ours := p_outgoing_host_user_id is not null
-    and not v_changed
+    and not v_replayed
     and v_game.host_user_id = p_outgoing_host_user_id
     and (v_game.host_player_id is null
          or v_game.host_player_id = p_outgoing_player_id
@@ -290,7 +294,12 @@ create or replace function public.remove_player_if_game_open(
   p_participant_name text default null,
   -- Reject (`session_changed`) when the game is NOT finished but is no longer the session the caller inspected (a replay or a
   -- start landed after the caller reconciled it): the caller reconciles the current session and retries.
-  p_check_session boolean default false
+  p_check_session boolean default false,
+  -- The leaver is the game's host. If nobody else is eligible, the game is FINISHED here (host_ended, bound to the session
+  -- the caller inspected) and the seat is KEPT: the decision to finish and the decision to delete the host seat are one
+  -- locked check, so a successor leaving in between can never leave a finished game without its host's results.
+  p_host_leave boolean default false,
+  p_track_bookkeeping boolean default false
 )
 returns jsonb
 language plpgsql
@@ -302,7 +311,7 @@ declare
   v_participant_id uuid;
   v_deleted integer;
   v_same_session boolean;
-  v_pending boolean;
+  v_now timestamptz;
 begin
   if p_game_id is null or p_player_id is null or p_own_finish is null then
     raise exception 'remove_player_if_game_open: game id, player id and own-finish flag are required';
@@ -316,13 +325,6 @@ begin
       and v_game.result_reason is null
       and v_game.sessions_played is not distinct from p_sessions_played
       and v_game.session_started_at is not distinct from p_session_started_at;
-    -- A deletion recorded earlier for this exact seat and THIS finish (see word_rush_pending_seat_deletions) is due once
-    -- the finish bookkeeping has completed.
-    v_pending := v_game.result_reason is null
-      and exists (
-        select 1 from public.word_rush_pending_seat_deletions
-        where game_id = v_game.id and player_id = p_player_id and finished_at is not distinct from v_game.finished_at
-      );
     -- The leaver's Word Rush rows (answers, team rows) cascade off the seat and are read by the owed post-finish
     -- bookkeeping: the seat stays until that has completed (the marker is cleared).
     if v_game.finish_bookkeeping is not null then
@@ -334,7 +336,7 @@ begin
       end if;
       return jsonb_build_object('status', 'game_finished');
     end if;
-    if not (v_same_session or v_pending) then
+    if not v_same_session then
       return jsonb_build_object('status', 'game_finished');
     end if;
   end if;
@@ -342,6 +344,25 @@ begin
      and (v_game.sessions_played is distinct from p_sessions_played
           or v_game.session_started_at is distinct from p_session_started_at) then
     return jsonb_build_object('status', 'session_changed');
+  end if;
+  if p_host_leave and v_game.status in ('waiting', 'active') and v_game.host_player_id = p_player_id
+     and v_game.sessions_played is not distinct from p_sessions_played
+     and not exists (
+       select 1 from public.players
+       where game_id = v_game.id and is_bot = false and spectator = false and id <> p_player_id
+     ) then
+    v_now := now();
+    update public.games
+      set status = 'finished',
+          finished_at = v_now,
+          result_reason = 'host_ended',
+          pending_host_player_id = null,
+          finish_bookkeeping = case
+            when p_track_bookkeeping then jsonb_build_object('finished_at', v_now, 'attempts', 0)
+            else finish_bookkeeping
+          end
+      where id = v_game.id;
+    return jsonb_build_object('status', 'host_ended', 'finished_at', v_now);
   end if;
   -- The seat first; the participant row goes only when THIS call removed the seat (a call for an absent seat removes
   -- nothing, so it can never take a participant row of someone else who now holds the same name). The seat's own
@@ -369,8 +390,8 @@ begin
 end;
 $$;
 
-revoke execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean) from public, anon, authenticated;
-grant execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean) to service_role;
+revoke execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean, boolean, boolean) from public, anon, authenticated;
+grant execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean, boolean, boolean) to service_role;
 
 -- Two Truths start: ONE transaction under the games row lock. It re-checks that the game is still waiting and that
 -- every submitter still has a seat (and that enough of them remain) BEFORE it writes anything, then creates the
@@ -386,7 +407,10 @@ create or replace function public.start_two_truths_game(
   p_session_started_at timestamptz,
   p_rounds jsonb,
   p_lies jsonb,
-  p_min_submitters integer
+  p_min_submitters integer,
+  -- The lobby generation (games.sessions_played) the caller read its statements and built its rounds from: a Play Again in
+  -- between leaves the game `waiting` with the same seats, so the generation is what tells the lobbies apart.
+  p_sessions_played integer
 )
 returns jsonb
 language plpgsql
@@ -396,6 +420,7 @@ as $$
 declare
   v_id text;
   v_status text;
+  v_generation integer;
   v_seated integer;
   v_rounds integer;
 begin
@@ -406,11 +431,11 @@ begin
     raise exception 'start_two_truths_game: game id, submitters, session start, rounds, lies and minimum are required';
   end if;
   v_id := upper(p_game_id);
-  select status into v_status from public.games where id = v_id for update;
+  select status, sessions_played into v_status, v_generation from public.games where id = v_id for update;
   if not found then
     return jsonb_build_object('status', 'game_missing');
   end if;
-  if v_status <> 'waiting' then
+  if v_status <> 'waiting' or v_generation is distinct from p_sessions_played then
     return jsonb_build_object('status', 'lost', 'game_status', v_status);
   end if;
   -- Recount the submitted seats under the lock: a submitter who left since the route read the roster would otherwise
@@ -435,8 +460,8 @@ begin
 end;
 $$;
 
-revoke execute on function public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer) from public, anon, authenticated;
-grant execute on function public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer) to service_role;
+revoke execute on function public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer, integer) from public, anon, authenticated;
+grant execute on function public.start_two_truths_game(text, uuid[], timestamptz, jsonb, jsonb, integer, integer) to service_role;
 
 -- Word Rush: put ONE removed player back on the session roster (a failed seat delete is compensated). Atomic under the
 -- session row lock, and deliberately NOT a write of a saved copy of the whole roster: a player who left in the meantime
@@ -547,3 +572,132 @@ $$;
 
 revoke execute on function public.finish_rounds_of_finished_session(text, timestamptz) from public, anon, authenticated;
 grant execute on function public.finish_rounds_of_finished_session(text, timestamptz) to service_role;
+
+-- Complete a recorded Word Rush own-finish seat deletion (see word_rush_pending_seat_deletions). PENDING-ONLY: under the
+-- games row lock it requires the finish the record was made for (same finished_at, no result_reason), a completed
+-- bookkeeping marker and the record itself; a live game (Play Again reopened it) or anything else deletes nothing, so
+-- it can never remove a seat out of a session whose roster nobody reconciled.
+create or replace function public.complete_word_rush_pending_seat_deletion(
+  p_game_id text,
+  p_player_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_game public.games%rowtype;
+begin
+  if p_game_id is null or p_player_id is null then
+    raise exception 'complete_word_rush_pending_seat_deletion: game id and player id are required';
+  end if;
+  select * into v_game from public.games where id = upper(p_game_id) for no key update;
+  if not found then
+    return jsonb_build_object('status', 'game_missing');
+  end if;
+  if v_game.status <> 'finished' or v_game.result_reason is not null or v_game.finish_bookkeeping is not null
+     or not exists (
+       select 1 from public.word_rush_pending_seat_deletions
+       where game_id = v_game.id and player_id = p_player_id and finished_at is not distinct from v_game.finished_at
+     ) then
+    return jsonb_build_object('status', 'not_due');
+  end if;
+  delete from public.players where id = p_player_id and game_id = v_game.id;
+  update public.word_rush_sessions
+    set roster = array_remove(roster, p_player_id), updated_at = now()
+    where game_id = v_game.id and p_player_id = any (roster);
+  return jsonb_build_object('status', 'deleted');
+end;
+$$;
+
+revoke execute on function public.complete_word_rush_pending_seat_deletion(text, uuid) from public, anon, authenticated;
+grant execute on function public.complete_word_rush_pending_seat_deletion(text, uuid) to service_role;
+
+-- The Word Rush last-round finish, recording the leaver's owed seat deletion IN THE SAME TRANSACTION as the finish it wins
+-- (no window in which the finish is committed but the deletion is not yet recorded). Same contract as the 3-argument
+-- version otherwise.
+create or replace function public.word_rush_finish_game_for_session(
+  p_game_id text,
+  p_finished_at timestamptz,
+  p_session_id uuid,
+  p_leaver_player_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_locked text;
+  v_count integer;
+begin
+  select g.id into v_locked from public.games g where g.id = p_game_id and g.status = 'active' for update;
+  if v_locked is null then
+    return false;
+  end if;
+  update public.games g
+     set status = 'finished', finished_at = p_finished_at,
+         finish_bookkeeping = jsonb_build_object('finished_at', p_finished_at, 'attempts', 0)
+   where g.id = p_game_id
+     and g.status = 'active'
+     and exists (
+       select 1 from public.word_rush_sessions s
+        where s.game_id = g.id and s.id = p_session_id and s.status = 'finished'
+     );
+  get diagnostics v_count = row_count;
+  if v_count > 0 and p_leaver_player_id is not null
+     and exists (select 1 from public.players where id = p_leaver_player_id and game_id = p_game_id) then
+    insert into public.word_rush_pending_seat_deletions (game_id, player_id, finished_at)
+      values (p_game_id, p_leaver_player_id, p_finished_at)
+      on conflict (game_id, player_id) do update set finished_at = excluded.finished_at;
+  end if;
+  return v_count > 0;
+end;
+$$;
+
+revoke execute on function public.word_rush_finish_game_for_session(text, timestamptz, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.word_rush_finish_game_for_session(text, timestamptz, uuid, uuid) to service_role;
+
+-- Two Truths: activate a pending round (and move the game's round pointer) only while the game is ACTIVE, under the games
+-- row lock. The finish cleanup (finish_rounds_of_finished_session) takes the same lock and requires a finished game, so
+-- exactly one wins: if the activation wins, the cleanup closes that round; if the finish wins, the activation writes
+-- nothing (an advance that read an active game earlier can no longer open a round of a finished game).
+create or replace function public.activate_ttl_round(
+  p_game_id text,
+  p_round_id uuid,
+  p_round_number integer
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+  v_updated integer;
+begin
+  if p_game_id is null or p_round_id is null or p_round_number is null then
+    raise exception 'activate_ttl_round: game id, round id and round number are required';
+  end if;
+  select status into v_status from public.games where id = upper(p_game_id) for share;
+  if not found then
+    return jsonb_build_object('status', 'game_missing');
+  end if;
+  if v_status <> 'active' then
+    return jsonb_build_object('status', 'not_active');
+  end if;
+  update public.rounds
+    set status = 'active', started_at = now(), ended_at = null
+    where id = p_round_id and game_id = upper(p_game_id) and status = 'pending';
+  get diagnostics v_updated = row_count;
+  if v_updated = 0 then
+    return jsonb_build_object('status', 'not_pending');
+  end if;
+  update public.games set current_round_number = p_round_number where id = upper(p_game_id);
+  return jsonb_build_object('status', 'activated');
+end;
+$$;
+
+revoke execute on function public.activate_ttl_round(text, uuid, integer) from public, anon, authenticated;
+grant execute on function public.activate_ttl_round(text, uuid, integer) to service_role;
