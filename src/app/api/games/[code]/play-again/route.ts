@@ -85,6 +85,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 import { assertHostAny } from '@/lib/game-admin'
+import { completeHostLeftCleanup } from '@/lib/admin-end-game'
 
 const supabase = getSupabaseAnon()
 
@@ -248,6 +249,20 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     (isTrollRunGame(gameType) && game.status === 'active')
   if (!canReturnToLobby) {
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
+  }
+
+  // A Two Truths game ended by its host leaving closes and REVEALS its rounds in a cleanup that runs after the finish
+  // commits (the hidden lies and guesses are folded back into the rounds). Play Again deletes those rounds, so a reveal
+  // that failed must be completed first; otherwise it could never run again and the lies and guesses would be lost.
+  // Idempotent, bound to the finished session; a failure refuses the reset so it can simply be retried.
+  if (game.status === 'finished' && isTwoTruthsGame(gameType) && game.result_reason === 'host_ended') {
+    const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), gameId)
+    if (cleanup.error) {
+      return NextResponse.json(
+        { error: 'The previous game is still being finalized — try again in a moment' },
+        { status: 409 }
+      )
+    }
   }
 
   // Exiting the ready-up ring back to the normal lobby ("Return to lobby" while the ring
