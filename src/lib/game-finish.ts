@@ -31,6 +31,8 @@ export type FinishGameResult = {
   bookkeeping?: FinishBookkeepingState
   /** The `finished_at` this call wrote, present only when it won the flip: binds the session wipe to that finish. */
   finishedAt?: string
+  /** Only when the flip was lost and the row was re-read: the status the game has now (`undefined` otherwise). */
+  currentStatus?: string | null
 }
 
 export type RoundGuard = { rpc: string; params: Record<string, unknown> }

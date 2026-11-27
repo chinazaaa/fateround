@@ -242,12 +242,14 @@ async function finishAndClearSession(
       .maybeSingle()
     if (currentError)
       return { error: null, won, cleanupError: internalErrorMessage('anonymous-messages', currentError) }
-    if (current?.status !== 'finished' || !current.finished_at) return { error: null, won, cleanupError: null }
+    if (current?.status !== 'finished' || !current.finished_at) {
+      return { error: null, won, cleanupError: null, currentStatus: current?.status ?? null }
+    }
     wipeUpTo = current.finished_at as string
   }
   if (!wipeUpTo) return { error: null, won, cleanupError: null }
   const { error: clearError } = await wipeFinishedSession(supabase, gameId, wipeUpTo, 'anonymous')
-  return { error: null, won, cleanupError: clearError }
+  return { error: null, won, cleanupError: clearError, ...(won ? {} : { currentStatus: 'finished' }) }
 }
 
 export async function finishAnonymousRoomSession(
@@ -299,17 +301,21 @@ export async function reopenSecretMessageBoard(
 export async function finishExpiredAnonymousSession(
   supabase: SupabaseClient,
   game: { id: string; status: string; game_type: string; session_started_at?: string | null }
-): Promise<boolean> {
-  if (game.status !== 'active') return false
-  if (!anonymousSessionExpired(game.session_started_at)) return false
+): Promise<'finished' | 'superseded' | 'error'> {
+  // `superseded`: not expired any more (or not ours to finish): the room is not in the state this request saw.
+  if (game.status !== 'active') return 'superseded'
+  if (!anonymousSessionExpired(game.session_started_at)) return 'superseded'
 
   // Bound to the session the caller saw expire: a request that stalled while another one finished the expired session
   // and reopened the room must not finish (and wipe) the NEW session. `onlyIfActive` alone cannot tell them apart.
-  const { error, cleanupError } = await finishAnonymousRoomSession(supabase, game.id, {
+  const { error, cleanupError, won, currentStatus } = await finishAnonymousRoomSession(supabase, game.id, {
     onlyIfActive: true,
     onlySessionStartedAt: game.session_started_at ?? null,
   })
-  if (error) return false
+  if (error) return 'error'
+  // The session-bound finish lost: another request finished the expired session, and the room may already have been
+  // reopened with a NEW session. Only a room that is still finished is reported as finished.
+  if (!won && currentStatus !== undefined && currentStatus !== 'finished') return 'superseded'
 
   // The room IS finished at this point — only the post-finish message/ban wipe failed,
   // and that cannot un-finish it. Folding it into the return value would report a
@@ -324,5 +330,5 @@ export async function finishExpiredAnonymousSession(
     )
   }
 
-  return true
+  return 'finished'
 }

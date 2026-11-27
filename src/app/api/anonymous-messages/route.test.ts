@@ -66,7 +66,7 @@ vi.mock('@/lib/anonymous-messages', async (importOriginal) => ({
   anonymousSessionExpired: () => expired.value,
   finishExpiredAnonymousSession: async (client: unknown) => {
     expired.clients.push(client)
-    return true
+    return 'finished'
   },
   isPlayerBanned: () => false,
 }))

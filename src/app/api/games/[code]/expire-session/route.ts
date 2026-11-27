@@ -30,8 +30,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ expired: false, finished: false })
   }
 
-  const finished = await finishExpiredAnonymousSession(supabase, game)
-  if (!finished) return NextResponse.json({ error: 'Failed to end session' }, { status: 500 })
+  const outcome = await finishExpiredAnonymousSession(supabase, game)
+  if (outcome === 'error') return NextResponse.json({ error: 'Failed to end session' }, { status: 500 })
+  // The session this request saw expire is no longer the room's state (it was finished and reopened meanwhile).
+  if (outcome === 'superseded') return NextResponse.json({ expired: false, finished: false })
 
   return NextResponse.json({ expired: true, finished: true })
 }

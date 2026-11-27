@@ -83,7 +83,9 @@ async function finishGameRounds(
       .eq('status', 'active')
     if (error) return internalErrorMessage('admin-end-game', error)
   }
-  if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId, startedNoLaterThan))) {
+  // For a finished session the database already confirmed (under the games row lock) that this IS the current finished
+  // session, so the reveal covers its finished rounds without a timestamp cutoff (round and finish clocks differ).
+  if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId))) {
     return 'Could not reveal every Two Truths round'
   }
   return null
@@ -113,6 +115,16 @@ export async function cleanupFinishedSession(
 }
 
 /**
+ * What a cleanup is bound to, so an OLD leave can never select a LATER finish of the same game id (a replay that ends
+ * with `host_ended` again): `finishedAt` is the finish the caller itself observed (from the settlement); `session` is
+ * the session identity the leave captured, used when no finish was observed from a database answer.
+ */
+export type HostLeftCleanupBinding = {
+  finishedAt?: string | null
+  session?: { startedAt: string | null; sessionsPlayed: number | null }
+}
+
+/**
  * Finish the leftovers of a host-left finish (see `end_game_if_host_alone` / `settle_host_leave`). Does nothing unless the game is
  * currently the finished session that was ended by a host leaving, and runs the shared cleanup bound to that
  * session's own `finished_at`, so a Play Again game under the same id (status no longer `finished`) is never
@@ -121,16 +133,29 @@ export async function cleanupFinishedSession(
  */
 export async function completeHostLeftCleanup(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  bind: HostLeftCleanupBinding = {}
 ): Promise<{ finished: boolean; error: string | null }> {
   const { data: game, error } = await supabase
     .from('games')
-    .select('status, game_type, result_reason, finished_at')
+    .select('status, game_type, result_reason, finished_at, session_started_at, sessions_played')
     .eq('id', gameId)
     .maybeSingle()
   if (error) return { finished: false, error: internalErrorMessage('admin-end-game', error) }
   if (game?.status !== 'finished') return { finished: false, error: null }
   if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
+  // Not the finish this leave observed (the game was replayed and finished again since): that finish belongs to a later
+  // leave, whose own cleanup handles it. Nothing is cleaned up on behalf of an older one.
+  if (bind.finishedAt && Date.parse(bind.finishedAt) !== Date.parse(game.finished_at)) {
+    return { finished: true, error: null }
+  }
+  if (
+    bind.session &&
+    ((game.session_started_at ?? null) !== bind.session.startedAt ||
+      (game.sessions_played ?? null) !== bind.session.sessionsPlayed)
+  ) {
+    return { finished: true, error: null }
+  }
   return {
     finished: true,
     error: await cleanupFinishedSession(supabase, gameId, parseGameType(game.game_type), game.finished_at),

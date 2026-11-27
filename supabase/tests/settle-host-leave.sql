@@ -290,6 +290,16 @@ select pg_temp.assert_eq('14b own finish flag, but the finish has a reason: refu
   public.remove_player_if_game_open('STO', pg_temp.late('STO'), true, (pg_temp.g('STO')).session_started_at, (pg_temp.g('STO')).sessions_played)->>'status', 'game_finished');
 select pg_temp.assert_eq('14b reasoned finish: seat kept', (select count(*) from public.players where id = pg_temp.late('STO')), 1::bigint);
 
+-- The leaver's rows cascade off the seat and the owed finish bookkeeping reads them: refused while the marker is owed.
+select pg_temp.mk('STY', 'finished');
+update public.games set finish_bookkeeping = jsonb_build_object('finished_at', now(), 'attempts', 0) where id = 'STY';
+select pg_temp.assert_eq('14b own finish, bookkeeping still owed: refused',
+  public.remove_player_if_game_open('STY', pg_temp.late('STY'), true, (pg_temp.g('STY')).session_started_at, (pg_temp.g('STY')).sessions_played)->>'status', 'game_finished');
+select pg_temp.assert_eq('14b owed: seat kept', (select count(*) from public.players where id = pg_temp.late('STY')), 1::bigint);
+update public.games set finish_bookkeeping = null where id = 'STY';
+select pg_temp.assert_eq('14b bookkeeping completed: deleted',
+  public.remove_player_if_game_open('STY', pg_temp.late('STY'), true, (pg_temp.g('STY')).session_started_at, (pg_temp.g('STY')).sessions_played)->>'status', 'deleted');
+
 -- 14c. Joiners mode: the participant row goes with the seat in ONE transaction, and a finish keeps BOTH.
 select pg_temp.mk('STR', 'active');
 insert into public.participants (game_id, name) values ('STR', 'Late'), ('STR', 'Early');
@@ -334,14 +344,19 @@ create function pg_temp.start_tt(gid text, submitted uuid[], min_sub integer def
     pg_temp.rounds_for(gid, variadic submitted), pg_temp.lies_for(array_length(submitted, 1)), min_sub)
 $$;
 select pg_temp.mk('STP', 'waiting');
-select pg_temp.assert_eq('16 starts', pg_temp.start_tt('STP', array[pg_temp.late('STP'), pg_temp.early('STP'), ('00000000-0000-0000-0000-0000000003' || lpad(ascii('P')::text, 2, '0'))::uuid])->>'status', 'started');
+-- Submitters: late (starts as a SPECTATOR) and the bot seat. Early is NOT a submitter and starts as a player. Both
+-- spectator updates are needed to reach the final flags: the first makes everyone watch, the second lets submitters play.
+update public.players set spectator = true where id = pg_temp.late('STP');
+select pg_temp.assert_eq('16 starts', pg_temp.start_tt('STP', array[pg_temp.late('STP'), ('00000000-0000-0000-0000-0000000003' || lpad(ascii('P')::text, 2, '0'))::uuid], 2)->>'status', 'started');
 select pg_temp.assert_eq('16 active', (pg_temp.g('STP')).status, 'active');
-select pg_temp.assert_eq('16 round count', (pg_temp.g('STP')).rounds_count, 3);
-select pg_temp.assert_eq('16 rounds created', (select count(*) from public.rounds where game_id = 'STP'), 3::bigint);
-select pg_temp.assert_eq('16 answer keys created', (select count(*) from public.ttl_round_lies l join public.rounds r on r.id = l.round_id where r.game_id = 'STP'), 3::bigint);
-select pg_temp.assert_eq('16 submitters play', (select count(*) from public.players where game_id = 'STP' and spectator = false), 3::bigint);
+select pg_temp.assert_eq('16 round count', (pg_temp.g('STP')).rounds_count, 2);
+select pg_temp.assert_eq('16 rounds created', (select count(*) from public.rounds where game_id = 'STP'), 2::bigint);
+select pg_temp.assert_eq('16 answer keys created', (select count(*) from public.ttl_round_lies l join public.rounds r on r.id = l.round_id where r.game_id = 'STP'), 2::bigint);
+select pg_temp.assert_eq('16 the spectator submitter now plays', (select spectator from public.players where id = pg_temp.late('STP')), false);
+select pg_temp.assert_eq('16 the bot submitter plays', (select spectator from public.players where id = ('00000000-0000-0000-0000-0000000003' || lpad(ascii('P')::text, 2, '0'))::uuid), false);
+select pg_temp.assert_eq('16 the player who did not submit watches', (select spectator from public.players where id = pg_temp.early('STP')), true);
 select pg_temp.assert_eq('16 second start is lost', pg_temp.start_tt('STP', array[pg_temp.late('STP'), pg_temp.early('STP'), pg_temp.hostid('STP')])->>'status', 'lost');
-select pg_temp.assert_eq('16 lost writes no more rounds', (select count(*) from public.rounds where game_id = 'STP'), 3::bigint);
+select pg_temp.assert_eq('16 lost writes no more rounds', (select count(*) from public.rounds where game_id = 'STP'), 2::bigint);
 
 -- A game that is no longer waiting is never re-activated, and gets NO round data at all.
 select pg_temp.mk('STQ', 'waiting');
@@ -392,7 +407,7 @@ select pg_temp.assert_eq('16b a different finished_at is not this session', publ
 select pg_temp.assert_eq('16b nothing finished for it', (select count(*) from public.rounds where game_id = 'STX' and status = 'active'), 2::bigint);
 select pg_temp.assert_eq('16b the session', public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:00Z')->>'status', 'finished_session');
 select pg_temp.assert_eq('16b the round of that session is finished', (select status from public.rounds where game_id = 'STX' and round_number = 1), 'finished');
-select pg_temp.assert_eq('16b a later round (started after the cutoff) is left alone', (select status from public.rounds where game_id = 'STX' and round_number = 2), 'active');
+select pg_temp.assert_eq('16b a round stamped AFTER the finish by a skewed app clock is finished too (no clock comparison)', (select status from public.rounds where game_id = 'STX' and round_number = 2), 'finished');
 update public.games set status = 'active' where id = 'STX';
 select pg_temp.assert_eq('16b a replayed (live) game is not this session', public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:00Z')->>'status', 'not_current_session');
 select pg_temp.assert_eq('16b service role only', has_function_privilege('anon', 'public.finish_rounds_of_finished_session(text, timestamptz)', 'execute') or has_function_privilege('authenticated', 'public.finish_rounds_of_finished_session(text, timestamptz)', 'execute'), false);

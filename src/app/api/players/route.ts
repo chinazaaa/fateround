@@ -1999,7 +1999,8 @@ async function settleHostLeave(
     // exactly as `markGameFinished` would have run it. The session-bound cleanup is idempotent and runs for whoever
     // finished it.
     if (outcome.finished_now && outcome.finished_at) await runHostLeftBookkeeping(admin, h, outcome.finished_at)
-    const cleanup = await completeHostLeftCleanup(admin, h.gameId)
+    // Bound to the finish the settlement observed, never to whichever finish the game has by the time this runs.
+    const cleanup = await completeHostLeftCleanup(admin, h.gameId, { finishedAt: outcome.finished_at })
     // The seat is gone, so a failed cleanup has no later leave to retry it: surface it for an operator.
     if (cleanup.error) console.error(`players: cleanup after host-left finish failed for ${h.gameId}`, cleanup.error)
   }
@@ -2246,7 +2247,9 @@ async function removePlayer(
     // the response that carried the finish) was lost, the game can no longer be ended again, so every leave of
     // the retained host seat re-runs it, bound to the finished session.
     if (leavingHost) {
-      const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), id)
+      // No finish was observed from a database answer here: the captured session identity binds it (a replay that
+      // ended again since belongs to a later leave).
+      const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), id, { session: leavingHost.session })
       if (cleanup.error) return NextResponse.json({ error: cleanup.error }, { status: 500 })
     }
     const pending = await completePendingFinishedLeave(
@@ -2445,8 +2448,6 @@ async function removePlayer(
     }
   }
 
-  // After a delete that reported an error, only a read-back tells "rejected" from "committed, response lost".
-
   {
     ctx.seatMayBeRemoved = true
     // Joiners mode removes the participant row together with the seat, in the same database transaction.
@@ -2458,18 +2459,30 @@ async function removePlayer(
       game!.participant_mode === 'joiners' ? player.name : undefined
     )
     let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
+    // Word Rush: the roster change made for this removal is put back by ONE database step that also decides, under the
+    // games + session row locks, whether the seat survived (`restored`), was deleted (`no_seat`: nothing to restore),
+    // or the session was replaced (`not_current_session`). It is the arbiter wherever the delete's outcome is not a
+    // plain success, so a lost response or an unreadable read-back can never strand a seated player off the roster.
+    const restoreRoster = () => revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback!)
+    let restored: Awaited<ReturnType<typeof restoreRoster>> | null = null
     if (removal.error) {
-      const presence = await seatPresence(id, playerId)
-      // Absent: the delete committed and only its response was lost, so the leave went through.
-      seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
+      if (wordRushRollback) {
+        restored = await restoreRoster()
+        if (restored === 'restored') seat = 'retained'
+        else if (restored === 'no_seat') seat = 'deleted'
+        else seat = 'unknown'
+      }
+      if (!wordRushRollback || restored === 'not_current_session' || restored === 'failed') {
+        // After a delete that reported an error, only a read-back tells "rejected" from "committed, response lost".
+        const presence = await seatPresence(id, playerId)
+        seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
+      }
     } else if (removal.gameFinished) {
       seat = 'retained'
-    }
-    if (seat === 'retained') ctx.seatMayBeRemoved = false
-    if (seat !== 'deleted') {
-      // Roster compensation only when the seat is CONFIRMED to remain; an unknown outcome leaves it as it is.
-      if (seat === 'retained' && wordRushRollback) {
-        const restored = await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+      if (wordRushRollback) {
+        restored = await restoreRoster()
+        // Another removal deleted the seat in the meantime: it is gone, not retained.
+        if (restored === 'no_seat') seat = 'deleted'
         // The seat stayed but the roster could not be put back: not a completed leave (a repeat goes through the
         // finished-game branch, which does not compensate), so say so instead of answering success.
         if (restored === 'failed') {
@@ -2479,6 +2492,9 @@ async function removePlayer(
           )
         }
       }
+    }
+    if (seat === 'retained') ctx.seatMayBeRemoved = false
+    if (seat !== 'deleted') {
       if (removal.error) return NextResponse.json({ error: removal.error }, { status: 500 })
       return retainedLeaveResponse(ctx, id, playerId)
     }

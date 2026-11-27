@@ -25,7 +25,7 @@ import { clearTwoTruthsSessionData } from './two-truths'
 // Minimal Supabase stand-in that records which tables get .delete()'d and whether a
 // spectator reset (players.update({ spectator: false })) was issued. Each builder
 // method is both chainable (.eq().eq()) and awaitable, mirroring supabase-js.
-function makeMockSupabase(errorOnTable?: string) {
+function makeMockSupabase(errorOnTable?: string, gameRow: Record<string, unknown> | null = null) {
   const deletedTables: string[] = []
   let spectatorsReset = false
   const thenable = (result: { error: { message: string } | null }) => {
@@ -48,6 +48,8 @@ function makeMockSupabase(errorOnTable?: string) {
           deletedTables.push(table)
           return thenable(table === errorOnTable ? { error: { message: 'boom' } } : { error: null })
         },
+        // The row a lost finish re-reads to learn what state the room is in now.
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: gameRow, error: null }) }) }),
         update: (vals: Record<string, unknown>) => {
           if (vals.spectator === false) spectatorsReset = true
           return thenable({ error: null })
@@ -147,7 +149,7 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     const finished = await finishExpiredAnonymousSession(m.supabase, EXPIRED)
 
     // The finish won; only the wipe failed, so this must NOT become a failure.
-    expect(finished).toBe(true)
+    expect(finished).toBe('finished')
     expect(markGameFinished).toHaveBeenCalledTimes(1)
     // `internalErrorMessage` logs the raw DB error too, so match on our own line.
     const logged = spy.mock.calls.filter(([m]) => typeof m === 'string' && m.includes('not retried'))
@@ -160,7 +162,7 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     const m = makeMockSupabase()
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe(true)
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
     // Bound to the finished_at the finish wrote and decided in the database, never by a client-side delete.
     expect(m.wipes).toEqual([{ p_game_id: 'GAME', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'anonymous' }])
     expect(m.deletedTables).toEqual([])
@@ -169,11 +171,25 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
 
   it('binds the finish to the session it saw expire (a restarted room is never finished or wiped)', async () => {
     const m = makeMockSupabase()
-    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe(true)
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
     expect(markGameFinished).toHaveBeenCalledWith(m.supabase, 'GAME', undefined, {
       onlyIfActive: true,
       onlySessionStartedAt: EXPIRED.session_started_at,
     })
+  })
+
+  it('a lost session-bound finish whose room was reopened is `superseded` (never reported as finished), and wipes nothing', async () => {
+    markGameFinished.mockResolvedValueOnce({ error: null, won: false })
+    const m = makeMockSupabase(undefined, { status: 'active', finished_at: null })
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('superseded')
+    expect(m.wipes).toEqual([])
+  })
+
+  it('a lost finish whose room is (still) finished is reported finished, and the wipe is bound to that finish', async () => {
+    markGameFinished.mockResolvedValueOnce({ error: null, won: false })
+    const m = makeMockSupabase(undefined, { status: 'finished', finished_at: '2026-02-02T00:00:00.000Z' })
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
+    expect(m.wipes).toEqual([{ p_game_id: 'GAME', p_finished_at: '2026-02-02T00:00:00.000Z', p_kind: 'anonymous' }])
   })
 
   it('reports failure and logs nothing when the finish itself fails', async () => {
@@ -181,7 +197,7 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     const m = makeMockSupabase()
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe(false)
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('error')
     // No cleanup line: the finish failed, so there was no completed finish to report on.
     expect(spy.mock.calls.filter(([m]) => typeof m === 'string' && m.includes('not retried'))).toHaveLength(0)
   })
