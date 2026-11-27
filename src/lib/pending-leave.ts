@@ -1,7 +1,16 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { completePendingRummyRemoval } from '@/lib/rummy'
-import { isCheckersGame, isChessGame, isDraughts10Game, isRummyGame, isWhotGame, parseGameType } from '@/lib/game-types'
+import { removePlayerIfGameOpen } from '@/lib/codewords'
+import {
+  isCheckersGame,
+  isChessGame,
+  isDraughts10Game,
+  isRummyGame,
+  isWhotGame,
+  isWordRushGame,
+  parseGameType,
+} from '@/lib/game-types'
 
 /**
  * A forfeiting leave commits the finished session (and the games row) BEFORE the leaver's seat is
@@ -52,6 +61,15 @@ export async function completePendingFinishedLeave(
   }
 
   if (isWhotGame(gameType)) return completePendingWhotLeave(supabase, gameId, playerId)
+
+  // Word Rush: a leave that won its own last-round finish while that finish's bookkeeping was still owed kept the seat and
+  // recorded the deletion for this exact seat and finish (word_rush_pending_seat_deletions). The database decides
+  // whether it is due now (same finish, bookkeeping completed); anything else answers `game_finished` and the seat stays.
+  if (isWordRushGame(gameType)) {
+    const { error, gameFinished } = await removePlayerIfGameOpen(supabase, gameId, playerId)
+    if (error) return { error, status: 500, deleteAttempted: true }
+    return gameFinished ? null : { error: null }
+  }
 
   if (isChessGame(gameType)) {
     return completePendingForfeit(supabase, 'chess_sessions', ['player_white_id', 'player_black_id'], {

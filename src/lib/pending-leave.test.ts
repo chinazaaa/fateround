@@ -255,3 +255,28 @@ describe('completePendingFinishedLeave: Rummy reports whether the seat DELETE wa
     })
   })
 })
+
+describe('completePendingFinishedLeave: Word Rush (a recorded own-finish deletion)', () => {
+  const client = (answer: { data?: unknown; error?: { message: string } | null }) =>
+    ({ rpc: async () => ({ data: answer.data ?? null, error: answer.error ?? null }) }) as unknown as SupabaseClient
+
+  it('a due deletion (the database deleted the seat) completes the leave', async () => {
+    expect(
+      await completePendingFinishedLeave(client({ data: { status: 'deleted' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toEqual({
+      error: null,
+    })
+  })
+
+  it('nothing due (the game is finished and no deletion is recorded / bookkeeping still owed): null, the seat is retained', async () => {
+    expect(
+      await completePendingFinishedLeave(client({ data: { status: 'game_finished' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toBeNull()
+  })
+
+  it('a database error is reported as an attempted delete', async () => {
+    expect(
+      await completePendingFinishedLeave(client({ error: { message: 'boom' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toMatchObject({ status: 500, deleteAttempted: true })
+  })
+})

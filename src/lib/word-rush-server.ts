@@ -438,6 +438,9 @@ export async function processWordRushPrompt(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .eq('phase', 'awaiting_prompt')
     .eq('turn_index', session.turn_index)
     .select('id')
@@ -566,6 +569,9 @@ export async function processWordRushSubmit(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .eq('phase', 'playing')
     .eq('turn_index', session.turn_index)
     .eq('prompt_index', session.prompt_index)
@@ -663,6 +669,9 @@ async function endTeamTurn(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .eq('turn_index', session.turn_index)
   if (error) return internalFailure('word-rush:end-team-turn', error)
   return {}
@@ -870,6 +879,9 @@ export async function finishWordRushGameEarly(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .neq('status', 'finished')
   if (updateError) return internalFailure('word-rush:finish-early', updateError)
   return {}
@@ -963,6 +975,9 @@ export async function processWordRushAdvance(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .eq('phase', 'intermission')
   if (updateError) return internalFailure('word-rush:advance', updateError)
   return {}
@@ -978,37 +993,66 @@ export async function syncWordRushAfterPlayerRemoved(
   rollback?: WordRushRosterSnapshot
   /** This removal ended the session's last round / the game itself (not an independent finish). */
   ownFinish?: boolean
-  /** The game session this reconciliation was decided against (its own read), for the seat delete to be bound to. */
+  /**
+   * The game session the reconciliation was decided against. The session row it worked on was loaded and verified to
+   * belong to exactly this identity (the game row is read before AND after the load, and every write is bound to the
+   * session id), so an own finish is always paired with the session it really finished.
+   */
   gameSession?: { startedAt: string | null; sessionsPlayed: number | null }
 }> {
-  const { data: game } = await supabase
-    .from('games')
-    .select('status, session_started_at, sessions_played')
-    .eq('id', gameId)
-    .maybeSingle()
-  const gameSession = game
-    ? { startedAt: game.session_started_at ?? null, sessionsPlayed: game.sessions_played ?? null }
-    : undefined
-  const result = await syncWordRushRemoval(supabase, gameId, removedPlayerId, game?.status ?? null)
-  return { ...result, ...(gameSession ? { gameSession } : {}) }
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { data: game } = await supabase
+      .from('games')
+      .select('status, session_started_at, sessions_played')
+      .eq('id', gameId)
+      .maybeSingle()
+    const gameSession = game
+      ? { startedAt: game.session_started_at ?? null, sessionsPlayed: game.sessions_played ?? null }
+      : undefined
+    const result = await syncWordRushRemoval(supabase, gameId, removedPlayerId, game?.status ?? null, gameSession)
+    // A start / replay landed while this reconciled: nothing was written for the stale session, so read again.
+    if (result.stale) continue
+    const { stale: _stale, ...rest } = result
+    void _stale
+    return { ...rest, ...(gameSession ? { gameSession } : {}) }
+  }
+  return { error: 'The game changed while you were leaving — try again', internal: false }
 }
 
 async function syncWordRushRemoval(
   supabase: SupabaseClient,
   gameId: string,
   removedPlayerId: string,
-  gameStatus: string | null
+  gameStatus: string | null,
+  gameSession: { startedAt: string | null; sessionsPlayed: number | null } | undefined
 ): Promise<{
   error?: string
   internal?: boolean
   rollback?: WordRushRosterSnapshot
   ownFinish?: boolean
+  /** The game moved to another session while this ran (nothing was written for the old one). */
+  stale?: boolean
 }> {
   if (gameStatus !== 'active') return {}
 
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }
   if (!session || session.status === 'finished') return {}
+
+  // The session row was loaded after the game row was read: confirm the game is still the same session generation.
+  const { data: again } = await supabase
+    .from('games')
+    .select('session_started_at, sessions_played')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (
+    gameSession &&
+    (!again ||
+      (again.session_started_at ?? null) !== gameSession.startedAt ||
+      (again.sessions_played ?? null) !== gameSession.sessionsPlayed)
+  ) {
+    return { stale: true }
+  }
 
   const newRoster = session.roster.filter((id) => id !== removedPlayerId)
   if (newRoster.length === session.roster.length) return {}
@@ -1043,11 +1087,16 @@ async function syncWordRushRemoval(
       : {}),
   }
 
-  const { error: updateError } = await supabase
+  const { data: updatedRows, error: updateError } = await supabase
     .from('word_rush_sessions')
     .update({ ...sessionPatch, updated_at: new Date().toISOString() })
     .eq('game_id', gameId)
+    // Bound to the session this reconciliation read: a replacement session must never receive its roster / setter.
+    .eq('id', session.id)
+    .select('id')
   if (updateError) return internalFailure('word-rush:remove-player', updateError)
+  // A stale call (the session was replaced) matched nothing: stop, do not go on as if it had changed the old session.
+  if (!updatedRows?.length) return { stale: true }
 
   const updatedSession = { ...session, ...sessionPatch }
 

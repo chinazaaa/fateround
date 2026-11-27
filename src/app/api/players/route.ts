@@ -1936,6 +1936,7 @@ type SettleOutcome = {
   finished_now?: boolean
   finished_at?: string
   result_reason?: string | null
+  session_changed?: boolean
 }
 
 const SETTLE_ATTEMPTS = 3
@@ -2002,8 +2003,14 @@ async function settleHostLeave(
     // nothing for a finish without one (someone else's), runs once for one that is owed (a repeat after a lost response
     // included), and cannot award twice. The session-bound cleanup is idempotent too.
     if (outcome.result_reason === 'host_ended') await resumeHostLeftBookkeeping(admin, h.gameId)
-    // Bound to the finish the settlement observed, never to whichever finish the game has by the time this runs.
-    const cleanup = await completeHostLeftCleanup(admin, h.gameId, { finishedAt: outcome.finished_at })
+    // A finish the settlement only OBSERVED (it did not commit it) under a changed session is another session's finish:
+    // this stale leave has no business closing its rounds or wiping its chat, whatever timestamp it carries. A finish the
+    // settlement itself committed (after a same-generation Start) is this leave's own.
+    const cleanup =
+      !outcome.finished_now && outcome.session_changed
+        ? { finished: true, hostEnded: false, error: null }
+        : // Bound to the finish the settlement observed, never to whichever finish the game has by the time this runs.
+          await completeHostLeftCleanup(admin, h.gameId, { finishedAt: outcome.finished_at })
     // The seat is gone, so a failed cleanup has no later leave to retry it: surface it for an operator.
     if (cleanup.error) console.error(`players: cleanup after host-left finish failed for ${h.gameId}`, cleanup.error)
   }
@@ -2444,7 +2451,9 @@ async function removePlayer(
     if (sync.error) {
       return NextResponse.json({ error: sync.error }, { status: sync.internal ? 500 : 400 })
     }
-    wordRushRollback = sync.rollback
+    // A retry's sync may find the player already off the roster (no new rollback): the earlier one still describes this
+    // player's roster change and is bound to the session it was made on.
+    wordRushRollback = sync.rollback ?? wordRushRollback
     // The identity comes from the reconciliation's own read of the game (not the earlier read above, which a start or a
     // replay may have outdated), so a finish it won is paired with the session it really finished.
     expectedSession = sync.gameSession ?? {
@@ -2472,6 +2481,12 @@ async function removePlayer(
         expectedSession
       )
     let removal = await removeOnce()
+    // An own finish is refused while its bookkeeping marker is owed (the deletion is recorded for this exact seat and
+    // finish). Complete the bookkeeping here if its lease is free, then retry once: usually the marker clears now.
+    if (ownFinish && removal.gameFinished && !removal.error) {
+      const owed = await recoverFinishBookkeeping(getSupabaseAdmin(), id).catch(() => ({ state: 'error' as const }))
+      if (owed.state === 'none' || owed.state === 'done') removal = await removeOnce()
+    }
     // The game was replayed (or started) after the roster was reconciled: reconcile the CURRENT session, then retry.
     for (let attempt = 0; removal.sessionChanged && attempt < 2; attempt++) {
       const failed = await syncWordRush()
