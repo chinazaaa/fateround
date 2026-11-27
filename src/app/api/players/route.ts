@@ -2190,7 +2190,8 @@ async function removePlayer(
       .eq('id', id)
       .maybeSingle()
     // This read is newer than the one that authorised the leave: a finish that landed in between must be seen.
-    if (gameRow?.status === 'finished') (game as { status?: string }).status = 'finished'
+    // (Whatever it says: a Codewords room reopened by Play Again in between must take the removal path, not the retained one.)
+    if (gameRow?.status) (game as { status?: string }).status = gameRow.status
     if (gameRow && gameRow.host_player_id === playerId) {
       leavingHost = {
         gameId: id,
@@ -2425,9 +2426,13 @@ async function removePlayer(
 
   let wordRushRollback: WordRushRosterSnapshot | undefined
   // Set when THIS leave ended the game (the last unanswered player leaving ends the last round): the seat is then
-  // deleted from that finished game, bound to the session the removal inspected, and the roster is not reverted.
+  // deleted from that finished game, bound to the session the removal reconciled, and the roster is not reverted.
   let ownFinish: { startedAt: string | null; sessionsPlayed: number | null } | undefined
-  if (isWordRushGame(gameType)) {
+  // The game session the roster reconciliation was decided against: the seat delete is bound to it, so a replay or a
+  // start that lands in between is reconciled again instead of deleting a seat out of an unreconciled session.
+  let expectedSession: { startedAt: string | null; sessionsPlayed: number | null } | undefined
+  // Reconcile the Word Rush roster for this removal against the CURRENT game; null on success, else the response.
+  const syncWordRush = async (): Promise<NextResponse | null> => {
     const admin = getSupabaseAdmin()
     const { data: before, error: beforeError } = await admin
       .from('games')
@@ -2443,21 +2448,42 @@ async function removePlayer(
       return NextResponse.json({ error: sync.error }, { status: sync.internal ? 500 : 400 })
     }
     wordRushRollback = sync.rollback
-    if (sync.ownFinish) {
-      ownFinish = { startedAt: before.session_started_at ?? null, sessionsPlayed: before.sessions_played ?? null }
+    // The identity comes from the reconciliation's own read of the game (not the earlier read above, which a start or a
+    // replay may have outdated), so a finish it won is paired with the session it really finished.
+    expectedSession = sync.gameSession ?? {
+      startedAt: before.session_started_at ?? null,
+      sessionsPlayed: before.sessions_played ?? null,
     }
+    ownFinish = sync.ownFinish ? expectedSession : undefined
+    return null
+  }
+  if (isWordRushGame(gameType)) {
+    const failed = await syncWordRush()
+    if (failed) return failed
   }
 
   {
     ctx.seatMayBeRemoved = true
     // Joiners mode removes the participant row together with the seat, in the same database transaction.
-    const removal = await removePlayerIfGameOpen(
-      getSupabaseAdmin(),
-      id,
-      playerId,
-      ownFinish,
-      game!.participant_mode === 'joiners' ? player.name : undefined
-    )
+    const removeOnce = () =>
+      removePlayerIfGameOpen(
+        getSupabaseAdmin(),
+        id,
+        playerId,
+        ownFinish,
+        game!.participant_mode === 'joiners' ? player.name : undefined,
+        expectedSession
+      )
+    let removal = await removeOnce()
+    // The game was replayed (or started) after the roster was reconciled: reconcile the CURRENT session, then retry.
+    for (let attempt = 0; removal.sessionChanged && attempt < 2; attempt++) {
+      const failed = await syncWordRush()
+      if (failed) return failed
+      removal = await removeOnce()
+    }
+    if (removal.sessionChanged) {
+      return NextResponse.json({ error: 'The game changed while you were leaving — try again' }, { status: 500 })
+    }
     let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
     // Word Rush: the roster change made for this removal is put back by ONE database step that also decides, under the
     // games + session row locks, whether the seat survived (`restored`), was deleted (`no_seat`: nothing to restore),
