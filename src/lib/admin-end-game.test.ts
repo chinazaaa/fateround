@@ -303,7 +303,8 @@ describe('cleanupFinishedSession — the one session-bound cleanup', () => {
     expect(await cleanupFinishedSession(supabase, 'G', 'two_truths', FINISHED_AT)).toBeNull()
     expect(recorded.roundUpdates).toBe(1)
     expect(recorded.roundBounds).toEqual([FINISHED_AT])
-    expect(revealFinishedTtlRounds).toHaveBeenCalledWith(supabase, 'G', FINISHED_AT)
+    // The database confirmed this IS the current finished session, so no timestamp cutoff is applied (the round and finish clocks differ).
+    expect(revealFinishedTtlRounds).toHaveBeenCalledWith(supabase, 'G')
   })
 
   it.each([
@@ -386,5 +387,43 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
     expect(recorded.roundUpdates).toBe(0)
     expect(recorded.deletes).toEqual([])
     expect(revealFinishedTtlRounds).not.toHaveBeenCalled()
+  })
+})
+
+describe('completeHostLeftCleanup — bound to the finish the caller observed', () => {
+  const row = (extra: Record<string, unknown> = {}) => ({
+    status: 'finished',
+    game_type: 'codewords',
+    result_reason: 'host_ended',
+    finished_at: FINISHED_AT,
+    session_started_at: 'S1',
+    sessions_played: 1,
+    ...extra,
+  })
+
+  it('runs for the observed finish', async () => {
+    const { supabase, recorded } = mockSupabase({ gameRow: row() })
+    expect((await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).error).toBeNull()
+    expect(recorded.deleteBounds).toEqual([FINISHED_AT])
+  })
+
+  it('does NOT run for a later finish (F2) of the same game id', async () => {
+    const { supabase, recorded } = mockSupabase({ gameRow: row({ finished_at: '2030-01-01T00:00:00.000Z' }) })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      hostEnded: false,
+      error: null,
+    })
+    expect(recorded.deletes).toEqual([])
+    expect(recorded.roundUpdates).toBe(0)
+  })
+
+  it('without an observed finish, the captured session identity binds it: a replayed session is left alone', async () => {
+    const mismatched = mockSupabase({ gameRow: row({ sessions_played: 2 }) })
+    await completeHostLeftCleanup(mismatched.supabase, 'G', { session: { startedAt: 'S1', sessionsPlayed: 1 } })
+    expect(mismatched.recorded.deletes).toEqual([])
+    const matched = mockSupabase({ gameRow: row() })
+    await completeHostLeftCleanup(matched.supabase, 'G', { session: { startedAt: 'S1', sessionsPlayed: 1 } })
+    expect(matched.recorded.deleteBounds).toEqual([FINISHED_AT])
   })
 })

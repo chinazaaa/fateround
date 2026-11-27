@@ -287,6 +287,9 @@ begin
   if v_game.status = 'finished'
      and not (p_own_finish
               and v_game.result_reason is null
+              -- The leaver's Word Rush rows (answers, team rows) cascade off the seat and are read by the owed
+              -- post-finish bookkeeping: the seat stays until that has completed (the marker is cleared).
+              and v_game.finish_bookkeeping is null
               and v_game.sessions_played is not distinct from p_sessions_played
               and v_game.session_started_at is not distinct from p_session_started_at) then
     return jsonb_build_object('status', 'game_finished');
@@ -434,7 +437,10 @@ grant execute on function public.word_rush_restore_roster_member(text, uuid, uui
 
 -- Finish the still-active rounds of a FINISHED session, bound to that session in the same transaction: the games row is
 -- locked FOR SHARE (a Play Again / restart UPDATE of it waits) and must still be finished with exactly the finished_at
--- the caller names, so a replayed session's live round is never touched. The started_at cutoff stays as a second bound.
+-- the caller names. While the game is in that state every active round of it belongs to that session: rounds are only
+-- ever created for a game that is not finished (and Play Again deletes the old ones), so no clock comparison between
+-- the application's round timestamps and the database's finished_at is needed (or safe: a skewed app clock would
+-- otherwise leave a live round of the finished session open).
 create or replace function public.finish_rounds_of_finished_session(
   p_game_id text,
   p_finished_at timestamptz
@@ -459,7 +465,7 @@ begin
   end if;
   update public.rounds
     set status = 'finished', ended_at = p_finished_at
-    where game_id = upper(p_game_id) and status = 'active' and started_at <= p_finished_at;
+    where game_id = upper(p_game_id) and status = 'active';
   return jsonb_build_object('status', 'finished_session');
 end;
 $$;
