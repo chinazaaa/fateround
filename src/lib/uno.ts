@@ -1467,102 +1467,50 @@ function seriesAward(
 }
 
 /**
- * No Mercy — a player just crossed the 25-card knockout threshold. Add them to
- * eliminated_player_ids, mark them a spectator so realtime hides their hand, and — when the
- * host chose `last_standing` — end the round if only one player is still standing.
- *
- * Runs OUTSIDE the primary session CAS. Idempotent: if the id is already in the list, the
- * update just no-ops. Skip when the round is already finished.
+ * The knockout of a player whose hand reached the limit, as data: the session bookkeeping (eliminated list, the
+ * hand returned to the draw pile, the status note, and — for `last_standing` — the round end), the writes for the
+ * zeroed hand and the credited setter's stats. Pure, so a move that crosses the limit (a forced draw) can commit it
+ * IN the same transaction as the move instead of as a second step that a finish could overtake.
  */
-async function applyMercyKnockout(
-  supabase: SupabaseClient,
-  gameId: string,
-  playerId: string,
-  playerNames: Map<string, string>,
-  winCondition: UnoNoMercyWin,
-  attributionPlayerId?: string | null
-): Promise<{ error?: string }> {
-  // The knockout write is its own compare-and-swap on a freshly read session. A concurrent write (a leave, the
-  // next player's move) can win it, which would leave the player seated at 25+ cards: retry against the newer
-  // session a few times. A failed read is retried the same way (it is never read as "a small hand"); a failed
-  // write is not retried. A database failure is reported, never swallowed.
-  let failure: string | undefined
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const outcome = await applyMercyKnockoutOnce(
-      supabase,
-      gameId,
-      playerId,
-      playerNames,
-      winCondition,
-      attributionPlayerId
-    )
-    if (outcome === 'done') return {}
-    failure = typeof outcome === 'object' ? outcome.error : undefined
-    if (failure && typeof outcome === 'object' && outcome.final) return { error: failure }
+function planMercyKnockout(input: {
+  state: {
+    turn_order?: string[] | null
+    eliminated_player_ids?: string[] | null
+    finish_order?: string[] | null
+    draw_pile?: UnoCard[] | null
+    status_message?: string | null
   }
-  return failure ? { error: failure } : {}
-}
-
-async function applyMercyKnockoutOnce(
-  supabase: SupabaseClient,
-  gameId: string,
-  playerId: string,
-  playerNames: Map<string, string>,
-  winCondition: UnoNoMercyWin,
-  attributionPlayerId?: string | null
-): Promise<'done' | 'retry' | { error: string; final?: boolean }> {
-  const { data: fresh, error: freshError } = await supabase
-    .from('uno_sessions')
-    .select(
-      'phase, turn_order, eliminated_player_ids, finish_order, updated_at, status_message, draw_pile, discard_pile'
-    )
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (freshError) return { error: internalErrorMessage('uno', freshError) }
-  if (!fresh || fresh.phase === 'finished') return 'done'
-  const already = new Set<string>((fresh.eliminated_player_ids as string[] | null) ?? [])
-  if (already.has(playerId)) return 'done'
-  // Revalidate on EVERY attempt against the current rows: the player must still be seated, and (below) their
-  // current hand must still reach the limit. A newer write (a leave, a rotation) can invalidate either.
-  if (!((fresh.turn_order as string[] | null) ?? []).includes(playerId)) return 'done'
-  const nextEliminated = [...already, playerId]
+  playerId: string
+  koCards: UnoCard[]
+  playerNames: Map<string, string>
+  winCondition: UnoNoMercyWin
+  /** The credited player's CURRENT stats (the plan adds the knockout to them), or null. */
+  attribution: { player_id: string; stats: Record<string, number> } | null
+}): { patch: Partial<UnoSession>; hands: UnoHandWrite[]; endsRound: boolean; nextEliminated: string[] } {
+  const { state, playerId, koCards, playerNames, winCondition, attribution } = input
+  const nextEliminated = [...new Set([...(state.eliminated_player_ids ?? []), playerId])]
   const name = playerName(playerNames, playerId)
-
-  // Return the KO'd player's hand to the draw pile so the deck can keep dealing to
-  // survivors — otherwise the pile shrinks every round and a +10 landing on a near-empty
-  // pile only pays out a partial draw. Shuffled in (not appended) so the returning cards
-  // sit anywhere in the pile. Best-effort: read the fresh hand row and drop it back on
-  // the session in one atomic patch alongside the KO bookkeeping.
-  const { data: koHandRow, error: koHandError } = await supabase
-    .from('uno_player_hands')
-    .select('cards')
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-    .maybeSingle()
-  // A failed read is not a hand below the limit: it must not cancel the knockout (retry, then report).
-  if (koHandError) return { error: internalErrorMessage('uno', koHandError) }
-  const koCards = ((koHandRow?.cards as UnoCard[] | null) ?? []).filter(Boolean)
-  if (koCards.length < UNO_MERCY_HAND_LIMIT) return 'done'
   const note = `${name} hit ${koCards.length} cards — knocked out (High Stakes 25-card limit)`
-  const currentPile = ((fresh.draw_pile as UnoCard[] | null) ?? []).filter(Boolean)
+  // Return the KO'd player's hand to the draw pile so the deck can keep dealing to survivors, shuffled in so the
+  // returning cards sit anywhere in the pile.
+  const currentPile = (state.draw_pile ?? []).filter(Boolean)
   const returnedPile = koCards.length > 0 ? shuffle([...currentPile, ...koCards]) : currentPile
 
   // Standing players = seated - eliminated - already-finished (emptied their hand).
-  const seated = new Set<string>((fresh.turn_order as string[] | null) ?? [])
-  const finished = new Set<string>((fresh.finish_order as string[] | null) ?? [])
+  const seated = new Set<string>(state.turn_order ?? [])
+  const finished = new Set<string>(state.finish_order ?? [])
   const standing = [...seated].filter((id) => !nextEliminated.includes(id) && !finished.has(id))
 
   const endsRound =
     winCondition === 'last_standing' && standing.length <= 1 && (finished.size === 0 || standing.length === 0)
-  const patch: Record<string, unknown> = {
+  const patch: Partial<UnoSession> = {
     eliminated_player_ids: nextEliminated,
     draw_pile: returnedPile,
     status_message:
-      `${fresh.status_message ?? ''} · ${note}${koCards.length > 0 ? ` (${koCards.length} cards returned to the deck)` : ''}`.replace(
+      `${state.status_message ?? ''} · ${note}${koCards.length > 0 ? ` (${koCards.length} cards returned to the deck)` : ''}`.replace(
         /^ · /,
         ''
       ),
-    updated_at: new Date().toISOString(),
   }
   if (endsRound) {
     const winnerId = standing[0] ?? finished.values().next().value ?? null
@@ -1574,61 +1522,111 @@ async function applyMercyKnockoutOnce(
       : `${note} · everyone knocked out — no winner`
   }
 
-  // High Stakes Knockout / Double KO / Mass Extinction: credit the player who inflicted this knockout (the setter
-  // of the fatal draw penalty or the roulette caster). Best-effort — passed in by the caller.
-  let attributionWrite: { player_id: string; stats: Record<string, number> } | null = null
-  if (attributionPlayerId && attributionPlayerId !== playerId) {
-    const { data: attHandRow } = await supabase
-      .from('uno_player_hands')
-      .select('stats')
-      .eq('game_id', gameId)
-      .eq('player_id', attributionPlayerId)
-      .maybeSingle()
+  const hands: UnoHandWrite[] = []
+  if (koCards.length > 0) hands.push({ player_id: playerId, cards: [] })
+  if (attribution) {
+    const stats = { ...attribution.stats }
+    stats.uno_hs_knockouts = (stats.uno_hs_knockouts ?? 0) + 1
+    hands.push({ player_id: attribution.player_id, stats })
+  }
+  return { patch, hands, endsRound, nextEliminated }
+}
+
+/**
+ * Commits a move TOGETHER with the Mercy knockouts its final hands trigger (a forced draw, a 0-rotation, a roulette
+ * reveal, a 7-swap): the session patch, every hand write, the knockout bookkeeping, the spectator flags and the
+ * attribution are ONE transaction, or ONE finish when the knockout ends the round. A finish can therefore never
+ * overtake a required knockout, and a failed write leaves neither the move nor the knockout (nothing is half-done, so
+ * nothing needs a repair step that would replay the move).
+ */
+async function commitMoveWithKnockouts(
+  supabase: SupabaseClient,
+  gameId: string,
+  session: UnoSession,
+  hands: UnoPlayerHand[],
+  playerNames: Map<string, string>,
+  winCondition: UnoNoMercyWin,
+  timerSeconds: number,
+  move: {
+    patch: Partial<UnoSession>
+    hands: UnoHandWrite[]
+    spectatorIds?: string[]
+    /** Players whose hand reached the limit with this move; `attributionId` is credited with the knockout. */
+    knockouts: { playerId: string; cards: UnoCard[]; attributionId: string | null }[]
+  }
+): Promise<{ error?: string; skipped?: boolean }> {
+  let patch: Partial<UnoSession> = { ...move.patch }
+  let writes: UnoHandWrite[] = [...move.hands]
+  const spectators = [...(move.spectatorIds ?? [])]
+  let state = {
+    turn_order: session.turn_order,
+    eliminated_player_ids: session.eliminated_player_ids,
+    finish_order: session.finish_order,
+    draw_pile: (patch.draw_pile ?? session.draw_pile) as UnoCard[] | null,
+    status_message: patch.status_message ?? session.status_message,
+  }
+  let endsRound = false
+  for (const victim of move.knockouts) {
+    if ((state.eliminated_player_ids ?? []).includes(victim.playerId)) continue
+    if (!(state.turn_order ?? []).includes(victim.playerId)) continue
     // Attribution is optional: a setter who has since left has no hand row, and the knockout must still commit.
-    if (attHandRow) {
-      const attStats = { ...((attHandRow.stats as Record<string, number> | null) ?? {}) }
-      attStats.uno_hs_knockouts = (attStats.uno_hs_knockouts ?? 0) + 1
-      attributionWrite = { player_id: attributionPlayerId, stats: attStats }
+    const credited =
+      victim.attributionId && victim.attributionId !== victim.playerId
+        ? hands.some((h) => h.player_id === victim.attributionId)
+          ? victim.attributionId
+          : null
+        : null
+    const plan = planMercyKnockout({
+      state,
+      playerId: victim.playerId,
+      koCards: victim.cards,
+      playerNames,
+      winCondition,
+      attribution: credited
+        ? {
+            player_id: credited,
+            stats: {
+              ...(mergeHandWrites(writes).find((w) => w.player_id === credited)?.stats ??
+                currentUnoStats(hands, credited)),
+            },
+          }
+        : null,
+    })
+    patch = { ...patch, ...plan.patch }
+    writes = [...writes, ...plan.hands]
+    spectators.push(victim.playerId)
+    state = {
+      ...state,
+      eliminated_player_ids: plan.nextEliminated,
+      draw_pile: plan.patch.draw_pile as UnoCard[],
+      status_message: plan.patch.status_message ?? state.status_message,
+    }
+    if (plan.endsRound) {
+      endsRound = true
+      break
     }
   }
-
+  const merged = mergeHandWrites(writes)
   if (endsRound) {
-    // The knockout ends the round: the session, the zeroed hand, the attribution, the series points and the games
-    // flip are ONE transaction (finish_uno_session), so nothing can be published half-done.
-    const { data: handRows, error: tallyError } = await supabase
-      .from('uno_player_hands')
-      .select('*')
-      .eq('game_id', gameId)
-    // An unread tally would award the series winner nothing: stop before the finish.
-    if (tallyError) return { error: internalErrorMessage('uno', tallyError) }
-    const tallyHands = updateHand((handRows as UnoPlayerHand[]) ?? [], playerId, [])
-    const finishedBy = await finishUnoRound(supabase, gameId, fresh, {
+    const finished = await finishUnoRound(supabase, gameId, session, {
       patch,
-      hands: [
-        ...(koCards.length > 0 ? [{ player_id: playerId, cards: [] as UnoCard[] }] : []),
-        ...(attributionWrite ? [attributionWrite] : []),
-      ],
-      series: seriesAward((patch.winner_player_id as string | null) ?? null, tallyHands, nextEliminated.length, fresh),
-      spectatorIds: [playerId],
+      hands: merged,
+      series: seriesAward(
+        (patch.winner_player_id as string | null) ?? null,
+        withHandWrites(hands, merged),
+        (state.eliminated_player_ids ?? []).length,
+        session
+      ),
+      spectatorIds: spectators,
     })
-    if (finishedBy.error) return { error: finishedBy.error, final: true }
-    return finishedBy.won || finishedBy.already ? 'done' : 'retry'
+    return finishOutcome(finished)
   }
-
-  // The knockout (session bookkeeping, the zeroed hand, the spectator flag and the attribution) is ONE move
-  // transaction against the session version it read; a lost claim retries against the newer session.
-  const { updated_at: _updatedAt, ...koPatch } = patch
-  void _updatedAt
-  const knocked = await persistSession(supabase, gameId, koPatch as Partial<UnoSession>, 0, fresh.updated_at, {
-    keepDeadline: true,
-    hands: [
-      ...(koCards.length > 0 ? [{ player_id: playerId, cards: [] as UnoCard[] }] : []),
-      ...(attributionWrite ? [attributionWrite] : []),
-    ],
-    spectatorIds: [playerId],
+  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at, {
+    hands: merged,
+    spectatorIds: spectators.length > 0 ? spectators : undefined,
   })
-  if (knocked.error) return { error: knocked.error, final: true }
-  return knocked.won ? 'done' : 'retry'
+  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
+  return {}
 }
 
 /** Snapshot of every player's hand AFTER the current play + any missed-UNO penalty. */
@@ -1958,31 +1956,19 @@ export async function processUnoPlay(
   const moveHands: UnoHandWrite[] = rotatedWrites
     ? rotatedWrites.map((w) => ({ player_id: w.playerId, cards: w.cards }))
     : [{ player_id: playerId, cards: newHand }, ...(missed ? [{ player_id: missed.playerId, cards: missed.hand }] : [])]
-  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at, {
+  // Mercy: a 0-rotation can hand a seat 25+ cards. Attribute to whoever played the 0; the knockouts commit with the play.
+  const rotationKnockouts =
+    rules.mode === 'no_mercy' && isZero && rotatedWrites
+      ? rotatedWrites
+          .filter((w) => w.playerId !== playerId && w.cards.length >= UNO_MERCY_HAND_LIMIT)
+          .map((w) => ({ playerId: w.playerId, cards: w.cards, attributionId: playerId as string | null }))
+      : []
+  return commitMoveWithKnockouts(supabase, gameId, session, hands, playerNames, rules.noMercyWin, timerSeconds, {
+    patch,
     hands: [...moveHands, { player_id: playerId, stats: moverStats }],
     spectatorIds: wentOut ? [playerId] : undefined,
+    knockouts: rotationKnockouts,
   })
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-  // Mercy: a 0-rotation can hand a seat 25+ cards. Attribute to whoever played the 0.
-  if (rules.mode === 'no_mercy' && isZero && rotatedWrites) {
-    for (const w of rotatedWrites) {
-      if (w.playerId === playerId) continue
-      if (w.cards.length >= UNO_MERCY_HAND_LIMIT) {
-        const knockout1 = await applyMercyKnockout(
-          supabase,
-          gameId,
-          w.playerId,
-          playerNames,
-          rules.noMercyWin,
-          playerId
-        )
-        if (knockout1.error) return { error: knockout1.error }
-      }
-    }
-  }
-
-  return {}
 }
 
 /**
@@ -2500,7 +2486,13 @@ export async function processUnoDraw(
   if (missed) drawHands.push({ player_id: missed.playerId, cards: missed.hand })
 
   // High Stakes attribution folds on the SETTER of the pending penalty (last_play_player_id).
-  if (forced && session.last_play_player_id && session.last_play_player_id !== playerId) {
+  // (a setter who has since left has no hand row: nothing to credit)
+  if (
+    forced &&
+    session.last_play_player_id &&
+    session.last_play_player_id !== playerId &&
+    hands.some((h) => h.player_id === session.last_play_player_id)
+  ) {
     const setterId = session.last_play_player_id
     const setterStats = { ...currentUnoStats(hands, setterId) }
     // Twenty Load: cumulate the count of forced draws this attacker has dealt to THIS victim.
@@ -2512,29 +2504,17 @@ export async function processUnoDraw(
     drawHands.push({ player_id: setterId, stats: setterStats })
   }
 
-  // The session claim, the drawn cards, the missed-UNO penalty and the folded stats commit together.
-  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at, {
+  // Mercy: a No Mercy player who crosses the 25-card threshold is knocked out in THE SAME transaction as the draw (or
+  // the finish it triggers). Attribution goes to whoever played the Draw card that set the pending penalty.
+  const drawKnockouts =
+    rules.mode === 'no_mercy' && newHand.length >= UNO_MERCY_HAND_LIMIT
+      ? [{ playerId, cards: newHand, attributionId: forced ? (session.last_play_player_id ?? null) : null }]
+      : []
+  return commitMoveWithKnockouts(supabase, gameId, session, hands, playerNames, rules.noMercyWin, timerSeconds, {
+    patch,
     hands: drawHands,
+    knockouts: drawKnockouts,
   })
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-  // Mercy: No Mercy players who cross the 25-card threshold are knocked out. This runs after
-  // the session write so realtime shows the draw + the elimination together. Attribution goes
-  // to whoever played the Draw card that set the pending penalty (see last_play_player_id).
-  if (rules.mode === 'no_mercy' && newHand.length >= UNO_MERCY_HAND_LIMIT) {
-    const attributionPlayerId = forced ? (session.last_play_player_id ?? null) : null
-    const knockout2 = await applyMercyKnockout(
-      supabase,
-      gameId,
-      playerId,
-      playerNames,
-      rules.noMercyWin,
-      attributionPlayerId
-    )
-    if (knockout2.error) return { error: knockout2.error }
-  }
-
-  return {}
 }
 
 // ── Keep the drawn card (pass) ──────────────────────────────────────────────────
@@ -2936,29 +2916,21 @@ async function processUnoColorRouletteReveal(
   if (!matched) {
     // Keep revealing — same seat, same phase; the card lands in the hand and the player
     // clicks Draw again for the next reveal.
-    const persisted = await persistSession(
-      supabase,
-      gameId,
-      {
+    // A long unlucky reveal streak can push the target past 25 mid-roulette: the knockout (attribution: the Colour
+    // Roulette caster) commits with the reveal.
+    return commitMoveWithKnockouts(supabase, gameId, session, hands, playerNames, rules.noMercyWin, timerSeconds, {
+      patch: {
         draw_pile: pile,
         discard_pile: discard,
         color_roulette_reveals: revealCount,
         status_message: `${playerName(playerNames, playerId)} revealed a ${cardLabel(card)} — still hunting ${UNO_COLOR_LABELS[color]}`,
       },
-      timerSeconds,
-      session.updated_at,
-      { hands: [{ player_id: playerId, cards: targetHand }] }
-    )
-    if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-    // A long unlucky reveal streak can push the target past 25 mid-roulette — same Mercy
-    // check as the match branch. Attribution: the Colour Roulette caster.
-    if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
-      const casterId = session.last_play_player_id ?? null
-      const knockout3 = await applyMercyKnockout(supabase, gameId, playerId, playerNames, rules.noMercyWin, casterId)
-      if (knockout3.error) return { error: knockout3.error }
-    }
-    return {}
+      hands: [{ player_id: playerId, cards: targetHand }],
+      knockouts:
+        rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT
+          ? [{ playerId, cards: targetHand, attributionId: session.last_play_player_id ?? null }]
+          : [],
+    })
   }
 
   // Match: resolve the roulette. Card lands in hand, required_color persists (the next
@@ -2979,10 +2951,10 @@ async function processUnoColorRouletteReveal(
     rouletteHands.push({ player_id: casterId, stats: casterStats })
   }
 
-  const persisted = await persistSession(
-    supabase,
-    gameId,
-    {
+  // Mercy: revealing a huge stack of cards can push the target past the knockout limit (attribution: the caster); the
+  // knockout commits with the resolution.
+  return commitMoveWithKnockouts(supabase, gameId, session, hands, playerNames, rules.noMercyWin, timerSeconds, {
+    patch: {
       draw_pile: pile,
       discard_pile: discard,
       pending_wild: null,
@@ -2992,19 +2964,12 @@ async function processUnoColorRouletteReveal(
       current_turn_index: nextIndex,
       status_message: status,
     },
-    timerSeconds,
-    session.updated_at,
-    { hands: rouletteHands }
-  )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-  // Mercy: revealing a huge stack of cards can push the target past the knockout limit.
-  // Attribution: the Colour Roulette caster (whoever played the wild that queued this phase).
-  if (rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT) {
-    const knockout4 = await applyMercyKnockout(supabase, gameId, playerId, playerNames, rules.noMercyWin, casterId)
-    if (knockout4.error) return { error: knockout4.error }
-  }
-  return {}
+    hands: rouletteHands,
+    knockouts:
+      rules.mode === 'no_mercy' && targetHand.length >= UNO_MERCY_HAND_LIMIT
+        ? [{ playerId, cards: targetHand, attributionId: casterId }]
+        : [],
+  })
 }
 
 // ── Wild Draw Four challenge ──────────────────────────────────────────────────────
@@ -3234,42 +3199,34 @@ export async function processUnoSwap(
   // A swap can leave a player on exactly one card — they now owe an "UNO" call.
   const swapPending = theirCards.length === 1 ? playerId : myCards.length === 1 ? targetId : null
 
-  const persisted = await persistSession(
-    supabase,
-    gameId,
-    {
+  // Mercy: a 7-swap can hand a player 25+ cards, who is knocked out in the same transaction as the swap. The swapper
+  // CHOSE to take the pile, so no attribution to another player; the target only crosses the threshold if the
+  // swapper's own hand was already at the limit, so attribute that back to the swapper.
+  const swapKnockouts =
+    rules.mode === 'no_mercy'
+      ? [
+          ...(theirCards.length >= UNO_MERCY_HAND_LIMIT
+            ? [{ playerId, cards: theirCards, attributionId: null as string | null }]
+            : []),
+          ...(myCards.length >= UNO_MERCY_HAND_LIMIT
+            ? [{ playerId: targetId, cards: myCards, attributionId: playerId as string | null }]
+            : []),
+        ]
+      : []
+  return commitMoveWithKnockouts(supabase, gameId, session, hands, playerNames, rules.noMercyWin, timerSeconds, {
+    patch: {
       phase: 'playing',
       current_turn_index: nextIndex,
       uno_pending_player: swapPending,
       uno_called: false,
       status_message: `${playerName(playerNames, playerId)} swapped hands with ${playerName(playerNames, targetId)} — ${playerName(playerNames, nextPlayerId)}'s turn`,
     },
-    timerSeconds,
-    session.updated_at,
-    {
-      hands: [
-        { player_id: playerId, cards: theirCards },
-        { player_id: targetId, cards: myCards },
-      ],
-    }
-  )
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-  // Mercy: a 7-swap can hand a player 25+ cards — knock them out. The swapper CHOSE to take
-  // the pile, so no attribution to another player; the target only crosses the threshold if
-  // the swapper's own hand was already at the limit, so attribute that back to the swapper.
-  if (rules.mode === 'no_mercy') {
-    if (theirCards.length >= UNO_MERCY_HAND_LIMIT) {
-      const knockout5 = await applyMercyKnockout(supabase, gameId, playerId, playerNames, rules.noMercyWin, null)
-      if (knockout5.error) return { error: knockout5.error }
-    }
-    if (myCards.length >= UNO_MERCY_HAND_LIMIT) {
-      const knockout6 = await applyMercyKnockout(supabase, gameId, targetId, playerNames, rules.noMercyWin, playerId)
-      if (knockout6.error) return { error: knockout6.error }
-    }
-  }
-
-  return {}
+    hands: [
+      { player_id: playerId, cards: theirCards },
+      { player_id: targetId, cards: myCards },
+    ],
+    knockouts: swapKnockouts,
+  })
 }
 
 // ── UNO call ──────────────────────────────────────────────────────────────────

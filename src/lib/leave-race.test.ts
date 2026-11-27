@@ -860,6 +860,27 @@ describe('removeScrabblePlayer — a reopened lobby', () => {
     expect(await removeScrabblePlayer(makeDb(t).supabase, 'G', 'B', 'B')).toEqual({ error: null })
   })
 
+  it('two leaves of a reopened lobby racing each other both end up out of turn_order (the loser retries)', async () => {
+    const t = scrabbleTables()
+    t.games[0].status = 'waiting'
+    t.scrabble_sessions[0].phase = 'finished'
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'scrabble_sessions' || raced) return
+        raced = true
+        // B's leave commits its seat removal (new version) after C's leave read the session
+        t.scrabble_sessions[0].turn_order = ['A', 'C']
+        t.scrabble_sessions[0].updated_at = '2026-01-01T00:00:05.000Z'
+        t.players = t.players.filter((p) => p.id !== 'B')
+        t.scrabble_player_state = t.scrabble_player_state.filter((x) => x.player_id !== 'B')
+      },
+    })
+    expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A'])
+    expect(t.players.map((p) => p.id)).toEqual(['A'])
+  })
+
   it('a finished (not reopened) game keeps its seats', async () => {
     const t = scrabbleTables()
     t.games[0].status = 'finished'
@@ -1140,48 +1161,162 @@ describe('processUnoDraw — empty pile: no derived write before the session wri
   })
 })
 
-describe('Mercy knockout — derived writes only after its own session write lands', () => {
+describe('Mercy knockout — committed in the same transaction as the move that causes it', () => {
+  const card = (id: string) => ({ id, color: 'red', kind: 'number', value: 5 })
   const swapTables = () => {
     const t = unoTables()
     t.games[0].uno_mode = 'no_mercy'
     t.uno_sessions[0].phase = 'swap_target'
-    const card = (id: string) => ({ id, color: 'red', kind: 'number', value: 5 })
     t.uno_player_hands[1].cards = Array.from({ length: 25 }, (_, i) => card(`B${i}`))
     return t
   }
+  const spy = (db: ReturnType<typeof makeDb>) => {
+    const calls: { name: string; args: Record<string, unknown> }[] = []
+    const realRpc = db.supabase.rpc
+    db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
+      calls.push({ name, args })
+      return realRpc(name, args)
+    }
+    return calls
+  }
 
-  it('a lost knockout write is retried against the newer session and then lands', async () => {
+  it('the swap and the knockout it causes are ONE move call', async () => {
     const t = swapTables()
-    let reads = 0
-    const db = makeDb(t, {
-      afterSessionRead: (tb) => {
-        // Read #1 is the swap's load, read #2 the knockout's first fresh read: a competing write lands after it.
-        if (tb === 'uno_sessions' && ++reads === 2) t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
-      },
-    })
+    const db = makeDb(t)
+    const calls = spy(db)
     expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
-    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(0)
+    expect(calls.filter((c) => c.name === 'apply_uno_move')).toHaveLength(1)
+    expect(t.uno_player_hands[0].cards).toEqual([])
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A'])
     expect(t.players.find((p) => p.id === 'A')!.spectator).toBe(true)
+    // the knocked-out cards went back to the draw pile with the same write
+    expect(((t.uno_sessions[0].draw_pile as unknown[]) ?? []).length).toBe(25)
   })
 
-  it('a knockout that keeps losing runs none of its derived writes', async () => {
+  it('a competing write that wins the claim leaves neither the swap nor the knockout written', async () => {
     const t = swapTables()
+    const before = JSON.stringify(t.uno_player_hands)
     let reads = 0
     const db = makeDb(t, {
       afterSessionRead: (tb) => {
-        if (tb === 'uno_sessions' && ++reads >= 2) t.uno_sessions[0].updated_at = `2026-01-01T00:00:${10 + reads}.000Z`
+        if (tb === 'uno_sessions' && ++reads === 1) t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
       },
     })
-    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
-    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(25)
+    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({ skipped: true })
+    expect(JSON.stringify(t.uno_player_hands)).toBe(before)
     expect(t.players.find((p) => p.id === 'A')!.spectator).toBeUndefined()
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
   })
 
-  it('a landed knockout zeroes the hand and marks a spectator', async () => {
+  it('a failed write leaves neither the move nor the knockout (the move is simply retried, never half-applied)', async () => {
     const t = swapTables()
+    const before = JSON.stringify(t.uno_player_hands)
+    const db = makeDb(t, { failRpc: (n) => n === 'apply_uno_move' })
+    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(JSON.stringify(t.uno_player_hands)).toBe(before)
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
+    expect(t.uno_sessions[0].phase).toBe('swap_target')
+  })
+
+  it('a 0-rotation that hands a seat 25 cards commits the rotation and the knockout together', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_zero_seven: true })
+    Object.assign(t.uno_sessions[0], { top_card: { id: 'top', color: 'red', kind: 'number', value: 3 } })
+    t.uno_player_hands[0].cards = [
+      { id: 'zero', color: 'red', kind: 'number', value: 0 },
+      ...Array.from({ length: 25 }, (_, i) => card(`A${i}`)),
+    ]
+    const db = makeDb(t)
+    const calls = spy(db)
+    expect(await processUnoPlay(db.supabase, 'G', 'A', 'zero')).toEqual({})
+    expect(calls.filter((c) => c.name === 'apply_uno_move')).toHaveLength(1)
+    // direction 1: every hand moves to the next seat, so B received A's 25 cards and is knocked out
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
+    expect(t.uno_player_hands[1].cards).toEqual([])
+    expect(t.players.find((p) => p.id === 'B')!.spectator).toBe(true)
+  })
+
+  it('two knockouts from one swap both land, and both hands return to the pile', async () => {
+    const t = swapTables()
+    t.uno_player_hands[0].cards = Array.from({ length: 25 }, (_, i) => card(`A${i}`))
     expect(await processUnoSwap(makeDb(t).supabase, 'G', 'A', 'B')).toEqual({})
-    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(0)
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A', 'B'])
+    expect((t.uno_sessions[0].draw_pile as unknown[]).length).toBe(50)
+  })
+
+  it('a forced draw that crosses the limit commits the draw and the knockout together, crediting the setter', async () => {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('d1'), card('d2')],
+      draw_penalty: 2,
+      draw_penalty_kind: 'draw2',
+      last_play_player_id: 'C',
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 23 }, (_, i) => ({ ...card(`A${i}`), color: 'blue' }))
+    const db = makeDb(t)
+    const calls = spy(db)
+    expect(await processUnoDraw(db.supabase, 'G', 'A')).toEqual({})
+    expect(calls.filter((c) => c.name === 'apply_uno_move')).toHaveLength(1)
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A'])
+    expect(t.uno_player_hands[0].cards).toEqual([])
     expect(t.players.find((p) => p.id === 'A')!.spectator).toBe(true)
+    expect((t.uno_sessions[0].draw_pile as unknown[]).length).toBe(25)
+    expect(t.uno_sessions[0].current_turn_index).toBe(1)
+    expect((t.uno_player_hands[2].stats as Record<string, number>).uno_hs_knockouts).toBe(1)
+  })
+
+  it('a forced draw that crosses the limit loses cleanly: no draw, no knockout, no stats', async () => {
+    const t = unoTables()
+    t.games[0].uno_mode = 'no_mercy'
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('d1'), card('d2')],
+      draw_penalty: 2,
+      draw_penalty_kind: 'draw2',
+      last_play_player_id: 'C',
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 23 }, (_, i) => ({ ...card(`A${i}`), color: 'blue' }))
+    const before = JSON.stringify(t.uno_player_hands)
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || raced) return
+        raced = true
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+      },
+    })
+    expect(await processUnoDraw(db.supabase, 'G', 'A')).toEqual({ skipped: true })
+    expect(JSON.stringify(t.uno_player_hands)).toBe(before)
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
+  })
+
+  it('a knockout that ends the round is part of the draw finish (one finish call, setter who left is not written)', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_no_mercy_win: 'last_standing' })
+    // Three seats became two when C left earlier (C's hand row and seat are gone); C set the pending penalty.
+    t.uno_sessions[0].turn_order = ['A', 'B']
+    t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id === 'A' || h.player_id === 'B')
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('d1'), card('d2')],
+      draw_penalty: 2,
+      draw_penalty_kind: 'draw2',
+      last_play_player_id: 'C',
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 23 }, (_, i) => ({ ...card(`A${i}`), color: 'blue' }))
+    const db = makeDb(t)
+    const calls = spy(db)
+    expect(await processUnoDraw(db.supabase, 'G', 'A')).toEqual({})
+    expect(calls.filter((c) => c.name === 'apply_uno_move')).toHaveLength(0)
+    const finish = calls.filter((c) => c.name === 'finish_uno_session')
+    expect(finish).toHaveLength(1)
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(t.uno_sessions[0].winner_player_id).toBe('B')
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A'])
+    expect(t.games[0].status).toBe('finished')
+    expect((finish[0].args.p_hand_writes as { player_id: string }[]).map((w) => w.player_id)).not.toContain('C')
   })
 })
 
@@ -1289,72 +1424,6 @@ describe('remaining session writes follow the same rule', () => {
       'G'
     )
     expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
-  })
-})
-
-describe('finish ordering and knockout write failures', () => {
-  it('a knockout write that errors runs none of its derived writes', async () => {
-    const t = unoTables()
-    t.games[0].uno_mode = 'no_mercy'
-    t.uno_sessions[0].phase = 'swap_target'
-    t.uno_player_hands[1].cards = Array.from({ length: 25 }, (_, i) => ({
-      id: `B${i}`,
-      color: 'red',
-      kind: 'number',
-      value: 5,
-    }))
-    let moves = 0
-    // The swap's own move is apply_uno_move #1; the knockout's is #2.
-    const db = makeDb(t, { failRpc: (n) => n === 'apply_uno_move' && ++moves === 2 })
-    // The failed knockout is reported, not swallowed (the swap itself already committed).
-    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
-    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(25)
-    expect(t.players.find((p) => p.id === 'A')!.spectator).toBeUndefined()
-  })
-
-  it('a draw that crosses the limit reports a failed knockout write', async () => {
-    const t = unoTables()
-    t.games[0].uno_mode = 'no_mercy'
-    Object.assign(t.uno_sessions[0], {
-      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
-      draw_pile: [{ id: 'd1', color: 'red', kind: 'number', value: 4 }],
-    })
-    t.uno_player_hands[0].cards = Array.from({ length: 24 }, (_, i) => ({
-      id: `A${i}`,
-      color: 'blue',
-      kind: 'number',
-      value: 5,
-    }))
-    let moves = 0
-    // the draw's own move is apply_uno_move #1; the knockout's is #2
-    const db = makeDb(t, { failRpc: (n) => n === 'apply_uno_move' && ++moves === 2 })
-    expect(await processUnoDraw(db.supabase, 'G', 'A')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
-    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
-  })
-
-  it('a failed hand read is not a hand below the limit: the knockout is retried, then reported, never skipped', async () => {
-    const t = unoTables()
-    t.games[0].uno_mode = 'no_mercy'
-    t.uno_sessions[0].phase = 'swap_target'
-    t.uno_player_hands[1].cards = Array.from({ length: 25 }, (_, i) => ({
-      id: `B${i}`,
-      color: 'red',
-      kind: 'number',
-      value: 5,
-    }))
-    const db = makeDb(t)
-    let armed = false
-    const realRpc = db.supabase.rpc
-    db.supabase.rpc = async (name: string, args: Record<string, unknown>) => {
-      const out = await realRpc(name, args)
-      if (name === 'apply_uno_move') armed = true // the swap committed; the knockout's reads follow
-      return out
-    }
-    const failing = makeDb(t, { failSelect: (tb) => armed && tb === 'uno_player_hands' })
-    failing.supabase.rpc = db.supabase.rpc
-    expect(await processUnoSwap(failing.supabase, 'G', 'A', 'B')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
-    // nobody was knocked out by a misread, and the knocked-out list is untouched
-    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
   })
 })
 
@@ -1553,62 +1622,6 @@ describe('scrabble finish: seated players only, honest rereads and expiry result
   })
 })
 
-describe('Mercy knockout retry revalidates the current rows', () => {
-  const swapTables = () => {
-    const t = unoTables()
-    t.games[0].uno_mode = 'no_mercy'
-    t.uno_sessions[0].phase = 'swap_target'
-    t.uno_player_hands[1].cards = Array.from({ length: 25 }, (_, i) => ({
-      id: `B${i}`,
-      color: 'red',
-      kind: 'number',
-      value: 5,
-    }))
-    return t
-  }
-  // Read #1 is the swap's load, read #2 the knockout's first fresh read; a competing write lands after it.
-  const competing = (t: Tables, change: () => void) => {
-    let reads = 0
-    return makeDb(t, {
-      afterSessionRead: (tb) => {
-        if (tb === 'uno_sessions' && ++reads === 2) {
-          change()
-          t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
-        }
-      },
-    })
-  }
-
-  it('does not knock out a player whose hand no longer reaches the limit', async () => {
-    const t = swapTables()
-    const db = competing(t, () => {
-      // a rotation left A with three cards
-      t.uno_player_hands[0].cards = [{ id: 'x1' }, { id: 'x2' }, { id: 'x3' }]
-    })
-    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
-    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(3)
-    expect(t.players.find((p) => p.id === 'A')!.spectator).toBeUndefined()
-    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
-  })
-
-  it('does not knock out a player who left the turn order', async () => {
-    const t = swapTables()
-    const db = competing(t, () => {
-      t.uno_sessions[0].turn_order = ['B', 'C', 'D']
-    })
-    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
-    expect(t.uno_sessions[0].eliminated_player_ids).toEqual([])
-    expect(t.players.find((p) => p.id === 'A')!.spectator).toBeUndefined()
-  })
-
-  it('keeps retrying when only the version token changed and the hand still qualifies', async () => {
-    const t = swapTables()
-    const db = competing(t, () => {})
-    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
-    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A'])
-  })
-})
-
 describe('every Uno finish site is one finish_uno_session call', () => {
   const num = (id: string, color: string, value: number) => ({ id, color, kind: 'number', value })
   const going = (extra: Record<string, unknown> = {}) => {
@@ -1646,19 +1659,40 @@ describe('every Uno finish site is one finish_uno_session call', () => {
     expect(gone.games[0].uno_series_scores).toEqual({ A: 9 + 6 })
   })
 
-  it('hands are read after the session: a move that commits in between makes the finish claim lose', async () => {
+  it('hands are read only AFTER the session read resolved; a move committing in between makes the finish claim lose', async () => {
     const t = going()
-    let moved = false
-    const db = makeDb(t, {
-      afterSessionRead: (tb) => {
-        if (tb !== 'uno_player_hands' || moved) return
-        moved = true
-        // another request's move committed its session version (and its hands) after our session read
-        t.uno_sessions[0].updated_at = '2026-01-01T00:00:09.000Z'
-        t.uno_player_hands[1].cards = [num('B1', 'blue', 9), num('B2', 'blue', 20)]
-      },
-    })
+    const db = makeDb(t)
+    const log: string[] = []
+    const realFrom = db.supabase.from
+    db.supabase.from = (table: string) => {
+      const b = realFrom(table) as unknown as {
+        then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => unknown
+      }
+      const realThen = b.then.bind(b)
+      if (table === 'uno_sessions') {
+        // Hold the session read pending (a macrotask), so a parallel hands read would start before it resolves.
+        b.then = (res, rej) => {
+          log.push('session:start')
+          return new Promise((resolve) => setTimeout(resolve, 5)).then(() => {
+            const out = realThen(res, rej)
+            log.push('session:done')
+            return out
+          })
+        }
+      }
+      if (table === 'uno_player_hands') {
+        b.then = (res, rej) => {
+          log.push('hands:start')
+          // another request's move commits its session version and its hands before this read returns
+          t.uno_sessions[0].updated_at = '2026-01-01T00:00:09.000Z'
+          t.uno_player_hands[1].cards = [num('B1', 'blue', 9), num('B2', 'blue', 20)]
+          return realThen(res, rej)
+        }
+      }
+      return b as never
+    }
     expect(await processUnoPlay(db.supabase, 'G', 'A', 'A1')).toEqual({ skipped: true })
+    expect(log.indexOf('hands:start')).toBeGreaterThan(log.indexOf('session:done'))
     expect(t.uno_sessions[0].phase).toBe('playing')
     expect(t.games[0].uno_series_scores).toEqual({})
   })
@@ -1951,7 +1985,26 @@ describe('round identity and mover writes around a finish', () => {
     expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
   })
 
-  it('the mover leaving before the move lands does not fail the move', async () => {
+  it('a delayed move whose mover left in between is lost (the leave committed a new session version first)', async () => {
+    const t = chessPass()
+    const db = makeDb(t)
+    spyRpc(db, (name) => {
+      if (name !== 'apply_scrabble_move') return
+      // An active-game leave: the session is rewritten (turn order, turn, new version) BEFORE the state row is deleted.
+      Object.assign(t.scrabble_sessions[0], {
+        turn_order: ['B', 'C'],
+        current_turn_index: 0,
+        updated_at: '2026-02-01T00:00:00.000Z',
+      })
+      t.scrabble_player_state = t.scrabble_player_state.filter((x) => x.player_id !== 'A')
+    })
+    expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({ skipped: true })
+    // the leave's turn stands: the stale move advanced nothing
+    expect(t.scrabble_sessions[0].current_turn_index).toBe(0)
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['B', 'C'])
+  })
+
+  it('a move for a player whose state row is gone (version unchanged) is ignored, not an error', async () => {
     const t = chessPass()
     const db = makeDb(t)
     spyRpc(db, (name) => {
@@ -2073,40 +2126,6 @@ describe('round binding of the Scrabble host finish and expiry', () => {
 })
 
 describe('Uno: optional attribution, committed timer finish, retained seats', () => {
-  const num = (id: string, color: string, value: number) => ({ id, color, kind: 'number', value })
-
-  it('a Mercy knockout that ends the round still commits when the attributed setter has since left', async () => {
-    const t = unoTables()
-    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_no_mercy_win: 'last_standing' })
-    t.uno_sessions[0].phase = 'swap_target'
-    t.uno_sessions[0].turn_order = ['A', 'B']
-    // A (the swapper) holds 25 cards, B three: the swap hands B the 25 and B is knocked out, attributed to A.
-    t.uno_player_hands[0].cards = Array.from({ length: 25 }, (_, i) => num(`A${i}`, 'red', 5))
-    t.uno_player_hands[1].cards = [num('B1', 'red', 5), num('B2', 'red', 5), num('B3', 'red', 5)]
-    let reads = 0
-    const db = makeDb(t, {
-      afterSessionRead: (tb) => {
-        // Read #1 is the swap's load, read #2 the knockout's fresh read: the setter (A) left in between.
-        if (tb === 'uno_sessions' && ++reads === 2)
-          t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id !== 'A')
-      },
-    })
-    const calls: { name: string; args: Record<string, unknown> }[] = []
-    const realRpc = db.supabase.rpc
-    db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
-      calls.push({ name, args })
-      return realRpc(name, args)
-    }
-    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
-    expect(t.uno_sessions[0].phase).toBe('finished')
-    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
-    expect(t.games[0].status).toBe('finished')
-    // The departed setter's attribution is not part of the finish payload at all.
-    const finish = calls.find((c) => c.name === 'finish_uno_session')
-    expect(finish).toBeDefined()
-    expect((finish!.args.p_hand_writes as { player_id: string }[]).map((w) => w.player_id)).not.toContain('A')
-  })
-
   it('a turn expiry whose delegate ended the round on the game timer is a success, not a skip', async () => {
     const t = unoTables()
     t.uno_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'

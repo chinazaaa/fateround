@@ -1227,12 +1227,16 @@ async function removeScrabblePlayerOnce(
   // Lobby, spectator, already-finished, or not in the turn order — just drop their state + row.
   if (reopenedLobby && session) {
     // The finished session still lists the seat: drop it too, so the lobby never shows a seat for a departed player.
-    const { error: seatError } = await supabase
+    // Compare-and-set like every other leave: a concurrent leave that rewrote turn_order first makes this one retry
+    // against the fresh order instead of reporting success while the seat is still listed.
+    const { data: seatUpdated, error: seatError } = await supabase
       .from('scrabble_sessions')
       .update({ turn_order: order.filter((id) => id !== playerId) })
       .eq('game_id', gameId)
       .eq('updated_at', session.updated_at)
+      .select('game_id')
     if (seatError) return { error: internalErrorMessage('scrabble', seatError) }
+    if (!seatUpdated || seatUpdated.length === 0) return 'retry'
   }
   await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
