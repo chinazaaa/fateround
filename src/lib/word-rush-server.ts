@@ -170,7 +170,10 @@ async function runRoundFinalization(
     gameFinishWon = finished.won
     const bookkeeping = finished.won ? finished.bookkeeping : (await recoverFinishBookkeeping(supabase, gameId)).state
     // Only a runner that saw the bookkeeping through may clear the marker (which lets Play Again reset).
-    if (bookkeeping !== 'none' && bookkeeping !== 'done') return { error: 'Game finish is still in progress' }
+    if (bookkeeping !== 'none' && bookkeeping !== 'done') {
+      // The flip is committed even when its bookkeeping is held / still owed: keep reporting the ownership.
+      return { error: 'Game finish is still in progress', gameFinishWon }
+    }
   }
 
   // 4. Everything applied: clear the marker (only for this round).
@@ -975,9 +978,33 @@ export async function syncWordRushAfterPlayerRemoved(
   rollback?: WordRushRosterSnapshot
   /** This removal ended the session's last round / the game itself (not an independent finish). */
   ownFinish?: boolean
+  /** The game session this reconciliation was decided against (its own read), for the seat delete to be bound to. */
+  gameSession?: { startedAt: string | null; sessionsPlayed: number | null }
 }> {
-  const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
-  if (!game || game.status !== 'active') return {}
+  const { data: game } = await supabase
+    .from('games')
+    .select('status, session_started_at, sessions_played')
+    .eq('id', gameId)
+    .maybeSingle()
+  const gameSession = game
+    ? { startedAt: game.session_started_at ?? null, sessionsPlayed: game.sessions_played ?? null }
+    : undefined
+  const result = await syncWordRushRemoval(supabase, gameId, removedPlayerId, game?.status ?? null)
+  return { ...result, ...(gameSession ? { gameSession } : {}) }
+}
+
+async function syncWordRushRemoval(
+  supabase: SupabaseClient,
+  gameId: string,
+  removedPlayerId: string,
+  gameStatus: string | null
+): Promise<{
+  error?: string
+  internal?: boolean
+  rollback?: WordRushRosterSnapshot
+  ownFinish?: boolean
+}> {
+  if (gameStatus !== 'active') return {}
 
   const { session, error, internal } = await loadSession(supabase, gameId)
   if (error) return { error, internal }

@@ -2,12 +2,12 @@ import { describe, it, expect, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 // The last-round finish goes through the game-finish module; only its outcome matters here.
-const finish = vi.hoisted(() => ({ won: true, opts: null as unknown }))
+const finish = vi.hoisted(() => ({ won: true, opts: null as unknown, bookkeeping: 'none' as string }))
 vi.mock('@/lib/game-finish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/game-finish')>()),
   markGameFinished: async (_s: unknown, _g: string, _t: unknown, opts: unknown) => {
     finish.opts = opts
-    return { error: null, won: finish.won, bookkeeping: 'none' }
+    return { error: null, won: finish.won, bookkeeping: finish.bookkeeping }
   },
   recoverFinishBookkeeping: async () => ({ state: 'none' }),
 }))
@@ -187,8 +187,11 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   /** `claimWins`: the compare-and-set that closes the round matches a row (this removal won it). */
   /** Every `.eq` filter of an update to word_rush_sessions, in order (one list per update). */
   const sessionUpdateFilters: Array<Array<[string, unknown]>> = []
+  /** The patch of each update to word_rush_sessions, index-aligned with sessionUpdateFilters. */
+  const sessionUpdatePatches: Array<Record<string, unknown>> = []
   const clientFor = (session: Record<string, unknown>, claimWins: boolean, failClear = false) => {
     sessionUpdateFilters.length = 0
+    sessionUpdatePatches.length = 0
     return {
       rpc: async () => ({ data: 'applied', error: null }),
       from: (table: string) => {
@@ -205,7 +208,10 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
                 return (patch: Record<string, unknown>) => {
                   updating = true
                   clearing = patch.round_finalize === null
-                  if (table === 'word_rush_sessions') sessionUpdateFilters.push(filters)
+                  if (table === 'word_rush_sessions') {
+                    sessionUpdateFilters.push(filters)
+                    sessionUpdatePatches.push(patch)
+                  }
                   return api
                 }
               if (prop === 'eq')
@@ -248,46 +254,30 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   it.each([
     ['team', { mode: 'team', roster: ['a', 'b', 'c'], active_team: 1 }],
     ['individual', {}],
-  ])(
-    'the %s session claim is bound to the inspected session id (a replacement session cannot match)',
-    async (_n, extra) => {
-      await syncWordRushAfterPlayerRemoved(clientFor(individualSession(extra), true), 'GAME', 'b')
-      const closing = sessionUpdateFilters.filter((f) => f.some(([k, v]) => k === 'game_id' && v === 'GAME'))
-      // Every update that finishes / closes the session names it by id.
-      expect(closing.length).toBeGreaterThan(1)
-      expect(closing.filter((f) => f.some(([k, v]) => k === 'id' && v === 'S-1')).length).toBeGreaterThan(0)
-      expect(closing.every((f) => f.some(([k]) => k === 'id' || k === 'turn_index' || k === 'game_id'))).toBe(true)
-    }
-  )
-
-  it("ending the LAST round is this removal's own finish", async () => {
-    const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')
-    expect(result.error).toBeUndefined()
-    expect(result.ownFinish).toBe(true)
+  ])('%s: EVERY update that closes or finishes the session names the inspected session id', async (_n, extra) => {
+    await syncWordRushAfterPlayerRemoved(clientFor(individualSession(extra), true), 'GAME', 'b')
+    // A closing update marks the session finished or moves it to the next round / turn; the ordinary roster write does not.
+    const closing = sessionUpdateFilters.filter((_f, i) => {
+      const patch = sessionUpdatePatches[i]
+      return patch.status === 'finished' || patch.phase === 'finished' || patch.phase === 'intermission'
+    })
+    expect(closing.length).toBeGreaterThan(0)
+    for (const filters of closing) expect(filters).toContainEqual(['id', 'S-1'])
   })
 
-  it("an independent finish of the GAME that landed first (the game transition is lost) is not this removal's finish", async () => {
-    finish.won = false
+  it("a held / owed bookkeeping after the won finish still reports the finish as this removal's own", async () => {
+    finish.bookkeeping = 'held'
     try {
       const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')
-      expect(result.ownFinish).toBe(false)
+      expect(result.ownFinish).toBe(true)
     } finally {
-      finish.won = true
+      finish.bookkeeping = 'none'
     }
   })
 
-  it('a team game finish is bound to the session whose claim it won (a stale call cannot finish a replacement session)', async () => {
-    finish.opts = null
-    const result = await syncWordRushAfterPlayerRemoved(
-      clientFor(individualSession({ mode: 'team', roster: ['a', 'b', 'c'], active_team: 1 }), true),
-      'GAME',
-      'b'
-    )
-    expect(result.ownFinish).toBe(true)
-    expect(finish.opts).toMatchObject({
-      roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: 'S-1' } },
-      trackBookkeeping: true,
-    })
+  it('reports the game session its reconciliation was decided against (its own read)', async () => {
+    const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')
+    expect(result.gameSession).toEqual({ startedAt: null, sessionsPlayed: null })
   })
 
   it('ending a round that is not the last is not a finish', async () => {

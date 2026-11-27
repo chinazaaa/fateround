@@ -148,6 +148,12 @@ begin
     return jsonb_build_object('status', 'nominated', 'nominee', v_successor, 'session_changed', v_changed);
   end if;
 
+  -- A replay (Play Again) is another session: an older leave never finishes it (the stale-lobby cron / idle reaper end a
+  -- hostless one). A game that merely STARTED (same sessions_played) is still the session the leave inspected.
+  if v_game.sessions_played is distinct from p_sessions_played then
+    return jsonb_build_object('status', 'settled', 'session_changed', true);
+  end if;
+
   -- Nobody left to hand it to: end the game, with its reason in the same statement.
   v_now := now();
   update public.games
@@ -267,7 +273,10 @@ create or replace function public.remove_player_if_game_open(
   p_sessions_played integer default null,
   -- Joiners mode: the participant row that goes with the seat. Deleted in the same transaction, under the same lock,
   -- so a finish either keeps BOTH rows or loses to the delete of both (never one without the other).
-  p_participant_name text default null
+  p_participant_name text default null,
+  -- Reject (`session_changed`) when the game is NOT finished but is no longer the session the caller inspected (a replay or a
+  -- start landed after the caller reconciled it): the caller reconciles the current session and retries.
+  p_check_session boolean default false
 )
 returns jsonb
 language plpgsql
@@ -296,6 +305,11 @@ begin
               and v_game.session_started_at is not distinct from p_session_started_at) then
     return jsonb_build_object('status', 'game_finished');
   end if;
+  if v_game.status <> 'finished' and p_check_session
+     and (v_game.sessions_played is distinct from p_sessions_played
+          or v_game.session_started_at is distinct from p_session_started_at) then
+    return jsonb_build_object('status', 'session_changed');
+  end if;
   -- The seat first; the participant row goes only when THIS call removed the seat (a call for an absent seat removes
   -- nothing, so it can never take a participant row of someone else who now holds the same name). The seat's own
   -- participant_id is read before the delete; the name is only the fallback for a seat that has none. One transaction.
@@ -322,8 +336,8 @@ begin
 end;
 $$;
 
-revoke execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text) from public, anon, authenticated;
-grant execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text) to service_role;
+revoke execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean) from public, anon, authenticated;
+grant execute on function public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean) to service_role;
 
 -- Two Truths start: ONE transaction under the games row lock. It re-checks that the game is still waiting and that
 -- every submitter still has a seat (and that enough of them remain) BEFORE it writes anything, then creates the

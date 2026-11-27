@@ -141,6 +141,15 @@ update public.games set host_user_id = '22222222-2222-2222-2222-222222222222' wh
 select pg_temp.assert_eq('9c finished_now', pg_temp.settle('STD')->>'finished_now', 'true');
 select pg_temp.assert_eq('9c other user linkage kept', (pg_temp.g('STD')).host_user_id, '22222222-2222-2222-2222-222222222222'::uuid);
 
+-- 9d. A REPLAYED session (sessions_played differs) is never finished by an older leave, even with nobody left to hand it
+--     to; a game that merely STARTED (same sessions_played) still is.
+select pg_temp.mk('STT', 'active');
+delete from public.players where id in (pg_temp.early('STT'), pg_temp.late('STT'));
+update public.games set sessions_played = 5 where id = 'STT';
+select pg_temp.assert_eq('9d replay: settled, not finished', pg_temp.settle('STT', true, 1)->>'status', 'settled');
+select pg_temp.assert_eq('9d replay: still active', (pg_temp.g('STT')).status, 'active');
+select pg_temp.assert_eq('9d the same session (sessions_played equal) is finished', pg_temp.settle('STT', true, 5)->>'status', 'finished');
+
 -- 10. A game that is gone, and NULL arguments.
 select pg_temp.assert_eq('10 missing', public.settle_host_leave('NOPE1', pg_temp.hostid('ST1'), null, null, 1, false)->>'status', 'game_missing');
 do $$ begin
@@ -304,13 +313,15 @@ select pg_temp.assert_eq('14b bookkeeping completed: deleted',
 select pg_temp.mk('STR', 'active');
 insert into public.participants (game_id, name) values ('STR', 'Late'), ('STR', 'Early');
 -- The seat's OWN participant row goes (by participant_id), never a same-named participant of someone else.
-update public.players set participant_id = (select id from public.participants where game_id = 'STR' and name = 'Late') where id = pg_temp.late('STR');
-insert into public.participants (game_id, name) values ('STR', 'Late');
+create temp table pt_ids as select (select id from public.participants where game_id = 'STR' and name = 'Late') as linked, gen_random_uuid() as other;
+insert into public.participants (id, game_id, name) select other, 'STR', 'Late' from pt_ids;
+update public.players set participant_id = (select linked from pt_ids) where id = pg_temp.late('STR');
 select pg_temp.assert_eq('14c deleted', public.remove_player_if_game_open('STR', pg_temp.late('STR'), false, null, null, 'Late')->>'status', 'deleted');
-select pg_temp.assert_eq('14c the seat own participant (by id) is gone, the same-named other one is not', (select count(*) from public.participants where game_id = 'STR' and name = 'Late'), 1::bigint);
+select pg_temp.assert_eq('14c the seat own (linked) participant is gone', (select count(*) from public.participants where id = (select linked from pt_ids)), 0::bigint);
+select pg_temp.assert_eq('14c the same-named OTHER participant survives', (select count(*) from public.participants where id = (select other from pt_ids)), 1::bigint);
 -- A call for an ABSENT seat removes no participant at all.
 select pg_temp.assert_eq('14c absent seat: deleted answer', public.remove_player_if_game_open('STR', pg_temp.late('STR'), false, null, null, 'Late')->>'status', 'deleted');
-select pg_temp.assert_eq('14c absent seat: no participant removed', (select count(*) from public.participants where game_id = 'STR' and name = 'Late'), 1::bigint);
+select pg_temp.assert_eq('14c absent seat: no participant removed', (select count(*) from public.participants where id = (select other from pt_ids)), 1::bigint);
 select pg_temp.assert_eq('14c other participant kept', (select count(*) from public.participants where game_id = 'STR' and name = 'Early'), 1::bigint);
 select pg_temp.assert_eq('14c seat gone', (select count(*) from public.players where id = pg_temp.late('STR')), 0::bigint);
 update public.games set status = 'finished' where id = 'STR';
@@ -325,13 +336,22 @@ exception when raise_exception then
   if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
 
+-- 14d. check_session: a live game that is no longer the session the caller reconciled is not deleted from.
+select pg_temp.mk('ST_', 'active');
+select pg_temp.assert_eq('14d same session: deleted', public.remove_player_if_game_open('ST_', pg_temp.late('ST_'), false, (pg_temp.g('ST_')).session_started_at, (pg_temp.g('ST_')).sessions_played, null, true)->>'status', 'deleted');
+update public.games set sessions_played = sessions_played + 1 where id = 'ST_';
+select pg_temp.assert_eq('14d replayed: session_changed', public.remove_player_if_game_open('ST_', pg_temp.early('ST_'), false, null, 1, null, true)->>'status', 'session_changed');
+select pg_temp.assert_eq('14d replayed: seat kept', (select count(*) from public.players where id = pg_temp.early('ST_')), 1::bigint);
+select pg_temp.assert_eq('14d started (session_started_at moved): session_changed', public.remove_player_if_game_open('ST_', pg_temp.early('ST_'), false, '2001-01-01T00:00:00Z', (pg_temp.g('ST_')).sessions_played, null, true)->>'status', 'session_changed');
+select pg_temp.assert_eq('14d without the flag nothing is checked', public.remove_player_if_game_open('ST_', pg_temp.early('ST_'), false, '2001-01-01T00:00:00Z', 1)->>'status', 'deleted');
+
 -- 15. Lock modes (the two-session behaviour is in settle-host-leave-locks.sh): the election locks the candidate FOR NO KEY
 --     UPDATE, the nominee eligibility check locks the nominee the same way, and a removal locks the game row FOR NO KEY
 --     UPDATE (FOR SHARE let two concurrent removals deadlock).
 select pg_temp.assert_eq('15 election lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'for no key update;', true);
 select pg_temp.assert_eq('15 nominee check lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'spectator = false\s+(--[^\n]*\n\s*)*for no key update\s+\)\)', true);
-select pg_temp.assert_eq('15 removal lock', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text)'::regprocedure) ~* 'upper\(p_game_id\) for no key update', true);
-select pg_temp.assert_eq('15 removal does not take FOR SHARE', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text)'::regprocedure) ~* 'for share', false);
+select pg_temp.assert_eq('15 removal lock', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean)'::regprocedure) ~* 'upper\(p_game_id\) for no key update', true);
+select pg_temp.assert_eq('15 removal does not take FOR SHARE', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean)'::regprocedure) ~* 'for share', false);
 
 -- 16. start_two_truths_game: ONE transaction under the games row lock. It checks the lobby and the submitted seats
 --     BEFORE writing anything (a rejected start writes nothing: no rounds, no keys, no flags), then creates the rounds

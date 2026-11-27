@@ -700,22 +700,29 @@ export async function removePlayerIfGameOpen(
    */
   ownFinish?: { startedAt: string | null; sessionsPlayed: number | null },
   /** Joiners mode: the participant row (by name) that goes with the seat, deleted in the same transaction. */
-  participantName?: string
-): Promise<{ error: string | null; gameFinished: boolean }> {
+  participantName?: string,
+  /**
+   * Word Rush: the session the caller reconciled the roster against. A live game that is no longer that session answers
+   * `sessionChanged` and nothing is deleted, so the caller can reconcile the CURRENT session first.
+   */
+  expectedSession?: { startedAt: string | null; sessionsPlayed: number | null }
+): Promise<{ error: string | null; gameFinished: boolean; sessionChanged?: boolean }> {
+  const identity = expectedSession ?? ownFinish
   const { data, error } = await supabase.rpc('remove_player_if_game_open', {
     p_game_id: gameId,
     p_player_id: playerId,
     ...(participantName !== undefined ? { p_participant_name: participantName } : {}),
-    ...(ownFinish
-      ? {
-          p_own_finish: true,
-          p_session_started_at: ownFinish.startedAt,
-          p_sessions_played: ownFinish.sessionsPlayed,
-        }
-      : {}),
+    ...(ownFinish ? { p_own_finish: true } : {}),
+    ...(identity ? { p_session_started_at: identity.startedAt, p_sessions_played: identity.sessionsPlayed } : {}),
+    ...(expectedSession ? { p_check_session: true } : {}),
   })
   if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
-  return { error: null, gameFinished: (data as { status?: string } | null)?.status === 'game_finished' }
+  const status = (data as { status?: string } | null)?.status
+  return {
+    error: null,
+    gameFinished: status === 'game_finished',
+    ...(status === 'session_changed' ? { sessionChanged: true } : {}),
+  }
 }
 
 export async function removeCodewordsPlayer(

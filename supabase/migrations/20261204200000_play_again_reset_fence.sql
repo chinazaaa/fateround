@@ -138,6 +138,12 @@ begin
     return jsonb_build_object('status', 'settled', 'reset_in_progress', true, 'session_changed', v_changed);
   end if;
 
+  -- A replay (Play Again) is another session: an older leave never finishes it (the stale-lobby cron / idle reaper end a
+  -- hostless one). A game that merely STARTED (same sessions_played) is still the session the leave inspected.
+  if v_game.sessions_played is distinct from p_sessions_played then
+    return jsonb_build_object('status', 'settled', 'session_changed', true);
+  end if;
+
   -- Nobody left to hand it to: end the game, with its reason in the same statement.
   v_now := now();
   update public.games
