@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   roundMismatch: false,
   afterStatus: 'active' as string,
   afterRound: 3 as number,
+  rereadError: false,
   reads: 0,
 }))
 vi.mock('@/lib/uno', () => ({
@@ -39,7 +40,9 @@ vi.mock('@/lib/supabase-admin', () => {
                       sessions_played: 3,
                     },
                   }
-                : { data: { status: state.afterStatus, sessions_played: state.afterRound, session_started_at: 'x' } }
+                : state.rereadError
+                  ? { data: null, error: { message: 'boom' } }
+                  : { data: { status: state.afterStatus, sessions_played: state.afterRound, session_started_at: 'x' } }
             },
           }),
         }),
@@ -61,6 +64,7 @@ describe('POST /api/games/[code]/expire-uno', () => {
     state.finishError = false
     state.roundMismatch = false
     state.afterRound = 3
+    state.rereadError = false
   })
 
   it('a landed finish answers success', async () => {
@@ -89,6 +93,12 @@ describe('POST /api/games/[code]/expire-uno', () => {
     state.afterStatus = 'finished'
     expect((await call()).status).toBe(409)
     expect(state.reads).toBe(1)
+  })
+
+  it('a failed status reread is a 500, not a conflict', async () => {
+    state.finished = false
+    state.rereadError = true
+    expect((await call()).status).toBe(500)
   })
 
   it('a lost claim whose reread shows a DIFFERENT finished round is a 409, not a success', async () => {

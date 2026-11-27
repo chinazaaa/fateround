@@ -154,6 +154,12 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad, 'games_flipped', false);
   end if;
+  -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
+  begin
+    perform jsonb_populate_record(null::public.uno_sessions, p_session_patch);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value', 'games_flipped', false);
+  end;
 
   -- Every hand write: an object, a non-null uuid-shaped player_id that holds a hand row in THIS game, only known keys,
   -- and no player twice.
@@ -190,9 +196,12 @@ begin
   end if;
 
   -- A NULL element matches no player, so it is rejected by the same test.
-  if p_spectator_ids is not null and exists (
-       select 1 from unnest(p_spectator_ids) sid
-       where not exists (select 1 from public.players p where p.id = sid and p.game_id = v_id)
+  if p_spectator_ids is not null and (
+       array_ndims(p_spectator_ids) > 1
+       or exists (
+         select 1 from unnest(p_spectator_ids) sid
+         where not exists (select 1 from public.players p where p.id = sid and p.game_id = v_id)
+       )
      ) then
     return jsonb_build_object('status', 'invalid', 'reason', 'spectators', 'games_flipped', false);
   end if;
@@ -298,6 +307,12 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
   end if;
+  -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
+  begin
+    perform jsonb_populate_record(null::public.uno_sessions, p_session_patch);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end;
   if p_session_patch->>'phase' = 'finished' then
     return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
   end if;
@@ -316,7 +331,8 @@ begin
   if (select count(distinct (e->>'player_id')::uuid) from jsonb_array_elements(p_hand_writes) e) <> jsonb_array_length(p_hand_writes) then
     return jsonb_build_object('status', 'invalid', 'reason', 'hand_write_duplicate');
   end if;
-  if p_spectator_ids is not null and array_position(p_spectator_ids, null) is not null then
+  if p_spectator_ids is not null
+     and (array_ndims(p_spectator_ids) > 1 or exists (select 1 from unnest(p_spectator_ids) sid where sid is null)) then
     return jsonb_build_object('status', 'invalid', 'reason', 'spectators');
   end if;
 
@@ -348,3 +364,48 @@ $$;
 
 revoke execute on function public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[]) from public, anon, authenticated;
 grant execute on function public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[]) to service_role;
+
+-- A Team-Up leave commits the departure (membership in left_player_ids) BEFORE it deletes the leaver's rows. If that
+-- cleanup failed, a repeat leave on the finished round completes it here, in ONE transaction that checks, under the
+-- same games / session locks, that the marked departure still belongs to the finished round it validated: a rematch
+-- replaces the session (the marker is gone), so cleanup never deletes a new round's hand or seat. Unmarked players
+-- (finishers, winners) are never touched.
+create or replace function public.complete_uno_departure(
+  p_game_id text,
+  p_player_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_session public.uno_sessions%rowtype;
+begin
+  if p_game_id is null or p_player_id is null then
+    raise exception 'complete_uno_departure: game id and player id are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  perform 1 from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'none', 'reason', 'game_missing');
+  end if;
+  select * into v_session from public.uno_sessions where game_id = v_id for update;
+  if not found or v_session.phase <> 'finished' or jsonb_typeof(v_session.left_player_ids) is distinct from 'array'
+     or not (v_session.left_player_ids ? p_player_id::text) then
+    return jsonb_build_object('status', 'none');
+  end if;
+  if not exists (select 1 from public.players p where p.id = p_player_id and p.game_id = v_id) then
+    return jsonb_build_object('status', 'none');
+  end if;
+
+  delete from public.uno_player_hands where game_id = v_id and player_id = p_player_id;
+  delete from public.players where id = p_player_id and game_id = v_id;
+  return jsonb_build_object('status', 'completed');
+end;
+$$;
+
+revoke execute on function public.complete_uno_departure(text, uuid) from public, anon, authenticated;
+grant execute on function public.complete_uno_departure(text, uuid) to service_role;

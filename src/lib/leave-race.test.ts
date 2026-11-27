@@ -1268,6 +1268,58 @@ describe('Mercy knockout — committed in the same transaction as the move that 
     expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
   })
 
+  const kind = (id: string, k: string) => ({ id, color: 'red', kind: k })
+
+  it('a Multi-Play chain that makes the MOVER draw builds the draw on the post-play hand', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_multi_play_mode: 'same_color' })
+    // Two seats: Skip, Draw Two, Skip skips the other seat, so the Draw Two lands back on the mover.
+    t.uno_sessions[0].turn_order = ['A', 'B']
+    t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id === 'A' || h.player_id === 'B')
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('d1'), card('d2'), card('d3')],
+    })
+    t.uno_player_hands[0].cards = [kind('s1', 'skip'), kind('x2', 'draw2'), kind('s2', 'skip'), card('keep')]
+    expect(await processUnoPlayMulti(makeDb(t).supabase, 'G', 'A', ['s1', 'x2', 's2'])).toEqual({})
+    const ids = (t.uno_player_hands[0].cards as { id: string }[]).map((c) => c.id).sort()
+    // the played cards are NOT restored to the hand: it is the kept card plus the two drawn ones
+    expect(ids).toContain('keep')
+    expect(ids).toHaveLength(3)
+    expect(ids).not.toContain('s1')
+    expect(ids).not.toContain('x2')
+    expect(ids).not.toContain('s2')
+  })
+
+  it('a Multi-Play Draw Two chain that pushes the drawer to the limit knocks them out in the same move', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_multi_play_mode: 'same_color' })
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('d1'), card('d2'), card('d3')],
+    })
+    t.uno_player_hands[0].cards = [kind('x2', 'draw2'), kind('s2', 'skip'), card('keep')]
+    // B is next: Draw Two lands on B (23 cards + 2 = 25), the trailing Skip skips the seat after.
+    t.uno_player_hands[1].cards = Array.from({ length: 23 }, (_, i) => ({ ...card(`B${i}`), color: 'blue' }))
+    const db = makeDb(t)
+    const calls = spy(db)
+    expect(await processUnoPlayMulti(db.supabase, 'G', 'A', ['x2', 's2'])).toEqual({})
+    expect(calls.filter((c) => c.name === 'apply_uno_move')).toHaveLength(1)
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
+    expect(t.uno_player_hands[1].cards).toEqual([])
+    expect(t.players.find((p) => p.id === 'B')!.spectator).toBe(true)
+    // a draw that stays below the limit is the ordinary move: no knockout
+    const small = unoTables()
+    Object.assign(small.games[0], { uno_mode: 'no_mercy', uno_multi_play_mode: 'same_color' })
+    Object.assign(small.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [card('d1'), card('d2'), card('d3')],
+    })
+    small.uno_player_hands[0].cards = [kind('x2', 'draw2'), kind('s2', 'skip'), card('keep')]
+    expect(await processUnoPlayMulti(makeDb(small).supabase, 'G', 'A', ['x2', 's2'])).toEqual({})
+    expect(small.uno_sessions[0].eliminated_player_ids).toEqual([])
+  })
+
   it('a 0-rotation that hands a seat 25 cards commits the rotation and the knockout together', async () => {
     const t = unoTables()
     Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_zero_seven: true })
@@ -1713,24 +1765,24 @@ describe('every Uno finish site is one finish_uno_session call', () => {
     const t = going()
     const db = makeDb(t)
     const log: string[] = []
+    let releaseSession!: () => void
+    const sessionGate = new Promise<void>((resolve) => (releaseSession = resolve))
     const realFrom = db.supabase.from
     db.supabase.from = (table: string) => {
       const b = realFrom(table) as unknown as {
+        maybeSingle: () => Promise<unknown>
         then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => unknown
       }
-      const realThen = b.then.bind(b)
       if (table === 'uno_sessions') {
-        // Hold the session read pending (a macrotask), so a parallel hands read would start before it resolves.
-        b.then = (res, rej) => {
+        const realMaybe = b.maybeSingle.bind(b)
+        // The session read stays pending on a deferred promise until the test releases it.
+        b.maybeSingle = () => {
           log.push('session:start')
-          return new Promise((resolve) => setTimeout(resolve, 5)).then(() => {
-            const out = realThen(res, rej)
-            log.push('session:done')
-            return out
-          })
+          return sessionGate.then(() => realMaybe()).then((out) => (log.push('session:done'), out))
         }
       }
       if (table === 'uno_player_hands') {
+        const realThen = b.then.bind(b)
         b.then = (res, rej) => {
           log.push('hands:start')
           // another request's move commits its session version and its hands before this read returns
@@ -1741,7 +1793,12 @@ describe('every Uno finish site is one finish_uno_session call', () => {
       }
       return b as never
     }
-    expect(await processUnoPlay(db.supabase, 'G', 'A', 'A1')).toEqual({ skipped: true })
+    const pending = processUnoPlay(db.supabase, 'G', 'A', 'A1')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    // While the session read is pending, a parallel implementation would already have started the hands read.
+    expect(log).toEqual(['session:start'])
+    releaseSession()
+    expect(await pending).toEqual({ skipped: true })
     expect(log.indexOf('hands:start')).toBeGreaterThan(log.indexOf('session:done'))
     expect(t.uno_sessions[0].phase).toBe('playing')
     expect(t.games[0].uno_series_scores).toEqual({})

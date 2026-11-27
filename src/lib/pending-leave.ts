@@ -149,40 +149,17 @@ async function completePendingForfeit(
 }
 
 /**
- * Uno Team-Up: a leave keeps the leaver's seat in turn_order (teams derive from seat parity) and COMMITS the departure
- * as membership in left_player_ids before it deletes the rows. A seat in left_player_ids whose player row is still
- * there is therefore pending cleanup; a finisher or a seat that never left is not in that list and stays retained.
+ * Uno Team-Up: a leave keeps the leaver's seat in turn_order and COMMITS the departure as membership in left_player_ids
+ * before it deletes the rows. `complete_uno_departure` finishes a failed cleanup in one transaction that re-checks, under
+ * the games / session locks, that the marked departure still belongs to the finished round (a rematch replaces the
+ * session, so it never deletes a new round's rows). Unmarked seats (finishers, winners) stay retained (`none` -> null).
  */
 async function completePendingUnoLeave(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string
 ): Promise<PendingLeaveResult | null> {
-  const { data: session, error: sessionError } = await supabase
-    .from('uno_sessions')
-    .select('left_player_ids')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (sessionError) return fail('uno', sessionError)
-  if (!session || !((session as { left_player_ids?: string[] | null }).left_player_ids ?? []).includes(playerId)) {
-    return null
-  }
-
-  const { data: seat, error: seatError } = await supabase
-    .from('players')
-    .select('id')
-    .eq('id', playerId)
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (seatError) return fail('uno', seatError)
-  if (!seat) return null
-
-  const { error: handError } = await supabase
-    .from('uno_player_hands')
-    .delete()
-    .eq('game_id', gameId)
-    .eq('player_id', playerId)
-  if (handError) return fail('uno', handError)
-  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return error ? fail('uno', error) : { error: null }
+  const { data, error } = await supabase.rpc('complete_uno_departure', { p_game_id: gameId, p_player_id: playerId })
+  if (error) return fail('uno', error)
+  return (data as { status?: string } | null)?.status === 'completed' ? { error: null } : null
 }

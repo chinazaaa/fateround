@@ -2132,7 +2132,14 @@ export async function processUnoPlayMulti(
     // The immediate target draws now and loses their turn; play continues past them + the skips.
     const drawerIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1 + skipsBefore, direction)
     const drawerId = session.turn_order[drawerIndex]
-    const drawerBase = missed && missed.playerId === drawerId ? missed.hand : handForPlayer(hands, drawerId)
+    // The draw builds on the hand AFTER this play when the drawer is the mover (a Skip - Draw Two - Skip chain in a
+    // two-seat game comes back to them), and on the missed-UNO penalty hand when that is the drawer.
+    const drawerBase =
+      drawerId === playerId
+        ? newHand
+        : missed && missed.playerId === drawerId
+          ? missed.hand
+          : handForPlayer(hands, drawerId)
     const drawResult = drawCardsWithRefill(basePile, discardPile, penalty)
     autoDraw = { playerId: drawerId, hand: [...drawerBase, ...drawResult.drawn] }
     const nextIndex = unoNextTurnIndex(session, hands, drawerIndex, 1 + skipsAfter, direction)
@@ -2204,13 +2211,17 @@ export async function processUnoPlayMulti(
     return finishOutcome(finished)
   }
 
-  const persisted = await persistSession(supabase, gameId, patch, timerSeconds, session.updated_at, {
+  // Mercy: an auto-resolved Draw Two chain that pushes the drawer to the limit knocks them out in the same transaction
+  // as the play (attribution: whoever played the chain).
+  return commitMoveWithKnockouts(supabase, gameId, session, hands, playerNames, rules.noMercyWin, timerSeconds, {
+    patch,
     hands: handWrites,
     spectatorIds: wentOut ? [playerId] : undefined,
+    knockouts:
+      rules.mode === 'no_mercy' && autoDraw && autoDraw.hand.length >= UNO_MERCY_HAND_LIMIT
+        ? [{ playerId: autoDraw.playerId, cards: autoDraw.hand, attributionId: playerId }]
+        : [],
   })
-  if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
-
-  return {}
 }
 
 // ── Draw ──────────────────────────────────────────────────────────────────────

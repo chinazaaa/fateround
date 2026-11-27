@@ -35,11 +35,13 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
   if (!finish.won) {
     // The finish lost its claim. Success only when the SAME round is confirmed finished (another finisher won); a
     // game that is still running (a move won the claim) or a different round (a rematch) is a conflict, not a failure.
-    const { data: after } = await supabase
+    const { data: after, error: rereadError } = await supabase
       .from('games')
       .select('status, sessions_played, session_started_at')
       .eq('id', gameId)
       .maybeSingle()
+    // A failed reread says nothing about the round: that is a failure, not a conflict.
+    if (rereadError) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
     const sameRound =
       !!after &&
       (after.sessions_played ?? null) === (game.sessions_played ?? null) &&

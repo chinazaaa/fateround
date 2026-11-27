@@ -138,6 +138,12 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad, 'games_flipped', false);
   end if;
+  -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
+  begin
+    perform jsonb_populate_record(null::public.scrabble_sessions, p_session_patch);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value', 'games_flipped', false);
+  end;
 
   -- Every state write: an object, a non-null uuid-shaped player_id that has a state row in THIS game, only known keys
   -- with the right types, and no player twice.
@@ -264,6 +270,12 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
   end if;
+  -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
+  begin
+    perform jsonb_populate_record(null::public.scrabble_sessions, p_session_patch);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end;
   if p_session_patch->>'phase' = 'finished' then
     return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
   end if;
@@ -317,3 +329,113 @@ $$;
 
 revoke execute on function public.apply_scrabble_move(text, timestamptz, jsonb, jsonb) from public, anon, authenticated;
 grant execute on function public.apply_scrabble_move(text, timestamptz, jsonb, jsonb) to service_role;
+
+-- Dealing a round (a start or a rematch) is ONE transaction under the games row lock: the previous racks and the
+-- session are replaced together (a failed deal leaves the previous result intact), a second overlapping deal finds the
+-- round already `playing` and answers `in_progress` instead of interleaving its racks and bag with the first, and a
+-- seat whose player row is gone (a leave cleaning up a reopened lobby) is `invalid` before anything is written.
+create or replace function public.deal_scrabble_session(
+  p_game_id text,
+  p_session_row jsonb,
+  p_state_rows jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_session public.scrabble_sessions%rowtype;
+  v_exists boolean;
+  v_bad text;
+  v_cols text;
+  v_elem jsonb;
+begin
+  if p_game_id is null or p_session_row is null or p_state_rows is null then
+    raise exception 'deal_scrabble_session: game id, session row and state rows are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  perform 1 from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
+  end if;
+  select * into v_session from public.scrabble_sessions where game_id = v_id for update;
+  v_exists := found;
+  -- Never re-deal a round in progress (it would reset every score); a finished round is re-dealt by a rematch.
+  if v_exists and v_session.phase = 'playing' then
+    return jsonb_build_object('status', 'in_progress');
+  end if;
+
+  if jsonb_typeof(p_session_row) <> 'object' or jsonb_typeof(p_state_rows) <> 'array'
+     or jsonb_array_length(p_state_rows) = 0 or p_session_row->>'phase' is distinct from 'playing' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
+  end if;
+  select string_agg(k, ',') into v_bad
+    from jsonb_object_keys(p_session_row) as k
+    where k in ('id', 'game_id', 'created_at', 'updated_at')
+       or not exists (
+         select 1 from information_schema.columns c
+         where c.table_schema = 'public' and c.table_name = 'scrabble_sessions' and c.column_name = k
+       );
+  if v_bad is not null then
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_column: ' || v_bad);
+  end if;
+  begin
+    perform jsonb_populate_record(null::public.scrabble_sessions, p_session_row);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_value');
+  end;
+
+  for v_elem in select * from jsonb_array_elements(p_state_rows) loop
+    if jsonb_typeof(v_elem) <> 'object'
+       or jsonb_typeof(v_elem->'player_id') is distinct from 'string'
+       or (v_elem->>'player_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or exists (
+         select 1 from jsonb_object_keys(v_elem) k
+         where k not in ('player_id', 'rack', 'score', 'player_order', 'clock_ms_remaining', 'timed_out')
+       )
+       or (v_elem ? 'rack' and jsonb_typeof(v_elem->'rack') <> 'array')
+       or (v_elem ? 'score' and (jsonb_typeof(v_elem->'score') <> 'number' or (v_elem->>'score') !~ '^-?[0-9]{1,9}$'))
+       or (v_elem ? 'player_order' and (jsonb_typeof(v_elem->'player_order') <> 'number' or (v_elem->>'player_order') !~ '^-?[0-9]{1,9}$'))
+       or (v_elem ? 'clock_ms_remaining' and (
+            jsonb_typeof(v_elem->'clock_ms_remaining') not in ('number', 'null')
+            or (jsonb_typeof(v_elem->'clock_ms_remaining') = 'number' and (v_elem->>'clock_ms_remaining') !~ '^-?[0-9]{1,9}$')))
+       or (v_elem ? 'timed_out' and jsonb_typeof(v_elem->'timed_out') <> 'boolean')
+       or not exists (
+         select 1 from public.players p where p.id = (v_elem->>'player_id')::uuid and p.game_id = v_id
+       ) then
+      return jsonb_build_object('status', 'invalid', 'reason', 'state_row');
+    end if;
+  end loop;
+  if (select count(distinct (e->>'player_id')::uuid) from jsonb_array_elements(p_state_rows) e) <> jsonb_array_length(p_state_rows) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'state_row_duplicate');
+  end if;
+
+  delete from public.scrabble_player_state where game_id = v_id;
+  insert into public.scrabble_player_state (game_id, player_id, rack, score, player_order, clock_ms_remaining, timed_out)
+    select v_id, (e->>'player_id')::uuid, coalesce(e->'rack', '[]'::jsonb), coalesce((e->>'score')::integer, 0),
+           coalesce((e->>'player_order')::integer, 0), (e->>'clock_ms_remaining')::integer,
+           coalesce((e->>'timed_out')::boolean, false)
+    from jsonb_array_elements(p_state_rows) e;
+
+  select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_row) as k;
+  if v_exists then
+    execute format(
+      'update public.scrabble_sessions s set (%1$s) = (select %1$s from jsonb_populate_record(null::public.scrabble_sessions, $1)) where s.game_id = $2',
+      v_cols
+    ) using p_session_row, v_id;
+  else
+    execute format(
+      'insert into public.scrabble_sessions (game_id, %1$s) select $2, %1$s from jsonb_populate_record(null::public.scrabble_sessions, $1)',
+      v_cols
+    ) using p_session_row, v_id;
+  end if;
+
+  return jsonb_build_object('status', 'dealt');
+end;
+$$;
+
+revoke execute on function public.deal_scrabble_session(text, jsonb, jsonb) from public, anon, authenticated;
+grant execute on function public.deal_scrabble_session(text, jsonb, jsonb) to service_role;

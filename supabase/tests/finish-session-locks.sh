@@ -60,22 +60,26 @@ insert into public.games (id, title, host_token, game_type, status, uno_series_s
   values ('FINLU$S', 'lock test U', 'tok-finlu$S', 'uno', 'active', true, 1000);
 insert into public.players (id, game_id, name) values ('$P1', 'FINLU$S', 'A'), ('$P2', 'FINLU$S', 'B');
 insert into public.uno_sessions (game_id, turn_order, phase) values ('FINLU$S', array['$P1'::uuid, '$P2'::uuid], 'playing');
-insert into public.uno_player_hands (game_id, player_id, cards, player_order) values ('FINLU$S', '$P1', '[]', 0), ('FINLU$S', '$P2', '[{"id":"x"}]', 1);
+insert into public.uno_player_hands (game_id, player_id, cards, player_order) values ('FINLU$S', '$P1', '[{"id":"initial"}]', 0), ('FINLU$S', '$P2', '[{"id":"x"}]', 1);
 SQL
 VER=$(psqlq -c "select updated_at from public.uno_sessions where game_id = 'FINLU$S'")
-CALL_U="select public.finish_uno_session('FINLU$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P1\",\"cards\":[]}]'::jsonb, '{\"winner_id\":\"$P1\",\"points\":50}'::jsonb, null, null)->>'status'"
+# Same expected version and the same series award in both calls; the hand payloads differ (initial / first / second).
+CALL_U="select public.finish_uno_session('FINLU$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P1\",\"cards\":[{\"id\":\"first\"}]}]'::jsonb, '{\"winner_id\":\"$P1\",\"points\":50}'::jsonb, null, null)->>'status'"
+CALL_U2="select public.finish_uno_session('FINLU$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P1\",\"cards\":[{\"id\":\"second\"}]}]'::jsonb, '{\"winner_id\":\"$P1\",\"points\":50}'::jsonb, null, null)->>'status'"
 
 start_gate
 PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_U; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
 wait_for "first finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_U=$(mktemp)
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_U" >"$OUT_U" 2>&1 &
+PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_U2" >"$OUT_U" 2>&1 &
 wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
 open_gate
 wait_for "second finisher answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 [ "$(cat "$OUT_U")" = "already_finished" ] || fail "case A: expected the second finish to be 'already_finished', got '$(cat "$OUT_U")'"
 [ "$(psqlq -c "select uno_series_scores->>'$P1' from public.games where id = 'FINLU$S'")" = "50" ] || fail "case A: series points were not awarded exactly once"
 [ "$(psqlq -c "select status from public.games where id = 'FINLU$S'")" = "finished" ] || fail "case A: game not finished"
+# the first call's hand is written (not skipped) and the second call did not rewrite it
+[ "$(psqlq -c "select cards->0->>'id' from public.uno_player_hands where game_id = 'FINLU$S' and player_id = '$P1'")" = "first" ] || fail "case A: expected the FIRST call's hand to remain (skipped first write or repeated second write)"
 
 # ---- Case B: Scrabble ----------------------------------------------------------------------------------------
 psqlq <<SQL

@@ -266,6 +266,11 @@ begin
   perform pg_temp.assert_eq('6d explicit null is compared (game has a value)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"sessions_played":null}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d older time limit (extension happened)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"game_duration_seconds":60}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d older time limit reason', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"game_duration_seconds":60}'::jsonb)->>'reason', 'round');
+  perform pg_temp.assert_eq('6d finish: bad patch value', public.finish_uno_session('GUD', v_v, '{"winner_player_id":"not-a-uuid"}'::jsonb, '[]'::jsonb, null, null, null,
+    '{"sessions_played":3,"session_started_at":"2026-02-01T00:00:00Z","game_duration_seconds":120}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d finish: 2-d spectators', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null,
+    array[[pg_temp.pid(131), pg_temp.pid(132)], [pg_temp.pid(133), pg_temp.pid(131)]]::uuid[], null,
+    '{"sessions_played":3,"session_started_at":"2026-02-01T00:00:00Z","game_duration_seconds":120}'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6d nothing written', (pg_temp.sess('GUD')).phase, 'playing');
   -- the round check also guards the already-finished branch
   update public.uno_sessions set phase = 'finished' where game_id = 'GUD';
@@ -333,6 +338,13 @@ begin
   -- a hand write for a player who left is ignored, not rejected
   perform pg_temp.assert_eq('6f departed player ignored', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb,
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'cards', '[]'::jsonb)))->>'status', 'applied');
+  perform pg_temp.assert_eq('6f departed player: the other game''s hand is untouched', pg_temp.hand('GUC', 11, 1), '[{"id":"a1"}]'::jsonb);
+  -- a patch value that cannot be converted is `invalid`, not a raised error; valid uuids and empty patches stay accepted
+  perform pg_temp.assert_eq('6f bad patch value', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{"winner_player_id":"not-a-uuid"}'::jsonb, '[]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f valid uuid patch value', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, jsonb_build_object('winner_player_id', pg_temp.pid(151)), '[]'::jsonb)->>'status', 'applied');
+  -- a multidimensional spectator array is `invalid` (never an array-dimension error), a flat valid one is accepted
+  perform pg_temp.assert_eq('6f 2-d spectators with a null', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb, array[[pg_temp.pid(151), pg_temp.pid(152)], [pg_temp.pid(153), null]]::uuid[])->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f 2-d spectators', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb, array[[pg_temp.pid(151), pg_temp.pid(152)], [pg_temp.pid(153), pg_temp.pid(151)]]::uuid[])->>'status', 'invalid');
   -- a finished round accepts no move
   update public.uno_sessions set phase = 'finished' where game_id = 'GUF';
   perform pg_temp.assert_eq('6f finished round', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb)->>'status', 'lost');
@@ -372,5 +384,39 @@ select pg_temp.assert_eq('priv service_role', has_function_privilege('service_ro
 select pg_temp.assert_eq('priv move anon', has_function_privilege('anon', 'public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[])', 'execute'), false);
 select pg_temp.assert_eq('priv move authenticated', has_function_privilege('authenticated', 'public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[])', 'execute'), false);
 select pg_temp.assert_eq('priv move service_role', has_function_privilege('service_role', 'public.apply_uno_move(text, timestamptz, jsonb, jsonb, uuid[])', 'execute'), true);
+
+-- 6h. complete_uno_departure: finishes a committed Team-Up departure on a FINISHED round, nothing else.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GUH', 17, false);
+  v_out jsonb;
+begin
+  -- not finished yet / not marked: nothing is touched
+  update public.uno_sessions set left_player_ids = jsonb_build_array(pg_temp.pid(171)::text) where game_id = 'GUH';
+  perform pg_temp.assert_eq('6h round not finished', public.complete_uno_departure('GUH', pg_temp.pid(171))->>'status', 'none');
+  update public.uno_sessions set phase = 'finished' where game_id = 'GUH';
+  perform pg_temp.assert_eq('6h unmarked seat stays', public.complete_uno_departure('GUH', pg_temp.pid(172))->>'status', 'none');
+  perform pg_temp.assert_eq('6h unmarked rows untouched', (select count(*) from public.players where id = pg_temp.pid(172)), 1::bigint);
+  perform pg_temp.assert_eq('6h unknown game', public.complete_uno_departure('NOPE', pg_temp.pid(171))->>'status', 'none');
+  -- marked + finished: the hand and the seat go
+  v_out := public.complete_uno_departure('GUH', pg_temp.pid(171));
+  perform pg_temp.assert_eq('6h completed', v_out->>'status', 'completed');
+  perform pg_temp.assert_eq('6h seat removed', (select count(*) from public.players where id = pg_temp.pid(171)), 0::bigint);
+  perform pg_temp.assert_eq('6h hand removed', (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(171)), 0::bigint);
+  perform pg_temp.assert_eq('6h others untouched', (select count(*) from public.uno_player_hands where game_id = 'GUH'), 2::bigint);
+  perform pg_temp.assert_eq('6h repeat is a no-op', public.complete_uno_departure('GUH', pg_temp.pid(171))->>'status', 'none');
+  -- a rematch replaced the session (the marker is gone): a stale cleanup deletes nothing of the new round
+  update public.uno_sessions set phase = 'playing', left_player_ids = '[]'::jsonb where game_id = 'GUH';
+  perform pg_temp.assert_eq('6h replaced round', public.complete_uno_departure('GUH', pg_temp.pid(172))->>'status', 'none');
+  perform pg_temp.assert_eq('6h replaced round rows untouched', (select count(*) from public.uno_player_hands where game_id = 'GUH'), 2::bigint);
+  begin perform public.complete_uno_departure(null, pg_temp.pid(172)); raise exception 'FAIL 6h: null game id accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.complete_uno_departure('GUH', null); raise exception 'FAIL 6h: null player id accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+
+select pg_temp.assert_eq('priv departure anon', has_function_privilege('anon', 'public.complete_uno_departure(text, uuid)', 'execute'), false);
+select pg_temp.assert_eq('priv departure authenticated', has_function_privilege('authenticated', 'public.complete_uno_departure(text, uuid)', 'execute'), false);
+select pg_temp.assert_eq('priv departure service_role', has_function_privilege('service_role', 'public.complete_uno_departure(text, uuid)', 'execute'), true);
 
 rollback;

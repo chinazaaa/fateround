@@ -543,22 +543,6 @@ export async function initializeScrabbleGame(
     return { error: `Need ${SCRABBLE_MIN_PLAYERS}-${SCRABBLE_MAX_PLAYERS} players to start` }
   }
 
-  const { data: existing } = await supabase
-    .from('scrabble_sessions')
-    .select('id, phase')
-    .eq('game_id', gameId)
-    .maybeSingle()
-
-  // Never re-deal a game that's already in progress: initialization deletes every
-  // player_state row and re-inserts with score 0, so re-running it mid-game wipes
-  // everyone's score back to zero. A rematch legitimately re-deals a *finished*
-  // session; only a live ('playing') one must be protected. This guards the shared
-  // choke point so no caller — regular start or a tournament round re-start — can
-  // erase a live game's scores.
-  if (existing && (existing as { phase?: string }).phase === 'playing') {
-    return { error: 'Game already in progress' }
-  }
-
   const timerSeconds = await loadTimerSeconds(supabase, gameId)
   const { mode: clockMode, clockSeconds } = await loadClockConfig(supabase, gameId)
   const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
@@ -589,15 +573,8 @@ export async function initializeScrabbleGame(
     turn_deadline_at: isChess ? null : computeDeadline(timerSeconds, now),
     clock_mode: clockMode,
     turn_started_at: isChess ? new Date(now).toISOString() : null,
-    updated_at: new Date().toISOString(),
   }
-
-  // Re-deal player racks from scratch (handles rematch by clearing prior rows). The states go in BEFORE the session
-  // is (re)written: a seat whose player row is gone (a leave cleaning up a reopened lobby) fails the insert here, and
-  // the round is never published with a seat that has no state or player row.
-  await supabase.from('scrabble_player_state').delete().eq('game_id', gameId)
   const stateRows = turnOrder.map((pid, idx) => ({
-    game_id: gameId,
     player_id: pid,
     rack: racks.get(pid) ?? [],
     score: 0,
@@ -605,14 +582,27 @@ export async function initializeScrabbleGame(
     clock_ms_remaining: isChess ? clockSeconds * 1000 : null,
     timed_out: false,
   }))
-  const { error: stateError } = await supabase.from('scrabble_player_state').insert(stateRows)
-  if (stateError) return { error: internalErrorMessage('scrabble', stateError) }
 
-  const { error: sessionError } = existing
-    ? await supabase.from('scrabble_sessions').update(sessionRow).eq('game_id', gameId)
-    : await supabase.from('scrabble_sessions').insert({ ...sessionRow, game_id: gameId })
-  if (sessionError) return { error: internalErrorMessage('scrabble', sessionError) }
-
+  // The deal is ONE database transaction under the games row lock (deal_scrabble_session): the previous racks and the
+  // session are replaced together (a failed deal leaves the previous result intact), an overlapping second deal finds
+  // the round already `playing` and never interleaves its racks with the first (this is also the guard that a live
+  // game is never re-dealt, which would reset every score), and a seat whose player row is gone is rejected up front.
+  const { data, error } = await supabase.rpc('deal_scrabble_session', {
+    p_game_id: gameId,
+    p_session_row: sessionRow,
+    p_state_rows: stateRows,
+  })
+  if (error) return { error: internalErrorMessage('scrabble', error) }
+  const outcome = (data ?? {}) as { status?: string; reason?: string }
+  if (outcome.status === 'in_progress') return { error: 'Game already in progress' }
+  if (outcome.status !== 'dealt') {
+    return {
+      error: internalErrorMessage(
+        'scrabble',
+        `deal_scrabble_session rejected the call: ${outcome.reason ?? outcome.status}`
+      ),
+    }
+  }
   return {}
 }
 

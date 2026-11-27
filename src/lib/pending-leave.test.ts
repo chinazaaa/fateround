@@ -190,28 +190,52 @@ describe('completePendingFinishedLeave: whot', () => {
 })
 
 describe('completePendingFinishedLeave: Uno Team-Up', () => {
-  const build = () =>
-    makeDb({
-      uno_sessions: [{ game_id: 'G', phase: 'finished', left_player_ids: ['a'] }],
-      uno_player_hands: [
-        { game_id: 'G', player_id: 'a' },
-        { game_id: 'G', player_id: 'b' },
-      ],
-      players: [seat('a', 'Ann'), seat('b', 'Bob')],
-    })
+  // The cleanup is ONE database function (complete_uno_departure): it re-checks the marked departure under the
+  // games / session locks. The stand-in below mirrors its contract.
+  const build = (session: Row | null) => {
+    const calls: { name: string; args: Row }[] = []
+    const client = {
+      rpc: async (name: string, args: Row) => {
+        calls.push({ name, args })
+        const marked =
+          session &&
+          session.phase === 'finished' &&
+          (session.left_player_ids as string[]).includes(String(args.p_player_id))
+        return { data: { status: marked ? 'completed' : 'none' }, error: null }
+      },
+    } as unknown as SupabaseClient
+    return { client, calls }
+  }
 
-  it('finishes the cleanup of a committed departure (left_player_ids) whose rows are still there', async () => {
-    const db = build()
+  it('finishes the cleanup of a committed departure through the function', async () => {
+    const db = build({ phase: 'finished', left_player_ids: ['a'] })
     expect(await completePendingFinishedLeave(db.client, 'uno', 'G', 'a', 'Ann')).toEqual({ error: null })
-    expect(ids(db.tables)).toEqual(['b'])
-    expect(db.tables.uno_player_hands.map((h) => h.player_id)).toEqual(['b'])
-    // a repeat has nothing left to do
-    expect(await completePendingFinishedLeave(db.client, 'uno', 'G', 'a', 'Ann')).toBeNull()
+    expect(db.calls).toEqual([{ name: 'complete_uno_departure', args: { p_game_id: 'G', p_player_id: 'a' } }])
   })
 
-  it('leaves an unmarked seat (a finisher / winner) retained', async () => {
-    const db = build()
-    expect(await completePendingFinishedLeave(db.client, 'uno', 'G', 'b', 'Bob')).toBeNull()
-    expect(ids(db.tables)).toEqual(['a', 'b'])
+  it('an unmarked seat (a finisher / winner) or a replaced round stays retained (null)', async () => {
+    expect(
+      await completePendingFinishedLeave(
+        build({ phase: 'finished', left_player_ids: ['a'] }).client,
+        'uno',
+        'G',
+        'b',
+        'Bob'
+      )
+    ).toBeNull()
+    expect(
+      await completePendingFinishedLeave(
+        build({ phase: 'playing', left_player_ids: ['a'] }).client,
+        'uno',
+        'G',
+        'a',
+        'Ann'
+      )
+    ).toBeNull()
+  })
+
+  it('a database failure is a 500', async () => {
+    const client = { rpc: async () => ({ data: null, error: { message: 'boom' } }) } as unknown as SupabaseClient
+    expect(await completePendingFinishedLeave(client, 'uno', 'G', 'a', 'Ann')).toMatchObject({ status: 500 })
   })
 })
