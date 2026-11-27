@@ -8,6 +8,7 @@ import { fetchGamePlayerLimits, lobbyMaxPlayersFromGame } from '@/lib/game-limit
 import { firstAvailableMonopolyToken } from '@/lib/monopoly-tokens'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { gameSupportsBots } from '@/lib/bots-in-room'
+import { playerJoinRejection } from '@/lib/player-join-errors'
 import { getProfileFromRequest } from '@/lib/identity-server'
 import { EXTRA_BOT_COST } from '@/lib/coins/shop-catalog'
 
@@ -141,7 +142,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
     p_max_players: maxPlayers,
     p_extra_bot_cost: EXTRA_BOT_COST,
   })
-  if (rpcErr) return NextResponse.json({ error: internalErrorMessage('bots', rpcErr) }, { status: 500 })
+  if (rpcErr) {
+    // The players_enforce_join_rules trigger is the authority on seats and names: a human join that
+    // committed between this route's reads and the RPC's insert surfaces here, not as a 500.
+    const rejection = playerJoinRejection(rpcErr)
+    if (rejection === 'lobby_full') {
+      return NextResponse.json({ error: 'Room is already full — remove a player first' }, { status: 400 })
+    }
+    if (rejection === 'name_taken') {
+      return NextResponse.json({ error: 'A player just took that bot name — try again' }, { status: 409 })
+    }
+    return NextResponse.json({ error: internalErrorMessage('bots', rpcErr) }, { status: 500 })
+  }
 
   const outcome =
     (rpcResult as {
