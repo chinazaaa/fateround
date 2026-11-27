@@ -198,6 +198,7 @@ begin
   -- A NULL element matches no player, so it is rejected by the same test.
   if p_spectator_ids is not null and (
        array_ndims(p_spectator_ids) > 1
+       or (select count(distinct sid) from unnest(p_spectator_ids) sid) <> cardinality(p_spectator_ids)
        or exists (
          select 1 from unnest(p_spectator_ids) sid
          where not exists (select 1 from public.players p where p.id = sid and p.game_id = v_id)
@@ -332,7 +333,9 @@ begin
     return jsonb_build_object('status', 'invalid', 'reason', 'hand_write_duplicate');
   end if;
   if p_spectator_ids is not null
-     and (array_ndims(p_spectator_ids) > 1 or exists (select 1 from unnest(p_spectator_ids) sid where sid is null)) then
+     and (array_ndims(p_spectator_ids) > 1
+          or (select count(distinct sid) from unnest(p_spectator_ids) sid) <> cardinality(p_spectator_ids)
+          or exists (select 1 from unnest(p_spectator_ids) sid where sid is null)) then
     return jsonb_build_object('status', 'invalid', 'reason', 'spectators');
   end if;
 

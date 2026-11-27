@@ -351,6 +351,8 @@ declare
   v_bad text;
   v_cols text;
   v_elem jsonb;
+  v_turn uuid[];
+  v_dealt uuid[];
 begin
   if p_game_id is null or p_session_row is null or p_state_rows is null then
     raise exception 'deal_scrabble_session: game id, session row and state rows are required';
@@ -413,6 +415,15 @@ begin
     return jsonb_build_object('status', 'invalid', 'reason', 'state_row_duplicate');
   end if;
 
+  -- Every seat in turn_order must be dealt a state row and vice versa (a round must never start on a seat with no rack).
+  select array_agg(t order by t) into v_turn
+    from unnest((jsonb_populate_record(null::public.scrabble_sessions, p_session_row)).turn_order) t;
+  select array_agg(sid order by sid) into v_dealt
+    from (select (e->>'player_id')::uuid as sid from jsonb_array_elements(p_state_rows) e) d;
+  if v_turn is null or v_turn is distinct from v_dealt then
+    return jsonb_build_object('status', 'invalid', 'reason', 'turn_order_mismatch');
+  end if;
+
   delete from public.scrabble_player_state where game_id = v_id;
   insert into public.scrabble_player_state (game_id, player_id, rack, score, player_order, clock_ms_remaining, timed_out)
     select v_id, (e->>'player_id')::uuid, coalesce(e->'rack', '[]'::jsonb), coalesce((e->>'score')::integer, 0),
@@ -439,3 +450,51 @@ $$;
 
 revoke execute on function public.deal_scrabble_session(text, jsonb, jsonb) from public, anon, authenticated;
 grant execute on function public.deal_scrabble_session(text, jsonb, jsonb) to service_role;
+
+-- A leave in a lobby (no session yet, a reopened lobby whose finished session row is still around, a spectator): the
+-- seat's rows and its turn_order entry go in ONE transaction under the games lock (the same lock a deal takes), so a
+-- start can never list a seat whose rows are being deleted, and a deleted row is never left in a turn order. A round that
+-- is `playing` and still lists the player is a LIVE leave: nothing is deleted and the caller takes the live path.
+create or replace function public.remove_scrabble_lobby_seat(
+  p_game_id text,
+  p_player_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_session public.scrabble_sessions%rowtype;
+  v_exists boolean;
+begin
+  if p_game_id is null or p_player_id is null then
+    raise exception 'remove_scrabble_lobby_seat: game id and player id are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  perform 1 from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
+  end if;
+  select * into v_session from public.scrabble_sessions where game_id = v_id for update;
+  v_exists := found;
+  if v_exists and v_session.phase = 'playing' and p_player_id = any (v_session.turn_order) then
+    return jsonb_build_object('status', 'live');
+  end if;
+
+  -- the seat first (a finished session of a reopened lobby still lists it), then the rows
+  if v_exists and p_player_id = any (v_session.turn_order) then
+    update public.scrabble_sessions
+      set turn_order = array_remove(turn_order, p_player_id)
+      where game_id = v_id;
+  end if;
+  delete from public.scrabble_player_state where game_id = v_id and player_id = p_player_id;
+  delete from public.players where id = p_player_id and game_id = v_id;
+  return jsonb_build_object('status', 'removed');
+end;
+$$;
+
+revoke execute on function public.remove_scrabble_lobby_seat(text, uuid) from public, anon, authenticated;
+grant execute on function public.remove_scrabble_lobby_seat(text, uuid) to service_role;

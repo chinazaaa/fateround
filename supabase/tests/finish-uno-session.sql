@@ -155,13 +155,25 @@ begin
   perform pg_temp.assert_eq('5i cards not an array', v_out->>'status', 'invalid');
   v_out := public.finish_uno_session('GU5', v_v, '{}'::jsonb, v_ok_hand, '{"winner_id":"","points":1}'::jsonb);
   perform pg_temp.assert_eq('5j series winner', v_out->>'status', 'invalid');
-  v_out := public.finish_uno_session('GU5', v_v, '{}'::jsonb, v_ok_hand, '{"winner_id":"w","points":-3}'::jsonb);
+  v_out := public.finish_uno_session('GU5', v_v, '{}'::jsonb, v_ok_hand, '{"winner_id":"00000000-0000-0000-0000-000000000051","points":-3}'::jsonb);
   perform pg_temp.assert_eq('5k series points', v_out->>'status', 'invalid');
-  perform pg_temp.assert_eq('5 nothing written', (pg_temp.sess('GU5')).phase, 'playing');
   perform pg_temp.assert_eq('5 still active', (pg_temp.g('GU5')).status, 'active');
   perform pg_temp.assert_eq('5 session version unchanged', (pg_temp.sess('GU5')).updated_at, v_v);
   -- a missing game / session is reported, not raised
   perform pg_temp.assert_eq('5l missing game', public.finish_uno_session('NOPE', v_v, '{}'::jsonb, '[]'::jsonb)->>'status', 'invalid');
+end $$;
+
+-- 5m. Control for 5k: the same seated winner with valid points is a finish, so 5k fails ONLY on the negative points;
+-- duplicate spectator ids are invalid (the contract), distinct seated ones are accepted.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GU5M', 19, true);
+begin
+  perform pg_temp.assert_eq('5m duplicate spectator ids', public.finish_uno_session('GU5M', v_v, '{}'::jsonb, '[]'::jsonb, null,
+    array[pg_temp.pid(191), pg_temp.pid(191)])->>'status', 'invalid');
+  perform pg_temp.assert_eq('5m nothing written', (pg_temp.sess('GU5M')).phase, 'playing');
+  perform pg_temp.assert_eq('5m seated winner, valid points', public.finish_uno_session('GU5M', v_v, '{}'::jsonb, '[]'::jsonb,
+    jsonb_build_object('winner_id', pg_temp.pid(191)::text, 'points', 3), array[pg_temp.pid(191), pg_temp.pid(192)])->>'status', 'finished');
 end $$;
 
 -- 6. Reaching the series target records the series winner; a leaver's rows are removed in the same step.
@@ -344,6 +356,8 @@ begin
   perform pg_temp.assert_eq('6f valid uuid patch value', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, jsonb_build_object('winner_player_id', pg_temp.pid(151)), '[]'::jsonb)->>'status', 'applied');
   -- a multidimensional spectator array is `invalid` (never an array-dimension error), a flat valid one is accepted
   perform pg_temp.assert_eq('6f 2-d spectators with a null', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb, array[[pg_temp.pid(151), pg_temp.pid(152)], [pg_temp.pid(153), null]]::uuid[])->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f duplicate spectators', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb, array[pg_temp.pid(151), pg_temp.pid(151)])->>'status', 'invalid');
+  perform pg_temp.assert_eq('6f distinct spectators', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb, array[pg_temp.pid(151), pg_temp.pid(152)])->>'status', 'applied');
   perform pg_temp.assert_eq('6f 2-d spectators', public.apply_uno_move('GUF', (pg_temp.sess('GUF')).updated_at, '{}'::jsonb, '[]'::jsonb, array[[pg_temp.pid(151), pg_temp.pid(152)], [pg_temp.pid(153), pg_temp.pid(151)]]::uuid[])->>'status', 'invalid');
   -- a finished round accepts no move
   update public.uno_sessions set phase = 'finished' where game_id = 'GUF';

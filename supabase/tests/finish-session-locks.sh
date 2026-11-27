@@ -24,7 +24,7 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 
 cleanup() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'fin-$RUN-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('FINLU$S', 'FINLS$S', 'FINLM$S', 'FINLV$S')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('FINLU$S', 'FINLS$S', 'FINLM$S', 'FINLV$S', 'FINLD$S')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 cleanup
@@ -53,6 +53,8 @@ P5=00000000-0000-0000-$RUN-00000000f005
 P6=00000000-0000-0000-$RUN-00000000f006
 P7=00000000-0000-0000-$RUN-00000000f007
 P8=00000000-0000-0000-$RUN-00000000f008
+P9=00000000-0000-0000-$RUN-00000000f009
+P10=00000000-0000-0000-$RUN-00000000f010
 
 # ---- Case A: Uno ---------------------------------------------------------------------------------------------
 psqlq <<SQL
@@ -90,17 +92,20 @@ insert into public.scrabble_player_state (game_id, player_id, rack, score, playe
 SQL
 VER=$(psqlq -c "select updated_at from public.scrabble_sessions where game_id = 'FINLS$S'")
 CALL_S="select public.finish_scrabble_session('FINLS$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P3\",\"score\":7},{\"player_id\":\"$P4\",\"score\":21}]'::jsonb)->>'status'"
+# Same expected version; the second call carries DIFFERENT scores, so a rewrite by the second call is visible.
+CALL_S2="select public.finish_scrabble_session('FINLS$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P3\",\"score\":999},{\"player_id\":\"$P4\",\"score\":998}]'::jsonb)->>'status'"
 
 start_gate
 PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_S; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
 wait_for "first finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_S=$(mktemp)
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_S" >"$OUT_S" 2>&1 &
+PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_S2" >"$OUT_S" 2>&1 &
 wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
 open_gate
 wait_for "second finisher answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 [ "$(cat "$OUT_S")" = "already_finished" ] || fail "case B: expected the second finish to be 'already_finished', got '$(cat "$OUT_S")'"
 [ "$(psqlq -c "select score from public.scrabble_player_state where game_id = 'FINLS$S' and player_id = '$P3'")" = "7" ] || fail "case B: scores not written once"
+[ "$(psqlq -c "select score from public.scrabble_player_state where game_id = 'FINLS$S' and player_id = '$P4'")" = "21" ] || fail "case B: the second call rewrote the scores (or the first never wrote them)"
 [ "$(psqlq -c "select status from public.games where id = 'FINLS$S'")" = "finished" ] || fail "case B: game not finished"
 
 # ---- Case C: a move racing a finish -------------------------------------------------------------------------
@@ -146,5 +151,27 @@ open_gate
 wait_for "the uno move answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 [ "$(cat "$OUT_V")" = "lost" ] || fail "case D: expected the move to be 'lost', got '$(cat "$OUT_V")'"
 [ "$(psqlq -c "select cards::text from public.uno_player_hands where game_id = 'FINLV$S' and player_id = '$P7'")" = "[]" ] || fail "case D: the move overwrote the finished hand"
+
+# ---- Case E: a lobby leave racing a deal --------------------------------------------------------------------
+# remove_scrabble_lobby_seat() takes the games row lock a deal takes. Session F deals a round (deal_scrabble_session) and
+# keeps its transaction open; session W removes one of the dealt seats as a lobby leave. W must be observed WAITING on F
+# and, once F commits, answer `live` (the round is now playing and lists the seat): NOTHING is deleted, the round keeps
+# both seats with their player rows.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('FINLD$S', 'lock test D', 'tok-finld$S', 'scrabble', 'waiting');
+insert into public.players (id, game_id, name) values ('$P9', 'FINLD$S', 'A'), ('$P10', 'FINLD$S', 'B');
+SQL
+CALL_D="select public.deal_scrabble_session('FINLD$S', '{\"turn_order\":[\"$P9\",\"$P10\"],\"phase\":\"playing\",\"status_message\":\"dealt\"}'::jsonb, '[{\"player_id\":\"$P9\"},{\"player_id\":\"$P10\"}]'::jsonb)->>'status'"
+start_gate
+PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_D; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+wait_for "the dealer holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_D=$(mktemp)
+PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_scrabble_lobby_seat('FINLD$S', '$P10')->>'status'" >"$OUT_D" 2>&1 &
+wait_for "the lobby leave waits on the deal" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
+open_gate
+wait_for "the lobby leave answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
+[ "$(cat "$OUT_D")" = "live" ] || fail "case E: expected the lobby leave to answer 'live', got '$(cat "$OUT_D")'"
+[ "$(psqlq -c "select count(*) from public.players where game_id = 'FINLD$S'")" = "2" ] || fail "case E: a player row was deleted from the dealt round"
+[ "$(psqlq -c "select array_length(turn_order, 1) from public.scrabble_sessions where game_id = 'FINLD$S'")" = "2" ] || fail "case E: the dealt turn order changed"
 
 echo "finish-session-locks: ok"

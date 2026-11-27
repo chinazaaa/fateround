@@ -1110,7 +1110,6 @@ async function removeScrabblePlayerOnce(
   // already out of the turn order still gets its cleanup below.
   // A reopened lobby (Play Again: games.status is back to 'waiting', the finished session row is still around) is
   // not a published result: its seats are ordinary lobby seats and the leave must delete them.
-  let reopenedLobby = false
   if (session?.phase === 'finished' && removedIndex >= 0) {
     const { data: gameRow, error: gameError } = await supabase
       .from('games')
@@ -1119,7 +1118,6 @@ async function removeScrabblePlayerOnce(
       .maybeSingle()
     if (gameError) return { error: internalErrorMessage('scrabble', gameError) }
     if (gameRow?.status !== 'waiting') return { error: null, retained: true }
-    reopenedLobby = true
   }
 
   // In an active game and actually in the turn order: rewrite the turn order.
@@ -1219,37 +1217,24 @@ async function removeScrabblePlayerOnce(
     return { error: error ? internalErrorMessage('scrabble', error) : null }
   }
 
-  // Lobby, spectator, already-finished, or not in the turn order — just drop their state + row.
-  if (reopenedLobby && session) {
-    // The leaver's player row (and its state rows, by cascade) go FIRST. A deal that lands afterwards cannot seat
-    // them (`deal_scrabble_session` rejects a seat whose player row is gone), and a deal that landed before changes
-    // the session version, so the seat removal below loses and the retry takes the live-round leave path against
-    // the new round.
-    await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
-    const { error: rowError } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-    if (rowError) return { error: internalErrorMessage('scrabble', rowError) }
-    const { data: seatUpdated, error: seatError } = await supabase
-      .from('scrabble_sessions')
-      .update({ turn_order: order.filter((id) => id !== playerId) })
-      .eq('game_id', gameId)
-      .eq('updated_at', session.updated_at)
-      .select('game_id')
-    if (seatError) return { error: internalErrorMessage('scrabble', seatError) }
-    if (!seatUpdated || seatUpdated.length === 0) return 'retry'
-    return { error: null }
+  // Lobby (no session yet, a reopened lobby, a spectator, a seat that is not in the turn order): the seat's rows and its
+  // turn_order entry go in ONE transaction under the games lock, the lock a deal takes (remove_scrabble_lobby_seat), so
+  // a start never lists a seat whose rows are being deleted and a deleted row is never left in a turn order. A round that
+  // started meanwhile and lists the player is a live leave: nothing was deleted, and the retry takes the live path.
+  const { data: removed, error: removeError } = await supabase.rpc('remove_scrabble_lobby_seat', {
+    p_game_id: gameId,
+    p_player_id: playerId,
+  })
+  if (removeError) return { error: internalErrorMessage('scrabble', removeError) }
+  const outcome = (removed ?? {}) as { status?: string; reason?: string }
+  if (outcome.status === 'live') return 'retry'
+  if (outcome.status !== 'removed') {
+    return {
+      error: internalErrorMessage(
+        'scrabble',
+        `remove_scrabble_lobby_seat rejected the call: ${outcome.reason ?? outcome.status}`
+      ),
+    }
   }
-  await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
-  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  if (error) return { error: internalErrorMessage('scrabble', error) }
-  // This path took no lock: a first deal that committed after the lookup (and accepted the leaver, whose row still
-  // existed) may now list a seat whose rows were just deleted. Success only when no session lists the leaver; the
-  // retry then takes the live-round path, which removes the seat from the turn order.
-  const { data: after, error: afterError } = await supabase
-    .from('scrabble_sessions')
-    .select('turn_order')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (afterError) return { error: internalErrorMessage('scrabble', afterError) }
-  if (((after?.turn_order as string[] | null) ?? []).includes(playerId)) return 'retry'
   return { error: null }
 }

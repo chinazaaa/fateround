@@ -537,6 +537,9 @@ export function unoNextTurnIndex(
   if (len === 0) return 0
   const dir = direction < 0 ? -1 : 1
   const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  // A Team-Up leaver stays in turn_order (seat parity) and is marked left BEFORE the hand row is deleted: the marker,
+  // not the later hand deletion, is what takes them out of the rotation.
+  const left = new Set<string>(unoLeftPlayerIds(session))
 
   let idx = fromIndex
   for (let s = 0; s < steps; s += 1) {
@@ -544,7 +547,7 @@ export function unoNextTurnIndex(
     for (let attempt = 0; attempt < len; attempt += 1) {
       idx = (((idx + dir) % len) + len) % len
       const pid = order[idx]!
-      if (!eliminated.has(pid) && unoHandCount(hands, pid) > 0) {
+      if (!eliminated.has(pid) && !left.has(pid) && unoHandCount(hands, pid) > 0) {
         advanced = true
         break
       }
@@ -556,7 +559,9 @@ export function unoNextTurnIndex(
 
 function activePlayerCount(session: UnoSession, hands: UnoPlayerHand[]): number {
   const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
-  return (session.turn_order ?? []).filter((id) => !eliminated.has(id) && unoHandCount(hands, id) > 0).length
+  const left = new Set<string>(unoLeftPlayerIds(session))
+  return (session.turn_order ?? []).filter((id) => !eliminated.has(id) && !left.has(id) && unoHandCount(hands, id) > 0)
+    .length
 }
 
 export function anyPlayerCanPlay(hands: UnoPlayerHand[], session: UnoSession): boolean {
@@ -1015,10 +1020,11 @@ async function finishByLowestHand(
   const eliminatedCount = (extra?.patch?.eliminated_player_ids ?? session.eliminated_player_ids ?? []).length
   return finishUnoRound(supabase, gameId, session, {
     patch: { ...extra?.patch, winner_player_id: winnerId, status_message: statusMessage },
-    hands: [
+    // One entry per player (the finish function rejects a duplicate): a player with both new cards and stats keeps both.
+    hands: mergeHandWrites([
       ...(extra?.handWrites ?? []).map((w) => ({ player_id: w.playerId, cards: w.cards })),
       ...(extra?.statsWrites ?? []),
-    ],
+    ]),
     spectatorIds: extra?.spectatorIds,
     series: seriesAward(winnerId, hands, eliminatedCount, {
       turn_order: extra?.patch?.turn_order ?? session.turn_order,
@@ -1736,7 +1742,7 @@ export async function processUnoPlay(
   playerId: string,
   cardId: string,
   callUno = false,
-  opts?: { jumpIn?: boolean }
+  opts?: { jumpIn?: boolean; expectedUpdatedAt?: string }
 ): Promise<{ error?: string; skipped?: boolean }> {
   const {
     error: loadError,
@@ -1750,6 +1756,9 @@ export async function processUnoPlay(
   } = await loadGameState(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
+  // A delegated auto-play (turn expiry) acts only on the session version whose deadline expired: a move that landed
+  // since (even one that renewed this seat's turn) means that expiry no longer applies.
+  if (opts?.expectedUpdatedAt && session.updated_at !== opts?.expectedUpdatedAt) return { skipped: true }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
   const expired = await finalizeIfGameExpired(
@@ -2300,7 +2309,8 @@ export async function processUnoPlayMulti(
 export async function processUnoDraw(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string
+  playerId: string,
+  expectedUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
   const {
     error: loadError,
@@ -2314,6 +2324,9 @@ export async function processUnoDraw(
   } = await loadGameState(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
+  // A delegated auto-play (turn expiry) acts only on the session version whose deadline expired: a move that landed
+  // since (even one that renewed this seat's turn) means that expiry no longer applies.
+  if (expectedUpdatedAt && session.updated_at !== expectedUpdatedAt) return { skipped: true }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
   const expired = await finalizeIfGameExpired(
@@ -2636,7 +2649,8 @@ export async function processUnoDraw(
 export async function processUnoPass(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string
+  playerId: string,
+  expectedUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
   const {
     error: loadError,
@@ -2650,6 +2664,9 @@ export async function processUnoPass(
   } = await loadGameState(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
+  // A delegated auto-play (turn expiry) acts only on the session version whose deadline expired: a move that landed
+  // since (even one that renewed this seat's turn) means that expiry no longer applies.
+  if (expectedUpdatedAt && session.updated_at !== expectedUpdatedAt) return { skipped: true }
   if (session.phase === 'finished') return { error: 'Game is finished' }
 
   const expired = await finalizeIfGameExpired(
@@ -2698,7 +2715,8 @@ export async function processUnoChoose(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  color: UnoColor
+  color: UnoColor,
+  expectedUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
   const {
     error: loadError,
@@ -2712,6 +2730,9 @@ export async function processUnoChoose(
   } = await loadGameState(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
+  // A delegated auto-play (turn expiry) acts only on the session version whose deadline expired: a move that landed
+  // since (even one that renewed this seat's turn) means that expiry no longer applies.
+  if (expectedUpdatedAt && session.updated_at !== expectedUpdatedAt) return { skipped: true }
 
   // Wild Color Roulette resolves through the same endpoint but takes a different flow — the
   // player reveals cards from the pile until they hit their named colour. Dispatch early.
@@ -3093,7 +3114,8 @@ export async function processUnoChallenge(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  challenge: boolean
+  challenge: boolean,
+  expectedUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
   const {
     error: loadError,
@@ -3107,6 +3129,9 @@ export async function processUnoChallenge(
   } = await loadGameState(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
+  // A delegated auto-play (turn expiry) acts only on the session version whose deadline expired: a move that landed
+  // since (even one that renewed this seat's turn) means that expiry no longer applies.
+  if (expectedUpdatedAt && session.updated_at !== expectedUpdatedAt) return { skipped: true }
 
   const expired = await finalizeIfGameExpired(
     supabase,
@@ -3265,7 +3290,8 @@ export async function processUnoSwap(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  targetId: string
+  targetId: string,
+  expectedUpdatedAt?: string
 ): Promise<{ error?: string; skipped?: boolean }> {
   const {
     error: loadError,
@@ -3279,6 +3305,9 @@ export async function processUnoSwap(
   } = await loadGameState(supabase, gameId)
   if (loadError) return { error: loadError }
   if (!session) return { error: 'Session not found' }
+  // A delegated auto-play (turn expiry) acts only on the session version whose deadline expired: a move that landed
+  // since (even one that renewed this seat's turn) means that expiry no longer applies.
+  if (expectedUpdatedAt && session.updated_at !== expectedUpdatedAt) return { skipped: true }
 
   const expired = await finalizeIfGameExpired(
     supabase,
@@ -3502,18 +3531,18 @@ async function expireUnoTurn(
   }
 
   if (session.phase === 'choose_color') {
-    return settle(await processUnoChoose(supabase, gameId, currentId, dominantColor(hand)))
+    return settle(await processUnoChoose(supabase, gameId, currentId, dominantColor(hand), expectedUpdatedAt))
   }
 
   if (session.phase === 'challenge_window') {
     // Auto-accept on timeout — the safe default.
-    return settle(await processUnoChallenge(supabase, gameId, currentId, false))
+    return settle(await processUnoChallenge(supabase, gameId, currentId, false, expectedUpdatedAt))
   }
 
   if (session.phase === 'swap_target') {
     // Auto-swap with the first other active player on timeout.
     const targetId = (session.turn_order ?? []).find((id) => id !== currentId && unoHandCount(hands, id) > 0)
-    if (targetId) return settle(await processUnoSwap(supabase, gameId, currentId, targetId))
+    if (targetId) return settle(await processUnoSwap(supabase, gameId, currentId, targetId, expectedUpdatedAt))
     // No one to swap with — just resume play.
     const direction = session.direction < 0 ? -1 : 1
     const nextIndex = unoNextTurnIndex(session, hands, session.current_turn_index, 1, direction)
@@ -3533,7 +3562,7 @@ async function expireUnoTurn(
 
   // Already drew this turn and idled — keep the card (auto-pass), the safe default.
   if (session.drawn_card_id) {
-    return settle(await processUnoPass(supabase, gameId, currentId))
+    return settle(await processUnoPass(supabase, gameId, currentId, expectedUpdatedAt))
   }
 
   if (hasPlayableCard(hand, session)) {
@@ -3542,10 +3571,12 @@ async function expireUnoTurn(
     const nonWild = playable.filter((c) => !isWildCard(c))
     const pool = nonWild.length > 0 ? nonWild : playable
     const card = [...pool].sort((a, b) => cardPoints(a) - cardPoints(b))[0]!
-    return settle(await processUnoPlay(supabase, gameId, currentId, card.id, hand.length - 1 === 1))
+    return settle(
+      await processUnoPlay(supabase, gameId, currentId, card.id, hand.length - 1 === 1, { expectedUpdatedAt })
+    )
   }
 
-  return settle(await processUnoDraw(supabase, gameId, currentId))
+  return settle(await processUnoDraw(supabase, gameId, currentId, expectedUpdatedAt))
 }
 
 export async function finishExpiredUnoGame(
