@@ -1430,6 +1430,20 @@ jobs:
           DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
             supabase/tests/matching-pairs-record-flip-checked-lock.sh
 
+      # Player joins: the seat cap, name uniqueness and the team-game exception of the
+      # players_enforce_join_rules trigger (one transaction, rolled back).
+      - name: Player join rules (seat cap, unique names, team games)
+        run: |
+          psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 \
+            -f supabase/tests/players-join-rules.sql
+
+      # Several sessions: a second join into the same game waits for the first and is refused, and a
+      # stampede of simultaneous joins seats exactly max_players and keeps exactly one 'Same'.
+      - name: Player joins are serialized per game
+        run: |
+          DB="postgresql://postgres:postgres@127.0.0.1:54322/postgres" \
+            supabase/tests/players-join-rules-lock.sh
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest

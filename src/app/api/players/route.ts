@@ -101,6 +101,7 @@ import { finishSudokuIfAllPlayersDone } from '@/lib/sudoku-finish'
 import { linkPlayerToRoomMember, resolveRoomMemberForGame } from '@/lib/room-points'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 import { parseJsonBody } from '@/lib/parse-body'
+import { playerJoinRejection } from '@/lib/player-join-errors'
 
 const supabase = getSupabaseAnon()
 
@@ -232,6 +233,49 @@ function seatFullGate(game: Game, seatsFull: boolean, joinAsViewer: boolean | un
   const canWatch = allowLateJoin(game)
   if (joinAsViewer === true && canWatch) return null
   return NextResponse.json(canWatch ? { error: message, full: true } : { error: message }, { status: 400 })
+}
+
+// The messages each join branch already returns when its own pre-check finds the lobby full / the name taken.
+// A `players` insert that the players_enforce_join_rules trigger refuses (a concurrent join won the race)
+// is turned into the same response, so the loser of a race sees what a sequential joiner would have.
+type JoinMessages = { full: string; nameTaken: string }
+const GAME_JOIN_MESSAGES: JoinMessages = { full: 'This game is full', nameTaken: 'That name is already taken' }
+const BINGO_JOIN_MESSAGES: JoinMessages = { full: 'This bingo room is full', nameTaken: 'That name is already taken' }
+const ROOM_JOIN_MESSAGES: JoinMessages = {
+  full: 'This room is full',
+  nameTaken: 'That name is already taken in this game',
+}
+
+function joinInsertFailure(error: unknown, context: string, game: Game, messages: JoinMessages) {
+  const rejection = playerJoinRejection(error)
+  if (rejection === 'name_taken') return NextResponse.json({ error: messages.nameTaken }, { status: 400 })
+  if (rejection === 'lobby_full') {
+    // `undefined` viewer choice: the response is the plain full error, plus `full: true` where the game
+    // offers "watch instead" — exactly what seatFullGate returns for a pre-check that finds no seat.
+    return (
+      seatFullGate(game, true, undefined, messages.full) ?? NextResponse.json({ error: messages.full }, { status: 400 })
+    )
+  }
+  return NextResponse.json({ error: internalErrorMessage(context, error) }, { status: 500 })
+}
+
+// Rooms that hand out generated names (anonymous room / secret board). The name is picked from a read of
+// the roster, so two simultaneous joins can pick the same one; the trigger refuses the second, which
+// simply picks again from a fresh roster.
+const GENERATED_NAME_ATTEMPTS = 4
+async function insertGeneratedNamePlayer(gameId: string, row: Record<string, unknown>) {
+  let result
+  for (let attempt = 0; attempt < GENERATED_NAME_ATTEMPTS; attempt++) {
+    const { data: existingPlayers } = await supabase.from('players').select('name').eq('game_id', gameId)
+    const generatedName = generateAnonymousDisplayName((existingPlayers ?? []).map((p) => p.name))
+    result = await getSupabaseAdmin()
+      .from('players')
+      .insert({ ...row, game_id: gameId, name: generatedName })
+      .select()
+      .single()
+    if (playerJoinRejection(result.error) !== 'name_taken') break
+  }
+  return result!
 }
 
 async function nameTaken(gameId: string, name: string, excludePlayerId?: string) {
@@ -472,25 +516,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'This room is full' }, { status: 400 })
     }
 
-    const { data: existingPlayers } = await supabase.from('players').select('name').eq('game_id', gameId)
-    const generatedName = generateAnonymousDisplayName((existingPlayers ?? []).map((p) => p.name))
+    const { data: player, error } = await insertGeneratedNamePlayer(gameId, {
+      country,
+      gender: 'both',
+      identity_gender: null,
+      participant_id: null,
+      // An explicit watch-only join stays a spectator even while the room is still in the lobby.
+      spectator: rawJoinAsViewer === true || spectatorForActiveJoin(gameRow as Game, true),
+    })
 
-    const { data: player, error } = await getSupabaseAdmin()
-      .from('players')
-      .insert({
-        game_id: gameId,
-        country,
-        name: generatedName,
-        gender: 'both',
-        identity_gender: null,
-        participant_id: null,
-        // An explicit watch-only join stays a spectator even while the room is still in the lobby.
-        spectator: rawJoinAsViewer === true || spectatorForActiveJoin(gameRow as Game, true),
-      })
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, ROOM_JOIN_MESSAGES)
 
     await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
 
@@ -511,24 +546,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'This board is closed' }, { status: 400 })
     }
 
-    const { data: existingPlayers } = await supabase.from('players').select('name').eq('game_id', gameId)
-    const generatedName = generateAnonymousDisplayName((existingPlayers ?? []).map((p) => p.name))
+    const { data: player, error } = await insertGeneratedNamePlayer(gameId, {
+      country,
+      gender: 'both',
+      identity_gender: null,
+      participant_id: null,
+      spectator: false,
+    })
 
-    const { data: player, error } = await getSupabaseAdmin()
-      .from('players')
-      .insert({
-        game_id: gameId,
-        country,
-        name: generatedName,
-        gender: 'both',
-        identity_gender: null,
-        participant_id: null,
-        spectator: false,
-      })
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, ROOM_JOIN_MESSAGES)
 
     await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
 
@@ -585,7 +611,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, BINGO_JOIN_MESSAGES)
 
     if (!isSpectator && (gameRow.status === 'waiting' || gameRow.status === 'active')) {
       const { error: cardError } = await createBingoCardForPlayer(getSupabaseAdmin(), gameId, player.id)
@@ -689,7 +715,7 @@ export async function POST(req: NextRequest) {
       if (error.code === '23505') {
         return NextResponse.json({ error: 'That token is already taken — pick another' }, { status: 400 })
       }
-      return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+      return joinInsertFailure(error, 'players', gameRow as Game, GAME_JOIN_MESSAGES)
     }
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
@@ -745,7 +771,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, GAME_JOIN_MESSAGES)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -828,7 +854,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, GAME_JOIN_MESSAGES)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -888,7 +914,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, GAME_JOIN_MESSAGES)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -958,7 +984,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, GAME_JOIN_MESSAGES)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -1010,7 +1036,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', gameRow as Game, GAME_JOIN_MESSAGES)
 
     if (gameRow.status === 'active' && !isSpectator) {
       const { role, error: assignError } = await assignCodewordsLateJoinOperative(getSupabaseAdmin(), gameId, player.id)
@@ -1064,7 +1090,7 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single()
-    if (error) return NextResponse.json({ error: internalErrorMessage('describe-it:join', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'describe-it:join', gameRow as Game, GAME_JOIN_MESSAGES)
 
     // Late joiner as a player → auto-assign to the smallest team so they can play.
     if (gameRow.status === 'active' && !isSpectator) {
@@ -1118,7 +1144,7 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single()
-    if (error) return NextResponse.json({ error: internalErrorMessage('word-rush:join', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'word-rush:join', gameRow as Game, GAME_JOIN_MESSAGES)
 
     if (gameRow.status === 'active' && !isSpectator) {
       const { error: assignError } = await assignWordRushLateJoinTeam(getSupabaseAdmin(), gameId, player.id)
@@ -1178,7 +1204,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', game as Game, ROOM_JOIN_MESSAGES)
 
     if (isQuickDrawGame(gameType) && game.status === 'active' && !joinSpectator) {
       const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), id, player.id)
@@ -1235,7 +1261,7 @@ export async function POST(req: NextRequest) {
 
     if (playerError) {
       await getSupabaseAdmin().from('participants').delete().eq('id', participant.id)
-      return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
+      return joinInsertFailure(playerError, 'players', game as Game, ROOM_JOIN_MESSAGES)
     }
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
@@ -1263,7 +1289,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', game as Game, ROOM_JOIN_MESSAGES)
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
@@ -1310,7 +1336,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', game as Game, ROOM_JOIN_MESSAGES)
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
@@ -1371,7 +1397,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return joinInsertFailure(error, 'players', game as Game, ROOM_JOIN_MESSAGES)
 
     await syncImportParticipantBallot(supabase, id, participantId, gender, identityGender, rawPollGender ?? undefined)
 
@@ -1408,7 +1434,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (playerError) return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
+    if (playerError) return joinInsertFailure(playerError, 'players', game as Game, ROOM_JOIN_MESSAGES)
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
@@ -1453,7 +1479,7 @@ export async function POST(req: NextRequest) {
 
     if (playerError) {
       await getSupabaseAdmin().from('participants').delete().eq('id', participant.id)
-      return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
+      return joinInsertFailure(playerError, 'players', game as Game, ROOM_JOIN_MESSAGES)
     }
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
