@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { INTERNAL_ERROR_MESSAGE, internalErrorMessage } from '@/lib/api-errors'
 import { clearSessionTables } from './session-clear'
-import { callFinishRpc, type FinishResult } from '@/lib/finish-session'
+import { callFinishRpc, roundPayload, type FinishResult, type FinishRound } from '@/lib/finish-session'
 import { secondsUntilDeadline } from '@/lib/round-timing'
 import type { Game, UnoCard, UnoCardColor, UnoColor, UnoPlayerHand, UnoSession } from '@/types'
 import { UNO_DEFAULT_MAX_PLAYERS, UNO_MAX_PLAYERS, UNO_MIN_PLAYERS } from '@/lib/player-limits'
@@ -968,7 +968,7 @@ async function finishByLowestHand(
   // Writes that belong to this finish. Nothing is written before the finish claim wins: `patch` rides in the
   // claiming session UPDATE itself, and `handWrites` (the hands `hands` already reflects, e.g. a partial
   // penalty draw) are written only AFTER the claim, so a lost or failed claim leaves hands and piles untouched.
-  extra?: { patch?: Partial<UnoSession>; handWrites?: { playerId: string; cards: UnoCard[] }[] }
+  extra?: { patch?: Partial<UnoSession>; handWrites?: { playerId: string; cards: UnoCard[] }[]; round?: FinishRound }
 ): Promise<FinishResult> {
   const finishOrder = session.finish_order ?? []
   const leftIds = unoLeftPlayerIds(session)
@@ -1006,6 +1006,7 @@ async function finishByLowestHand(
     patch: { ...extra?.patch, winner_player_id: winnerId, status_message: statusMessage },
     hands: (extra?.handWrites ?? []).map((w) => ({ player_id: w.playerId, cards: w.cards })),
     series: seriesAward(winnerId, hands, eliminatedCount),
+    round: extra?.round,
   })
 }
 
@@ -1020,6 +1021,8 @@ type UnoFinish = {
   spectatorIds?: string[]
   /** A leaver whose hand + players rows go in the same step. */
   removePlayerId?: string
+  /** The round an expiry was decided about; the function answers `lost` for another round. */
+  round?: FinishRound
 }
 
 async function finishUnoRound(
@@ -1043,6 +1046,7 @@ async function finishUnoRound(
       p_series: o.series ?? null,
       p_spectator_ids: o.spectatorIds ?? null,
       p_remove_player_id: o.removePlayerId ?? null,
+      p_round: roundPayload(o.round),
     },
     'uno',
     gameId
@@ -1067,7 +1071,10 @@ async function finalizeIfGameExpired(
 ): Promise<FinishResult | null> {
   if (session.phase === 'finished') return null
   if (!unoGameSessionExpired(sessionStartedAt, gameDurationSeconds)) return null
-  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", teamMode)
+  // The expiry was decided from THIS round's start time: the finish applies only to that round.
+  return finishByLowestHand(supabase, gameId, session, hands, playerNames, "Time's up!", teamMode, {
+    round: { sessionStartedAt },
+  })
 }
 
 /** Result for a move on a round whose timer expired: it was ended (error), lost the finish race (skipped) or just ended. */
@@ -1388,6 +1395,11 @@ const UNO_KNOCKOUT_BONUS = 250
  * = 20, wilds = 50) PLUS 250 per player knocked out by Mercy during the round. When any
  * player reaches uno_series_target the id lands in uno_series_winner_id.
  */
+/** The hands as they will be once the finish's hand writes have landed (the score must see every final hand). */
+function withHandWrites(hands: UnoPlayerHand[], writes: { player_id: string; cards?: UnoCard[] }[]): UnoPlayerHand[] {
+  return writes.reduce((acc, w) => (w.cards ? updateHand(acc, w.player_id, w.cards) : acc), hands)
+}
+
 function seriesAward(
   winnerId: string | null,
   hands: UnoPlayerHand[],
@@ -1881,7 +1893,7 @@ export async function processUnoPlay(
       hands: handWrites.map((w) => (w === moverWrite ? { ...w, stats: moverStats } : w)),
       series: seriesAward(
         winnerId,
-        updateHand(hands, playerId, newHand),
+        withHandWrites(hands, handWrites),
         (patch.eliminated_player_ids ?? session.eliminated_player_ids ?? []).length
       ),
       spectatorIds: [playerId],
@@ -2142,7 +2154,7 @@ export async function processUnoPlayMulti(
       hands: handWrites,
       series: seriesAward(
         winnerId,
-        updateHand(hands, playerId, newHand),
+        withHandWrites(hands, handWrites),
         (patch.eliminated_player_ids ?? session.eliminated_player_ids ?? []).length
       ),
       spectatorIds: [playerId],
@@ -3363,7 +3375,9 @@ export async function processUnoExpireTurn(
 
 export async function finishExpiredUnoGame(
   supabase: SupabaseClient,
-  game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds' | 'uno_team_mode'>
+  game: Pick<Game, 'id' | 'status' | 'session_started_at' | 'game_duration_seconds' | 'uno_team_mode'> & {
+    sessions_played?: number | null
+  }
 ): Promise<FinishResult> {
   if (game.status !== 'active') return { won: false }
   if (!unoGameSessionExpired(game.session_started_at, game.game_duration_seconds)) return { won: false }
@@ -3391,7 +3405,9 @@ export async function finishExpiredUnoGame(
     hands,
     playerNames,
     "Time's up!",
-    game.uno_team_mode === true
+    game.uno_team_mode === true,
+    // The expiry was decided from THIS snapshot: the finish applies only to that round (not a later rematch).
+    { round: { sessionStartedAt: game.session_started_at ?? null, sessionsPlayed: game.sessions_played ?? undefined } }
   )
   return finished.already ? { won: true } : finished
 }

@@ -10,10 +10,13 @@
 --
 -- finish_uno_session() takes FOR UPDATE on the games row and then the uno_sessions row, and decides against the
 -- CURRENT rows:
+--   * `p_round` (optional) names the round the caller decided about ({session_started_at, sessions_played}); a
+--     mismatch with the games row under the lock -> `lost`, so an expiry decided from a snapshot can never finish a
+--     LATER round after a rematch.
 --   * session already `finished`  -> `already_finished`. Nothing is re-ranked, no hand is rewritten, no series
---     points are awarded; the only thing completed is the games-row flip (idempotent: it only moves a game that
---     is still waiting/active), plus the leaver's row removal when one was requested. This is the repair path for
---     a finish whose games flip failed.
+--     points are awarded, and NO player is removed from the published result; the only thing completed is the
+--     games-row flip, and only for a game that is still `active` (a replayed game is back to `waiting`). This is
+--     the repair path for a finish whose games flip failed.
 --   * `updated_at` differs from the caller's expected value -> `lost` (the compare-and-swap, now inside the
 --     function: a stale caller changes nothing).
 --   * otherwise, atomically: the session patch (+ phase finished, turn_deadline_at null), the final hand rows /
@@ -21,8 +24,8 @@
 --     spectator flags, the optional removal of a leaver's hand + player rows, and the games-row flip (status
 --     finished, finished_at, and the durable finish_bookkeeping marker owed by exactly this finish, the same
 --     tracked mechanism game-finish.ts / settle_host_leave use) -> `finished`.
---   * a malformed payload (non-object patch, unknown / protected column, malformed hand or series entry) ->
---     `invalid` with a `reason`, nothing written.
+--   * a malformed payload (non-object patch, unknown / protected column, a hand / series / spectator / removal entry
+--     that is null, mistyped, duplicated or not part of THIS game) -> `invalid` with a `reason`, nothing written.
 -- jsonb outcome: { status: finished | already_finished | lost | invalid, games_flipped: bool, finished_at?, reason? }
 --
 -- Execute is revoked from public / anon / authenticated and granted to service_role only (the API routes call it
@@ -37,7 +40,8 @@ create or replace function public.finish_uno_session(
   p_hand_writes jsonb,
   p_series jsonb default null,
   p_spectator_ids uuid[] default null,
-  p_remove_player_id uuid default null
+  p_remove_player_id uuid default null,
+  p_round jsonb default null
 )
 returns jsonb
 language plpgsql
@@ -74,17 +78,29 @@ begin
 
   v_now := now();
 
-  -- Already finished: never re-rank / re-award / rewrite. Only complete the games flip (and the leaver's removal).
+  -- The finish must apply only to the round the caller decided about (an expiry decided from a snapshot must never
+  -- finish a LATER round after a rematch): compare the round identity under the same lock.
+  if p_round is not null then
+    if jsonb_typeof(p_round) <> 'object'
+       or exists (select 1 from jsonb_object_keys(p_round) k where k not in ('session_started_at', 'sessions_played')) then
+      return jsonb_build_object('status', 'invalid', 'reason', 'round', 'games_flipped', false);
+    end if;
+    if (p_round ? 'sessions_played' and v_game.sessions_played is distinct from (p_round->>'sessions_played')::integer)
+       or (p_round ? 'session_started_at' and v_game.session_started_at is distinct from (p_round->>'session_started_at')::timestamptz) then
+      return jsonb_build_object('status', 'lost', 'games_flipped', false);
+    end if;
+  end if;
+
+  -- Already finished: never re-rank / re-award / rewrite, and never remove a player from a published result.
+  -- Only complete the flip of a game that is still ACTIVE (a replayed game is back to `waiting` and keeps this
+  -- finished session row until it is re-dealt: a stale request must not finish it again).
   if v_session.phase = 'finished' then
     update public.games
       set status = 'finished',
           finished_at = v_now,
           finish_bookkeeping = jsonb_build_object('finished_at', v_now, 'attempts', 0)
-      where id = v_id and status in ('waiting', 'active');
+      where id = v_id and status = 'active';
     v_flipped := found;
-    if p_remove_player_id is not null then
-      delete from public.players where id = p_remove_player_id and game_id = v_id;
-    end if;
     return jsonb_build_object('status', 'already_finished', 'games_flipped', v_flipped);
   end if;
 
@@ -108,24 +124,49 @@ begin
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad, 'games_flipped', false);
   end if;
 
+  -- Every hand write: an object, a non-null uuid-shaped player_id that holds a hand row in THIS game, only known keys,
+  -- and no player twice.
   for v_elem in select * from jsonb_array_elements(p_hand_writes) loop
     if jsonb_typeof(v_elem) <> 'object'
-       or not (v_elem ? 'player_id')
+       or (v_elem->>'player_id') is null
+       or jsonb_typeof(v_elem->'player_id') <> 'string'
        or (v_elem->>'player_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
        or exists (select 1 from jsonb_object_keys(v_elem) k where k not in ('player_id', 'cards', 'stats'))
        or (v_elem ? 'cards' and jsonb_typeof(v_elem->'cards') <> 'array')
-       or (v_elem ? 'stats' and jsonb_typeof(v_elem->'stats') <> 'object') then
+       or (v_elem ? 'stats' and jsonb_typeof(v_elem->'stats') <> 'object')
+       or not exists (
+         select 1 from public.uno_player_hands h where h.game_id = v_id and h.player_id = (v_elem->>'player_id')::uuid
+       ) then
       return jsonb_build_object('status', 'invalid', 'reason', 'hand_write', 'games_flipped', false);
     end if;
   end loop;
+  if (select count(distinct (e->>'player_id')) from jsonb_array_elements(p_hand_writes) e) <> jsonb_array_length(p_hand_writes) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'hand_write_duplicate', 'games_flipped', false);
+  end if;
 
   if p_series is not null then
     if jsonb_typeof(p_series) <> 'object'
+       or jsonb_typeof(p_series->'winner_id') <> 'string'
        or coalesce(p_series->>'winner_id', '') = ''
-       or (p_series->>'points') is null
-       or (p_series->>'points') !~ '^[0-9]+$' then
+       or jsonb_typeof(p_series->'points') <> 'number'
+       or (p_series->>'points') !~ '^[0-9]+$'
+       or not exists (
+         select 1 from public.uno_player_hands h where h.game_id = v_id and h.player_id::text = p_series->>'winner_id'
+       ) then
       return jsonb_build_object('status', 'invalid', 'reason', 'series', 'games_flipped', false);
     end if;
+  end if;
+
+  -- A NULL element matches no player, so it is rejected by the same test.
+  if p_spectator_ids is not null and exists (
+       select 1 from unnest(p_spectator_ids) sid
+       where not exists (select 1 from public.players p where p.id = sid and p.game_id = v_id)
+     ) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'spectators', 'games_flipped', false);
+  end if;
+  if p_remove_player_id is not null
+     and not exists (select 1 from public.players p where p.id = p_remove_player_id and p.game_id = v_id) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'remove_player', 'games_flipped', false);
   end if;
 
   -- ---- apply, atomically ----
@@ -177,5 +218,5 @@ begin
 end;
 $$;
 
-revoke execute on function public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid) from public, anon, authenticated;
-grant execute on function public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid) to service_role;
+revoke execute on function public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb) to service_role;

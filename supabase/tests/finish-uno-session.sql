@@ -18,7 +18,7 @@ begin
   end if;
 end $$;
 
-create function pg_temp.pid(n int) returns uuid language sql as $$ select ('00000000-0000-0000-0000-0000000000' || lpad(n::text, 2, '0'))::uuid $$;
+create function pg_temp.pid(n int) returns uuid language sql as $$ select ('00000000-0000-0000-0000-000000000' || lpad(n::text, 3, '0'))::uuid $$;
 
 -- A live Uno game GU<n>: players 1..3 (ids pid(n*10+1..3)), a session at version t0, three one-card hands.
 create function pg_temp.mk(gid text, n int, series boolean default false) returns timestamptz language plpgsql as $$
@@ -181,15 +181,15 @@ begin
   -- a series that is already won is not extended
   perform pg_temp.mk('GU7', 7, true);
   update public.games set uno_series_winner_id = 'someone', uno_series_scores = '{"x":5}' where id = 'GU7';
-  perform public.finish_uno_session('GU7', (pg_temp.sess('GU7')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', 'x', 'points', 50));
+  perform public.finish_uno_session('GU7', (pg_temp.sess('GU7')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(71)::text, 'points', 50));
   perform pg_temp.assert_eq('7 series already won: untouched', (pg_temp.g('GU7')).uno_series_scores, '{"x":5}'::jsonb);
   -- series scoring off: no points
   perform pg_temp.mk('GU8', 8, false);
-  perform public.finish_uno_session('GU8', (pg_temp.sess('GU8')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', 'x', 'points', 50));
+  perform public.finish_uno_session('GU8', (pg_temp.sess('GU8')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(81)::text, 'points', 50));
   perform pg_temp.assert_eq('8 scoring off: no points', (pg_temp.g('GU8')).uno_series_scores, '{}'::jsonb);
 end $$;
 
--- 6b. An already finished round still removes a leaver's rows (and completes the flip), re-awarding nothing.
+-- 6b. An already finished round never removes anyone from the published result, and re-awards nothing.
 do $$
 declare
   v_v timestamptz := pg_temp.mk('GUA', 0, true);
@@ -199,9 +199,75 @@ begin
   v_out := public.finish_uno_session('GUA', v_v, '{}'::jsonb, '[]'::jsonb,
     jsonb_build_object('winner_id', pg_temp.pid(1)::text, 'points', 500), null, pg_temp.pid(2));
   perform pg_temp.assert_eq('6b status', v_out->>'status', 'already_finished');
-  perform pg_temp.assert_eq('6b leaver player removed', (select count(*) from public.players where id = pg_temp.pid(2)), 0::bigint);
-  perform pg_temp.assert_eq('6b leaver hand removed', (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(2)), 0::bigint);
+  perform pg_temp.assert_eq('6b leaver kept in the published result', (select count(*) from public.players where id = pg_temp.pid(2)), 1::bigint);
+  perform pg_temp.assert_eq('6b leaver hand kept', (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(2)), 1::bigint);
   perform pg_temp.assert_eq('6b no points', (pg_temp.g('GUA')).uno_series_scores, '{}'::jsonb);
+end $$;
+
+-- 6c. Payload identity hardening: a JSON null / non-string / duplicated / foreign player id is invalid and writes nothing.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GUB', 12, true);
+  v_other timestamptz := pg_temp.mk('GUC', 11, false);
+begin
+  perform pg_temp.assert_eq('6c null player id', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[{"player_id":null,"cards":[]}]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c numeric player id', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[{"player_id":5,"cards":[]}]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c duplicate player id', public.finish_uno_session('GUB', v_v, '{}'::jsonb,
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(121), 'cards', '[]'::jsonb), jsonb_build_object('player_id', pg_temp.pid(121), 'stats', '{}'::jsonb)))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c player of another game', public.finish_uno_session('GUB', v_v, '{}'::jsonb,
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'cards', '[]'::jsonb)))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c series winner of another game', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb,
+    jsonb_build_object('winner_id', pg_temp.pid(111)::text, 'points', 1))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c series winner not a string', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb, '{"winner_id":7,"points":1}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c series points not a number', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb,
+    jsonb_build_object('winner_id', pg_temp.pid(121)::text, 'points', '5'))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c null spectator', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb, null, array[null]::uuid[])->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c spectator of another game', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb, null, array[pg_temp.pid(111)])->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c removal of another game player', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb, null, null, pg_temp.pid(111))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c nothing written', (pg_temp.sess('GUB')).phase, 'playing');
+  perform pg_temp.assert_eq('6c game still active', (pg_temp.g('GUB')).status, 'active');
+  perform pg_temp.assert_eq('6c other game untouched', (pg_temp.sess('GUC')).phase, 'playing');
+end $$;
+
+-- 6d. Round identity: a finish decided about another round is lost; a replayed (waiting) game is never re-finished.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GUD', 13, true);
+begin
+  update public.games set session_started_at = '2026-02-01T00:00:00Z', sessions_played = 3 where id = 'GUD';
+  perform pg_temp.assert_eq('6d other round (started_at)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
+    '{"session_started_at":"2026-01-01T00:00:00Z"}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d other round (sessions_played)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
+    '{"sessions_played":2}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d round shape', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"x":1}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6d nothing written', (pg_temp.sess('GUD')).phase, 'playing');
+  -- the round check also guards the already-finished branch
+  update public.uno_sessions set phase = 'finished' where game_id = 'GUD';
+  perform pg_temp.assert_eq('6d already finished but another round', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
+    '{"sessions_played":2}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d game untouched', (pg_temp.g('GUD')).status, 'active');
+  -- matching round: finishes (here: repairs the flip)
+  perform pg_temp.assert_eq('6d matching round', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
+    '{"sessions_played":3,"session_started_at":"2026-02-01T00:00:00Z"}'::jsonb)->>'status', 'already_finished');
+  perform pg_temp.assert_eq('6d flipped', (pg_temp.g('GUD')).status, 'finished');
+  -- a replayed game (waiting) with the finished session row left over is NOT flipped again
+  update public.games set status = 'waiting', finished_at = null, finish_bookkeeping = null where id = 'GUD';
+  perform pg_temp.assert_eq('6d replay: no flip', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb)->>'games_flipped', 'false');
+  perform pg_temp.assert_eq('6d replay: still waiting', (pg_temp.g('GUD')).status, 'waiting');
+end $$;
+
+-- 6e. A game that was already ended otherwise (admin kill-switch) keeps its finished_at: the finish still lands on the
+--     session but flips nothing.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GUE', 14, false);
+  v_out jsonb;
+begin
+  update public.games set status = 'finished', finished_at = '2026-03-01T00:00:00Z' where id = 'GUE';
+  v_out := public.finish_uno_session('GUE', v_v, '{}'::jsonb, '[]'::jsonb);
+  perform pg_temp.assert_eq('6e status', v_out->>'status', 'finished');
+  perform pg_temp.assert_eq('6e no flip', v_out->>'games_flipped', 'false');
+  perform pg_temp.assert_eq('6e finished_at kept', (pg_temp.g('GUE')).finished_at, '2026-03-01T00:00:00Z'::timestamptz);
 end $$;
 
 -- 7. NULL arguments raise (the required ones).
@@ -221,9 +287,9 @@ begin
 end $$;
 
 -- 8. Privileges: anon / authenticated denied, service_role allowed.
-select pg_temp.assert_eq('priv anon', has_function_privilege('anon', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid)', 'execute'), false);
-select pg_temp.assert_eq('priv authenticated', has_function_privilege('authenticated', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid)', 'execute'), false);
-select pg_temp.assert_eq('priv public', has_function_privilege('public', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid)', 'execute'), false);
-select pg_temp.assert_eq('priv service_role', has_function_privilege('service_role', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid)', 'execute'), true);
+select pg_temp.assert_eq('priv anon', has_function_privilege('anon', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb)', 'execute'), false);
+select pg_temp.assert_eq('priv authenticated', has_function_privilege('authenticated', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb)', 'execute'), false);
+select pg_temp.assert_eq('priv public', has_function_privilege('public', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb)', 'execute'), false);
+select pg_temp.assert_eq('priv service_role', has_function_privilege('service_role', 'public.finish_uno_session(text, timestamptz, jsonb, jsonb, jsonb, uuid[], uuid, jsonb)', 'execute'), true);
 
 rollback;

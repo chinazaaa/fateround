@@ -193,6 +193,12 @@ function makeChessSupabase(init: {
 
   // finish_scrabble_session: the whole finish (session, player states, games flip) in one step.
   const rpc = (name: string, args: Record<string, unknown>) => {
+    if (name === 'scrabble_write_state_if_open') {
+      if (session.phase === 'finished') return Promise.resolve({ data: { status: 'finished' }, error: null })
+      const st = states.find((x) => x.player_id === args.p_player_id)
+      if (st) Object.assign(st, args.p_patch as Row)
+      return Promise.resolve({ data: { status: 'written' }, error: null })
+    }
     if (name !== 'finish_scrabble_session') return Promise.resolve({ data: { status: 'none' }, error: null })
     if (session.phase === 'finished') return Promise.resolve({ data: { status: 'already_finished' }, error: null })
     if (session.updated_at !== args.p_expected_updated_at)

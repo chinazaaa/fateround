@@ -20,7 +20,7 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 
 cleanup() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'fin-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('FINLU', 'FINLS')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('FINLU', 'FINLS', 'FINLM')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 cleanup
@@ -45,6 +45,8 @@ P1=00000000-0000-0000-0000-00000000f001
 P2=00000000-0000-0000-0000-00000000f002
 P3=00000000-0000-0000-0000-00000000f003
 P4=00000000-0000-0000-0000-00000000f004
+P5=00000000-0000-0000-0000-00000000f005
+P6=00000000-0000-0000-0000-00000000f006
 
 # ---- Case A: Uno ---------------------------------------------------------------------------------------------
 psqlq <<SQL
@@ -90,5 +92,28 @@ wait_for "second finisher answered" "select not exists (select 1 from pg_stat_ac
 [ "$(cat "$OUT_S")" = "already_finished" ] || fail "case B: expected the second finish to be 'already_finished', got '$(cat "$OUT_S")'"
 [ "$(psqlq -c "select score from public.scrabble_player_state where game_id = 'FINLS' and player_id = '$P3'")" = "7" ] || fail "case B: scores not written once"
 [ "$(psqlq -c "select status from public.games where id = 'FINLS'")" = "finished" ] || fail "case B: game not finished"
+
+# ---- Case C: a mover's state write racing a finish ---------------------------------------------------------
+# scrabble_write_state_if_open() takes the same session row lock as the finish. Session F runs finish_scrabble_session()
+# (scores 7 / 21) and keeps its transaction open; session W runs a mover write (score 999) for the same game. W must be
+# observed WAITING on F and, once F commits, be refused with `finished`: the published score stays 7.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('FINLM', 'lock test M', 'tok-finlm', 'scrabble', 'active');
+insert into public.players (id, game_id, name) values ('$P5', 'FINLM', 'A'), ('$P6', 'FINLM', 'B');
+insert into public.scrabble_sessions (game_id, turn_order, phase) values ('FINLM', array['$P5'::uuid, '$P6'::uuid], 'playing');
+insert into public.scrabble_player_state (game_id, player_id, rack, score, player_order) values ('FINLM', '$P5', '[]', 10, 0), ('FINLM', '$P6', '[]', 20, 1);
+SQL
+VER=$(psqlq -c "select updated_at from public.scrabble_sessions where game_id = 'FINLM'")
+CALL_F="select public.finish_scrabble_session('FINLM', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P5\",\"score\":7}]'::jsonb)->>'status'"
+start_gate
+PGAPPNAME=fin-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_F; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+wait_for "finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_M=$(mktemp)
+PGAPPNAME=fin-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.scrabble_write_state_if_open('FINLM', '$P5', '{\"score\":999}'::jsonb)->>'status'" >"$OUT_M" 2>&1 &
+wait_for "the mover write waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-second' and wait_event_type = 'Lock')"
+open_gate
+wait_for "the mover write answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-second')"
+[ "$(cat "$OUT_M")" = "finished" ] || fail "case C: expected the mover write to be refused with 'finished', got '$(cat "$OUT_M")'"
+[ "$(psqlq -c "select score from public.scrabble_player_state where game_id = 'FINLM' and player_id = '$P5'")" = "7" ] || fail "case C: the published score was changed after the finish"
 
 echo "finish-session-locks: ok"

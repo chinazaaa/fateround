@@ -15,6 +15,21 @@ import { recoverFinishBookkeeping } from '@/lib/game-finish'
  */
 export type FinishResult = { won: boolean; already?: boolean; error?: string }
 
+/**
+ * The round a finish was DECIDED about (an expiry decided from a snapshot): the function compares it with the games
+ * row under its lock and answers `lost` for another round (a rematch after the snapshot). Only the keys the caller
+ * knows are sent.
+ */
+export type FinishRound = { sessionStartedAt?: string | null; sessionsPlayed?: number | null }
+
+export function roundPayload(round?: FinishRound): Record<string, unknown> | null {
+  if (!round) return null
+  return {
+    ...(round.sessionStartedAt !== undefined ? { session_started_at: round.sessionStartedAt } : {}),
+    ...(round.sessionsPlayed !== undefined ? { sessions_played: round.sessionsPlayed } : {}),
+  }
+}
+
 type FinishRpcOutcome = { status?: string; games_flipped?: boolean; reason?: string }
 
 /**
