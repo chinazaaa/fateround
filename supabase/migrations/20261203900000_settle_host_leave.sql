@@ -276,6 +276,8 @@ set search_path = public, pg_temp
 as $$
 declare
   v_game public.games%rowtype;
+  v_participant_id uuid;
+  v_deleted integer;
 begin
   if p_game_id is null or p_player_id is null or p_own_finish is null then
     raise exception 'remove_player_if_game_open: game id, player id and own-finish flag are required';
@@ -294,12 +296,22 @@ begin
               and v_game.session_started_at is not distinct from p_session_started_at) then
     return jsonb_build_object('status', 'game_finished');
   end if;
-  -- The participant first (a player row may reference it), the seat second: one transaction, so a failure of either
-  -- rolls back both.
+  -- The seat first; the participant row goes only when THIS call removed the seat (a call for an absent seat removes
+  -- nothing, so it can never take a participant row of someone else who now holds the same name). The seat's own
+  -- participant_id is read before the delete; the name is only the fallback for a seat that has none. One transaction.
   if p_participant_name is not null then
-    delete from public.participants where game_id = upper(p_game_id) and name = p_participant_name;
+    select participant_id into v_participant_id from public.players
+      where id = p_player_id and game_id = upper(p_game_id);
   end if;
   delete from public.players where id = p_player_id and game_id = upper(p_game_id);
+  get diagnostics v_deleted = row_count;
+  if p_participant_name is not null and v_deleted > 0 then
+    if v_participant_id is not null then
+      delete from public.participants where id = v_participant_id and game_id = upper(p_game_id);
+    else
+      delete from public.participants where game_id = upper(p_game_id) and name = p_participant_name;
+    end if;
+  end if;
   -- A Word Rush roster entry never outlives the seat it belongs to: whichever order two overlapping leaves of the same
   -- player run in (a compensating restore may have re-added the entry just before this delete), the entry goes with the
   -- seat, under the same games row lock the restore takes first.
@@ -477,7 +489,12 @@ begin
   update public.rounds
     set status = 'finished', ended_at = p_finished_at
     where game_id = upper(p_game_id) and status = 'active';
-  return jsonb_build_object('status', 'finished_session');
+  -- The rounds of the confirmed session, read under the same lock: the caller limits its reveal to exactly these (a
+  -- replay may start a new session under the same game id the moment this lock is released).
+  return jsonb_build_object(
+    'status', 'finished_session',
+    'round_ids', coalesce((select jsonb_agg(id) from public.rounds where game_id = upper(p_game_id) and status = 'finished'), '[]'::jsonb)
+  );
 end;
 $$;
 

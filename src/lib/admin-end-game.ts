@@ -64,6 +64,7 @@ async function finishGameRounds(
   endedAt: string,
   startedNoLaterThan?: string
 ): Promise<string | null> {
+  let confirmedRoundIds: string[] | undefined
   if (startedNoLaterThan) {
     // The cleanup of an already FINISHED session: decided in the database, bound to that session under the games row
     // lock (it must still be finished with exactly this finished_at), so a replayed session's live round is never
@@ -74,7 +75,9 @@ async function finishGameRounds(
     })
     if (error) return internalErrorMessage('admin-end-game', error)
     // A replayed or missing game has nothing left to clean up for this session (and its new rounds are not ours).
-    if ((data as { status?: string } | null)?.status !== 'finished_session') return null
+    const confirmed = data as { status?: string; round_ids?: string[] } | null
+    if (confirmed?.status !== 'finished_session') return null
+    confirmedRoundIds = confirmed.round_ids ?? []
   } else {
     const { error } = await supabase
       .from('rounds')
@@ -83,9 +86,9 @@ async function finishGameRounds(
       .eq('status', 'active')
     if (error) return internalErrorMessage('admin-end-game', error)
   }
-  // For a finished session the database already confirmed (under the games row lock) that this IS the current finished
-  // session, so the reveal covers its finished rounds without a timestamp cutoff (round and finish clocks differ).
-  if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId))) {
+  // For a finished session the database confirmed (under the games row lock) which rounds are its own, so the reveal is
+  // limited to exactly those ids: no timestamp cutoff (the clocks differ) and no reaching a replay's rounds.
+  if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId, undefined, confirmedRoundIds))) {
     return 'Could not reveal every Two Truths round'
   }
   return null

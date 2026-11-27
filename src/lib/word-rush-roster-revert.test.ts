@@ -185,11 +185,16 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   })
 
   /** `claimWins`: the compare-and-set that closes the round matches a row (this removal won it). */
-  const clientFor = (session: Record<string, unknown>, claimWins: boolean) =>
-    ({
+  /** Every `.eq` filter of an update to word_rush_sessions, in order (one list per update). */
+  const sessionUpdateFilters: Array<Array<[string, unknown]>> = []
+  const clientFor = (session: Record<string, unknown>, claimWins: boolean, failClear = false) => {
+    sessionUpdateFilters.length = 0
+    return {
       rpc: async () => ({ data: 'applied', error: null }),
       from: (table: string) => {
         let updating = false
+        let clearing = false
+        const filters: Array<[string, unknown]> = []
         const api: unknown = new Proxy(
           {},
           {
@@ -197,15 +202,22 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
               if (prop === 'maybeSingle')
                 return async () => ({ data: table === 'games' ? { status: 'active' } : session, error: null })
               if (prop === 'update')
-                return () => {
+                return (patch: Record<string, unknown>) => {
                   updating = true
+                  clearing = patch.round_finalize === null
+                  if (table === 'word_rush_sessions') sessionUpdateFilters.push(filters)
+                  return api
+                }
+              if (prop === 'eq')
+                return (k: string, v: unknown) => {
+                  filters.push([k, v])
                   return api
                 }
               if (prop === 'then')
                 return (resolve: (v: unknown) => void) =>
                   resolve({
                     data: updating && table === 'word_rush_sessions' && claimWins ? [{ id: 'S-1' }] : [],
-                    error: null,
+                    error: failClear && clearing ? { message: 'clear failed' } : null,
                   })
               return () => api
             },
@@ -213,7 +225,40 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
         )
         return api
       },
-    }) as unknown as SupabaseClient
+    } as unknown as SupabaseClient
+  }
+
+  it("a failed marker clear after the won finish still reports the finish as this removal's own", async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true, true), 'GAME', 'b')
+      expect(result.ownFinish).toBe(true)
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it("the individual round's claim (the compare-and-set that closes the round) is bound to the inspected session id", async () => {
+    await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')
+    const claim = sessionUpdateFilters.find((f) => f.some(([k]) => k === 'turn_index'))
+    expect(claim).toBeDefined()
+    expect(claim).toContainEqual(['id', 'S-1'])
+  })
+
+  it.each([
+    ['team', { mode: 'team', roster: ['a', 'b', 'c'], active_team: 1 }],
+    ['individual', {}],
+  ])(
+    'the %s session claim is bound to the inspected session id (a replacement session cannot match)',
+    async (_n, extra) => {
+      await syncWordRushAfterPlayerRemoved(clientFor(individualSession(extra), true), 'GAME', 'b')
+      const closing = sessionUpdateFilters.filter((f) => f.some(([k, v]) => k === 'game_id' && v === 'GAME'))
+      // Every update that finishes / closes the session names it by id.
+      expect(closing.length).toBeGreaterThan(1)
+      expect(closing.filter((f) => f.some(([k, v]) => k === 'id' && v === 'S-1')).length).toBeGreaterThan(0)
+      expect(closing.every((f) => f.some(([k]) => k === 'id' || k === 'turn_index' || k === 'game_id'))).toBe(true)
+    }
+  )
 
   it("ending the LAST round is this removal's own finish", async () => {
     const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')

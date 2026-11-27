@@ -2480,6 +2480,11 @@ async function removePlayer(
         restored = await restoreRoster()
         // Another removal deleted the seat in the meantime: it is gone, not retained.
         if (restored === 'no_seat') seat = 'deleted'
+        // The session was replaced, which the restore reports before it looks at the seat: read the seat itself.
+        if (restored === 'not_current_session') {
+          const presence = await seatPresence(id, playerId)
+          seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
+        }
         // The seat stayed but the roster could not be put back: not a completed leave (a repeat goes through the
         // finished-game branch, which does not compensate), so say so instead of answering success.
         if (restored === 'failed') {
@@ -2493,6 +2498,10 @@ async function removePlayer(
     if (seat === 'retained') ctx.seatMayBeRemoved = false
     if (seat !== 'deleted') {
       if (removal.error) return NextResponse.json({ error: removal.error }, { status: 500 })
+      // The guarded delete refused, but whether the seat still exists could not be confirmed: neither retained nor gone.
+      if (seat === 'unknown') {
+        return NextResponse.json({ error: 'Could not confirm that you left the game' }, { status: 500 })
+      }
       return retainedLeaveResponse(ctx, id, playerId)
     }
   }

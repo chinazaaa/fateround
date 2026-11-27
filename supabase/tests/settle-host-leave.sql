@@ -303,8 +303,14 @@ select pg_temp.assert_eq('14b bookkeeping completed: deleted',
 -- 14c. Joiners mode: the participant row goes with the seat in ONE transaction, and a finish keeps BOTH.
 select pg_temp.mk('STR', 'active');
 insert into public.participants (game_id, name) values ('STR', 'Late'), ('STR', 'Early');
+-- The seat's OWN participant row goes (by participant_id), never a same-named participant of someone else.
+update public.players set participant_id = (select id from public.participants where game_id = 'STR' and name = 'Late') where id = pg_temp.late('STR');
+insert into public.participants (game_id, name) values ('STR', 'Late');
 select pg_temp.assert_eq('14c deleted', public.remove_player_if_game_open('STR', pg_temp.late('STR'), false, null, null, 'Late')->>'status', 'deleted');
-select pg_temp.assert_eq('14c participant gone', (select count(*) from public.participants where game_id = 'STR' and name = 'Late'), 0::bigint);
+select pg_temp.assert_eq('14c the seat own participant (by id) is gone, the same-named other one is not', (select count(*) from public.participants where game_id = 'STR' and name = 'Late'), 1::bigint);
+-- A call for an ABSENT seat removes no participant at all.
+select pg_temp.assert_eq('14c absent seat: deleted answer', public.remove_player_if_game_open('STR', pg_temp.late('STR'), false, null, null, 'Late')->>'status', 'deleted');
+select pg_temp.assert_eq('14c absent seat: no participant removed', (select count(*) from public.participants where game_id = 'STR' and name = 'Late'), 1::bigint);
 select pg_temp.assert_eq('14c other participant kept', (select count(*) from public.participants where game_id = 'STR' and name = 'Early'), 1::bigint);
 select pg_temp.assert_eq('14c seat gone', (select count(*) from public.players where id = pg_temp.late('STR')), 0::bigint);
 update public.games set status = 'finished' where id = 'STR';
@@ -406,6 +412,7 @@ insert into public.rounds (game_id, round_number, status, started_at, participan
 select pg_temp.assert_eq('16b a different finished_at is not this session', public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:01Z')->>'status', 'not_current_session');
 select pg_temp.assert_eq('16b nothing finished for it', (select count(*) from public.rounds where game_id = 'STX' and status = 'active'), 2::bigint);
 select pg_temp.assert_eq('16b the session', public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:00Z')->>'status', 'finished_session');
+select pg_temp.assert_eq('16b the confirmed round ids are those of the session', (select count(*) from jsonb_array_elements_text(public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:00Z')->'round_ids')), 2::bigint);
 select pg_temp.assert_eq('16b the round of that session is finished', (select status from public.rounds where game_id = 'STX' and round_number = 1), 'finished');
 select pg_temp.assert_eq('16b a round stamped AFTER the finish by a skewed app clock is finished too (no clock comparison)', (select status from public.rounds where game_id = 'STX' and round_number = 2), 'finished');
 update public.games set status = 'active' where id = 'STX';

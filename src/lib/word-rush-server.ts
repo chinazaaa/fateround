@@ -180,7 +180,8 @@ async function runRoundFinalization(
     .eq('game_id', gameId)
     .eq('id', pending.session_id)
     .eq('round_finalize->>turn_index', String(pending.turn_index))
-  if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
+  // The game finish this call won is committed even when clearing the marker fails: keep reporting the ownership.
+  if (clearError) return { ...internalFailure('word-rush:finalize-round:clear', clearError), gameFinishWon }
   return { gameFinishWon }
 }
 
@@ -740,6 +741,7 @@ async function endIndividualRound(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('id', session.id)
     .eq('turn_index', session.turn_index)
     .in('phase', ['playing', 'awaiting_prompt'])
     // Never overwrite a previous round's still-owed effects (loadSession resumes them first).
@@ -828,6 +830,8 @@ async function finishWordRushGame(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // The session the caller inspected: a stale call matches nothing (a replacement session is never marked finished).
+    .eq('id', session.id)
     .neq('status', 'finished')
     .select('id')
   if (error) return internalFailure('word-rush:finish', error)
@@ -837,7 +841,7 @@ async function finishWordRushGame(
   const { won } = await markGameFinished(supabase, gameId, undefined, {
     roundGuard: {
       rpc: 'word_rush_finish_game_for_session',
-      params: { p_session_id: (claimed[0] as { id: string }).id },
+      params: { p_session_id: session.id },
     },
     trackBookkeeping: true,
   })

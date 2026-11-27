@@ -47,11 +47,16 @@ export async function wipeFinishedSession(
   gameId: string,
   finishedAt: string,
   kind: 'anonymous' | 'codewords'
-): Promise<{ error: string | null }> {
-  const { error } = await supabase.rpc('wipe_finished_session_rows', {
+): Promise<{ error: string | null; status?: string }> {
+  const { data, error } = await supabase.rpc('wipe_finished_session_rows', {
     p_game_id: gameId,
     p_finished_at: finishedAt,
     p_kind: kind,
   })
-  return { error: error ? internalErrorMessage('session-clear', error) : null }
+  // `status` is what the database decided (`wiped`, or `not_current_session` when the room was reopened meanwhile):
+  // callers that report the room's state must not read a skipped wipe as a finished room.
+  return {
+    error: error ? internalErrorMessage('session-clear', error) : null,
+    ...(error ? {} : { status: (data as { status?: string } | null)?.status }),
+  }
 }

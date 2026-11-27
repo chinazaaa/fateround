@@ -216,6 +216,9 @@ export async function clearAnonymousRoomSessionData(
  * folding the wipe failure into `error` made callers (the idle reaper) treat a completed close as a failure
  * and skip its stamp.
  */
+/** The room's status could not be read after its wipe was skipped (a sentinel, never a real games.status). */
+const UNKNOWN_STATUS = '__unknown__'
+
 async function finishAndClearSession(
   supabase: SupabaseClient,
   gameId: string,
@@ -248,7 +251,18 @@ async function finishAndClearSession(
     wipeUpTo = current.finished_at as string
   }
   if (!wipeUpTo) return { error: null, won, cleanupError: null }
-  const { error: clearError } = await wipeFinishedSession(supabase, gameId, wipeUpTo, 'anonymous')
+  const { error: clearError, status: wipeStatus } = await wipeFinishedSession(supabase, gameId, wipeUpTo, 'anonymous')
+  if (!clearError && wipeStatus === 'not_current_session') {
+    // The finish committed, but the room was reopened before the wipe ran (it deleted nothing): report the room's state
+    // as it is now, not as the finish left it.
+    const { data: now, error: nowError } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
+    return {
+      error: null,
+      won,
+      cleanupError: null,
+      currentStatus: nowError ? UNKNOWN_STATUS : (now?.status ?? null),
+    }
+  }
   return { error: null, won, cleanupError: clearError, ...(won ? {} : { currentStatus: 'finished' }) }
 }
 
@@ -315,10 +329,10 @@ export async function finishExpiredAnonymousSession(
   if (error) return 'error'
   // The session-bound finish lost: another request finished the expired session, and the room may already have been
   // reopened with a NEW session. Only a room that is still finished is reported as finished.
-  if (!won) {
-    // The status read after the lost update failed: nothing confirms what state the room is in.
-    if (currentStatus === undefined) return 'error'
-    if (currentStatus !== 'finished') return 'superseded'
+  // The status read after a lost update (or after a skipped wipe) failed: nothing confirms what state the room is in.
+  if (!won && currentStatus === undefined) return 'error'
+  if (currentStatus !== undefined && currentStatus !== 'finished') {
+    return currentStatus === UNKNOWN_STATUS ? 'error' : 'superseded'
   }
 
   // The room IS finished at this point — only the post-finish message/ban wipe failed,
