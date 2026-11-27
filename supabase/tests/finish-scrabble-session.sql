@@ -34,6 +34,9 @@ begin
   return (select updated_at from public.scrabble_sessions where game_id = gid);
 end $$;
 
+create function pg_temp.sid(gid text, n int, k int) returns uuid language sql as $$
+  select id from public.scrabble_player_state where game_id = gid and player_id = pg_temp.pid(n * 10 + k) $$;
+
 create function pg_temp.sess(gid text) returns public.scrabble_sessions language sql as $$ select * from public.scrabble_sessions where game_id = gid $$;
 create function pg_temp.g(gid text) returns public.games language sql as $$ select * from public.games where id = gid $$;
 create function pg_temp.st(gid text, n int, k int) returns public.scrabble_player_state language sql as $$
@@ -169,6 +172,11 @@ begin
   perform pg_temp.assert_eq('6c numeric player id', public.finish_scrabble_session('GSB', v_v, '{}'::jsonb, '[{"player_id":5,"score":99}]'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6c duplicate player id', public.finish_scrabble_session('GSB', v_v, '{}'::jsonb,
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(121), 'score', 1), jsonb_build_object('player_id', pg_temp.pid(121), 'score', 2)))->>'status', 'invalid');
+  -- a player id with hex letters, so its lower- and upper-case spellings really differ as text
+  insert into public.players (id, game_id, name) values ('abcdef00-0000-0000-0000-00000000abcd', 'GSB', 'Hex');
+  insert into public.scrabble_player_state (game_id, player_id, rack, score, player_order) values ('GSB', 'abcdef00-0000-0000-0000-00000000abcd', '[]', 0, 9);
+  perform pg_temp.assert_eq('6c duplicate player id, mixed case', public.finish_scrabble_session('GSB', v_v, '{}'::jsonb,
+    '[{"player_id":"abcdef00-0000-0000-0000-00000000abcd","score":1},{"player_id":"ABCDEF00-0000-0000-0000-00000000ABCD","score":2}]'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6c player of another game', public.finish_scrabble_session('GSB', v_v, '{}'::jsonb,
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'score', 1)))->>'status', 'invalid');
   perform pg_temp.assert_eq('6c removal of another game player', public.finish_scrabble_session('GSB', v_v, '{}'::jsonb, '[]'::jsonb, pg_temp.pid(111))->>'status', 'invalid');
@@ -186,6 +194,8 @@ begin
   perform pg_temp.assert_eq('6d other round (started_at)', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null,
     '{"session_started_at":"2026-01-01T00:00:00Z"}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d other round (sessions_played)', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":2}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d round mismatch is flagged as such', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"sessions_played":2}'::jsonb)->>'reason', 'round');
+  perform pg_temp.assert_eq('6d stale version has no round reason', public.finish_scrabble_session('GSD', v_v - interval '1 microsecond', '{}'::jsonb, '[]'::jsonb)->>'reason', null);
   perform pg_temp.assert_eq('6d round shape', public.finish_scrabble_session('GSD', v_v, '{}'::jsonb, '[]'::jsonb, null, '{"x":1}'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6d nothing written', (pg_temp.sess('GSD')).phase, 'playing');
   update public.scrabble_sessions set phase = 'finished' where game_id = 'GSD';
@@ -204,24 +214,41 @@ do $$
 declare
   v_v timestamptz := pg_temp.mk('GSE', 14);
 begin
-  perform pg_temp.assert_eq('6e written', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"score":77,"rack":["Z"],"clock_ms_remaining":5,"timed_out":true}'::jsonb)->>'status', 'written');
+  perform pg_temp.assert_eq('6e written', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"score":77,"rack":["Z"],"clock_ms_remaining":5,"timed_out":true}'::jsonb, pg_temp.sid('GSE', 14, 1))->>'status', 'written');
   perform pg_temp.assert_eq('6e score', (pg_temp.st('GSE', 14, 1)).score, 77);
   perform pg_temp.assert_eq('6e rack', (pg_temp.st('GSE', 14, 1)).rack, '["Z"]'::jsonb);
-  perform pg_temp.assert_eq('6e clock cleared to null', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"clock_ms_remaining":null}'::jsonb)->>'status', 'written');
+  perform pg_temp.assert_eq('6e clock cleared to null', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"clock_ms_remaining":null}'::jsonb, pg_temp.sid('GSE', 14, 1))->>'status', 'written');
   perform pg_temp.assert_eq('6e clock null', (pg_temp.st('GSE', 14, 1)).clock_ms_remaining is null, true);
-  perform pg_temp.assert_eq('6e invalid key', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"id":"x"}'::jsonb)->>'status', 'invalid');
-  perform pg_temp.assert_eq('6e invalid type', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"score":"1"}'::jsonb)->>'status', 'invalid');
-  perform pg_temp.assert_eq('6e player of another game', public.scrabble_write_state_if_open('GSE', pg_temp.pid(111), '{"score":1}'::jsonb)->>'status', 'invalid');
-  perform pg_temp.assert_eq('6e unknown game', public.scrabble_write_state_if_open('NOPE', pg_temp.pid(141), '{"score":1}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6e invalid key', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"id":"x"}'::jsonb, pg_temp.sid('GSE', 14, 1))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6e invalid type', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"score":"1"}'::jsonb, pg_temp.sid('GSE', 14, 1))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6e player of another game', public.scrabble_write_state_if_open('GSE', pg_temp.pid(111), '{"score":1}'::jsonb, pg_temp.sid('GSE', 14, 1))->>'status', 'stale');
+  perform pg_temp.assert_eq('6e unknown game', public.scrabble_write_state_if_open('NOPE', pg_temp.pid(141), '{"score":1}'::jsonb, pg_temp.sid('GSE', 14, 1))->>'status', 'invalid');
   perform public.finish_scrabble_session('GSE', (pg_temp.sess('GSE')).updated_at, '{}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(141), 'score', 12)));
-  perform pg_temp.assert_eq('6e refused after the finish', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"score":999}'::jsonb)->>'status', 'finished');
+  perform pg_temp.assert_eq('6e refused after the finish', public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{"score":999}'::jsonb, pg_temp.sid('GSE', 14, 1))->>'status', 'finished');
   perform pg_temp.assert_eq('6e published score kept', (pg_temp.st('GSE', 14, 1)).score, 12);
-  begin perform public.scrabble_write_state_if_open(null, pg_temp.pid(141), '{}'::jsonb); raise exception 'FAIL 6e: null game id accepted';
+  begin perform public.scrabble_write_state_if_open(null, pg_temp.pid(141), '{}'::jsonb, gen_random_uuid()); raise exception 'FAIL 6e: null game id accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
-  begin perform public.scrabble_write_state_if_open('GSE', null, '{}'::jsonb); raise exception 'FAIL 6e: null player id accepted';
+  begin perform public.scrabble_write_state_if_open('GSE', null, '{}'::jsonb, gen_random_uuid()); raise exception 'FAIL 6e: null player id accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
-  begin perform public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), null); raise exception 'FAIL 6e: null patch accepted';
+  begin perform public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), null, gen_random_uuid()); raise exception 'FAIL 6e: null patch accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.scrabble_write_state_if_open('GSE', pg_temp.pid(141), '{}'::jsonb, null); raise exception 'FAIL 6e: null state id accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+
+-- 6e2. Bound to the state row the move loaded: a rematch re-deals the rows (new ids), so a delayed write is stale.
+do $$
+declare
+  v_old uuid;
+begin
+  perform pg_temp.mk('GSG', 16);
+  v_old := pg_temp.sid('GSG', 16, 1);
+  -- the rematch: the same player gets a NEW state row
+  delete from public.scrabble_player_state where id = v_old;
+  insert into public.scrabble_player_state (game_id, player_id, rack, score, player_order) values ('GSG', pg_temp.pid(161), '[]', 5, 0);
+  perform pg_temp.assert_eq('6e2 stale', public.scrabble_write_state_if_open('GSG', pg_temp.pid(161), '{"score":999}'::jsonb, v_old)->>'status', 'stale');
+  perform pg_temp.assert_eq('6e2 new round untouched', (select score from public.scrabble_player_state where game_id = 'GSG' and player_id = pg_temp.pid(161)), 5);
+  perform pg_temp.assert_eq('6e2 state of another player', public.scrabble_write_state_if_open('GSG', pg_temp.pid(162), '{"score":1}'::jsonb, v_old)->>'status', 'stale');
 end $$;
 
 -- 6f. A game that was already ended otherwise keeps its finished_at: the finish still lands on the session, flips nothing.
@@ -259,8 +286,8 @@ select pg_temp.assert_eq('priv authenticated', has_function_privilege('authentic
 select pg_temp.assert_eq('priv public', has_function_privilege('public', 'public.finish_scrabble_session(text, timestamptz, jsonb, jsonb, uuid, jsonb)', 'execute'), false);
 select pg_temp.assert_eq('priv service_role', has_function_privilege('service_role', 'public.finish_scrabble_session(text, timestamptz, jsonb, jsonb, uuid, jsonb)', 'execute'), true);
 
-select pg_temp.assert_eq('priv write anon', has_function_privilege('anon', 'public.scrabble_write_state_if_open(text, uuid, jsonb)', 'execute'), false);
-select pg_temp.assert_eq('priv write authenticated', has_function_privilege('authenticated', 'public.scrabble_write_state_if_open(text, uuid, jsonb)', 'execute'), false);
-select pg_temp.assert_eq('priv write service_role', has_function_privilege('service_role', 'public.scrabble_write_state_if_open(text, uuid, jsonb)', 'execute'), true);
+select pg_temp.assert_eq('priv write anon', has_function_privilege('anon', 'public.scrabble_write_state_if_open(text, uuid, jsonb, uuid)', 'execute'), false);
+select pg_temp.assert_eq('priv write authenticated', has_function_privilege('authenticated', 'public.scrabble_write_state_if_open(text, uuid, jsonb, uuid)', 'execute'), false);
+select pg_temp.assert_eq('priv write service_role', has_function_privilege('service_role', 'public.scrabble_write_state_if_open(text, uuid, jsonb, uuid)', 'execute'), true);
 
 rollback;

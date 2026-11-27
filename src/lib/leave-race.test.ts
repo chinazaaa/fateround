@@ -48,8 +48,12 @@ function finishRpc(tables: Tables, name: string, args: Record<string, unknown>):
   if (name === 'scrabble_write_state_if_open') {
     const g = String(args.p_game_id).toUpperCase()
     if (tables.scrabble_sessions.find((r) => r.game_id === g)?.phase === 'finished') return { status: 'finished' }
-    const row = tables.scrabble_player_state.find((r) => r.game_id === g && r.player_id === args.p_player_id)
-    if (row) Object.assign(row, args.p_patch as Row)
+    // Bound to the state row the move loaded: a rematch re-deals the rows (new ids), so a delayed write finds none.
+    const row = tables.scrabble_player_state.find(
+      (r) => r.id === args.p_state_id && r.game_id === g && r.player_id === args.p_player_id
+    )
+    if (!row) return { status: 'stale' }
+    Object.assign(row, args.p_patch as Row)
     return { status: 'written' }
   }
   const uno = name === 'finish_uno_session'
@@ -70,7 +74,7 @@ function finishRpc(tables: Tables, name: string, args: Record<string, unknown>):
     (('sessions_played' in round && (game.sessions_played ?? null) !== round.sessions_played) ||
       ('session_started_at' in round && (game.session_started_at ?? null) !== round.session_started_at))
   ) {
-    return { status: 'lost', games_flipped: false }
+    return { status: 'lost', reason: 'round', games_flipped: false }
   }
   const remove = () => {
     const id = (args.p_remove_player_id as string | null) ?? null
@@ -809,7 +813,7 @@ function scrabbleTables(): Tables {
     players: names.slice(0, 3).map((p) => ({ ...p })),
     scrabble_player_state: names
       .slice(0, 3)
-      .map((p) => ({ game_id: 'G', player_id: p.id, score: 0, timed_out: false })),
+      .map((p) => ({ id: `st-${p.id}`, game_id: 'G', player_id: p.id, score: 0, timed_out: false })),
     scrabble_sessions: [
       {
         game_id: 'G',
@@ -1713,7 +1717,7 @@ describe('round identity and mover writes around a finish', () => {
     const t = unoTables()
     t.games[0].sessions_played = 2
     const res = await finishExpiredUnoGame(makeDb(t).supabase, expiredFor() as never)
-    expect(res).toEqual({ won: false })
+    expect(res).toEqual({ won: false, roundMismatch: true })
     expect(t.uno_sessions[0].phase).toBe('playing')
   })
 
@@ -1747,28 +1751,95 @@ describe('round identity and mover writes around a finish', () => {
     expect(t.games[0].status).toBe('active')
   })
 
-  it('a non-finishing mover write is refused once a finish published the round', async () => {
+  // A chess-clock pass that does not end the round: the clock deduction is the mover's guarded write.
+  const chessPass = () => {
     const t = rackless()
-    // The host finish lands between the pass's claim and its mover write: the clock write must be dropped.
     t.scrabble_sessions[0].clock_mode = 'chess'
     t.scrabble_player_state.forEach((x) => (x.clock_ms_remaining = 100_000))
     t.scrabble_sessions[0].turn_started_at = new Date(Date.now() - 10_000).toISOString()
     t.scrabble_sessions[0].bag = []
-    let finishedBetween = false
-    const db = makeDb(t, {
-      afterSessionRead: () => {},
-    })
+    return t
+  }
+  const spyRpc = (db: ReturnType<typeof makeDb>, before?: (name: string) => void) => {
+    const calls: { name: string; args: Record<string, unknown> }[] = []
     const realRpc = db.supabase.rpc
     db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
-      if (name === 'scrabble_write_state_if_open' && !finishedBetween) {
-        finishedBetween = true
-        t.scrabble_sessions[0].phase = 'finished'
-      }
+      calls.push({ name, args })
+      before?.(name)
       return realRpc(name, args)
     }
-    const before = t.scrabble_player_state.find((x) => x.player_id === 'A')!.clock_ms_remaining
+    return calls
+  }
+  const clockOf = (t: Tables) => t.scrabble_player_state.find((x) => x.player_id === 'A')!.clock_ms_remaining as number
+
+  it('control: the mover write lands (and is attempted with the reduced clock) when nothing finished the round', async () => {
+    const t = chessPass()
+    const db = makeDb(t)
+    const calls = spyRpc(db)
     expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({})
-    expect(t.scrabble_player_state.find((x) => x.player_id === 'A')!.clock_ms_remaining).toBe(before)
+    const write = calls.find((c) => c.name === 'scrabble_write_state_if_open')
+    expect(write).toBeDefined()
+    expect((write!.args.p_patch as { clock_ms_remaining: number }).clock_ms_remaining).toBeLessThan(100_000)
+    expect(write!.args.p_state_id).toBe('st-A')
+    expect(clockOf(t)).toBeLessThan(100_000)
+  })
+
+  it('a non-finishing mover write is refused once a finish published the round', async () => {
+    const t = chessPass()
+    const db = makeDb(t)
+    let finishedBetween = false
+    const calls = spyRpc(db, (name) => {
+      if (name === 'scrabble_write_state_if_open' && !finishedBetween) {
+        finishedBetween = true
+        // The host finish lands between the pass's claim and its mover write.
+        t.scrabble_sessions[0].phase = 'finished'
+      }
+    })
+    expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({})
+    // The write WAS attempted (with the reduced clock) and refused: the published state is untouched.
+    const write = calls.find((c) => c.name === 'scrabble_write_state_if_open')
+    expect((write!.args.p_patch as { clock_ms_remaining: number }).clock_ms_remaining).toBeLessThan(100_000)
+    expect(clockOf(t)).toBe(100_000)
+  })
+
+  it('a delayed mover write of an earlier round cannot touch the rematch that replaced the state rows', async () => {
+    const t = chessPass()
+    const db = makeDb(t)
+    spyRpc(db, (name) => {
+      if (name !== 'scrabble_write_state_if_open') return
+      // A finish AND a rematch landed between the claim and the write: the session is playing again and every
+      // state row is a fresh one (new ids), as initializeScrabbleGame re-deals them.
+      t.scrabble_sessions[0].phase = 'playing'
+      t.scrabble_player_state = t.scrabble_player_state.map((x, i) => ({
+        ...x,
+        id: `round2-${i}`,
+        clock_ms_remaining: 300_000,
+        score: 0,
+      }))
+    })
+    expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({})
+    expect(clockOf(t)).toBe(300_000)
+  })
+
+  it('an invalid answer from the guarded write is an error, not a clean move', async () => {
+    const t = chessPass()
+    const db = makeDb(t)
+    const realRpc = db.supabase.rpc
+    db.supabase.rpc = (name: string, args: Record<string, unknown>) =>
+      name === 'scrabble_write_state_if_open'
+        ? Promise.resolve({ data: { status: 'invalid' }, error: null })
+        : realRpc(name, args)
+    expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+  })
+
+  it('the mover leaving before the write (stale row) is not an error', async () => {
+    const t = chessPass()
+    const db = makeDb(t)
+    spyRpc(db, (name) => {
+      if (name === 'scrabble_write_state_if_open')
+        t.scrabble_player_state = t.scrabble_player_state.filter((x) => x.player_id !== 'A')
+    })
+    expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({})
   })
 
   it('an exchange that ends the round ranks the NEW rack and writes it with the finish', async () => {
@@ -1831,5 +1902,133 @@ describe('round identity and mover writes around a finish', () => {
     } else {
       throw new Error(`the missed-UNO penalty did not apply (D holds ${dCards.length} cards)`)
     }
+  })
+})
+
+describe('round binding of the Scrabble host finish and expiry', () => {
+  const rackless = () => {
+    const t = scrabbleTables()
+    t.scrabble_player_state.forEach((x) => (x.rack = []))
+    return t
+  }
+
+  it('a host finish authorized against an earlier round never finishes the later round', async () => {
+    const t = rackless()
+    t.games[0].sessions_played = 2
+    expect(
+      await finishScrabbleGameEarly(makeDb(t).supabase, 'G', {
+        sessionStartedAt: '2020-01-01T00:00:00.000Z',
+        sessionsPlayed: 1,
+      })
+    ).toEqual({
+      error: null,
+      skipped: true,
+    })
+    expect(t.scrabble_sessions[0].phase).toBe('playing')
+    expect(t.games[0].status).toBe('active')
+    // the same round still finishes
+    expect(
+      await finishScrabbleGameEarly(makeDb(t).supabase, 'G', {
+        sessionStartedAt: '2020-01-01T00:00:00.000Z',
+        sessionsPlayed: 2,
+      })
+    ).toEqual({ error: null })
+    expect(t.scrabble_sessions[0].phase).toBe('finished')
+  })
+
+  it('an expiry for the earlier round, after a replay left the old finished session in place, is not "finished"', async () => {
+    const t = rackless()
+    // Play Again: the games row is back to waiting with a new round identity; the finished session row is retained.
+    t.scrabble_sessions[0].phase = 'finished'
+    Object.assign(t.games[0], { status: 'waiting', sessions_played: 2, session_started_at: null })
+    const game = {
+      id: 'G',
+      status: 'active',
+      session_started_at: '2020-01-01T00:00:00.000Z',
+      sessions_played: 1,
+      game_duration_seconds: 60,
+    }
+    expect(await finishExpiredScrabbleGame(makeDb(t).supabase, game as never)).toEqual({ finished: false })
+    expect(t.games[0].status).toBe('waiting')
+  })
+})
+
+describe('Uno: optional attribution, committed timer finish, retained seats', () => {
+  const num = (id: string, color: string, value: number) => ({ id, color, kind: 'number', value })
+
+  it('a Mercy knockout that ends the round still commits when the attributed setter has since left', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_no_mercy_win: 'last_standing' })
+    t.uno_sessions[0].phase = 'swap_target'
+    t.uno_sessions[0].turn_order = ['A', 'B']
+    // A (the swapper) holds 25 cards, B three: the swap hands B the 25 and B is knocked out, attributed to A.
+    t.uno_player_hands[0].cards = Array.from({ length: 25 }, (_, i) => num(`A${i}`, 'red', 5))
+    t.uno_player_hands[1].cards = [num('B1', 'red', 5), num('B2', 'red', 5), num('B3', 'red', 5)]
+    let reads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        // Read #1 is the swap's load, read #2 the knockout's fresh read: the setter (A) left in between.
+        if (tb === 'uno_sessions' && ++reads === 2)
+          t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id !== 'A')
+      },
+    })
+    expect(await processUnoSwap(db.supabase, 'G', 'A', 'B')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B'])
+    expect(t.games[0].status).toBe('finished')
+  })
+
+  it('a turn expiry whose delegate ended the round on the game timer is a success, not a skip', async () => {
+    const t = unoTables()
+    t.uno_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'
+    Object.assign(t.games[0], { session_started_at: '2999-01-01T00:00:00.000Z', game_duration_seconds: 60 })
+    let loads = 0
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        // 'players' is the last read of a state load. After the expiry handler's own load, the game timer runs out.
+        if (tb === 'players' && ++loads === 1) t.games[0].session_started_at = '2020-01-01T00:00:00.000Z'
+      },
+    })
+    expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
+  it('a leave that retries into a published result keeps the seat (Uno)', async () => {
+    const t = unoTables()
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || raced) return
+        raced = true
+        // The round was published between the leave's read and its CAS.
+        Object.assign(t.uno_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
+      },
+    })
+    expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.uno_player_hands.map((h) => h.player_id)).toContain('C')
+  })
+
+  it('a leave of a seat that is already out of the turn order of a finished round still gets its cleanup (Uno)', async () => {
+    const t = unoTables()
+    t.uno_sessions[0].phase = 'finished'
+    t.uno_sessions[0].turn_order = ['A', 'B', 'D']
+    expect(await removeUnoPlayer(makeDb(t).supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+
+  it('a leave that retries into a published result keeps the seat (Scrabble)', async () => {
+    const t = scrabbleTables()
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'scrabble_sessions' || raced) return
+        raced = true
+        Object.assign(t.scrabble_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
+      },
+    })
+    expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.scrabble_player_state.map((x) => x.player_id)).toContain('C')
   })
 })

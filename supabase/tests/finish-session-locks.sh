@@ -109,7 +109,7 @@ start_gate
 PGAPPNAME=fin-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_F; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
 wait_for "finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_M=$(mktemp)
-PGAPPNAME=fin-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.scrabble_write_state_if_open('FINLM', '$P5', '{\"score\":999}'::jsonb)->>'status'" >"$OUT_M" 2>&1 &
+PGAPPNAME=fin-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.scrabble_write_state_if_open('FINLM', '$P5', '{\"score\":999}'::jsonb, (select id from public.scrabble_player_state where game_id = 'FINLM' and player_id = '$P5'))->>'status'" >"$OUT_M" 2>&1 &
 wait_for "the mover write waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-second' and wait_event_type = 'Lock')"
 open_gate
 wait_for "the mover write answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-second')"

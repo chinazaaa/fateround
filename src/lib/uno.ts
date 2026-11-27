@@ -1077,10 +1077,13 @@ async function finalizeIfGameExpired(
   })
 }
 
+/** The message of a manual action that found the round's timer expired and ended it. */
+const UNO_TIMES_UP_ERROR = "Time's up — the game has ended"
+
 /** Result for a move on a round whose timer expired: it was ended (error), lost the finish race (skipped) or just ended. */
 function expiredPlayResult(expired: FinishResult): { error?: string; skipped?: boolean } {
   if (expired.error) return { error: expired.error }
-  return expired.won ? { error: "Time's up — the game has ended" } : { skipped: true }
+  return expired.won ? { error: UNO_TIMES_UP_ERROR } : { skipped: true }
 }
 
 /**
@@ -1525,9 +1528,12 @@ async function applyMercyKnockoutOnce(
       .eq('game_id', gameId)
       .eq('player_id', attributionPlayerId)
       .maybeSingle()
-    const attStats = { ...((attHandRow?.stats as Record<string, number> | null) ?? {}) }
-    attStats.uno_hs_knockouts = (attStats.uno_hs_knockouts ?? 0) + 1
-    attributionWrite = { player_id: attributionPlayerId, stats: attStats }
+    // Attribution is optional: a setter who has since left has no hand row, and the knockout must still commit.
+    if (attHandRow) {
+      const attStats = { ...((attHandRow.stats as Record<string, number> | null) ?? {}) }
+      attStats.uno_hs_knockouts = (attStats.uno_hs_knockouts ?? 0) + 1
+      attributionWrite = { player_id: attributionPlayerId, stats: attStats }
+    }
   }
 
   if (endsRound) {
@@ -3288,6 +3294,9 @@ export async function processUnoExpireTurn(
   const expectedUpdatedAt = session.updated_at
   const settle = async (result: { error?: string }): Promise<{ error?: string; skipped?: boolean }> => {
     if (!result.error || result.error === INTERNAL_ERROR_MESSAGE) return result
+    // The delegate ended the round because the game timer ran out (a committed finish): for a turn expiry that is
+    // success, not a version-conflict skip (the finish itself changed the version).
+    if (result.error === UNO_TIMES_UP_ERROR) return {}
     const { data: fresh } = await supabase.from('uno_sessions').select('updated_at').eq('game_id', gameId).maybeSingle()
     if (fresh && fresh.updated_at !== expectedUpdatedAt) return { skipped: true }
     return result
@@ -3474,6 +3483,11 @@ async function removeUnoPlayerOnce(
 
   const order = session ? [...(session.turn_order ?? [])] : []
   const removedIndex = order.indexOf(playerId)
+
+  // The round was published while this leave was retrying and the seat was never removed from the live session:
+  // the finished result keeps its seats (the players route retains them for a finished game). A seat that is
+  // already out of the turn order still gets its cleanup below.
+  if (session?.phase === 'finished' && removedIndex >= 0) return { error: null }
 
   if (session && removedIndex >= 0 && session.phase !== 'finished') {
     const { data: gameRow } = await supabase

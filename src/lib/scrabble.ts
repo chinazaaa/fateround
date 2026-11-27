@@ -135,6 +135,9 @@ async function finalizeScrabbleSession(
   }
   if (finished.error) return { error: finished.error }
   if (finished.won || finished.already) return { error: null }
+  // The finish was decided about another round (a rematch happened): never read the retained finished session of
+  // the earlier round as "someone finished it".
+  if (finished.roundMismatch) return { error: null, skipped: true }
   // Lost the claim. If the round is finished now, someone else ended it (success). If it is still
   // running, a play/pass moved the session first and THIS request did not end the round.
   const { session: after, error: rereadError } = await loadSession(supabase, gameId)
@@ -155,9 +158,11 @@ async function finishScrabbleByTimeLimit(
  *  and picks a winner, same as a natural game end. */
 export async function finishScrabbleGameEarly(
   supabase: SupabaseClient,
-  gameId: string
+  gameId: string,
+  // The round the host's request was authorized against (from the authenticated game snapshot).
+  round?: FinishRound
 ): Promise<{ error: string | null; skipped?: boolean }> {
-  return finalizeScrabbleSession(supabase, gameId, 'Host ended the game.')
+  return finalizeScrabbleSession(supabase, gameId, 'Host ended the game.', round)
 }
 
 export async function finishExpiredScrabbleGame(
@@ -499,15 +504,24 @@ async function finishFinishRound(
 async function writeMoverState(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string,
+  state: { id: string; player_id: string },
   patch: Omit<ScrabbleStateWrite, 'player_id'>
 ): Promise<{ error?: string }> {
-  const { error } = await supabase.rpc('scrabble_write_state_if_open', {
+  // Bound to the state row the move loaded: a rematch re-deals every state row (new ids), so a delayed write of an
+  // earlier round finds no row (`stale`) instead of overwriting the new round.
+  const { data, error } = await supabase.rpc('scrabble_write_state_if_open', {
     p_game_id: gameId,
-    p_player_id: playerId,
+    p_player_id: state.player_id,
     p_patch: patch,
+    p_state_id: state.id,
   })
-  return error ? { error: internalErrorMessage('scrabble', error) } : {}
+  if (error) return { error: internalErrorMessage('scrabble', error) }
+  const status = (data as { status?: string } | null)?.status
+  // written: done. finished: the round was published first and its result stands (intentional refusal).
+  // stale: the row is gone (the mover left) or belongs to another round: the move is moot.
+  if (status === 'written' || status === 'finished' || status === 'stale') return {}
+  // invalid / anything else: the move's session write already landed but its state write did not.
+  return { error: internalErrorMessage('scrabble', `scrabble_write_state_if_open answered ${status ?? 'nothing'}`) }
 }
 
 /** Action result for a finish: error -> error, landed -> success, lost CAS (or already finished) -> skipped. */
@@ -753,7 +767,7 @@ export async function processScrabblePlay(
   )
   if (!persisted.won) return persisted.error ? { error: persisted.error } : { skipped: true }
 
-  const moverWritten = await writeMoverState(supabase, gameId, playerId, moverStateWrite)
+  const moverWritten = await writeMoverState(supabase, gameId, state, moverStateWrite)
   if (moverWritten.error) return { error: moverWritten.error }
 
   return {}
@@ -850,7 +864,7 @@ async function advanceScorelessTurn(
     session.updated_at
   )
   if (persisted.won && moverState && Object.keys(moverWrite).length > 0) {
-    const written = await writeMoverState(supabase, gameId, moverState.player_id, moverWrite)
+    const written = await writeMoverState(supabase, gameId, moverState, moverWrite)
     if (written.error) return { won: true, error: written.error }
   }
   return { won: persisted.won, error: persisted.error }
@@ -1008,7 +1022,7 @@ async function processScrabbleChessTimeout(
     session.updated_at
   )
   if (!persisted.won) return persisted.error ? { error: persisted.error } : {}
-  const flagged = await writeMoverState(supabase, gameId, moverState.player_id, {
+  const flagged = await writeMoverState(supabase, gameId, moverState, {
     clock_ms_remaining: 0,
     timed_out: true,
   })
@@ -1086,6 +1100,11 @@ async function removeScrabblePlayerOnce(
   const session = sessionRaw as ScrabbleSession | null
   const order = session ? [...(session.turn_order ?? [])] : []
   const removedIndex = order.indexOf(playerId)
+
+  // The round was published while this leave was retrying and the seat was never removed from the live session:
+  // the finished result keeps its seats (the players route retains them for a finished game). A seat that is
+  // already out of the turn order still gets its cleanup below.
+  if (session?.phase === 'finished' && removedIndex >= 0) return { error: null }
 
   // In an active game and actually in the turn order: rewrite the turn order.
   if (session && removedIndex >= 0 && session.phase !== 'finished') {

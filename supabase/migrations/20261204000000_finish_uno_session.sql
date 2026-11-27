@@ -11,7 +11,7 @@
 -- finish_uno_session() takes FOR UPDATE on the games row and then the uno_sessions row, and decides against the
 -- CURRENT rows:
 --   * `p_round` (optional) names the round the caller decided about ({session_started_at, sessions_played}); a
---     mismatch with the games row under the lock -> `lost`, so an expiry decided from a snapshot can never finish a
+--     mismatch with the games row under the lock -> `lost` (reason `round`), so an expiry decided from a snapshot can never finish a
 --     LATER round after a rematch.
 --   * session already `finished`  -> `already_finished`. Nothing is re-ranked, no hand is rewritten, no series
 --     points are awarded, and NO player is removed from the published result; the only thing completed is the
@@ -87,7 +87,7 @@ begin
     end if;
     if (p_round ? 'sessions_played' and v_game.sessions_played is distinct from (p_round->>'sessions_played')::integer)
        or (p_round ? 'session_started_at' and v_game.session_started_at is distinct from (p_round->>'session_started_at')::timestamptz) then
-      return jsonb_build_object('status', 'lost', 'games_flipped', false);
+      return jsonb_build_object('status', 'lost', 'reason', 'round', 'games_flipped', false);
     end if;
   end if;
 
@@ -140,15 +140,16 @@ begin
       return jsonb_build_object('status', 'invalid', 'reason', 'hand_write', 'games_flipped', false);
     end if;
   end loop;
-  if (select count(distinct (e->>'player_id')) from jsonb_array_elements(p_hand_writes) e) <> jsonb_array_length(p_hand_writes) then
+  if (select count(distinct (e->>'player_id')::uuid) from jsonb_array_elements(p_hand_writes) e) <> jsonb_array_length(p_hand_writes) then
     return jsonb_build_object('status', 'invalid', 'reason', 'hand_write_duplicate', 'games_flipped', false);
   end if;
 
   if p_series is not null then
-    if jsonb_typeof(p_series) <> 'object'
-       or jsonb_typeof(p_series->'winner_id') <> 'string'
+    -- IS DISTINCT FROM: a missing key makes jsonb_typeof() NULL, and a plain `<>` would let that through.
+    if jsonb_typeof(p_series) is distinct from 'object'
+       or jsonb_typeof(p_series->'winner_id') is distinct from 'string'
        or coalesce(p_series->>'winner_id', '') = ''
-       or jsonb_typeof(p_series->'points') <> 'number'
+       or jsonb_typeof(p_series->'points') is distinct from 'number'
        or (p_series->>'points') !~ '^[0-9]+$'
        or not exists (
          select 1 from public.uno_player_hands h where h.game_id = v_id and h.player_id::text = p_series->>'winner_id'

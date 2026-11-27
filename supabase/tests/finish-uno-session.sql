@@ -214,6 +214,14 @@ begin
   perform pg_temp.assert_eq('6c numeric player id', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[{"player_id":5,"cards":[]}]'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6c duplicate player id', public.finish_uno_session('GUB', v_v, '{}'::jsonb,
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(121), 'cards', '[]'::jsonb), jsonb_build_object('player_id', pg_temp.pid(121), 'stats', '{}'::jsonb)))->>'status', 'invalid');
+  -- a player id with hex letters, so its lower- and upper-case spellings really differ as text
+  insert into public.players (id, game_id, name) values ('abcdef00-0000-0000-0000-00000000abcd', 'GUB', 'Hex');
+  insert into public.uno_player_hands (game_id, player_id, cards, player_order) values ('GUB', 'abcdef00-0000-0000-0000-00000000abcd', '[]', 9);
+  perform pg_temp.assert_eq('6c duplicate player id, mixed case', public.finish_uno_session('GUB', v_v, '{}'::jsonb,
+    '[{"player_id":"abcdef00-0000-0000-0000-00000000abcd","cards":[]},{"player_id":"ABCDEF00-0000-0000-0000-00000000ABCD","stats":{}}]'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c series without points', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(121)::text))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c series without winner', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb, '{"points":1}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6c series with zero points is valid', public.finish_uno_session('GUC', (pg_temp.sess('GUC')).updated_at, '{}'::jsonb, '[]'::jsonb, jsonb_build_object('winner_id', pg_temp.pid(111)::text, 'points', 0))->>'status', 'finished');
   perform pg_temp.assert_eq('6c player of another game', public.finish_uno_session('GUB', v_v, '{}'::jsonb,
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'cards', '[]'::jsonb)))->>'status', 'invalid');
   perform pg_temp.assert_eq('6c series winner of another game', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb,
@@ -226,7 +234,7 @@ begin
   perform pg_temp.assert_eq('6c removal of another game player', public.finish_uno_session('GUB', v_v, '{}'::jsonb, '[]'::jsonb, null, null, pg_temp.pid(111))->>'status', 'invalid');
   perform pg_temp.assert_eq('6c nothing written', (pg_temp.sess('GUB')).phase, 'playing');
   perform pg_temp.assert_eq('6c game still active', (pg_temp.g('GUB')).status, 'active');
-  perform pg_temp.assert_eq('6c other game untouched', (pg_temp.sess('GUC')).phase, 'playing');
+  perform pg_temp.assert_eq('6c nothing of the rejected payloads was written', (pg_temp.sess('GUB')).phase, 'playing');
 end $$;
 
 -- 6d. Round identity: a finish decided about another round is lost; a replayed (waiting) game is never re-finished.
@@ -239,6 +247,7 @@ begin
     '{"session_started_at":"2026-01-01T00:00:00Z"}'::jsonb)->>'status', 'lost');
   perform pg_temp.assert_eq('6d other round (sessions_played)', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null,
     '{"sessions_played":2}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6d round mismatch is flagged as such', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"sessions_played":2}'::jsonb)->>'reason', 'round');
   perform pg_temp.assert_eq('6d round shape', public.finish_uno_session('GUD', v_v, '{}'::jsonb, '[]'::jsonb, null, null, null, '{"x":1}'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6d nothing written', (pg_temp.sess('GUD')).phase, 'playing');
   -- the round check also guards the already-finished branch
