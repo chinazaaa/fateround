@@ -947,7 +947,7 @@ export async function syncWordRushAfterPlayerRemoved(
 ): Promise<{
   error?: string
   internal?: boolean
-  rollback?: { roster: string[]; prompt_setter_player_id: string | null }
+  rollback?: WordRushRosterSnapshot
 }> {
   const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
   if (!game || game.status !== 'active') return {}
@@ -959,7 +959,11 @@ export async function syncWordRushAfterPlayerRemoved(
   const newRoster = session.roster.filter((id) => id !== removedPlayerId)
   if (newRoster.length === session.roster.length) return {}
 
-  const rollback = { roster: session.roster, prompt_setter_player_id: session.prompt_setter_player_id }
+  const rollback: WordRushRosterSnapshot = {
+    session_id: session.id,
+    roster: session.roster,
+    prompt_setter_player_id: session.prompt_setter_player_id,
+  }
   const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
 
   // Only pick a new letter-setter before letters are live — during playing keep the
@@ -1024,10 +1028,21 @@ export async function syncWordRushAfterPlayerRemoved(
   return { rollback }
 }
 
+/**
+ * The roster change made before a player delete, with the id of the session it was made on. A finish + Play Again +
+ * Start between the removal and a revert replaces the session row (a new id under the same game id), so the revert is
+ * bound to the snapshot's session and can never write the old roster / prompt setter onto a new one.
+ */
+export type WordRushRosterSnapshot = {
+  session_id: string
+  roster: string[]
+  prompt_setter_player_id: string | null
+}
+
 export async function revertWordRushRosterAfterFailedPlayerDelete(
   supabase: SupabaseClient,
   gameId: string,
-  snapshot: { roster: string[]; prompt_setter_player_id: string | null }
+  snapshot: WordRushRosterSnapshot
 ): Promise<void> {
   await supabase
     .from('word_rush_sessions')
@@ -1037,6 +1052,7 @@ export async function revertWordRushRosterAfterFailedPlayerDelete(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('id', snapshot.session_id)
 }
 
 export async function assignWordRushTeam(

@@ -111,18 +111,17 @@ export async function cleanupFinishedSession(
 export async function completeHostLeftCleanup(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ finished: boolean; hostEnded: boolean; error: string | null }> {
+): Promise<{ finished: boolean; error: string | null }> {
   const { data: game, error } = await supabase
     .from('games')
     .select('status, game_type, result_reason, finished_at')
     .eq('id', gameId)
     .maybeSingle()
-  if (error) return { finished: false, hostEnded: false, error: internalErrorMessage('admin-end-game', error) }
-  if (game?.status !== 'finished') return { finished: false, hostEnded: false, error: null }
-  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, hostEnded: false, error: null }
+  if (error) return { finished: false, error: internalErrorMessage('admin-end-game', error) }
+  if (game?.status !== 'finished') return { finished: false, error: null }
+  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
   return {
     finished: true,
-    hostEnded: true,
     error: await cleanupFinishedSession(supabase, gameId, parseGameType(game.game_type), game.finished_at),
   }
 }

@@ -33,13 +33,14 @@ vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/word-rush-server')>()),
   syncWordRushAfterPlayerRemoved: async () => ({}),
 }))
-// The bookkeeping a host-left finish owes is resumed by claiming its durable marker (recoverFinishBookkeeping).
-const bookkeeping = vi.hoisted(() => ({ calls: [] as string[], state: 'none' as string }))
+// The bookkeeping a finish owes (the route runs it for the finish THIS call committed, like any other finish).
+const bookkeeping = vi.hoisted(() => ({ calls: [] as unknown[][], fail: false }))
 vi.mock('@/lib/game-finish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/game-finish')>()),
-  recoverFinishBookkeeping: async (_s: unknown, gameId: string) => {
-    bookkeeping.calls.push(gameId)
-    return { state: bookkeeping.state }
+  runPostFinishBookkeeping: async (_s: unknown, gameId: string, finishedAt: string, tracked: boolean) => {
+    bookkeeping.calls.push([gameId, finishedAt, tracked])
+    if (bookkeeping.fail) throw new Error('bookkeeping failed')
+    return undefined
   },
 }))
 
@@ -163,6 +164,7 @@ type SettleArgs = {
   p_outgoing_host_user_id: string | null
   p_session_started_at: string | null
   p_sessions_played: number | null
+  p_track_bookkeeping: boolean
 }
 /** Every end_game_if_host_alone answer. */
 let endCalls: Array<{ status: string; finished_now?: boolean }> = []
@@ -170,6 +172,10 @@ let endCalls: Array<{ status: string; finished_now?: boolean }> = []
 let settleFailBudget = 0
 /** Every settle_host_leave call: its arguments and whether the leaver's seat row existed when it ran. */
 let settleCalls: Array<{ args: SettleArgs; seatExisted: boolean }> = []
+/** Every settle_host_leave ATTEMPT, recorded at RPC entry (before any failure budget), so an unreachable call still counts. */
+let settleAttempts: SettleArgs[] = []
+/** The seat delete (remove_player_if_game_open) COMMITS but its response is lost. */
+let deleteCommitsButErrors = false
 const FINISHED_AT = '2026-05-05T05:05:05.000Z'
 /**
  * A model of public.settle_host_leave (supabase/migrations/20261203900000_settle_host_leave.sql; the SQL itself is
@@ -275,6 +281,10 @@ async function rpc(name: string, args: Record<string, unknown>) {
     hook?.()
     if (failPlayerDelete) return { data: null, error: { message: 'delete failed' } }
     const a = args as { p_game_id: string; p_player_id: string }
+    if (deleteCommitsButErrors) {
+      deletePlayers([a.p_player_id])
+      return { data: null, error: { message: 'response lost' } }
+    }
     const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
     if (!g) return { data: { status: 'game_missing' }, error: null }
     if (g.status === 'finished') return { data: { status: 'game_finished' }, error: null }
@@ -292,6 +302,7 @@ async function rpc(name: string, args: Record<string, unknown>) {
     return { data: answer, error: null }
   }
   if (name === 'settle_host_leave') {
+    settleAttempts.push(args as SettleArgs)
     if (settleFailBudget > 0) {
       settleFailBudget--
       return { data: null, error: { message: 'rpc unreachable' } }
@@ -305,12 +316,13 @@ async function rpc(name: string, args: Record<string, unknown>) {
     wipeFailBudget--
     return { data: null, error: { message: 'wipe failed' } }
   }
-  const game = tables.games[0]
-  if (game.status !== 'finished' || game.finished_at !== a.p_finished_at) {
+  const game = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
+  if (!game || game.status !== 'finished' || game.finished_at !== a.p_finished_at) {
     return { data: { status: 'not_current_session' }, error: null }
   }
   const doomed = a.p_kind === 'anonymous' ? ['anonymous_messages', 'anonymous_room_bans'] : ['codewords_messages']
-  for (const table of doomed) tables[table] = []
+  // Only THIS game's rows: another room's data is never touched.
+  for (const table of doomed) tables[table] = (tables[table] ?? []).filter((r) => r.game_id !== game.id)
   return { data: { status: 'wiped' }, error: null }
 }
 const client = { from: builder, rpc }
@@ -391,7 +403,9 @@ beforeEach(() => {
   wipeFailBudget = 0
   wipeCalls = []
   bookkeeping.calls = []
-  bookkeeping.state = 'none'
+  bookkeeping.fail = false
+  settleAttempts = []
+  deleteCommitsButErrors = false
   removal.reconcileError = null
   removal.uno.error = null
   removal.scrabble.error = null
@@ -470,26 +484,22 @@ describe('DELETE /api/players: what the leave captures and hands to the database
       p_outgoing_host_user_id: 'user-host',
       p_session_started_at: 'S1',
       p_sessions_played: 1,
+      p_track_bookkeeping: false,
     })
   })
 
-  it.each(['uno', 'word_rush'])(
-    '%s: a leave with a successor succeeds with exactly one settle call and no flag to pick',
-    async (type) => {
+  it.each([
+    ['uno', false],
+    ['word_rush', true],
+  ])(
+    '%s: a leave with a successor succeeds with exactly one settle call (tracked bookkeeping: %s)',
+    async (type, tracked) => {
       setup(type)
       const res = await leave()
       expect(res.status).toBe(200)
       expect(settleCalls).toHaveLength(1)
-      // Bookkeeping is no longer opt-in per game type: nothing to pass, the finish itself writes the marker.
-      expect(Object.keys(settleCalls[0].args).sort()).toEqual(
-        [
-          'p_game_id',
-          'p_outgoing_host_user_id',
-          'p_outgoing_player_id',
-          'p_session_started_at',
-          'p_sessions_played',
-        ].sort()
-      )
+      // Only Word Rush's Play Again honours the durable marker, so only its finish is tracked.
+      expect(settleCalls[0].args.p_track_bookkeeping).toBe(tracked)
       expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
     }
   )
@@ -667,7 +677,7 @@ describe('DELETE /api/players: no-successor end and its cleanup', () => {
     expect(g.status).toBe('finished')
     expect(g.result_reason).toBe('host_ended')
     expect(g.host_user_id).toBeNull()
-    expect(bookkeeping.calls).toEqual(['ABCD'])
+    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
   })
 
   it('does not owe bookkeeping (or relabel) for a game another caller finished first', async () => {
@@ -761,14 +771,23 @@ describe('DELETE /api/players: the stale session is never finished by the leave'
     // OTHER is a real roster row, so the taken-over state is the one the database would hold.
     tables.players = [tables.players[0], tables.players[1]]
     tables.rounds = [{ id: 'r', game_id: 'ABCD', status: 'active', started_at: '2999-01-01T00:00:00.000Z' }]
-    beforeEndCheck = () =>
+    let hookRan = false
+    beforeEndCheck = () => {
+      hookRan = true
       Object.assign(tables.games[0], { status: 'active', session_started_at: 'S2', sessions_played: 2, ...taken })
+    }
     const res = await leave()
     expect(res.status).toBe(200)
     const g = tables.games[0]
     expect(g.status).toBe('active')
     expect(g.result_reason).toBeUndefined()
     expect(g.finished_at).toBeUndefined()
+    // The world really moved on: the hook ran, the game is in the replayed session, and the replacement host / nominee
+    // is still in place (nothing the stale leave did overwrote it).
+    expect(hookRan).toBe(true)
+    expect(g.session_started_at).toBe('S2')
+    expect(g.sessions_played).toBe(2)
+    for (const [key, value] of Object.entries(taken)) expect(g[key]).toBe(value)
     expect(tables.players.map((p) => p.id)).toContain(OTHER_PID)
     // No cleanup of any kind was attempted for a session the leave never finished.
     expect(roundUpdateLog).toEqual([])
@@ -799,14 +818,17 @@ describe('DELETE /api/players: an unreachable settle step is an UNRESOLVED hando
     expect(g.pending_host_player_id).toBeNull()
     expect(g.host_player_id).toBeNull()
     expect(g.status).toBe('active')
-    const attempts = settleCalls.length
+    // The first request really tried (3 attempts, all unreachable).
+    expect(settleAttempts).toHaveLength(3)
+    const attempts = settleAttempts.length
 
     // What a second DELETE with the same resume token actually does: it cannot authenticate, so it neither settles
     // the handoff nor changes anything. Recovery is a manual host transfer, or the idle reaper ending the game.
     const second = await leave()
     expect(second.status).toBeGreaterThanOrEqual(400)
     expect(second.status).toBeLessThan(500)
-    expect(settleCalls).toHaveLength(attempts)
+    // ...and the second DELETE made NO attempt at all: it cannot authenticate.
+    expect(settleAttempts).toHaveLength(attempts)
     expect(tables.games[0].pending_host_player_id).toBeNull()
   })
 
@@ -901,10 +923,20 @@ describe('DELETE /api/players: retained host leave (forfeit games)', () => {
           { id: `${t}-late`, game_id: 'ABCD', created_at: '2026-01-02T00:00:00.000Z' },
         ]
       }
+      // A second room with rows of its own (a different game id) that must survive.
+      tables.games.push({
+        id: 'OTHR',
+        status: 'finished',
+        game_type: type,
+        result_reason: 'host_ended',
+        finished_at: finishedAt,
+      })
+      for (const t of wiped)
+        tables[t].push({ id: `${t}-other-room`, game_id: 'OTHR', created_at: '2025-12-31T23:59:00.000Z' })
       const res = await leave()
       expect(res.status).toBe(200)
       expect(wipeCalls).toEqual([{ p_game_id: 'ABCD', p_finished_at: finishedAt, p_kind: kind }])
-      for (const t of wiped) expect(tables[t]).toEqual([])
+      for (const t of wiped) expect(tables[t].map((r) => r.game_id)).toEqual(['OTHR'])
     }
   )
 
@@ -930,59 +962,50 @@ describe('DELETE /api/players: retained host leave (forfeit games)', () => {
   })
 })
 
-describe('DELETE /api/players: a host-left finish owes its bookkeeping, durably', () => {
-  it.each(['uno', 'trivia', 'word_rush', 'codewords'])(
-    '%s: the pre-removal end resumes the bookkeeping its marker owes (every game type, not only Word Rush)',
-    async (type) => {
-      hostOnly(type)
-      const res = await leave()
-      expect(res.status).toBe(200)
-      expect(endCalls).toEqual([{ status: 'finished', finished_now: true, finished_at: FINISHED_AT }])
-      expect(bookkeeping.calls).toEqual(['ABCD'])
-    }
-  )
-
-  it('a repeat after a lost response (the game is already ended by this leave) resumes the same marker', async () => {
-    hostOnly('uno', { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
+describe('DELETE /api/players: the finish a leave commits owes the bookkeeping every finish owes', () => {
+  it.each([
+    ['uno', false],
+    ['trivia', false],
+    ['word_rush', true],
+    ['codewords', false],
+  ])('%s: the pre-removal end runs its bookkeeping once (tracked: %s)', async (type, tracked) => {
+    hostOnly(type)
     const res = await leave()
     expect(res.status).toBe(200)
-    expect(bookkeeping.calls).toEqual(['ABCD'])
+    expect(endCalls).toEqual([{ status: 'finished', finished_now: true, finished_at: FINISHED_AT }])
+    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, tracked]])
   })
 
-  it('the end check itself reports a repeat (already ended by this leave) as finished and resumes the marker', async () => {
-    hostOnly('uno')
-    // The first answer was lost: the game is finished by the time the check runs again.
-    beforeEndCheck = () =>
-      Object.assign(tables.games[0], { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
-    const res = await leave()
-    expect(res.status).toBe(200)
-    expect(endCalls).toEqual([{ status: 'finished', finished_now: false, finished_at: FINISHED_AT }])
-    expect(bookkeeping.calls).toContain('ABCD')
-  })
-
-  it('a finish by someone else (another reason) is never resumed by this leave', async () => {
-    hostOnly('uno', { status: 'finished', result_reason: 'admin_ended', finished_at: 'THEIRS' })
-    await leave()
-    expect(bookkeeping.calls).toEqual([])
-  })
-
-  it('a post-removal finish committed by the settle step resumes its marker too, once', async () => {
+  it('a post-removal finish committed by the settle step runs its bookkeeping once', async () => {
     setup('uno')
     removal.uno.onCall = () => {
       tables.players = tables.players.filter((p) => p.id !== OTHER_PID)
     }
     await leave()
     expect(settleCalls).toHaveLength(1)
-    expect(bookkeeping.calls).toEqual(['ABCD'])
+    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
   })
 
-  it('a resume that errors is logged, never fails the leave', async () => {
+  it('a finish this call did NOT commit (already ended, or another reason) runs no bookkeeping', async () => {
+    hostOnly('uno', { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
+    await leave()
+    hostOnly('uno', { status: 'finished', result_reason: 'admin_ended', finished_at: 'THEIRS' })
+    await leave()
+    expect(bookkeeping.calls).toEqual([])
+  })
+
+  it('a bookkeeping failure is logged and never fails the leave', async () => {
     hostOnly('uno')
-    bookkeeping.state = 'error'
+    bookkeeping.fail = true
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const res = await leave()
-    log.mockRestore()
-    expect(res.status).toBe(200)
+    try {
+      const res = await leave()
+      expect(res.status).toBe(200)
+      expect(bookkeeping.calls).toHaveLength(1)
+      expect(log.mock.calls.some(([m]) => typeof m === 'string' && m.includes('post-finish bookkeeping'))).toBe(true)
+    } finally {
+      log.mockRestore()
+    }
   })
 })
 
@@ -999,14 +1022,39 @@ describe('DELETE /api/players: removal disposition is carried separately from th
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
   })
 
-  it('a Codewords removal that FAILED to delete the seat keeps its own error alone (the leave can be repeated)', async () => {
+  it('a Codewords delete whose outcome is UNKNOWN (an error, seat still present) is never reported as retryable', async () => {
     setup('codewords')
     failPlayerDelete = true
     settleFailBudget = 99
     const res = await leave()
     expect(res.status).toBe(500)
     const body = (await res.json()) as { error: string; handoff?: string }
+    // The delete may have committed behind the error: keep the original error AND report the handoff unresolved.
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).toBeTruthy()
+  })
+
+  it('a Codewords delete that COMMITTED but lost its response: original error preserved and handoff unresolved', async () => {
+    setup('codewords')
+    deleteCommitsButErrors = true
+    settleFailBudget = 99
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).toBeTruthy()
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+  })
+
+  it('a Codewords seat CONFIRMED retained (the game finished first) with an unreachable settle step is retryable', async () => {
+    setup('codewords')
+    beforeSeatDelete = () => Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended' })
+    settleFailBudget = 99
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
     expect(body.handoff).toBeUndefined()
+    expect(body.error).toMatch(/try again/i)
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
   })
 

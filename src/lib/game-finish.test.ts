@@ -23,7 +23,12 @@ vi.mock('@/lib/tournament-scoring', () => ({ resolveKnockoutGroupRoom: resolveKn
 const recordFacts = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/trophies/round-facts', () => ({ recordRoundFacts: recordFacts }))
 
-import { markGameFinished, recoverAllFinishBookkeeping, recoverFinishBookkeeping } from './game-finish'
+import {
+  markGameFinished,
+  recoverAllFinishBookkeeping,
+  recoverFinishBookkeeping,
+  runPostFinishBookkeeping,
+} from './game-finish'
 
 // Minimal Supabase stand-in: the games update builder is chainable and awaitable,
 // resolving to the rows the (optional) CAS `.select()` would return.
@@ -128,6 +133,22 @@ describe('markGameFinished', () => {
     expect(award).toHaveBeenCalledTimes(1)
     // No CAS was attempted, so every unguarded caller keeps reading a win.
     expect(res.won).toBe(true)
+  })
+})
+
+describe('runPostFinishBookkeeping (the bookkeeping owed to a finish a database function committed)', () => {
+  it('an untracked finish runs the post-finish side effects for the finished_at it is given', async () => {
+    const { supabase } = makeSupabase([])
+    await runPostFinishBookkeeping(supabase, 'GAME', '2026-01-01T00:00:00.000Z', false)
+    expect(award).toHaveBeenCalledTimes(1)
+    expect(recordFacts).toHaveBeenCalledWith(supabase, 'GAME', '2026-01-01T00:00:00.000Z', undefined)
+  })
+
+  it('a tracked finish runs it under the durable lease (claims the marker), not directly', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: null })
+    await runPostFinishBookkeeping({ rpc, from: vi.fn() } as never, 'GAME', '2026-01-01T00:00:00.000Z', true)
+    expect(rpc).toHaveBeenCalledWith('claim_finish_bookkeeping', expect.objectContaining({ p_game_id: 'GAME' }))
+    expect(award).not.toHaveBeenCalled()
   })
 })
 

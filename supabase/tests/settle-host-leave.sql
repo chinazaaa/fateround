@@ -35,8 +35,8 @@ end $$;
 create function pg_temp.late(gid text) returns uuid language sql as $$ select ('00000000-0000-0000-0000-0000000001' || lpad(ascii(substr(gid, 3))::text, 2, '0'))::uuid $$;
 create function pg_temp.early(gid text) returns uuid language sql as $$ select ('00000000-0000-0000-0000-0000000002' || lpad(ascii(substr(gid, 3))::text, 2, '0'))::uuid $$;
 create function pg_temp.hostid(gid text) returns uuid language sql as $$ select ('00000000-0000-0000-0000-0000000009' || lpad(ascii(substr(gid, 3))::text, 2, '0'))::uuid $$;
-create function pg_temp.settle(gid text, with_user boolean default true, sp integer default 1) returns jsonb language sql as $$
-  select public.settle_host_leave(gid, pg_temp.hostid(gid), case when with_user then '11111111-1111-1111-1111-111111111111'::uuid end, null, sp)
+create function pg_temp.settle(gid text, with_user boolean default true, sp integer default 1, track boolean default false) returns jsonb language sql as $$
+  select public.settle_host_leave(gid, pg_temp.hostid(gid), case when with_user then '11111111-1111-1111-1111-111111111111'::uuid end, null, sp, track)
 $$;
 create function pg_temp.g(gid text) returns public.games language sql as $$ select * from public.games where id = gid $$;
 
@@ -63,12 +63,12 @@ delete from public.players where id in (pg_temp.early('ST3'), pg_temp.late('ST3'
 -- A non-bot SPECTATOR stays: the game still ends only because spectators are not eligible.
 insert into public.players (id, game_id, name, joined_at, is_bot, spectator) values ('00000000-0000-0000-0000-0000000004ff', 'ST3', 'Spec', now() - interval '30 minutes', false, true);
 update public.games set host_user_id = '11111111-1111-1111-1111-111111111111' where id = 'ST3';
-select pg_temp.assert_eq('3 status', pg_temp.settle('ST3', true, 1)->>'status', 'finished');
-select pg_temp.assert_eq('3 finished_now', pg_temp.settle('ST3', true, 1)->>'finished_now', 'false'); -- the repeat
+select pg_temp.assert_eq('3 status', pg_temp.settle('ST3', true, 1, true)->>'status', 'finished');
+select pg_temp.assert_eq('3 finished_now', pg_temp.settle('ST3', true, 1, true)->>'finished_now', 'false'); -- the repeat
 select pg_temp.assert_eq('3 game finished', (pg_temp.g('ST3')).status, 'finished');
 select pg_temp.assert_eq('3 reason', (pg_temp.g('ST3')).result_reason, 'host_ended');
 select pg_temp.assert_eq('3 finished_at set', (pg_temp.g('ST3')).finished_at is not null, true);
-select pg_temp.assert_eq('3 bookkeeping marker owed by this exact finish', (pg_temp.g('ST3')).finish_bookkeeping->>'attempts', '0');
+select pg_temp.assert_eq('3 tracked finish: marker owed by this exact finish', (pg_temp.g('ST3')).finish_bookkeeping->>'attempts', '0');
 select pg_temp.assert_eq('3 marker bound to finished_at', ((pg_temp.g('ST3')).finish_bookkeeping->>'finished_at')::timestamptz, (pg_temp.g('ST3')).finished_at);
 select pg_temp.assert_eq('3 host_user_id cleared', (pg_temp.g('ST3')).host_user_id, null::uuid);
 
@@ -76,7 +76,7 @@ select pg_temp.assert_eq('3 host_user_id cleared', (pg_temp.g('ST3')).host_user_
 select pg_temp.mk('ST4', 'waiting');
 delete from public.players where id in (pg_temp.early('ST4'), pg_temp.late('ST4'));
 select pg_temp.assert_eq('4 finished_now', pg_temp.settle('ST4', false)->>'finished_now', 'true');
-select pg_temp.assert_eq('4 marker written for every game type', (pg_temp.g('ST4')).finish_bookkeeping is not null, true);
+select pg_temp.assert_eq('4 untracked finish writes no marker (the game owns no durable bookkeeping)', (pg_temp.g('ST4')).finish_bookkeeping is null, true);
 
 -- 5. The leaver's seat still exists: no handoff at all.
 select pg_temp.mk('ST5', 'active');
@@ -142,19 +142,26 @@ select pg_temp.assert_eq('9c finished_now', pg_temp.settle('STD')->>'finished_no
 select pg_temp.assert_eq('9c other user linkage kept', (pg_temp.g('STD')).host_user_id, '22222222-2222-2222-2222-222222222222'::uuid);
 
 -- 10. A game that is gone, and NULL arguments.
-select pg_temp.assert_eq('10 missing', public.settle_host_leave('NOPE1', pg_temp.hostid('ST1'), null, null, 1)->>'status', 'game_missing');
+select pg_temp.assert_eq('10 missing', public.settle_host_leave('NOPE1', pg_temp.hostid('ST1'), null, null, 1, false)->>'status', 'game_missing');
 do $$ begin
-  perform public.settle_host_leave(null, '00000000-0000-0000-0000-000000000001', null, null, 1);
+  perform public.settle_host_leave(null, '00000000-0000-0000-0000-000000000001', null, null, 1, false);
   raise exception 'FAIL: NULL game id accepted';
 exception when raise_exception then
   if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
 do $$ begin
-  perform public.settle_host_leave('ST1', null, null, null, 1);
+  perform public.settle_host_leave('ST1', null, null, null, 1, false);
   raise exception 'FAIL: NULL player id accepted';
 exception when raise_exception then
   if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
+do $$ begin
+  perform public.settle_host_leave('ST1', '00000000-0000-0000-0000-000000000001', null, null, 1, null);
+  raise exception 'FAIL: NULL track flag accepted';
+exception when raise_exception then
+  if sqlerrm like 'FAIL%' then raise; end if;
+end $$;
+
 -- 11. wipe_finished_session_rows rejects a NULL kind BEFORE any delete (NOT IN is NULL for a NULL, so it would
 --     otherwise skip the check), and deletes only for the finished session it was told about.
 do $$ begin
@@ -172,8 +179,8 @@ select pg_temp.assert_eq('11 same session: wiped', public.wipe_finished_session_
 select pg_temp.assert_eq('11 gone', (select count(*) from public.codewords_messages where game_id = 'STA'), 0::bigint);
 
 -- 12. end_game_if_host_alone: ends the game while the host is still seated ONLY when nobody else is eligible.
-create function pg_temp.alone(gid text, sp integer default 1) returns jsonb language sql as $$
-  select public.end_game_if_host_alone(gid, pg_temp.hostid(gid), null, sp)
+create function pg_temp.alone(gid text, sp integer default 1, track boolean default true) returns jsonb language sql as $$
+  select public.end_game_if_host_alone(gid, pg_temp.hostid(gid), null, sp, track)
 $$;
 select pg_temp.mk('STE', 'active');
 insert into public.players (id, game_id, name, joined_at) values (pg_temp.hostid('STE'), 'STE', 'Host', now());
@@ -191,18 +198,37 @@ select pg_temp.assert_eq('12 finished_now', pg_temp.alone('STE')->>'finished_now
 select pg_temp.assert_eq('12 reason', (pg_temp.g('STE')).result_reason, 'host_ended');
 select pg_temp.assert_eq('12 seat kept', (select count(*) from public.players where id = pg_temp.hostid('STE')), 1::bigint);
 select pg_temp.assert_eq('12 host reference kept', (pg_temp.g('STE')).host_player_id, pg_temp.hostid('STE'));
-select pg_temp.assert_eq('12 marker', (pg_temp.g('STE')).finish_bookkeeping->>'attempts', '0');
+select pg_temp.assert_eq('12 tracked: marker', (pg_temp.g('STE')).finish_bookkeeping->>'attempts', '0');
 select pg_temp.mk('STF', 'finished');
 update public.games set result_reason = 'admin_ended' where id = 'STF';
 select pg_temp.assert_eq('12 finished for another reason: continue', pg_temp.alone('STF')->>'status', 'continue');
 select pg_temp.assert_eq('12 ... and says the game is finished (the seat must be kept)', pg_temp.alone('STF')->>'game_status', 'finished');
 select pg_temp.assert_eq('12 live continue reports the live status', pg_temp.alone('ST1')->>'game_status', 'active');
 do $$ begin
-  perform public.end_game_if_host_alone(null, '00000000-0000-0000-0000-000000000001', null, 1);
+  perform public.end_game_if_host_alone(null, '00000000-0000-0000-0000-000000000001', null, 1, true);
   raise exception 'FAIL: NULL game id accepted';
 exception when raise_exception then
   if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
+
+-- 12b. An untracked end writes no marker.
+select pg_temp.mk('STL', 'active');
+insert into public.players (id, game_id, name, joined_at) values (pg_temp.hostid('STL'), 'STL', 'Host', now());
+update public.games set host_player_id = pg_temp.hostid('STL') where id = 'STL';
+delete from public.players where id in (pg_temp.early('STL'), pg_temp.late('STL'));
+select pg_temp.assert_eq('12b untracked end: finished', pg_temp.alone('STL', 1, false)->>'finished_now', 'true');
+select pg_temp.assert_eq('12b untracked end: no marker', (pg_temp.g('STL')).finish_bookkeeping is null, true);
+
+-- 12c. A nominee that stopped being ELIGIBLE (spectator / bot) does not count: the election replaces it.
+select pg_temp.mk('STK', 'active');
+update public.players set spectator = true where id = pg_temp.late('STK');
+update public.games set pending_host_player_id = pg_temp.late('STK') where id = 'STK';
+select pg_temp.assert_eq('12c spectator nominee: re-elected', pg_temp.settle('STK')->>'status', 'nominated');
+select pg_temp.assert_eq('12c the eligible player replaces it', (pg_temp.g('STK')).pending_host_player_id, pg_temp.early('STK'));
+select pg_temp.mk('STM', 'active');
+update public.games set pending_host_player_id = ('00000000-0000-0000-0000-0000000003' || lpad(ascii('M')::text, 2, '0'))::uuid where id = 'STM';
+select pg_temp.assert_eq('12c bot nominee: re-elected', pg_temp.settle('STM')->>'status', 'nominated');
+select pg_temp.assert_eq('12c bot replaced by the eligible player', (pg_temp.g('STM')).pending_host_player_id, pg_temp.early('STM'));
 
 -- 13. FOR KEY SHARE with ORDER BY ... LIMIT 1 is accepted and still picks the oldest eligible player.
 select pg_temp.mk('STG', 'active');
@@ -228,5 +254,11 @@ do $$ begin
 exception when raise_exception then
   if sqlerrm like 'FAIL%' then raise; end if;
 end $$;
+
+-- 15. Lock modes (the two-session behaviour is in settle-host-leave-locks.sh): the election locks the candidate FOR NO KEY
+--     UPDATE, and a removal locks the game row FOR NO KEY UPDATE (FOR SHARE let two concurrent removals deadlock).
+select pg_temp.assert_eq('15 election lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'for no key update;', true);
+select pg_temp.assert_eq('15 removal lock', pg_get_functiondef('public.remove_player_if_game_open(text, uuid)'::regprocedure) ~* 'upper\(p_game_id\) for no key update', true);
+select pg_temp.assert_eq('15 removal does not take FOR SHARE', pg_get_functiondef('public.remove_player_if_game_open(text, uuid)'::regprocedure) ~* 'for share', false);
 
 rollback;

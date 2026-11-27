@@ -259,6 +259,22 @@ export async function recoverAllFinishBookkeeping(
   return { recovered, pending, failed }
 }
 
+/**
+ * The bookkeeping owed by the request that won a finish: a tracked finish (whose marker the finishing statement wrote)
+ * runs it under the durable lease, any other runs the side effects directly. Exported for finishes committed by a
+ * database function instead of `markGameFinished` (settle_host_leave / end_game_if_host_alone).
+ */
+export async function runPostFinishBookkeeping(
+  supabase: SupabaseClient,
+  gameId: string,
+  finishedAt: string,
+  trackBookkeeping: boolean
+): Promise<FinishBookkeepingState | undefined> {
+  if (trackBookkeeping) return (await recoverFinishBookkeeping(supabase, gameId)).state
+  await runFinishSideEffects(supabase, gameId, finishedAt)
+  return undefined
+}
+
 export async function markGameFinished(
   supabase: SupabaseClient,
   gameId: string,
@@ -338,10 +354,7 @@ export async function markGameFinished(
     !(onlyIfActive || roundGuard || trackBookkeeping) || (Array.isArray(result.data) && result.data.length > 0)
 
   let bookkeeping: FinishBookkeepingState | undefined
-  if (!result.error && won) {
-    if (trackBookkeeping) bookkeeping = (await recoverFinishBookkeeping(supabase, gameId)).state
-    else await runFinishSideEffects(supabase, gameId, finishedAt)
-  }
+  if (!result.error && won) bookkeeping = await runPostFinishBookkeeping(supabase, gameId, finishedAt, trackBookkeeping)
 
   // Surfaced so callers can tell a real finish from a lost CAS: `error` is null in
   // both cases, so without this a racer that changed nothing looks like a success and
