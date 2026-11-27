@@ -749,34 +749,24 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
 
     // Only players who submitted statements enter the game; everyone else (the "Waiting…"
     // players in the lobby) becomes a watch-only viewer so they don't count as guessers.
-    // Mirror resetSpectatorsForLobby: mark everyone a spectator, then un-spectator submitters.
-    const { error: spectatorError } = await getSupabaseAdmin()
-      .from('players')
-      .update({ spectator: true })
-      .eq('game_id', code.toUpperCase())
-    if (spectatorError)
-      return NextResponse.json({ error: internalErrorMessage('games/code/start', spectatorError) }, { status: 500 })
-
-    const { error: participantError } = await getSupabaseAdmin()
-      .from('players')
-      .update({ spectator: false })
-      .eq('game_id', code.toUpperCase())
-      .in('id', submittedPlayerIds)
-    if (participantError)
-      return NextResponse.json({ error: internalErrorMessage('games/code/start', participantError) }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: roundRows.length,
-      })
-      .eq('id', code.toUpperCase())
-
+    // The spectator flags and the status change are ONE database step under the games row lock
+    // (start_two_truths_game): a host leave that ran between separate writes read a half-changed roster, ended the
+    // game, and the final status write then re-activated the finished row. `lost` = no longer waiting.
+    const { data: started, error: gameError } = await getSupabaseAdmin().rpc('start_two_truths_game', {
+      p_game_id: code.toUpperCase(),
+      p_submitted_player_ids: submittedPlayerIds,
+      p_session_started_at: sessionStartedAt,
+      p_rounds_count: roundRows.length,
+    })
     if (gameError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    const startStatus = (started as { status?: string } | null)?.status
+    if (startStatus === 'lost') {
+      return NextResponse.json({ error: 'The game changed while it was starting — try again' }, { status: 409 })
+    }
+    if (startStatus !== 'started') {
+      return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+    }
 
     const { error: elimError } = await initializeEliminationLives(code.toUpperCase(), game.elimination_config)
     if (elimError) return NextResponse.json({ error: elimError }, { status: 500 })

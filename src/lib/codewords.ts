@@ -693,11 +693,23 @@ export async function removeCodewordsPlayerRole(
 export async function removePlayerIfGameOpen(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string
+  playerId: string,
+  /**
+   * Set when THIS leave already finished the game (Word Rush: the last unanswered player leaving ends the last round).
+   * The seat is then deleted from that finished game, but only while it is still the session `session` names.
+   */
+  ownFinish?: { startedAt: string | null; sessionsPlayed: number | null }
 ): Promise<{ error: string | null; gameFinished: boolean }> {
   const { data, error } = await supabase.rpc('remove_player_if_game_open', {
     p_game_id: gameId,
     p_player_id: playerId,
+    ...(ownFinish
+      ? {
+          p_own_finish: true,
+          p_session_started_at: ownFinish.startedAt,
+          p_sessions_played: ownFinish.sessionsPlayed,
+        }
+      : {}),
   })
   if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
   return { error: null, gameFinished: (data as { status?: string } | null)?.status === 'game_finished' }

@@ -16,6 +16,7 @@ const ALLOWED: Record<string, string[]> = {
   insert_anonymous_message_if_active: ['src/app/api/anonymous-messages/route.ts'],
   insert_codewords_message_if_active: ['src/app/api/codewords/chat/route.ts'],
   remove_player_if_game_open: ['src/lib/codewords.ts'],
+  start_two_truths_game: ['src/app/api/games/[code]/start/route.ts'],
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

@@ -26,6 +26,14 @@
 # remove_player_if_game_open() for a seated player. R is observed WAITING on F, and once F commits it answers
 # `game_finished` and the seat is still there (a finish that committed first is never raced by the delete).
 #
+# Case E (a spectator update of the EXISTING nominee vs the settlement that keeps it): the settlement's eligibility check
+# locks the nominee FOR NO KEY UPDATE, so a spectator update waits until the settlement commits (this one fails without
+# the lock: the update would commit in between and leave an ineligible nominee).
+#
+# Case F (Two Truths start vs a host leaving alone): start_two_truths_game() changes the spectator flags and the status
+# under the games row lock; end_game_if_host_alone() is observed WAITING on it, and then sees the started roster
+# (`continue`, game still active) instead of an intermediate one.
+#
 # Sessions are coordinated through pg_stat_activity and an advisory-lock gate, not timing. Fixtures are committed (two
 # sessions cannot share a transaction) and removed on exit. Every identifier is run-specific (worker names, fixture game
 # and player ids, the gate key) and cleanup touches only those, so concurrent runs on one database do not interfere.
@@ -37,14 +45,14 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 RUN="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 APP="shl-$RUN"
 GATE=$(( (0x${RUN} % 2000000000) + 1 ))
-GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"
+GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
-HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"
+HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"
 WORKERS=()
 
 cleanup() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -170,5 +178,58 @@ reap "$FINISH_PID" "finish"
 reap "$REMOVE_PID" "removal"
 [ "$(cat "$OUT_R")" = "game_finished" ] || fail "case D: expected 'game_finished', got '$(cat "$OUT_R")'"
 [ "$(psqlq -c "select count(*) from public.players where id = '$SEATED'")" = "1" ] || fail "case D: the seat of a finished game was deleted"
+
+# ---- Case E: a spectator update of the EXISTING nominee vs the settlement that keeps it -----------------------
+# The settlement decides "the nominee is still eligible" and returns 'settled'. Without a lock on the nominee row a
+# spectator update could commit between that read and the settlement's commit and leave an ineligible nominee in place.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('$GE', 'lock test E', 'tok-$RUN-e', 'uno', 'active');
+insert into public.players (id, game_id, name, joined_at) values ('$NOMINEE', '$GE', 'Nominee', now());
+update public.games set pending_host_player_id = '$NOMINEE' where id = '$GE';
+SQL
+start_gate
+OUT_E=$(mktemp)
+PGAPPNAME="$APP-settle3" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
+  begin;
+  select public.settle_host_leave('$GE', '$GONE', null, null, 1, false)->>'status';
+  select pg_advisory_xact_lock($GATE);
+  commit;" >"$OUT_E" 2>&1 &
+SETTLE3_PID=$!
+wait_for "settle holds its locks (case E)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-settle3' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+PGAPPNAME="$APP-flag2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "update public.players set spectator = true where id = '$NOMINEE'" >/dev/null 2>&1 &
+FLAG2_PID=$!
+wait_for "the spectator update of the nominee waits for the settlement" "select exists (select 1 from pg_stat_activity where application_name = '$APP-flag2' and wait_event_type = 'Lock')"
+[ "$(psqlq -c "select spectator from public.players where id = '$NOMINEE'")" = "f" ] || fail "case E: the nominee's flag changed while the settlement was in flight"
+open_gate
+reap "$SETTLE3_PID" "settle (case E): $(cat "$OUT_E")"
+reap "$FLAG2_PID" "nominee spectator update"
+grep -q "settled" "$OUT_E" || fail "case E: expected 'settled', got '$(cat "$OUT_E")'"
+
+# ---- Case F: a Two Truths start vs a host leaving alone ---------------------------------------------------------
+# The start applies the spectator flags and the status change in one unit under the games row lock, so
+# end_game_if_host_alone either runs before it (the game is still waiting and the submitter is an eligible player) or
+# after it commits (and sees the finished roster). It never reads a half-changed roster.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('$GF', 'lock test F', 'tok-$RUN-f', 'two_truths', 'waiting');
+insert into public.players (id, game_id, name, joined_at) values ('$TTHOST', '$GF', 'Host', now() - interval '5 minutes'), ('$TTSUB', '$GF', 'Submitter', now());
+update public.games set host_player_id = '$TTHOST' where id = '$GF';
+SQL
+start_gate
+OUT_F=$(mktemp)
+PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+  begin;
+  select public.start_two_truths_game('$GF', array['$TTSUB'::uuid], now(), 3);
+  select pg_advisory_xact_lock($GATE);
+  commit;" >/dev/null 2>&1 &
+START_PID=$!
+wait_for "the start holds its uncommitted writes" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+PGAPPNAME="$APP-endf" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GF', '$TTHOST', null, 1, false)->>'status'" >"$OUT_F" 2>&1 &
+ENDF_PID=$!
+wait_for "end_game_if_host_alone waits for the start" "select exists (select 1 from pg_stat_activity where application_name = '$APP-endf' and wait_event_type = 'Lock')"
+open_gate
+reap "$START_PID" "two truths start"
+reap "$ENDF_PID" "end_game_if_host_alone (case F)"
+[ "$(cat "$OUT_F")" = "continue" ] || fail "case F: expected 'continue' (the submitter plays), got '$(cat "$OUT_F")'"
+[ "$(psqlq -c "select status from public.games where id = '$GF'")" = "active" ] || fail "case F: the started game was finished from an intermediate roster"
 
 echo "ok"

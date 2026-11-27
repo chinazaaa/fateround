@@ -1875,7 +1875,18 @@ export async function DELETE(req: NextRequest) {
       .clone()
       .json()
       .catch(() => ({}))) as Record<string, unknown>
-    return NextResponse.json({ ...original, handoff: 'unresolved' }, { status: res.status })
+    // The original status and details stay (`removalError` carries the removal's own message); its retry advice goes:
+    // the seat may be gone, so the resume token may no longer authenticate a repeat.
+    return NextResponse.json(
+      {
+        ...original,
+        error:
+          'Leaving the game may or may not have completed (the outcome of removing your seat is unknown) and the host handoff could not be completed. Repeating the leave may not work.',
+        removalError: original.error,
+        handoff: 'unresolved',
+      },
+      { status: res.status }
+    )
   }
   if (settled === 'retained_clear_failed' || ctx.seatRetained) {
     // The seat is KNOWN to still exist (a retained leave): the resume token still works, so this one really can be
@@ -2228,7 +2239,11 @@ async function removePlayer(
       player.name
     )
     if (pending) {
-      if (pending.error) return NextResponse.json({ error: pending.error }, { status: pending.status })
+      if (pending.error) {
+        // An error AFTER the seat delete was issued is uncertain (the delete may have committed); one before it is not.
+        if (pending.deleteAttempted) ctx.seatMayBeRemoved = true
+        return NextResponse.json({ error: pending.error }, { status: pending.status })
+      }
       // The seat is deleted: DELETE settles the departed host's linkage (settle_host_leave sees the finished game).
       return NextResponse.json({ success: true })
     }
@@ -2295,8 +2310,9 @@ async function removePlayer(
   }
 
   if (isWhotGame(gameType)) {
-    const { error } = await removeWhotPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    const { error, retained } = await removeWhotPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    if (retained) ctx.seatRetained = true
     return NextResponse.json({ success: true })
   }
 
@@ -2307,8 +2323,10 @@ async function removePlayer(
   }
 
   if (isCrazyEightsGame(gameType)) {
-    const { error } = await removeCrazyEightsPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    const { error, retained } = await removeCrazyEightsPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    // A finisher's seat is kept (their placement is locked): a failed handoff afterwards is a retryable leave.
+    if (retained) ctx.seatRetained = true
     return NextResponse.json({ success: true })
   }
 
@@ -2320,8 +2338,9 @@ async function removePlayer(
   }
 
   if (isUnoGame(gameType)) {
-    const { error } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    const { error, retained } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
     if (error) return NextResponse.json({ error }, { status: 500 })
+    if (retained) ctx.seatRetained = true
     return NextResponse.json({ success: true })
   }
 
@@ -2384,29 +2403,67 @@ async function removePlayer(
   }
 
   let wordRushRollback: WordRushRosterSnapshot | undefined
+  // Set when THIS leave ended the game (the last unanswered player leaving ends the last round): the seat is then
+  // deleted from that finished game, bound to the session the removal inspected, and the roster is not reverted.
+  let ownFinish: { startedAt: string | null; sessionsPlayed: number | null } | undefined
   if (isWordRushGame(gameType)) {
     const admin = getSupabaseAdmin()
+    const { data: before } = await admin
+      .from('games')
+      .select('session_started_at, sessions_played')
+      .eq('id', id)
+      .maybeSingle()
     const sync = await syncWordRushAfterPlayerRemoved(admin, id, playerId)
     if (sync.error) {
       return NextResponse.json({ error: sync.error }, { status: sync.internal ? 500 : 400 })
     }
     wordRushRollback = sync.rollback
+    if (sync.ownFinish && before) {
+      ownFinish = { startedAt: before.session_started_at ?? null, sessionsPlayed: before.sessions_played ?? null }
+    }
+  }
+
+  // After a delete that reported an error, only a read-back tells "rejected" from "committed, response lost".
+  const seatPresence = async (): Promise<'present' | 'absent' | 'unknown'> => {
+    const { data, error } = await getSupabaseAdmin()
+      .from('players')
+      .select('id')
+      .eq('id', playerId)
+      .eq('game_id', id)
+      .maybeSingle()
+    if (error) return 'unknown'
+    return data ? 'present' : 'absent'
   }
 
   if (game!.participant_mode === 'joiners') {
     const { error } = await deleteJoinerPair(getSupabaseAdmin(), id, player)
     if (error) {
-      if (wordRushRollback) await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+      // Compensate (restore the roster) only for a CONFIRMED rejection; an ambiguous result keeps the roster change.
+      const presence = await seatPresence()
+      if (presence === 'present' && wordRushRollback) {
+        await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+      }
+      if (presence !== 'present') ctx.seatMayBeRemoved = true
       return NextResponse.json({ error: internalErrorMessage('players', { message: error }) }, { status: 500 })
     }
   } else {
     ctx.seatMayBeRemoved = true
-    const { error, gameFinished } = await removePlayerIfGameOpen(getSupabaseAdmin(), id, playerId)
-    if (!error && gameFinished) ctx.seatMayBeRemoved = false
-    if (error || gameFinished) {
-      // Nothing was deleted: undo the roster change made for the removal.
-      if (wordRushRollback) await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
-      if (error) return NextResponse.json({ error }, { status: 500 })
+    const removal = await removePlayerIfGameOpen(getSupabaseAdmin(), id, playerId, ownFinish)
+    let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
+    if (removal.error) {
+      const presence = await seatPresence()
+      // Absent: the delete committed and only its response was lost, so the leave went through.
+      seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
+    } else if (removal.gameFinished) {
+      seat = 'retained'
+    }
+    if (seat === 'retained') ctx.seatMayBeRemoved = false
+    if (seat !== 'deleted') {
+      // Roster compensation only when the seat is CONFIRMED to remain; an unknown outcome leaves it as it is.
+      if (seat === 'retained' && wordRushRollback) {
+        await revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback)
+      }
+      if (removal.error) return NextResponse.json({ error: removal.error }, { status: 500 })
       return retainedLeaveResponse(ctx, id, playerId)
     }
   }
