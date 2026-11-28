@@ -9,6 +9,7 @@ import {
   clearWordRushSessionData,
   processWordRushEndRoundEarly,
   processWordRushExpireTurn,
+  processWordRushPrompt,
   processWordRushSubmit,
   resumeAllWordRushFinalizations,
   resumeWordRushFinalization,
@@ -769,5 +770,68 @@ describe('individual round finalization is resumable', () => {
     expect(state.game.status).toBe('finished')
     expect(state.game.finish_bookkeeping).toBeNull()
     expect(state.events.filter((e) => e === 'bookkeeping')).toHaveLength(1)
+  })
+})
+
+describe('processWordRushPrompt claims the prompt for the setter it checked', () => {
+  const promptSession = {
+    ...session,
+    id: 'S-1',
+    status: 'active',
+    phase: 'awaiting_prompt',
+    prompt_mode: 'manual',
+    prompt_setter_player_id: 'a',
+    roster: ['a', 'b'],
+    used_pairs: [],
+    round_finalize: null,
+    current_round: 1,
+    difficulty: 'easy',
+  }
+
+  function client(claimMatches: boolean, afterClaim: Record<string, unknown>) {
+    const claimFilters: Array<[string, unknown]> = []
+    let reads = 0
+    const c = {
+      from: () => {
+        let updating = false
+        const api: Record<string, unknown> = {}
+        api.select = () => api
+        api.update = () => {
+          updating = true
+          return api
+        }
+        api.eq = (k: string, v: unknown) => {
+          if (updating) claimFilters.push([k, v])
+          return api
+        }
+        api.maybeSingle = async () => ({
+          data: reads++ === 0 ? promptSession : { ...promptSession, ...afterClaim },
+          error: null,
+        })
+        api.then = (res: (v: unknown) => unknown) =>
+          Promise.resolve({ data: claimMatches ? [{ id: 'S-1' }] : [], error: null }).then(res)
+        return api
+      },
+    } as unknown as SupabaseClient
+    return { c, claimFilters }
+  }
+
+  it('the claim names the requesting setter, so a setter change in between matches no row', async () => {
+    const { c, claimFilters } = client(true, {})
+    expect(await processWordRushPrompt(c, GAME, 'a', 'c', 't')).toEqual({})
+    expect(claimFilters).toContainEqual(['prompt_setter_player_id', 'a'])
+    expect(claimFilters).toContainEqual(['id', 'S-1'])
+  })
+
+  it('a refused claim from a removed setter says so (not "Prompt already set")', async () => {
+    const { c } = client(false, { prompt_setter_player_id: 'b' })
+    expect(await processWordRushPrompt(c, GAME, 'a', 'c', 't')).toEqual({
+      error: 'Only the prompt setter can enter letters',
+    })
+  })
+
+  it('a refused claim on a prompt that was already set keeps the existing message', async () => {
+    const { c } = client(false, { phase: 'playing' })
+    expect(await processWordRushPrompt(c, GAME, 'a', 'c', 't')).toEqual({ error: 'Prompt already set' })
   })
 })

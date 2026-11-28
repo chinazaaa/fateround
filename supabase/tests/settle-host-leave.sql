@@ -24,11 +24,14 @@ end $$;
 
 create function pg_temp.mk(gid text, status text, extra jsonb default '{}') returns void language plpgsql as $$
 begin
-  insert into public.games (id, title, host_token, game_type, status) values (gid, 'settle test', 'tok-' || gid, 'uno', status);
+  insert into public.games (id, title, host_token, game_type, status) values (gid, 'settle test', 'tok-' || gid, 'uno', case when status = 'finished' then 'waiting' else status end);
   insert into public.players (id, game_id, name, joined_at, is_bot, spectator) values
     (('00000000-0000-0000-0000-0000000001' || lpad(ascii(substr(gid, 3))::text, 2, '0'))::uuid, gid, 'Late', now() - interval '1 minute', false, false),
     (('00000000-0000-0000-0000-0000000002' || lpad(ascii(substr(gid, 3))::text, 2, '0'))::uuid, gid, 'Early', now() - interval '10 minutes', false, false),
     (('00000000-0000-0000-0000-0000000003' || lpad(ascii(substr(gid, 3))::text, 2, '0'))::uuid, gid, 'Bot', now() - interval '20 minutes', true, false);
+  if status = 'finished' then
+    update public.games set status = 'finished' where id = gid;
+  end if;
 end $$;
 
 -- Fixed ids per game: late = ...01<n>, early = ...02<n>, bot = ...03<n>, host = ...09<n>.
@@ -63,8 +66,12 @@ delete from public.players where id in (pg_temp.early('ST3'), pg_temp.late('ST3'
 -- A non-bot SPECTATOR stays: the game still ends only because spectators are not eligible.
 insert into public.players (id, game_id, name, joined_at, is_bot, spectator) values ('00000000-0000-0000-0000-0000000004ff', 'ST3', 'Spec', now() - interval '30 minutes', false, true);
 update public.games set host_user_id = '11111111-1111-1111-1111-111111111111' where id = 'ST3';
-select pg_temp.assert_eq('3 status', pg_temp.settle('ST3', true, 1, true)->>'status', 'finished');
-select pg_temp.assert_eq('3 finished_now', pg_temp.settle('ST3', true, 1, true)->>'finished_now', 'false'); -- the repeat
+create temp table st3_first as select pg_temp.settle('ST3', true, 1, true) as r;
+select pg_temp.assert_eq('3 status (the call that finishes)', (select r->>'status' from st3_first), 'finished');
+select pg_temp.assert_eq('3 finished_now on the call that wins (the route owes the bookkeeping for it)', (select r->>'finished_now' from st3_first), 'true');
+select pg_temp.assert_eq('3 finished_now on the repeat', pg_temp.settle('ST3', true, 1, true)->>'finished_now', 'false');
+select pg_temp.assert_eq('3 the observed finish is not a replay', pg_temp.settle('ST3', true, 1, true)->>'replayed', 'false');
+select pg_temp.assert_eq('3 an observed finish seen from ANOTHER generation is a replay', pg_temp.settle('ST3', true, 2, true)->>'replayed', 'true');
 select pg_temp.assert_eq('3 game finished', (pg_temp.g('ST3')).status, 'finished');
 select pg_temp.assert_eq('3 reason', (pg_temp.g('ST3')).result_reason, 'host_ended');
 select pg_temp.assert_eq('3 finished_at set', (pg_temp.g('ST3')).finished_at is not null, true);
@@ -321,7 +328,8 @@ update public.games set finished_at = '2026-03-03T00:00:00Z', finish_bookkeeping
 select pg_temp.assert_eq('14b2 refused while owed', public.remove_player_if_game_open('ST!', pg_temp.late('ST!'), true, (pg_temp.g('ST!')).session_started_at, (pg_temp.g('ST!')).sessions_played)->>'status', 'game_finished');
 select pg_temp.assert_eq('14b2 recorded for the seat and the finish', (select count(*) from public.word_rush_pending_seat_deletions where game_id = 'ST!' and player_id = pg_temp.late('ST!') and finished_at = '2026-03-03T00:00:00Z'), 1::bigint);
 select pg_temp.assert_eq('14b2 another seat is not recorded', (select count(*) from public.word_rush_pending_seat_deletions where game_id = 'ST!' and player_id = pg_temp.early('ST!')), 0::bigint);
-select pg_temp.assert_eq('14b2 still owed: the pending completion is not due', public.complete_word_rush_pending_seat_deletion('ST!', pg_temp.late('ST!'))->>'status', 'not_due');
+select pg_temp.assert_eq('14b2 still owed: a recorded deletion says so (retryable, distinct from nothing pending)', public.complete_word_rush_pending_seat_deletion('ST!', pg_temp.late('ST!'))->>'status', 'bookkeeping_owed');
+select pg_temp.assert_eq('14b2 still owed: another seat has nothing pending', public.complete_word_rush_pending_seat_deletion('ST!', pg_temp.early('ST!'))->>'status', 'not_due');
 select pg_temp.assert_eq('14b2 still owed: a plain repeat leave is refused', public.remove_player_if_game_open('ST!', pg_temp.late('ST!'))->>'status', 'game_finished');
 update public.games set finish_bookkeeping = null where id = 'ST!';
 select pg_temp.assert_eq('14b2 a plain leave NEVER honours the record (it is the pending-only function that does)', public.remove_player_if_game_open('ST!', pg_temp.late('ST!'))->>'status', 'game_finished');
@@ -392,6 +400,15 @@ select pg_temp.assert_eq('14c other participant kept', (select count(*) from pub
 select pg_temp.assert_eq('14c seat gone', (select count(*) from public.players where id = pg_temp.late('STR')), 0::bigint);
 update public.games set status = 'finished' where id = 'STR';
 select pg_temp.assert_eq('14c finished: refused', public.remove_player_if_game_open('STR', pg_temp.early('STR'), false, null, null, 'Early')->>'status', 'game_finished');
+-- An UNLINKED seat whose name matches TWO participants: refused, nothing deleted (the seat stays too).
+select pg_temp.mk('ST;', 'active');
+insert into public.participants (game_id, name) values ('ST;', 'Late'), ('ST;', 'Late'), ('ST;', 'Early');
+select pg_temp.assert_eq('14c ambiguous name: refused', public.remove_player_if_game_open('ST;', pg_temp.late('ST;'), false, null, null, 'Late')->>'status', 'participant_ambiguous');
+select pg_temp.assert_eq('14c ambiguous name: both participants kept', (select count(*) from public.participants where game_id = 'ST;' and name = 'Late'), 2::bigint);
+select pg_temp.assert_eq('14c ambiguous name: the seat is not deleted either', (select count(*) from public.players where id = pg_temp.late('ST;')), 1::bigint);
+-- An unambiguous unlinked name still goes with the seat; an unlinked seat with NO matching participant just goes.
+select pg_temp.assert_eq('14c unambiguous unlinked name: deleted', public.remove_player_if_game_open('ST;', pg_temp.early('ST;'), false, null, null, 'Early')->>'status', 'deleted');
+select pg_temp.assert_eq('14c ...with its one participant', (select count(*) from public.participants where game_id = 'ST;' and name = 'Early'), 0::bigint);
 select pg_temp.assert_eq('14c finished: participant kept', (select count(*) from public.participants where game_id = 'STR' and name = 'Early'), 1::bigint);
 select pg_temp.assert_eq('14c finished: seat kept', (select count(*) from public.players where id = pg_temp.early('STR')), 1::bigint);
 
@@ -646,6 +663,25 @@ delete from public.players where id = pg_temp.late('ST]');
 -- must not be a candidate (index 1 over [early, bot] would pick the bot).
 select pg_temp.assert_eq('17c team mode: a member of the active team takes over', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST]'), pg_temp.early('ST]'));
 select pg_temp.assert_eq('17c the trigger function is not callable by clients', has_function_privilege('anon', 'public.word_rush_reassign_setter_before_seat_delete()', 'execute') or has_function_privilege('authenticated', 'public.word_rush_reassign_setter_before_seat_delete()', 'execute'), false);
+
+-- 17e. A seat is never inserted into a FINISHED game (the status is decided under the games row lock).
+select pg_temp.mk('ST=', 'finished');
+do $$ begin
+  begin
+    insert into public.players (id, game_id, name) values ('00000000-0000-0000-0000-0000000005aa', 'ST=', 'LateJoiner');
+    raise exception 'FAIL 17e: a seat was inserted into a finished game';
+  exception when others then
+    if sqlerrm like 'FAIL%' then raise; end if;
+    if sqlerrm not like 'game_finished:%' then raise exception 'FAIL 17e: unexpected error %', sqlerrm; end if;
+  end;
+end $$;
+select pg_temp.assert_eq('17e ...nothing was seated', (select count(*) from public.players where id = '00000000-0000-0000-0000-0000000005aa'), 0::bigint);
+select pg_temp.mk('ST:', 'active');
+insert into public.players (id, game_id, name) values ('00000000-0000-0000-0000-0000000005ab', 'ST:', 'Joiner');
+select pg_temp.assert_eq('17e an active game still takes a seat', (select count(*) from public.players where id = '00000000-0000-0000-0000-0000000005ab'), 1::bigint);
+select pg_temp.assert_eq('17e the guard locks the games row FOR NO KEY UPDATE (the level the lobby trigger already takes)',
+  pg_get_functiondef('public.players_require_unfinished_game()'::regprocedure) ~* 'from public.games where id = new.game_id for no key update', true);
+select pg_temp.assert_eq('17e not callable by clients', has_function_privilege('anon', 'public.players_require_unfinished_game()', 'execute') or has_function_privilege('authenticated', 'public.players_require_unfinished_game()', 'execute'), false);
 
 -- 17d. The host-leave path takes the games row FOR UPDATE (a join's KEY SHARE conflicts with it), the other removals do not;
 --      event times taken after a lock wait are clock_timestamp(), not the transaction start.

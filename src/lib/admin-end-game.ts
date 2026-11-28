@@ -149,10 +149,11 @@ export async function completeHostLeftCleanup(
   if (game?.status !== 'finished') {
     return { finished: false, error: null, ...(bind.finishedAt || bind.session ? { superseded: true } : {}) }
   }
-  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
-  // Not the finish this leave observed (the game was replayed and finished again since): that finish belongs to a later
-  // leave, whose own cleanup handles it. Nothing is cleaned up on behalf of an older one.
-  if (bind.finishedAt && Date.parse(bind.finishedAt) !== Date.parse(game.finished_at)) {
+  // Which finish is this? Decided BEFORE anything else about the row (its reason included): a finish the caller did not
+  // observe (the game was replayed and finished again since, even for another reason such as an admin end) belongs to a
+  // later leave / request, whose own handling covers it. Nothing is cleaned up on behalf of an older one, and a caller
+  // that is about to delete this session's rows (Play Again) is told the game moved on.
+  if (bind.finishedAt && (!game.finished_at || Date.parse(bind.finishedAt) !== Date.parse(game.finished_at))) {
     return { finished: true, error: null, superseded: true }
   }
   if (
@@ -162,6 +163,7 @@ export async function completeHostLeftCleanup(
   ) {
     return { finished: true, error: null, superseded: true }
   }
+  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
   return {
     finished: true,
     error: await cleanupFinishedSession(supabase, gameId, parseGameType(game.game_type), game.finished_at),

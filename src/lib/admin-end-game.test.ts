@@ -421,6 +421,26 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     expect(recorded.roundUpdates).toBe(0)
   })
 
+  it('a DIFFERENT finish of another reason (admin_ended) is reported superseded, not "nothing to clean up" (Play Again must not delete its rounds)', async () => {
+    const { supabase, recorded } = mockSupabase({
+      gameRow: row({ result_reason: 'admin_ended', finished_at: '2030-01-01T00:00:00.000Z' }),
+    })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      error: null,
+      superseded: true,
+    })
+    expect(recorded.deletes).toEqual([])
+  })
+
+  it('the SAME finish of another reason is simply finished (nothing to clean up, not superseded)', async () => {
+    const { supabase } = mockSupabase({ gameRow: row({ result_reason: 'admin_ended' }) })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      error: null,
+    })
+  })
+
   it('without an observed finish, the captured session identity binds it: a replayed session is left alone', async () => {
     const mismatched = mockSupabase({ gameRow: row({ sessions_played: 2 }) })
     await completeHostLeftCleanup(mismatched.supabase, 'G', { session: { startedAt: 'S1', sessionsPlayed: 1 } })

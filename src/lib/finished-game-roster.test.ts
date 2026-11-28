@@ -51,7 +51,11 @@ describe('removal from a finished game', () => {
     // An error here would surface a failure toast on a perfectly ordinary "back to home".
     const helper = /async function retainedLeaveResponse[\s\S]*?\n}\n/.exec(ROUTE)
     expect(helper, 'retainedLeaveResponse not found').not.toBeNull()
-    expect(helper![0], 'the retained shape must not carry an error status').not.toMatch(/status:\s*[45]\d\d|error:/)
+    // The response is exactly `NextResponse.json({ success: true, retained: true })`: no init argument at all, so the status
+    // is the default 200 (a regex over 4xx/5xx would still accept a 302). The behavioural check (real HTTP 200 and
+    // `retained: true`) is in route.host-leave-handoff.test.ts.
+    expect(helper![0]).toMatch(/return NextResponse\.json\(\{ success: true, retained: true \}\)\s*\n}/)
+    expect(helper![0]).not.toMatch(/status:|error:/)
   })
 
   it('runs BEFORE the per-game removal branches', () => {

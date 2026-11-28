@@ -55,9 +55,9 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 RUN="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 APP="shl-$RUN"
 GATE=$(( ((0x${RUN} * 131 + $$) % 2000000000) + 1 ))
-GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"; GJ="SHJ$RUN"; GK="SHK$RUN"
+GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"; GJ="SHJ$RUN"; GK="SHK$RUN"; GL="SHL$RUN"
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
-HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; RND3="$(new_uuid)"; RND4="$(new_uuid)"; HOSTK="$(new_uuid)"; JOINERK="$(new_uuid)"; WRSEAT2="$(new_uuid)"
+HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; RND3="$(new_uuid)"; RND4="$(new_uuid)"; HOSTK="$(new_uuid)"; JOINERK="$(new_uuid)"; JOINERL="$(new_uuid)"; WRSEAT2="$(new_uuid)"
 WORKERS=()
 # Every worker's output lives in ONE run-specific directory that cleanup removes (no temp files are left behind).
 OUT_DIR="$(mktemp -d)"
@@ -65,7 +65,7 @@ OUT_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "$OUT_DIR"
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI', '$GJ', '$GK')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI', '$GJ', '$GK', '$GL')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -429,5 +429,29 @@ reap "$HOSTLEAVE_PID" "host leave (case K)"
 [ "$(tr -d '[:space:]' <"$OUT_K")" = "deleted" ] || fail "case K: the host leave finished the game over a seated joiner (got $(cat "$OUT_K"))"
 [ "$(psqlq -c "select status from public.games where id = '$GK'")" = "waiting" ] || fail "case K: the game was finished"
 [ "$(psqlq -c "select count(*) from public.players where game_id = '$GK'")" = "1" ] || fail "case K: the joiner was lost"
+
+# ---- Case L: a join vs a finish that is committing (the seat is never inserted into the finished game) --------------
+# The join handler reads the status and inserts in separate calls; the insert's BEFORE trigger re-checks the status under the
+# games row lock. A finish that holds the row (uncommitted) makes the join WAIT, and once it commits the join is refused.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('$GL', 'lock test L', 'tok-$RUN-l', 'uno', 'waiting');
+SQL
+start_gate
+PGAPPNAME="$APP-finl" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+  begin;
+  update public.games set status = 'finished', finished_at = clock_timestamp() where id = '$GL';
+  select pg_advisory_xact_lock($GATE);
+  commit;" >/dev/null 2>&1 &
+FINL_PID=$!
+wait_for "the finish holds its uncommitted update (case L)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-finl' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_L="$OUT_DIR/out_l"
+( PGAPPNAME="$APP-joinl" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "insert into public.players (id, game_id, name) values ('$JOINERL', '$GL', 'Joiner')" >"$OUT_L" 2>&1; echo "rc=$?" >>"$OUT_L" ) &
+JOINL_PID=$!
+wait_blocked "the join waits for the finish (the games row lock)" joinl finl
+open_gate
+reap "$FINL_PID" "finish (case L)"
+wait "$JOINL_PID" 2>/dev/null || true
+grep -q "game_finished" "$OUT_L" || fail "case L: the join was not refused (got $(cat "$OUT_L"))"
+[ "$(psqlq -c "select count(*) from public.players where game_id = '$GL'")" = "0" ] || fail "case L: a seat was inserted into the finished game"
 
 echo "ok"

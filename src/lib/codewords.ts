@@ -730,6 +730,14 @@ export async function removePlayerIfGameOpen(
   if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
   const answer = data as { status?: string; finished_at?: string } | null
   const status = answer?.status
+  // Two participants share the seat's name and the seat has no linked participant: nothing was deleted (the seat stays too).
+  if (status === 'participant_ambiguous') {
+    return {
+      error:
+        'More than one participant has your name, so leaving cannot tell which one is yours — ask the host to remove you',
+      gameFinished: false,
+    }
+  }
   return {
     error: null,
     // `host_ended`: the game was finished instead of removing the host's seat, so nothing was deleted either.
