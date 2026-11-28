@@ -158,6 +158,9 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad, 'games_flipped', false);
   end if;
+  if public.session_payload_nulls_required_column('scrabble_sessions', p_session_patch) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column', 'games_flipped', false);
+  end if;
   -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
   begin
     perform jsonb_populate_record(null::public.scrabble_sessions, p_session_patch);
@@ -295,6 +298,9 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
   end if;
+  if public.session_payload_nulls_required_column('scrabble_sessions', p_session_patch) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column');
+  end if;
   -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
   begin
     perform jsonb_populate_record(null::public.scrabble_sessions, p_session_patch);
@@ -379,6 +385,8 @@ as $$
 declare
   v_id text;
   v_status text;
+  v_clock_mode text;
+  v_clock_seconds integer;
   v_session public.scrabble_sessions%rowtype;
   v_exists boolean;
   v_bad text;
@@ -392,7 +400,8 @@ begin
   end if;
   v_id := upper(p_game_id);
 
-  select status into v_status from public.games where id = v_id for update;
+  select status, scrabble_clock_mode, scrabble_clock_seconds into v_status, v_clock_mode, v_clock_seconds
+    from public.games where id = v_id for update;
   if not found then
     return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
   end if;
@@ -422,6 +431,9 @@ begin
        );
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'session_column: ' || v_bad);
+  end if;
+  if public.session_payload_nulls_required_column('scrabble_sessions', p_session_row) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column');
   end if;
   begin
     perform jsonb_populate_record(null::public.scrabble_sessions, p_session_row);
@@ -464,6 +476,19 @@ begin
     from (select (e->>'player_id')::uuid as sid from jsonb_array_elements(p_state_rows) e) d;
   if v_turn is null or v_turn is distinct from v_dealt then
     return jsonb_build_object('status', 'invalid', 'reason', 'turn_order_mismatch');
+  end if;
+
+  -- The deal was built from the lobby settings the caller READ earlier: under this lock they must still be the stored
+  -- ones, or a round whose clock differs from games.scrabble_clock_mode (a standard deadline in a chess lobby, no whole-
+  -- game cap) would be activated. A mismatch is refused and nothing is written.
+  if coalesce(p_session_row->>'clock_mode', 'standard') is distinct from coalesce(v_clock_mode, 'standard')
+     or exists (
+       select 1 from jsonb_array_elements(p_state_rows) e
+       where case when v_clock_mode = 'chess'
+               then coalesce(v_clock_seconds, 0) > 0 and (e->>'clock_ms_remaining') is distinct from (v_clock_seconds * 1000)::text
+               else e->'clock_ms_remaining' is not null and jsonb_typeof(e->'clock_ms_remaining') <> 'null' end
+     ) then
+    return jsonb_build_object('status', 'settings_changed');
   end if;
 
   delete from public.scrabble_player_state where game_id = v_id;
@@ -614,6 +639,9 @@ begin
        );
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
+  end if;
+  if public.session_payload_nulls_required_column('scrabble_sessions', p_session_patch) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column');
   end if;
   if p_session_patch->>'phase' = 'finished' then
     return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');

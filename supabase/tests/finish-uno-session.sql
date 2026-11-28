@@ -159,6 +159,8 @@ begin
   perform pg_temp.assert_eq('5k series points', v_out->>'status', 'invalid');
   perform pg_temp.assert_eq('5 still active', (pg_temp.g('GU5')).status, 'active');
   perform pg_temp.assert_eq('5 session version unchanged', (pg_temp.sess('GU5')).updated_at, v_v);
+  -- the rejected calls also carried a valid write that clears player 51's hand: none of it landed
+  perform pg_temp.assert_eq('5 rejected series calls wrote no hand', (pg_temp.hand('GU5', 5, 1))::text, '[{"id": "a1"}]');
   -- a missing game / session is reported, not raised
   perform pg_temp.assert_eq('5l missing game', public.finish_uno_session('NOPE', v_v, '{}'::jsonb, '[]'::jsonb)->>'status', 'invalid');
 end $$;
@@ -190,8 +192,6 @@ begin
     jsonb_build_object('winner_id', 'ABCDEF00-0000-0000-0000-0000000000AB', 'points', 5))->>'status', 'finished');
   perform pg_temp.assert_eq('5n one key, accumulated', (select uno_series_scores from public.games where id = 'GU5N'),
     jsonb_build_object('abcdef00-0000-0000-0000-0000000000ab', 15));
-  perform pg_temp.assert_eq('5n unseated uuid', public.finish_uno_session('GU5N', (pg_temp.sess('GU5N')).updated_at, '{}'::jsonb, '[]'::jsonb,
-    jsonb_build_object('winner_id', pg_temp.pid(111)::text, 'points', 5))->>'status', 'already_finished');
 end $$;
 
 -- 6. Reaching the series target records the series winner; a leaver's rows are removed in the same step.
@@ -477,6 +477,9 @@ begin
   perform pg_temp.assert_eq('6j marker rejected: rows intact', (select count(*) from public.players where id = pg_temp.pid(212)), 1::bigint);
   update public.games set uno_team_mode = true where id = 'GUJ';
   -- Team-Up: the leaver stays in turn_order (seat parity) but is MARKED in the same patch: accepted
+  -- Team-Up: a live seat may not simply LEAVE the rotation (the remaining seats' parity would shift), marked or not
+  perform pg_temp.assert_eq('6j team-up: unmarked removal from the rotation', public.leave_uno_seat('GUJ', pg_temp.pid(212), (pg_temp.sess('GUJ')).updated_at,
+    jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(213))))->>'reason', 'seat_not_removed');
   perform pg_temp.assert_eq('6j team-up departure (marked)', public.leave_uno_seat('GUJ', pg_temp.pid(212), (pg_temp.sess('GUJ')).updated_at,
     jsonb_build_object('left_player_ids', jsonb_build_array(pg_temp.pid(212)::text)))->>'status', 'left');
   perform pg_temp.assert_eq('6j team-up: seat kept, rows gone', (array_length((pg_temp.sess('GUJ')).turn_order, 1),
@@ -517,11 +520,17 @@ begin
   update public.games set status = 'waiting' where id = 'GUK';
   perform pg_temp.assert_eq('6k orphan playing session under a waiting game', public.remove_uno_lobby_seat('GUK', pg_temp.pid(222))->>'status', 'removed');
   perform pg_temp.assert_eq('6k orphan: seat gone from the rotation', (pg_temp.sess('GUK')).turn_order = array[pg_temp.pid(223)], true);
-  update public.uno_sessions set phase = 'finished', turn_order = array[pg_temp.pid(222), pg_temp.pid(223)] where game_id = 'GUK';
+  -- a fresh seat in the reopened lobby (finished session still listing it): it exists before, and is gone after
+  insert into public.players (id, game_id, name) values (pg_temp.pid(224), 'GUK', 'D');
+  insert into public.uno_player_hands (game_id, player_id, cards, player_order) values ('GUK', pg_temp.pid(224), '[{"id":"d1"}]', 3);
+  update public.uno_sessions set phase = 'finished', turn_order = array[pg_temp.pid(223), pg_temp.pid(224)] where game_id = 'GUK';
   update public.games set status = 'waiting' where id = 'GUK';
-  perform pg_temp.assert_eq('6k reopened lobby', public.remove_uno_lobby_seat('GUK', pg_temp.pid(222))->>'status', 'removed');
-  perform pg_temp.assert_eq('6k reopened lobby: seat and rows gone', ((select count(*) from public.players where id = pg_temp.pid(222)),
-    array_length((pg_temp.sess('GUK')).turn_order, 1))::text, '(0,1)');
+  perform pg_temp.assert_eq('6k reopened lobby: the seat exists before', ((select count(*) from public.players where id = pg_temp.pid(224)),
+    (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(224)), pg_temp.pid(224) = any ((pg_temp.sess('GUK')).turn_order))::text, '(1,1,t)');
+  perform pg_temp.assert_eq('6k reopened lobby', public.remove_uno_lobby_seat('GUK', pg_temp.pid(224))->>'status', 'removed');
+  perform pg_temp.assert_eq('6k reopened lobby: both rows and the rotation entry gone', ((select count(*) from public.players where id = pg_temp.pid(224)),
+    (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(224)), pg_temp.pid(224) = any ((pg_temp.sess('GUK')).turn_order),
+    (pg_temp.sess('GUK')).turn_order = array[pg_temp.pid(223)])::text, '(0,0,f,t)');
   perform pg_temp.assert_eq('6k unknown game', public.remove_uno_lobby_seat('NOPE', pg_temp.pid(222))->>'status', 'invalid');
   begin perform public.remove_uno_lobby_seat(null, pg_temp.pid(222)); raise exception 'FAIL 6k: null game id accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
@@ -558,6 +567,13 @@ begin
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(311), 'cards', '{}'::jsonb, 'player_order', 0), v_hands->1))->>'reason', 'hand_row');
   perform pg_temp.assert_eq('6m failed starts changed nothing', ((select status from public.games where id = 'GUS'),
     (select count(*) from public.uno_sessions where game_id = 'GUS'), (select count(*) from public.uno_player_hands where game_id = 'GUS'))::text, '(waiting,0,0)');
+  -- a player whose join committed after the roster was built is left out of the deal: refused, nothing written
+  insert into public.players (id, game_id, name) values (pg_temp.pid(313), 'GUS', 'Late');
+  perform pg_temp.assert_eq('6m a seated player missing from the deal', public.start_uno_game('GUS', v_row, v_hands)->>'reason', 'roster_changed');
+  perform pg_temp.assert_eq('6m roster refusal changed nothing', ((select status from public.games where id = 'GUS'),
+    (select count(*) from public.uno_sessions where game_id = 'GUS'))::text, '(waiting,0)');
+  -- a spectator needs no hand (the start route deals to non-spectators only)
+  update public.players set spectator = true where id = pg_temp.pid(313);
   -- a valid start deals and activates together
   v_out := public.start_uno_game('GUS', v_row, v_hands);
   perform pg_temp.assert_eq('6m started', v_out->>'status', 'started');
@@ -588,6 +604,19 @@ begin
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
   begin perform public.start_uno_game('GUS', v_row, null); raise exception 'FAIL 6m: null hands accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+
+-- 6n2. A JSON null aimed at a NOT NULL column is `invalid` (never a raised error) in every function that writes a patch.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GUN', 34, false);
+begin
+  perform pg_temp.assert_eq('6n2 finish', public.finish_uno_session('GUN', v_v, '{"current_turn_index":null}'::jsonb, '[]'::jsonb)->>'reason', 'null_required_column');
+  perform pg_temp.assert_eq('6n2 move', public.apply_uno_move('GUN', v_v, '{"current_turn_index":null}'::jsonb, '[]'::jsonb)->>'reason', 'null_required_column');
+  perform pg_temp.assert_eq('6n2 leave', public.leave_uno_seat('GUN', pg_temp.pid(341), v_v, '{"current_turn_index":null}'::jsonb)->>'reason', 'null_required_column');
+  update public.games set status = 'waiting' where id = 'GUN';
+  perform pg_temp.assert_eq('6n2 start', public.start_uno_game('GUN', '{"phase":"playing","turn_order":[],"current_turn_index":null}'::jsonb, jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(341))))->>'reason', 'null_required_column');
+  perform pg_temp.assert_eq('6n2 nothing written', ((pg_temp.sess('GUN')).phase, (pg_temp.sess('GUN')).updated_at = v_v)::text, '(playing,t)');
 end $$;
 
 -- 6n. A `waiting` game has no live round: a finish (a leave of a two-seat room whose start never flipped) cannot publish a

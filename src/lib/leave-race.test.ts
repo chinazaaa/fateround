@@ -1615,18 +1615,16 @@ describe('leave — a failed leave write is not echoed to the client', () => {
     for (const kind of ['uno', 'scrabble'] as const) {
       const t = kind === 'uno' ? unoTables() : scrabbleTables()
       const db = makeDb(t)
-      const calls: string[] = []
-      const realRpc = db.supabase.rpc
-      db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
-        calls.push(name)
-        return realRpc(name, args)
-      }
+      const rec = recordWrites(db)
+      const calls = rec.rpcs
       const res =
         kind === 'uno'
           ? await removeUnoPlayer(db.supabase, 'G', 'C', 'C')
           : await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
       expect(res.error).toBeNull()
-      expect(calls).toEqual([kind === 'uno' ? 'leave_uno_seat' : 'leave_scrabble_seat'])
+      expect(calls.map((c) => c.name)).toEqual([kind === 'uno' ? 'leave_uno_seat' : 'leave_scrabble_seat'])
+      // nothing is written outside the one call: no direct delete after the rpc removed the rows
+      expect(rec.mutations).toEqual([])
       expect(t.players.map((p) => p.id)).not.toContain('C')
     }
   })
@@ -2019,6 +2017,43 @@ describe('Mercy knockout — committed in the same transaction as the move that 
     expect((t.uno_player_hands[2].stats as Record<string, number>).uno_hs_knockouts).toBe(1)
     // the knocked-out hand went back to the pile: the finished snapshot keeps all 25 cards
     expect((t.uno_sessions[0].draw_pile as unknown[]).length).toBe(25)
+  })
+
+  it('a partial draw that knocks out the LAST standing seat records no winner and awards no series points to an eliminated seat', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], {
+      uno_mode: 'no_mercy',
+      uno_no_mercy_win: 'first_out',
+      uno_series_scoring: true,
+      uno_series_target: 100000,
+      uno_series_scores: {},
+    })
+    Object.assign(t.uno_sessions[0], {
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [{ id: 'last', color: 'blue', kind: 'number', value: 0 }],
+      discard_pile: [],
+      draw_penalty: 6,
+      draw_penalty_kind: 'draw6',
+      last_play_player_id: 'C',
+      eliminated_player_ids: ['B', 'C', 'D'],
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 24 }, (_, i) => ({
+      id: `A${i}`,
+      color: 'blue',
+      kind: 'number',
+      value: 0,
+    }))
+    t.uno_player_hands[1].cards = []
+    t.uno_player_hands[2].cards = []
+    t.uno_player_hands[3].cards = []
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B', 'C', 'D', 'A'])
+    // nobody is left standing: no winner (an eliminated seat never wins), no award, no winner named in the message
+    expect(t.uno_sessions[0].winner_player_id ?? null).toBeNull()
+    expect(t.games[0].uno_series_scores).toEqual({})
+    expect(String(t.uno_sessions[0].status_message)).toMatch(/everyone knocked out/)
+    expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(0)
   })
 
   it('a finish names each player once: a missed-UNO penalty hand and a knockout credit for the same seat are merged', async () => {
@@ -2436,7 +2471,26 @@ describe('a second expiry does not re-finalize a finished round', () => {
       afterSessionRead: (tb) => {
         if (tb !== 'uno_sessions' || raced) return
         raced = true
-        // A competing finisher committed the round between our read and our call.
+        // A competing finisher committed the round between our read and our call: BOTH rows are published.
+        Object.assign(t.uno_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:09.000Z' })
+        t.games[0].status = 'finished'
+      },
+    })
+    const rec = recordWrites(db)
+    expect(await finishExpiredUnoGame(db.supabase, game())).toEqual({ won: true })
+    expect(t.games[0].uno_series_scores).toEqual({})
+    expect(t.games[0].status).toBe('finished')
+    // acknowledged, not repaired: the function flipped nothing itself
+    expect(rec.mutations).toEqual([])
+  })
+
+  it('a finished session whose game row is still active is completed (the flip is repaired) without a second award', async () => {
+    const t = seriesTables()
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || raced) return
+        raced = true
         t.uno_sessions[0].phase = 'finished'
       },
     })
@@ -2828,10 +2882,22 @@ describe('every Scrabble finish site is one finish_scrabble_session call', () =>
     t.scrabble_player_state.forEach((x) => (x.rack = []))
     Object.assign(t.scrabble_sessions[0], { bag: [], consecutive_passes: 5 })
     t.scrabble_player_state.find((x) => x.player_id === 'B')!.score = 50
-    expect(await processScrabblePass(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    // A is stuck with a Q (10 points): the finish must DEDUCT it, so the stored score differs from the pre-finish one
+    const a = t.scrabble_player_state.find((x) => x.player_id === 'A')!
+    a.rack = ['Q']
+    a.score = 5
+    const db = makeDb(t)
+    const rec = recordWrites(db)
+    expect(await processScrabblePass(db.supabase, 'G', 'A')).toEqual({})
     expect(t.scrabble_sessions[0].phase).toBe('finished')
     expect(t.scrabble_sessions[0].winner_player_id).toBe('B')
     expect(t.games[0].status).toBe('finished')
+    const finish = rec.rpcs.find((c) => c.name === 'finish_scrabble_session')!
+    const writes = finish.args.p_state_writes as { player_id: string; score?: number }[]
+    expect(writes.find((w) => w.player_id === 'A')?.score).toBe(-5)
+    expect(a.score).toBe(-5)
+    // the scores come from the finish call itself, never from a write made after it
+    expect(rec.mutations).toEqual([])
   })
 
   it('a stalemate pass that loses the finish claim changes nothing', async () => {
@@ -3549,15 +3615,21 @@ describe('Scrabble moves are atomic and expiry reports a lost claim', () => {
     const random = vi.spyOn(Math, 'random').mockReturnValue(0.999999)
     const lost = standard()
     lost.scrabble_player_state.find((x) => x.player_id === 'A')!.rack = ['Q']
-    const calls: string[] = []
     const db = makeDb(t)
-    const realRpc = db.supabase.rpc
-    db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
-      calls.push(name)
-      return realRpc(name, args)
-    }
+    const rec = recordWrites(db)
     expect(await processScrabbleExchange(db.supabase, 'G', 'A', [0])).toEqual({})
-    expect(calls.filter((c) => c === 'apply_scrabble_move')).toHaveLength(1)
+    const moves = rec.rpcs.filter((c) => c.name === 'apply_scrabble_move')
+    expect(moves).toHaveLength(1)
+    // ONE call carries the bag and the next turn (session patch) AND the new rack (state writes)
+    const patch = moves[0].args.p_session_patch as { bag?: string[]; current_turn_index?: number }
+    expect((patch.bag ?? []).includes('Q')).toBe(true)
+    expect(patch.current_turn_index).toBe(1)
+    const rackWrite = (moves[0].args.p_state_writes as { player_id: string; rack?: string[] }[]).find(
+      (w) => w.player_id === 'A'
+    )
+    expect(rackWrite?.rack).toEqual(['E'])
+    expect(rec.mutations).toEqual([])
+    expect(t.scrabble_sessions[0].current_turn_index).toBe(1)
     expect(t.scrabble_player_state.find((x) => x.player_id === 'A')!.rack).toEqual(['E'])
     expect((t.scrabble_sessions[0].bag as string[]).includes('Q')).toBe(true)
     // lost claim: neither the bag nor the rack moved
@@ -3566,6 +3638,7 @@ describe('Scrabble moves are atomic and expiry reports a lost claim', () => {
     random.mockRestore()
     expect(JSON.stringify(lost.scrabble_sessions[0].bag)).toBe(bagBefore)
     expect(lost.scrabble_player_state.find((x) => x.player_id === 'A')!.rack).toEqual(['Q'])
+    expect(lost.scrabble_sessions[0].current_turn_index).toBe(0)
   })
 
   it('a pass whose player-state read fails is an error and publishes nothing; an empty tally never ends the round', async () => {

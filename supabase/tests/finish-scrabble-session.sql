@@ -333,9 +333,10 @@ declare
   v_out jsonb;
 begin
   v_row := jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(171), pg_temp.pid(172)), 'current_turn_index', 0,
-    'board', '[]'::jsonb, 'bag', '["Z","Y"]'::jsonb, 'phase', 'playing', 'consecutive_passes', 0, 'status_message', 'dealt');
+    'board', '[]'::jsonb, 'bag', '["Z","Y"]'::jsonb, 'phase', 'playing', 'consecutive_passes', 0, 'status_message', 'dealt', 'clock_mode', 'chess');
+  update public.games set scrabble_clock_mode = 'chess', scrabble_clock_seconds = 9 where id = 'GSG';
   v_states := jsonb_build_array(
-    jsonb_build_object('player_id', pg_temp.pid(171), 'rack', '["A"]'::jsonb, 'score', 0, 'player_order', 0, 'clock_ms_remaining', null, 'timed_out', false),
+    jsonb_build_object('player_id', pg_temp.pid(171), 'rack', '["A"]'::jsonb, 'score', 0, 'player_order', 0, 'clock_ms_remaining', 9000, 'timed_out', false),
     jsonb_build_object('player_id', pg_temp.pid(172), 'rack', '["B"]'::jsonb, 'score', 0, 'player_order', 1, 'clock_ms_remaining', 9000, 'timed_out', false));
   -- a round in progress is never re-dealt (this is also what serializes two overlapping starts): the game is `active`
   perform pg_temp.assert_eq('6g in progress', public.start_scrabble_game('GSG', v_row, v_states)->>'status', 'not_waiting');
@@ -349,6 +350,14 @@ begin
   perform pg_temp.assert_eq('6g game finished: refused', public.start_scrabble_game('GSG', v_row, v_states)->>'status', 'not_waiting');
   perform pg_temp.assert_eq('6g refused: previous result intact', ((pg_temp.st('GSG', 17, 1)).score, (pg_temp.sess('GSG')).phase)::text, '(10,finished)');
   update public.games set status = 'waiting' where id = 'GSG';
+  -- a deal built from SETTINGS THAT CHANGED after they were read (the lobby switched clock mode / bank) never activates
+  perform pg_temp.assert_eq('6g stale settings: standard deal in a chess lobby', public.start_scrabble_game('GSG', v_row || '{"clock_mode":"standard"}'::jsonb, v_states)->>'status', 'settings_changed');
+  perform pg_temp.assert_eq('6g stale settings: other bank', public.start_scrabble_game('GSG', v_row, jsonb_build_array(
+    jsonb_build_object('player_id', pg_temp.pid(171), 'clock_ms_remaining', 5000), jsonb_build_object('player_id', pg_temp.pid(172), 'clock_ms_remaining', 5000)))->>'status', 'settings_changed');
+  update public.games set scrabble_clock_mode = 'standard' where id = 'GSG';
+  perform pg_temp.assert_eq('6g stale settings: chess deal in a standard lobby', public.start_scrabble_game('GSG', v_row, v_states)->>'status', 'settings_changed');
+  update public.games set scrabble_clock_mode = 'chess' where id = 'GSG';
+  perform pg_temp.assert_eq('6g stale settings: nothing written, still waiting', ((pg_temp.g('GSG')).status, (pg_temp.sess('GSG')).phase)::text, '(waiting,finished)');
   -- malformed deals change nothing (the previous result stays intact)
   perform pg_temp.assert_eq('6g turn_order seat without a state row', public.start_scrabble_game('GSG',
     v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(171), pg_temp.pid(172), pg_temp.pid(173))), v_states)->>'status', 'invalid');
@@ -535,15 +544,31 @@ begin
   perform pg_temp.assert_eq('6k finish: 1000000000 fits', public.finish_scrabble_session('GSQ', v_v, '{}'::jsonb, v_w)->>'status', 'finished');
   perform pg_temp.assert_eq('6k finish: stored', ((pg_temp.st('GSQ', 26, 2)).score, (pg_temp.st('GSQ', 26, 2)).clock_ms_remaining)::text, '(1000000000,1000000000)');
   -- start
-  insert into public.games (id, title, host_token, game_type, status) values ('GSY', 'range test', 'tok-GSY', 'scrabble', 'waiting');
+  insert into public.games (id, title, host_token, game_type, status, scrabble_clock_mode, scrabble_clock_seconds)
+    values ('GSY', 'range test', 'tok-GSY', 'scrabble', 'waiting', 'chess', 1000000);
   insert into public.players (id, game_id, name) values (pg_temp.pid(291), 'GSY', 'A'), (pg_temp.pid(292), 'GSY', 'B');
-  v_w := jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(291), pg_temp.pid(292)), 'phase', 'playing');
+  v_w := jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(291), pg_temp.pid(292)), 'phase', 'playing', 'clock_mode', 'chess');
   perform pg_temp.assert_eq('6k start: past range', public.start_scrabble_game('GSY', v_w, jsonb_build_array(
     jsonb_build_object('player_id', pg_temp.pid(291), 'score', 2147483648), jsonb_build_object('player_id', pg_temp.pid(292))))->>'reason', 'state_row');
   perform pg_temp.assert_eq('6k start: nothing written', (select count(*) from public.scrabble_sessions where game_id = 'GSY'), 0::bigint);
   perform pg_temp.assert_eq('6k start: 1000000000 order and clock fit', public.start_scrabble_game('GSY', v_w, jsonb_build_array(
     jsonb_build_object('player_id', pg_temp.pid(291), 'player_order', 1000000000, 'clock_ms_remaining', 1000000000, 'score', -3),
-    jsonb_build_object('player_id', pg_temp.pid(292))))->>'status', 'started');
+    jsonb_build_object('player_id', pg_temp.pid(292), 'clock_ms_remaining', 1000000000)))->>'status', 'started');
+end $$;
+
+-- 6k2. A JSON null aimed at a NOT NULL column is `invalid` (never a raised error) in every function that writes a patch.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GSN', 28);
+  v_w jsonb := jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(281), 'score', 1));
+begin
+  perform pg_temp.assert_eq('6k2 finish', public.finish_scrabble_session('GSN', v_v, '{"current_turn_index":null}'::jsonb, v_w)->>'reason', 'null_required_column');
+  perform pg_temp.assert_eq('6k2 move', public.apply_scrabble_move('GSN', v_v, '{"current_turn_index":null}'::jsonb, v_w)->>'reason', 'null_required_column');
+  perform pg_temp.assert_eq('6k2 leave', public.leave_scrabble_seat('GSN', pg_temp.pid(281), v_v, '{"current_turn_index":null}'::jsonb)->>'reason', 'null_required_column');
+  update public.games set status = 'waiting' where id = 'GSN';
+  perform pg_temp.assert_eq('6k2 start', public.start_scrabble_game('GSN', '{"phase":"playing","turn_order":[],"current_turn_index":null}'::jsonb, v_w)->>'reason', 'null_required_column');
+  perform pg_temp.assert_eq('6k2 a null on a NULLABLE column is fine', public.apply_scrabble_move('GSN', v_v, '{"winner_player_id":null}'::jsonb, v_w)->>'status', 'applied');
+  perform pg_temp.assert_eq('6k2 nothing else written', (select count(*) from public.players where game_id = 'GSN'), 3::bigint);
 end $$;
 
 -- 6l. A `waiting` game has no live round: a finish (a leave of a two-seat room whose start never flipped) cannot publish a

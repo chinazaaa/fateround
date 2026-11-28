@@ -839,6 +839,9 @@ export async function initializeUnoGame(
   if (error) return { error: internalErrorMessage('uno', error) }
   const outcome = (data ?? {}) as { status?: string; reason?: string }
   if (outcome.status === 'not_waiting') return { error: 'Game already in progress' }
+  // a player joined after the roster was read: the deal would leave them without a hand, so nothing was started
+  if (outcome.status === 'invalid' && outcome.reason === 'roster_changed')
+    return { error: 'The player list changed — please start again.' }
   if (outcome.status !== 'started') {
     return {
       error: internalErrorMessage('uno', `start_uno_game rejected the call: ${outcome.reason ?? outcome.status}`),
@@ -1006,11 +1009,16 @@ async function finishByLowestHand(
   // live seat regardless of hand-sum.
   const eliminatedIds = (session.eliminated_player_ids as string[] | null) ?? []
   const placement = unoPlacementOrder(hands, session.turn_order ?? [], finishOrder, teamMode, leftIds, eliminatedIds)
-  const winnerId = placement[0] ?? null
+  // A knocked-out seat never wins: when no seat is left standing (a partial No Mercy draw knocked out the last live
+  // seat) the round has NO winner, exactly as planMercyKnockout reports "everyone knocked out", and no series points go
+  // to an eliminated seat.
+  const winnerId = placement[0] && !eliminatedIds.includes(placement[0]) ? placement[0] : null
   const winnerName = winnerId ? playerName(playerNames, winnerId) : 'Nobody'
 
   let statusMessage: string
-  if (teamMode && winnerId) {
+  if (!winnerId) {
+    statusMessage = `${reasonPrefix} everyone knocked out — no winner.`
+  } else if (teamMode) {
     // The winner + their teammate share the round — unless the teammate left mid-round.
     const mate = unoTeammateId(session.turn_order ?? [], winnerId)
     const mateName = mate && !leftIds.includes(mate) ? playerName(playerNames, mate) : null

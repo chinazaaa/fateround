@@ -276,13 +276,15 @@ insert into public.players (id, game_id, name) values ('$P13', 'FINLG$S', 'A'), 
 SQL
 START_ROW1="{\"turn_order\":[\"$P13\",\"$P14\"],\"phase\":\"playing\",\"status_message\":\"deal one\"}"
 START_ROW2="{\"turn_order\":[\"$P14\",\"$P13\"],\"phase\":\"playing\",\"status_message\":\"deal two\"}"
-HANDS="[{\"player_id\":\"$P13\",\"cards\":[],\"player_order\":0},{\"player_id\":\"$P14\",\"cards\":[],\"player_order\":1}]"
+# DISTINCT cards per start, so a second start that overwrote the hands while keeping the status text would be visible
+HANDS1="[{\"player_id\":\"$P13\",\"cards\":[{\"id\":\"one-a\"}],\"player_order\":0},{\"player_id\":\"$P14\",\"cards\":[{\"id\":\"one-b\"}],\"player_order\":1}]"
+HANDS2="[{\"player_id\":\"$P13\",\"cards\":[{\"id\":\"two-a\"}],\"player_order\":1},{\"player_id\":\"$P14\",\"cards\":[{\"id\":\"two-b\"}],\"player_order\":0}]"
 start_gate
-PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; select public.start_uno_game('FINLG$S', '$START_ROW1'::jsonb, '$HANDS'::jsonb)->>'status'; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; select public.start_uno_game('FINLG$S', '$START_ROW1'::jsonb, '$HANDS1'::jsonb)->>'status'; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
 track $!
 wait_for "the first start holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_G="$TMPD/out_G"
-PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "select public.start_uno_game('FINLG$S', '$START_ROW2'::jsonb, '$HANDS'::jsonb)->>'status'" >"$OUT_G" 2>&1 &
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "select public.start_uno_game('FINLG$S', '$START_ROW2'::jsonb, '$HANDS2'::jsonb)->>'status'" >"$OUT_G" 2>&1 &
 W_G=$!
 track $W_G
 wait_for "the second start waits on the first" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
@@ -291,5 +293,7 @@ wait_for "the second start answered" "select not exists (select 1 from pg_stat_a
 reap "$W_G" "case G"
 [ "$(cat "$OUT_G")" = "not_waiting" ] || fail "case G: expected the second start to answer 'not_waiting', got '$(cat "$OUT_G")'"
 [ "$(psqlq -c "select (select status from public.games where id = 'FINLG$S') || '/' || (select status_message from public.uno_sessions where game_id = 'FINLG$S') || '/' || (select count(*) from public.uno_sessions where game_id = 'FINLG$S') || '/' || (select count(*) from public.uno_player_hands where game_id = 'FINLG$S')")" = "active/deal one/1/2" ] || fail "case G: the first start's deal was replaced or the game is not active"
+[ "$(psqlq -c "select string_agg(player_id::text || '=' || (cards->0->>'id'), ',' order by player_order) from public.uno_player_hands where game_id = 'FINLG$S'")" = "$P13=one-a,$P14=one-b" ] || fail "case G: a player's cards no longer match the first start"
+[ "$(psqlq -c "select turn_order = array['$P13'::uuid, '$P14'::uuid] from public.uno_sessions where game_id = 'FINLG$S'")" = "t" ] || fail "case G: the turn order is not the first start's exact [P13, P14]"
 
 echo "finish-session-locks: ok"

@@ -295,7 +295,7 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
   })
 
   it('ends the game when the last clock expires — highest score wins', async () => {
-    const { supabase, session, games } = makeChessSupabase({
+    const { supabase, session, games, states } = makeChessSupabase({
       clockSeconds: 300,
       players: [
         { id: 'A', name: 'Alice' },
@@ -332,6 +332,10 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
     expect(session.phase).toBe('finished')
     expect(session.winner_player_id).toBe('A') // 40 > 12, empty racks so no penalty swing
     expect(games.status).toBe('finished')
+    // the finish payload carries the LAST player's clock too
+    const bob = states.find((s) => s.id === 'sb') as Row
+    expect(bob.timed_out).toBe(true)
+    expect(bob.clock_ms_remaining).toBe(0)
   })
 
   it('does nothing when the active player still has time (guards a premature client fire)', async () => {

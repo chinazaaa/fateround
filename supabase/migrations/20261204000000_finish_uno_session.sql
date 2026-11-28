@@ -42,6 +42,26 @@
 --
 -- Additive: two new functions, nothing existing is altered.
 
+-- A JSON null aimed at a NOT NULL column is a malformed payload: it converts fine, and the UPDATE / INSERT would then
+-- RAISE (outside any handler) instead of answering `invalid`. The functions below reject it first, before writing.
+create or replace function public.session_payload_nulls_required_column(p_table text, p_payload jsonb)
+returns boolean
+language sql
+stable
+set search_path = public, pg_temp
+as $fn$
+  select exists (
+    select 1
+    from jsonb_each(p_payload) as e(k, v)
+    join information_schema.columns c
+      on c.table_schema = 'public' and c.table_name = p_table and c.column_name = e.k
+    where e.v = 'null'::jsonb and c.is_nullable = 'NO'
+  )
+$fn$;
+
+revoke execute on function public.session_payload_nulls_required_column(text, jsonb) from public, anon, authenticated;
+grant execute on function public.session_payload_nulls_required_column(text, jsonb) to service_role;
+
 create or replace function public.finish_uno_session(
   p_game_id text,
   p_expected_updated_at timestamptz,
@@ -160,6 +180,9 @@ begin
        );
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad, 'games_flipped', false);
+  end if;
+  if public.session_payload_nulls_required_column('uno_sessions', p_session_patch) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column', 'games_flipped', false);
   end if;
   -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
   begin
@@ -327,6 +350,9 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
   end if;
+  if public.session_payload_nulls_required_column('uno_sessions', p_session_patch) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column');
+  end if;
   -- A value that cannot be converted to its column type (a malformed uuid, ...) is `invalid`, never a raised error.
   begin
     perform jsonb_populate_record(null::public.uno_sessions, p_session_patch);
@@ -490,6 +516,9 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
   end if;
+  if public.session_payload_nulls_required_column('uno_sessions', p_session_patch) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column');
+  end if;
   if p_session_patch->>'phase' = 'finished' then
     return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
   end if;
@@ -508,8 +537,15 @@ begin
   -- turn_order; a Team-Up leave (Team-Up games only) keeps it there (seat parity) but MARKS it in left_player_ids in the
   -- same patch. In an ordinary game a marker is not a departure: the seat would stay in the rotation without its rows.
   v_next := jsonb_populate_record(v_session, p_session_patch);
-  if p_player_id = any (v_next.turn_order)
-     and not (coalesce(v_team, false) and jsonb_typeof(v_next.left_player_ids) = 'array' and v_next.left_player_ids ? p_player_id::text) then
+  if coalesce(v_team, false) and p_player_id = any (v_session.turn_order) then
+    -- Team-Up: a seat of the live rotation STAYS in it (seat parity) and is marked departed; removing it would shift the
+    -- remaining seats' parity mid-round
+    if not coalesce(p_player_id = any (v_next.turn_order)
+                    and jsonb_typeof(v_next.left_player_ids) = 'array'
+                    and v_next.left_player_ids ? p_player_id::text, false) then
+      return jsonb_build_object('status', 'invalid', 'reason', 'seat_not_removed');
+    end if;
+  elsif p_player_id = any (v_next.turn_order) then
     return jsonb_build_object('status', 'invalid', 'reason', 'seat_not_removed');
   end if;
 
@@ -645,6 +681,9 @@ begin
   if v_bad is not null then
     return jsonb_build_object('status', 'invalid', 'reason', 'session_column: ' || v_bad);
   end if;
+  if public.session_payload_nulls_required_column('uno_sessions', p_session_row) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'null_required_column');
+  end if;
   begin
     perform jsonb_populate_record(null::public.uno_sessions, p_session_row);
   exception when others then
@@ -667,6 +706,16 @@ begin
   end loop;
   if (select count(distinct (e->>'player_id')::uuid) from jsonb_array_elements(p_hand_rows) e) <> jsonb_array_length(p_hand_rows) then
     return jsonb_build_object('status', 'invalid', 'reason', 'hand_row_duplicate');
+  end if;
+
+  -- The deal must cover EVERY seated (non-spectator) player of the game, as read under this lock: a player whose join
+  -- committed after the caller built its roster must not be left out of a round that then becomes active.
+  if exists (
+    select 1 from public.players p
+    where p.game_id = v_id and coalesce(p.spectator, false) = false
+      and not exists (select 1 from jsonb_array_elements(p_hand_rows) e where (e->>'player_id')::uuid = p.id)
+  ) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'roster_changed');
   end if;
 
   -- Every seat in turn_order is dealt a hand and vice versa, each exactly once (a round must never start on a seat with

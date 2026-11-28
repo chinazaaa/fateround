@@ -81,7 +81,8 @@ describe('initializeUnoGame — one transactional start', () => {
     expect([...(session.turn_order as string[])].sort()).toEqual(['A', 'B'])
     expect(hands.map((h) => h.player_id).sort()).toEqual(['A', 'B'])
     expect(hands.every((h) => h.cards.length === 7)).toBe(true)
-    expect(hands.map((h) => h.player_order).sort()).toEqual([0, 1])
+    // each hand's player_order is ITS seat index in turn_order (either shuffled order is valid)
+    for (const h of hands) expect(h.player_order).toBe((session.turn_order as string[]).indexOf(h.player_id))
     // the hands are dealt in turn order: the seat at index i holds hand row i
     expect(hands.map((h) => h.player_id)).toEqual(session.turn_order)
   })
@@ -90,6 +91,13 @@ describe('initializeUnoGame — one transactional start', () => {
     const { supabase, ops } = makeMock({ outcome: { status: 'not_waiting' } })
     expect(await initializeUnoGame(supabase, 'G', ['A', 'B'])).toEqual({ error: 'Game already in progress' })
     expect(ops).toEqual([])
+  })
+
+  it('a player who joined after the roster was read is reported (nothing was started), not an internal error', async () => {
+    const { supabase } = makeMock({ outcome: { status: 'invalid', reason: 'roster_changed' } })
+    expect(await initializeUnoGame(supabase, 'G', ['A', 'B'])).toEqual({
+      error: 'The player list changed — please start again.',
+    })
   })
 
   it('a seat whose player row is gone fails the start', async () => {

@@ -15,6 +15,7 @@ type Outcome = { status: string; reason?: string }
 function makeMockSupabase(outcome: Outcome | { rpcError: string }, opts: { failSettings?: boolean } = {}) {
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = []
   const tableOps: string[] = []
+  const fromCalls: string[] = []
 
   function chain(data: unknown): Promise<{ data: unknown; error: null }> & Record<string, unknown> {
     const p = Promise.resolve({ data, error: null }) as Promise<{ data: unknown; error: null }> &
@@ -36,6 +37,7 @@ function makeMockSupabase(outcome: Outcome | { rpcError: string }, opts: { failS
 
   const supabase = {
     from(table: string) {
+      fromCalls.push(table)
       return {
         select() {
           if (table === 'games' && opts.failSettings) return chainError()
@@ -69,7 +71,7 @@ function makeMockSupabase(outcome: Outcome | { rpcError: string }, opts: { failS
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { supabase: supabase as any, rpcCalls, tableOps }
+  return { supabase: supabase as any, rpcCalls, tableOps, fromCalls }
 }
 
 describe('initializeScrabbleGame — one transactional deal', () => {
@@ -107,6 +109,13 @@ describe('initializeScrabbleGame — one transactional deal', () => {
     expect(await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).toEqual({ error: 'Game already in progress' })
   })
 
+  it('settings that changed after they were read are reported, not an internal error', async () => {
+    const { supabase } = makeMockSupabase({ status: 'settings_changed' })
+    expect(await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).toEqual({
+      error: 'Game settings changed — please start again.',
+    })
+  })
+
   it('a seat whose player row is gone (a leave cleaning up the lobby) fails the deal', async () => {
     const { supabase } = makeMockSupabase({ status: 'invalid', reason: 'state_row' })
     expect((await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).error).toBeTruthy()
@@ -124,8 +133,9 @@ describe('initializeScrabbleGame — one transactional deal', () => {
   })
 
   it('rejects an out-of-range player count before touching the database', async () => {
-    const { supabase, rpcCalls } = makeMockSupabase({ status: 'started' })
+    const { supabase, rpcCalls, fromCalls } = makeMockSupabase({ status: 'started' })
     expect((await initializeScrabbleGame(supabase, 'GAME1', ['A'])).error).toMatch(/players to start/)
     expect(rpcCalls).toHaveLength(0)
+    expect(fromCalls).toEqual([])
   })
 })

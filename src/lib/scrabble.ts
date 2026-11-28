@@ -605,6 +605,8 @@ export async function initializeScrabbleGame(
   if (error) return { error: internalErrorMessage('scrabble', error) }
   const outcome = (data ?? {}) as { status?: string; reason?: string }
   if (outcome.status === 'not_waiting') return { error: 'Game already in progress' }
+  // the lobby settings changed after they were read for this deal (decided under the games lock): nothing was started
+  if (outcome.status === 'settings_changed') return { error: 'Game settings changed — please start again.' }
   if (outcome.status !== 'started') {
     return {
       error: internalErrorMessage(
