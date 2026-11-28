@@ -409,7 +409,8 @@ begin
   v_exists := found;
 
   if jsonb_typeof(p_session_row) <> 'object' or jsonb_typeof(p_state_rows) <> 'array'
-     or jsonb_array_length(p_state_rows) = 0 or p_session_row->>'phase' is distinct from 'playing' then
+     or (case when jsonb_typeof(p_state_rows) = 'array' then jsonb_array_length(p_state_rows) end) = 0
+     or p_session_row->>'phase' is distinct from 'playing' then
     return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
   end if;
   select string_agg(k, ',') into v_bad
@@ -488,7 +489,8 @@ begin
   -- The activation is part of the same transaction (and bound to this very deal, which holds the games lock).
   update public.games
     set status = 'active',
-        session_started_at = now(),
+        -- taken NOW (not the transaction start): time spent waiting for the games lock must not count against the round
+        session_started_at = clock_timestamp(),
         current_round_number = 1,
         rounds_count = 1,
         replay_pending = false
@@ -534,7 +536,9 @@ begin
   end if;
   select * into v_session from public.scrabble_sessions where game_id = v_id for update;
   v_exists := found;
-  if v_exists and v_session.phase = 'playing' and p_player_id = any (v_session.turn_order) then
+  -- a `waiting` game has no live round (an old deal that never activated is an orphan): its listed seat is a lobby seat
+  if v_exists and v_session.phase = 'playing' and p_player_id = any (v_session.turn_order)
+     and v_status is distinct from 'waiting' then
     return jsonb_build_object('status', 'live');
   end if;
   -- A PUBLISHED result (finished round, game not `waiting`) keeps its seats and rows; only a reopened lobby

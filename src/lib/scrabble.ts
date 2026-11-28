@@ -1201,6 +1201,8 @@ async function removeScrabblePlayerOnce(
     if (finishing) {
       // Not enough players to keep going: the round ends and the leaver's rows go in the same transaction.
       const finished = await finishScrabbleRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
+      // An old deal under a game that never activated (`waiting`) has no live round to finish: the seat is a lobby seat.
+      if (finished.waiting) return removeScrabbleLobbySeat(supabase, gameId, playerId)
       if (finished.error) return { error: finished.error }
       if (finished.won) return { error: null }
       // Another request finished the round first (or the version moved): decide again from the locked rows. A
@@ -1232,12 +1234,23 @@ async function removeScrabblePlayerOnce(
     return { error: null }
   }
 
-  // Not a live-round leave (no session yet, a finished session, a reopened lobby, a spectator, a seat that is not in the
-  // turn order): remove_scrabble_lobby_seat decides EVERYTHING under the games and session locks, the locks a start
-  // takes: a published result keeps its seat (`retained`), a lobby seat is removed, a live round answers `live`. The
-  // seat's rows and its turn_order entry go in ONE transaction under the games lock, so
-  // a start never lists a seat whose rows are being deleted and a deleted row is never left in a turn order. A round that
-  // started meanwhile and lists the player is a live leave: nothing was deleted, and the retry takes the live path.
+  // Not a live-round leave: the locked lobby decision (live / retained / removed).
+  return removeScrabbleLobbySeat(supabase, gameId, playerId)
+}
+
+/**
+ * Not a live-round leave (no session yet, a finished session, a reopened lobby, a spectator, a seat that is not in the
+ * turn order): remove_scrabble_lobby_seat decides EVERYTHING under the games and session locks, the locks a start
+ * takes: a published result keeps its seat (`retained`), a lobby seat is removed, a live round answers `live`. The
+ * seat's rows and its turn_order entry go in ONE transaction under the games lock, so
+ * a start never lists a seat whose rows are being deleted and a deleted row is never left in a turn order. A round that
+ * started meanwhile and lists the player is a live leave: nothing was deleted, and the retry takes the live path.
+ */
+async function removeScrabbleLobbySeat(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error: string | null; retained?: boolean } | 'retry'> {
   const { data: removed, error: removeError } = await supabase.rpc('remove_scrabble_lobby_seat', {
     p_game_id: gameId,
     p_player_id: playerId,

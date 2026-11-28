@@ -458,13 +458,14 @@ declare
   v_next public.uno_sessions%rowtype;
   v_bad text;
   v_cols text;
+  v_team boolean;
 begin
   if p_game_id is null or p_player_id is null or p_expected_updated_at is null or p_session_patch is null then
     raise exception 'leave_uno_seat: game id, player id, expected version and session patch are required';
   end if;
   v_id := upper(p_game_id);
 
-  perform 1 from public.games where id = v_id for update;
+  select uno_team_mode into v_team from public.games where id = v_id for update;
   if not found then
     return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
   end if;
@@ -504,10 +505,11 @@ begin
   end if;
 
   -- The resulting session must NOT keep the deleted player in the rotation: an ordinary leave removes the seat from
-  -- turn_order; a Team-Up leave keeps it there (seat parity) but MARKS it in left_player_ids in the same patch.
+  -- turn_order; a Team-Up leave (Team-Up games only) keeps it there (seat parity) but MARKS it in left_player_ids in the
+  -- same patch. In an ordinary game a marker is not a departure: the seat would stay in the rotation without its rows.
   v_next := jsonb_populate_record(v_session, p_session_patch);
   if p_player_id = any (v_next.turn_order)
-     and not (jsonb_typeof(v_next.left_player_ids) = 'array' and v_next.left_player_ids ? p_player_id::text) then
+     and not (coalesce(v_team, false) and jsonb_typeof(v_next.left_player_ids) = 'array' and v_next.left_player_ids ? p_player_id::text) then
     return jsonb_build_object('status', 'invalid', 'reason', 'seat_not_removed');
   end if;
 
@@ -568,7 +570,8 @@ begin
   if v_exists and p_player_id = any (v_session.finish_order) and v_status is distinct from 'waiting' then
     return jsonb_build_object('status', 'retained');
   end if;
-  if v_listed and v_session.phase <> 'finished' then
+  -- a `waiting` game has no live round (an old deal that never activated is an orphan): its listed seat is a lobby seat
+  if v_listed and v_session.phase <> 'finished' and v_status is distinct from 'waiting' then
     return jsonb_build_object('status', 'live');
   end if;
   if v_listed and v_status is distinct from 'waiting'
@@ -628,7 +631,8 @@ begin
   end if;
 
   if jsonb_typeof(p_session_row) <> 'object' or jsonb_typeof(p_hand_rows) <> 'array'
-     or jsonb_array_length(p_hand_rows) = 0 or p_session_row->>'phase' is distinct from 'playing' then
+     or (case when jsonb_typeof(p_hand_rows) = 'array' then jsonb_array_length(p_hand_rows) end) = 0
+     or p_session_row->>'phase' is distinct from 'playing' then
     return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
   end if;
   select string_agg(k, ',') into v_bad
@@ -680,6 +684,8 @@ begin
 
   -- the previous deal (a finished result of a reopened lobby, or an orphan) goes; the games lock is held, so no start
   -- or leave can interleave with this replacement.
+  -- the old session is locked FIRST (the order apply_uno_move takes: session, then hands), then the hands go
+  perform 1 from public.uno_sessions where game_id = v_id for update;
   delete from public.uno_player_hands where game_id = v_id;
   delete from public.uno_sessions where game_id = v_id;
 
@@ -694,7 +700,8 @@ begin
 
   update public.games
     set status = 'active',
-        session_started_at = now(),
+        -- taken NOW (not the transaction start): time spent waiting for the games lock must not count against the round
+        session_started_at = clock_timestamp(),
         current_round_number = 1,
         rounds_count = 1,
         replay_pending = false

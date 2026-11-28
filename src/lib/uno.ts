@@ -3778,11 +3778,30 @@ async function removeUnoPlayerOnce(
       // A retry of a departure that already COMMITTED (the marker is in left_player_ids) is cleanup only: it must not
       // claim the session again, and above all must not reopen a teammate decision that was already resolved.
       if (unoLeftPlayerIds(session).includes(playerId)) {
-        const { error: departureError } = await supabase.rpc('complete_uno_departure', {
+        const { data: departure, error: departureError } = await supabase.rpc('complete_uno_departure', {
           p_game_id: gameId,
           p_player_id: playerId,
         })
-        return { error: departureError ? internalErrorMessage('uno', departureError) : null }
+        if (departureError) return { error: internalErrorMessage('uno', departureError) }
+        if ((departure as { status?: string } | null)?.status === 'completed') return { error: null }
+        // `none`: nothing was deleted. That is fine while the SAME round still carries the marker (the cleanup is pending
+        // until the round ends); but if the session no longer carries it (a finish and a rematch replaced the round) and
+        // the leaver's row is still there, the leave did NOT happen: decide again from the current rows.
+        const { data: again, error: againError } = await supabase
+          .from('uno_sessions')
+          .select('left_player_ids, turn_order')
+          .eq('game_id', gameId)
+          .maybeSingle()
+        if (againError) return { error: internalErrorMessage('uno', againError) }
+        if (again && unoLeftPlayerIds(again as UnoSession).includes(playerId)) return { error: null }
+        const { data: seat, error: seatError } = await supabase
+          .from('players')
+          .select('id')
+          .eq('id', playerId)
+          .eq('game_id', gameId)
+          .maybeSingle()
+        if (seatError) return { error: internalErrorMessage('uno', seatError) }
+        return seat ? 'retry' : { error: null }
       }
       const { data: handRows, error: handError } = await supabase
         .from('uno_player_hands')
@@ -3838,6 +3857,7 @@ async function removeUnoPlayerOnce(
           patch: teamUpdate,
           removePlayerId: playerId,
         })
+        if (finished.waiting) return removeUnoLobbySeat(supabase, gameId, playerId)
         if (finished.error) return { error: finished.error }
         if (finished.won) return { error: null }
         return 'retry' // another request finished first: decide the seat again from the locked rows (remove_uno_lobby_seat)
@@ -3908,6 +3928,8 @@ async function removeUnoPlayerOnce(
     if (finishing) {
       // Fewer than two active seats remain: the round ends and the leaver's rows go in the same transaction.
       const finished = await finishUnoRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
+      // An old deal under a game that never activated (`waiting`) has no live round to finish: the seat is a lobby seat.
+      if (finished.waiting) return removeUnoLobbySeat(supabase, gameId, playerId)
       if (finished.error) return { error: finished.error }
       if (finished.won) return { error: null }
       return 'retry' // another request finished first: decide the seat again from the locked rows (remove_uno_lobby_seat)
@@ -3916,10 +3938,21 @@ async function removeUnoPlayerOnce(
     return leaveUnoSeat(supabase, gameId, playerId, session.updated_at, update)
   }
 
-  // Not a live-round leave (no session yet, a spectator, a seat outside the turn order, a reopened lobby): the rows go in
-  // ONE transaction under the games lock (remove_uno_lobby_seat). A round that is live and lists the player (a start that
-  // landed after the lookup) answers `live`: nothing was deleted and the retry takes the live path; a published result
-  // keeps its seat.
+  // Not a live-round leave: the locked lobby decision (live / retained / removed).
+  return removeUnoLobbySeat(supabase, gameId, playerId)
+}
+
+/**
+ * Not a live-round leave (no session yet, a spectator, a seat outside the turn order, a reopened lobby): the rows go in
+ * ONE transaction under the games lock (remove_uno_lobby_seat). A round that is live and lists the player (a start that
+ * landed after the lookup) answers `live`: nothing was deleted and the retry takes the live path; a published result
+ * keeps its seat.
+ */
+async function removeUnoLobbySeat(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<{ error: string | null; retained?: boolean } | 'retry'> {
   const { data: removed, error: removeError } = await supabase.rpc('remove_uno_lobby_seat', {
     p_game_id: gameId,
     p_player_id: playerId,

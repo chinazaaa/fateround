@@ -441,6 +441,14 @@ begin
   -- another game's player id never matches this game's rows
   perform pg_temp.assert_eq('6i other game untouched', public.remove_scrabble_lobby_seat('GSI', pg_temp.pid(111))->>'status', 'removed');
   perform pg_temp.assert_eq('6i other game rows intact', (select count(*) from public.players where id = pg_temp.pid(111)), 1::bigint);
+  -- an ORPHAN playing session under a `waiting` game (an old deal that never activated): its listed seat is a lobby seat
+  insert into public.games (id, title, host_token, game_type, status) values ('GSO', 'orphan', 'tok-GSO', 'scrabble', 'waiting');
+  insert into public.players (id, game_id, name) values (pg_temp.pid(221), 'GSO', 'A'), (pg_temp.pid(222), 'GSO', 'B');
+  insert into public.scrabble_sessions (game_id, turn_order, phase) values ('GSO', array[pg_temp.pid(221), pg_temp.pid(222)], 'playing');
+  insert into public.scrabble_player_state (game_id, player_id) values ('GSO', pg_temp.pid(221)), ('GSO', pg_temp.pid(222));
+  perform pg_temp.assert_eq('6i orphan under a waiting game', public.remove_scrabble_lobby_seat('GSO', pg_temp.pid(222))->>'status', 'removed');
+  perform pg_temp.assert_eq('6i orphan: seat, rack and rotation gone', ((select count(*) from public.players where id = pg_temp.pid(222)),
+    (select count(*) from public.scrabble_player_state where player_id = pg_temp.pid(222)), (select turn_order = array[pg_temp.pid(221)] from public.scrabble_sessions where game_id = 'GSO'))::text, '(0,0,t)');
   -- a PUBLISHED result (finished round, game not waiting) keeps its seat and rows
   insert into public.games (id, title, host_token, game_type, status) values ('GSK', 'published', 'tok-GSK', 'scrabble', 'finished');
   insert into public.players (id, game_id, name) values (pg_temp.pid(211), 'GSK', 'A'), (pg_temp.pid(212), 'GSK', 'B');
@@ -484,8 +492,8 @@ begin
   perform pg_temp.assert_eq('6j left', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v,
     jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(232), pg_temp.pid(233)), 'status_message', 'A left'))->>'status', 'left');
   perform pg_temp.assert_eq('6j patch applied, rows gone, version advanced', ((pg_temp.sess('GSL')).status_message,
-    array_length((pg_temp.sess('GSL')).turn_order, 1), (select count(*) from public.players where id = pg_temp.pid(231)),
-    (select count(*) from public.scrabble_player_state where player_id = pg_temp.pid(231)), (pg_temp.sess('GSL')).updated_at > v_v)::text, '("A left",2,0,0,t)');
+    (pg_temp.sess('GSL')).turn_order = array[pg_temp.pid(232), pg_temp.pid(233)], (select count(*) from public.players where id = pg_temp.pid(231)),
+    (select count(*) from public.scrabble_player_state where player_id = pg_temp.pid(231)), (pg_temp.sess('GSL')).updated_at > v_v)::text, '("A left",t,0,0,t)');
   perform pg_temp.assert_eq('6j other seats intact', (select count(*) from public.scrabble_player_state where game_id = 'GSL'), 2::bigint);
   perform pg_temp.assert_eq('6j other game intact', (select count(*) from public.players where id = pg_temp.pid(111)), 1::bigint);
   begin perform public.leave_scrabble_seat(null, pg_temp.pid(232), v_v, '{}'::jsonb); raise exception 'FAIL 6j: null game id accepted';

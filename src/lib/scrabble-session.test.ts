@@ -191,14 +191,8 @@ function makeChessSupabase(init: {
     return b
   }
 
-  // finish_scrabble_session: the whole finish (session, player states, games flip) in one step. Like the SQL, a write
-  // aimed at a player that has no state row rejects the WHOLE call before anything is changed.
+  // finish_scrabble_session: the whole finish (session, player states, games flip) in one step.
   const rpc = (name: string, args: Record<string, unknown>) => {
-    if (
-      (name === 'apply_scrabble_move' || name === 'finish_scrabble_session') &&
-      (args.p_state_writes as Row[]).some((w) => !states.some((x) => x.player_id === w.player_id))
-    )
-      return Promise.resolve({ data: { status: 'invalid', reason: 'state_write' }, error: null })
     if (name === 'apply_scrabble_move') {
       if (session.phase === 'finished' || session.updated_at !== args.p_expected_updated_at)
         return Promise.resolve({ data: { status: 'lost' }, error: null })
@@ -214,6 +208,9 @@ function makeChessSupabase(init: {
     if (session.phase === 'finished') return Promise.resolve({ data: { status: 'already_finished' }, error: null })
     if (session.updated_at !== args.p_expected_updated_at)
       return Promise.resolve({ data: { status: 'lost' }, error: null })
+    // only the FINISH rejects an unknown state target (after its version checks), and the whole call: nothing is written
+    if ((args.p_state_writes as Row[]).some((w) => !states.some((x) => x.player_id === w.player_id)))
+      return Promise.resolve({ data: { status: 'invalid', reason: 'state_write' }, error: null })
     Object.assign(session, args.p_session_patch as Row, {
       phase: 'finished',
       turn_deadline_at: null,

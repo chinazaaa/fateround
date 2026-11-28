@@ -14,7 +14,14 @@ import { recoverFinishBookkeeping } from '@/lib/game-finish'
  *              finish decided about ANOTHER round: it must never be read as "someone finished it".
  * - `error`    the function failed (or rejected the payload): the generic internal error (500).
  */
-export type FinishResult = { won: boolean; already?: boolean; error?: string; roundMismatch?: boolean }
+export type FinishResult = {
+  won: boolean
+  already?: boolean
+  error?: string
+  roundMismatch?: boolean
+  /** The game is still `waiting` (an old deal that never activated): there is no live round to finish. */
+  waiting?: boolean
+}
 
 /**
  * The round a finish was DECIDED about (an expiry decided from a snapshot): the function compares it with the games
@@ -60,6 +67,7 @@ export async function callFinishRpc(
   if (outcome.status !== 'finished' && outcome.status !== 'already_finished') {
     return {
       won: false,
+      waiting: outcome.reason === 'game_waiting' ? true : undefined,
       error: internalErrorMessage(context, `${rpc} rejected the call: ${outcome.reason ?? outcome.status}`),
     }
   }

@@ -69,19 +69,24 @@ describe('removal from a finished game', () => {
     // player row, not these, so dropping them costs the standings nothing.
     // The deletes live in ONE helper (`unsubscribeRetainedPlayer`) shared by the finished-game guard and by a leave that
     // loses a race to a finish (Uno / Scrabble helpers report `retained`).
-    expect(ROUTE).toMatch(/async function unsubscribeRetainedPlayer[\s\S]*?from\('push_subscriptions'\)\.delete\(\)/)
-    expect(ROUTE).toMatch(/async function unsubscribeRetainedPlayer[\s\S]*?from\('mobile_push_tokens'\)\.delete\(\)/)
+    // scoped to the helper body: a delete elsewhere in the route cannot satisfy these
+    const helper = /async function unsubscribeRetainedPlayer[\s\S]*?\n\}/.exec(ROUTE)?.[0] ?? ''
+    expect(helper, 'helper not found').not.toBe('')
+    expect(helper).toMatch(
+      /from\('push_subscriptions'\)\.delete\(\)\.eq\('game_id', gameId\)\.eq\('player_id', playerId\)/
+    )
+    expect(helper).toMatch(
+      /from\('mobile_push_tokens'\)\.delete\(\)\.eq\('game_id', gameId\)\.eq\('player_id', playerId\)/
+    )
     const unsub = deleteHandler.search(/await unsubscribeRetainedPlayer\(/)
     const retained = deleteHandler.search(/retained: true/)
     expect(unsub, 'must run before the early return').toBeGreaterThan(-1)
     expect(unsub, 'must run before the early return').toBeLessThan(retained)
-    // every retained outcome of a removal helper unsubscribes too
-    expect((deleteHandler.match(/await unsubscribeRetainedPlayer\(/g) ?? []).length).toBeGreaterThanOrEqual(3)
+    // which outcomes unsubscribe (each retained Uno / Scrabble removal, the finished-game guard) is checked
+    // behaviourally in route.retained-seats.test.ts
   })
 
-  it('lets the host repair a pending Uno departure in a finished game (Uno is a forfeit-cleanup engine)', () => {
-    expect(deleteHandler).toMatch(/isUnoGame\(hostGameType\)/)
-  })
+  // the host's repair of a pending Uno departure in a finished game is checked behaviourally (route.retained-seats.test.ts)
 
   it('still deletes mid-game — a player who walks out forfeits rather than places', () => {
     // The guard must key on 'finished' alone. Widening it to 'active' would leave abandoned

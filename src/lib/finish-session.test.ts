@@ -52,6 +52,22 @@ describe('callFinishRpc', () => {
     expect(recover).not.toHaveBeenCalled()
   })
 
+  it('lost with reason round is a round mismatch (never the ordinary CAS loss), no bookkeeping', async () => {
+    expect(await call({ data: { status: 'lost', reason: 'round', games_flipped: false } })).toEqual({
+      won: false,
+      roundMismatch: true,
+    })
+    expect(recover).not.toHaveBeenCalled()
+  })
+
+  it('a finish of a waiting game is an error that is flagged waiting (a leave turns it into a lobby removal)', async () => {
+    expect(await call({ data: { status: 'invalid', reason: 'game_waiting' } })).toEqual({
+      won: false,
+      error: INTERNAL_ERROR_MESSAGE,
+      waiting: true,
+    })
+  })
+
   it('invalid and rpc errors are internal errors', async () => {
     expect(await call({ data: { status: 'invalid', reason: 'x' } })).toEqual({
       won: false,
