@@ -61,21 +61,20 @@ export async function completePendingFinishedLeave(
 
   if (isWhotGame(gameType)) return completePendingWhotLeave(supabase, gameId, playerId)
 
-  // Word Rush: a leave that won its own last-round finish while that finish's bookkeeping was still owed kept the seat; the
-  // finish recorded the deletion for this exact seat and finish (word_rush_pending_seat_deletions).
+  // Word Rush: a player who LEFT is recorded on the session (word_rush_remove_player); the seat of one who left a naturally
+  // finished game is deleted once the game's bookkeeping no longer reads it. Decided in the database under the game lock.
   if (isWordRushGame(gameType)) {
-    // PENDING-ONLY and decided under the game lock: it needs the finish the record was made for, its completed bookkeeping
-    // and the record itself, so a live (reopened) game is never touched.
-    const { data, error } = await supabase.rpc('complete_word_rush_pending_seat_deletion', {
+    const { data, error } = await supabase.rpc('word_rush_remove_player', {
       p_game_id: gameId,
       p_player_id: playerId,
+      p_stage: 'delete',
     })
     if (error) return fail('word-rush', error, true)
     const status = (data as { status?: string } | null)?.status
     if (status === 'deleted') return { error: null }
-    // A deletion IS recorded for this seat, but the finish's bookkeeping is still reading the leaver's rows: not the same as
-    // a seat that is simply retained. Retryable, and nothing was attempted.
-    if (status === 'bookkeeping_owed') {
+    // The leave is recorded but the finish's bookkeeping (or the round's owed effects) still reads the leaver's rows: a
+    // retained seat is not the same thing. Retryable, and nothing was attempted.
+    if (status === 'bookkeeping_owed' || status === 'finalizing') {
       return {
         error: 'Your leave is waiting for the game results to finish saving — try again in a moment',
         status: 409,

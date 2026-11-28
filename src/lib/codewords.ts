@@ -694,18 +694,8 @@ export async function removePlayerIfGameOpen(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  /**
-   * Set when THIS leave already finished the game (Word Rush: the last unanswered player leaving ends the last round).
-   * The seat is then deleted from that finished game, but only while it is still the session `session` names.
-   */
-  ownFinish?: { startedAt: string | null; sessionsPlayed: number | null },
   /** Joiners mode: the participant row (by name) that goes with the seat, deleted in the same transaction. */
   participantName?: string,
-  /**
-   * Word Rush: the session the caller reconciled the roster against. A live game that is no longer that session answers
-   * `sessionChanged` and nothing is deleted, so the caller can reconcile the CURRENT session first.
-   */
-  expectedSession?: { startedAt: string | null; sessionsPlayed: number | null },
   /**
    * The leaver is the game's host. When nobody else is eligible the DATABASE finishes the game (host_ended, bound to this
    * session) and keeps the seat, in the same locked check that would delete it: `hostEnded` then carries the finish.
@@ -714,30 +704,27 @@ export async function removePlayerIfGameOpen(
 ): Promise<{
   error: string | null
   gameFinished: boolean
-  sessionChanged?: boolean
   hostEnded?: { finishedAt: string }
-  /** The seat was kept: this leave's own last-round finalization is still pending (retry once it has completed). */
-  finalizing?: boolean
 }> {
-  const identity = expectedSession ?? ownFinish ?? hostLeave?.session
   const { data, error } = await supabase.rpc('remove_player_if_game_open', {
     p_game_id: gameId,
     p_player_id: playerId,
     ...(participantName !== undefined ? { p_participant_name: participantName } : {}),
-    ...(ownFinish ? { p_own_finish: true } : {}),
-    ...(identity ? { p_session_started_at: identity.startedAt, p_sessions_played: identity.sessionsPlayed } : {}),
-    ...(expectedSession ? { p_check_session: true } : {}),
-    ...(hostLeave ? { p_host_leave: true, p_track_bookkeeping: hostLeave.trackBookkeeping } : {}),
+    ...(hostLeave
+      ? {
+          p_host_leave: true,
+          p_sessions_played: hostLeave.session.sessionsPlayed,
+          p_track_bookkeeping: hostLeave.trackBookkeeping,
+        }
+      : {}),
   })
   if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
   const answer = data as { status?: string; finished_at?: string } | null
   const status = answer?.status
-  if (status === 'finalizing') return { error: null, gameFinished: true, finalizing: true }
   // Two participants share the seat's name and the seat has no linked participant: nothing was deleted (the seat stays too).
   if (status === 'participant_ambiguous') {
     return {
-      error:
-        'More than one participant has your name, so leaving cannot tell which one is yours — ask the host to remove you',
+      error: PARTICIPANT_AMBIGUOUS_MESSAGE,
       gameFinished: false,
     }
   }
@@ -745,10 +732,12 @@ export async function removePlayerIfGameOpen(
     error: null,
     // `host_ended`: the game was finished instead of removing the host's seat, so nothing was deleted either.
     gameFinished: status === 'game_finished' || status === 'host_ended',
-    ...(status === 'session_changed' ? { sessionChanged: true } : {}),
     ...(status === 'host_ended' && answer?.finished_at ? { hostEnded: { finishedAt: answer.finished_at } } : {}),
   }
 }
+
+export const PARTICIPANT_AMBIGUOUS_MESSAGE =
+  'More than one participant has your name, so leaving cannot tell which one is yours — ask the host to remove you'
 
 export async function removeCodewordsPlayer(
   supabase: SupabaseClient,
@@ -756,7 +745,7 @@ export async function removeCodewordsPlayer(
   playerId: string,
   hostLeave?: { session: { startedAt: string | null; sessionsPlayed: number | null }; trackBookkeeping: boolean }
 ): Promise<{ error: string | null; gameFinished: boolean; hostEnded?: { finishedAt: string } }> {
-  return removePlayerIfGameOpen(supabase, gameId, playerId, undefined, undefined, undefined, hostLeave)
+  return removePlayerIfGameOpen(supabase, gameId, playerId, undefined, hostLeave)
 }
 
 export type CodewordsRemovalOutcome = {

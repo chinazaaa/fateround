@@ -36,19 +36,14 @@ import {
   codewordsAllowsPlayerChanges,
   reconcileCodewordsTeamAfterRemoval,
   reconcileCodewordsAllTeams,
+  PARTICIPANT_AMBIGUOUS_MESSAGE,
   removeCodewordsPlayer,
   removePlayerIfGameOpen,
 } from '@/lib/codewords'
 import { assignDescribeItLateJoinTeam, reconcileDescribeItAfterRemoval } from '@/lib/describe-it'
 import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
 import { reconcileQuickDrawGuessAfterRemoval } from '@/lib/quick-draw-guess'
-import {
-  assignWordRushLateJoinTeam,
-  resumeWordRushFinalization,
-  revertWordRushRosterAfterFailedPlayerDelete,
-  syncWordRushAfterPlayerRemoved,
-  type WordRushRosterSnapshot,
-} from '@/lib/word-rush-server'
+import { assignWordRushLateJoinTeam, leaveWordRushPlayer } from '@/lib/word-rush-server'
 import {
   parseGameType,
   isNameOnlyPlayerJoin,
@@ -2476,141 +2471,57 @@ async function removePlayer(
     return NextResponse.json({ success: true })
   }
 
-  let wordRushRollback: WordRushRosterSnapshot | undefined
-  // Set when THIS leave ended the game (the last unanswered player leaving ends the last round): the seat is then
-  // deleted from that finished game, bound to the session the removal reconciled, and the roster is not reverted.
-  let ownFinish: { startedAt: string | null; sessionsPlayed: number | null } | undefined
-  // The game session the roster reconciliation was decided against: the seat delete is bound to it, so a replay or a
-  // start that lands in between is reconciled again instead of deleting a seat out of an unreconciled session.
-  let expectedSession: { startedAt: string | null; sessionsPlayed: number | null } | undefined
-  // Reconcile the Word Rush roster for this removal against the CURRENT game; null on success, else the response.
-  const syncWordRush = async (): Promise<NextResponse | null> => {
-    const admin = getSupabaseAdmin()
-    const { data: before, error: beforeError } = await admin
-      .from('games')
-      .select('session_started_at, sessions_played')
-      .eq('id', id)
-      .maybeSingle()
-    // Nothing has changed yet: a failed read leaves the seat and the roster as they are, so the leave can be repeated.
-    if (beforeError || !before) {
-      // A previous attempt may already have taken the player off the roster: put them back before answering.
-      if (wordRushRollback) {
-        const restored = await revertWordRushRosterAfterFailedPlayerDelete(admin, id, wordRushRollback)
-        if (restored === 'failed') console.error(`players: could not restore the Word Rush roster for ${id}`)
-      }
-      return NextResponse.json({ error: 'Could not finish leaving the game — try again' }, { status: 500 })
-    }
-    const sync = await syncWordRushAfterPlayerRemoved(admin, id, playerId)
-    if (sync.error) {
-      // The roster change may already be written (the reconciliation failed AFTER it, ending the round): the player
-      // still has their seat, so put them back before answering (session-bound, arbitrated by the database).
-      const pending = sync.rollback ?? wordRushRollback
-      if (pending) {
-        const restored = await revertWordRushRosterAfterFailedPlayerDelete(admin, id, pending)
-        if (restored === 'failed') console.error(`players: could not restore the Word Rush roster for ${id}`)
-      }
-      return NextResponse.json({ error: sync.error }, { status: sync.internal ? 500 : 400 })
-    }
-    // A retry's sync may find the player already off the roster (no new rollback): the earlier one still describes this
-    // player's roster change and is bound to the session it was made on.
-    wordRushRollback = sync.rollback ?? wordRushRollback
-    // The identity comes from the reconciliation's own read of the game (not the earlier read above, which a start or a
-    // replay may have outdated), so a finish it won is paired with the session it really finished.
-    expectedSession = sync.gameSession ?? {
-      startedAt: before.session_started_at ?? null,
-      sessionsPlayed: before.sessions_played ?? null,
-    }
-    ownFinish = sync.ownFinish ? expectedSession : undefined
-    return null
-  }
   if (isWordRushGame(gameType)) {
-    const failed = await syncWordRush()
-    if (failed) return failed
-  }
-
-  {
+    // ONE database function makes the leave durable (roster, prompt setter and the leavers list in one transaction); the
+    // application decides what it means for the round and the seat deletion is completed from the durable record. Nothing is
+    // compensated or rolled back: a crash anywhere leaves a recorded leave that any runner finishes.
     ctx.seatMayBeRemoved = true
-    // Joiners mode removes the participant row together with the seat, in the same database transaction.
-    const removeOnce = () =>
-      removePlayerIfGameOpen(
-        getSupabaseAdmin(),
-        id,
-        playerId,
-        ownFinish,
-        game!.participant_mode === 'joiners' ? player.name : undefined,
-        expectedSession,
-        // The host leaving: if nobody else is eligible the database finishes the game and keeps the seat, in the same
-        // locked check that would delete it.
-        // Only the session the leave INSPECTED may authorise that finish: a lobby replayed since (the reconciliation read a
-        // later generation) is another session, left to the normal removal and the settlement.
-        ctx.handoff && (!expectedSession || expectedSession.sessionsPlayed === ctx.handoff.session.sessionsPlayed)
-          ? { session: ctx.handoff.session, trackBookkeeping: true }
-          : undefined
-      )
-    let removal = await removeOnce()
-    // An own finish is refused while its bookkeeping marker is owed (the deletion is recorded for this exact seat and
-    // finish). Complete the bookkeeping here if its lease is free, then retry once: usually the marker clears now.
-    if (ownFinish && removal.gameFinished && !removal.error) {
-      const owed = await recoverFinishBookkeeping(getSupabaseAdmin(), id).catch(() => ({ state: 'error' as const }))
-      if (owed.state === 'none' || owed.state === 'done') removal = await removeOnce()
+    const outcome = await leaveWordRushPlayer(
+      getSupabaseAdmin(),
+      id,
+      playerId,
+      ctx.handoff ? { hostLeave: { sessionsPlayed: ctx.handoff.session.sessionsPlayed, trackBookkeeping: true } } : {}
+    )
+    if (outcome.status === 'error') return NextResponse.json({ error: outcome.error }, { status: 500 })
+    if (outcome.status === 'participant_ambiguous') {
+      ctx.seatMayBeRemoved = false
+      return NextResponse.json({ error: PARTICIPANT_AMBIGUOUS_MESSAGE }, { status: 409 })
     }
-    // The leaver's own last-round finalization is still pending (its marker names this seat): the database kept the seat. Finish
-    // the finalization if we can and ask once more; if it is still pending the seat stays and the leave is retained.
-    if (removal.finalizing && !removal.error) {
-      await resumeWordRushFinalization(getSupabaseAdmin(), id).catch(() => undefined)
-      removal = await removeOnce()
+    if (outcome.status === 'host_ended') {
+      // The host was alone: the database finished the game instead of deleting the seat.
+      ctx.seatMayBeRemoved = false
+      const hostEndedError = await completeHostEndedByRemoval(ctx.handoff, id, outcome.finishedAt)
+      if (hostEndedError) return NextResponse.json({ error: CLEANUP_RETRY_ERROR }, { status: 500 })
+      return retainedLeaveResponse(ctx, id, playerId)
     }
-    // The game was replayed (or started) after the roster was reconciled: reconcile the CURRENT session, then retry.
-    for (let attempt = 0; removal.sessionChanged && attempt < 2; attempt++) {
-      const failed = await syncWordRush()
-      if (failed) return failed
-      removal = await removeOnce()
+    if (outcome.status === 'game_finished' || outcome.status === 'pending') {
+      // A finished game's seat is part of its result; a `pending` leave is durable (off the roster, recorded) and its seat is
+      // deleted by whoever finds it as soon as what the leave owes is applied.
+      ctx.seatMayBeRemoved = false
+      return retainedLeaveResponse(ctx, id, playerId)
     }
-    if (removal.sessionChanged) {
-      return NextResponse.json({ error: 'The game changed while you were leaving — try again' }, { status: 500 })
-    }
+  } else {
+    ctx.seatMayBeRemoved = true
+    // Joiners mode removes the participant row together with the seat, in the same database transaction. The host leaving:
+    // if nobody else is eligible the database finishes the game and keeps the seat, in the same locked check that would
+    // delete it.
+    const removal = await removePlayerIfGameOpen(
+      getSupabaseAdmin(),
+      id,
+      playerId,
+      game!.participant_mode === 'joiners' ? player.name : undefined,
+      ctx.handoff ? { session: ctx.handoff.session, trackBookkeeping: true } : undefined
+    )
     const hostEndedError = removal.hostEnded
       ? await completeHostEndedByRemoval(ctx.handoff, id, removal.hostEnded.finishedAt)
       : null
     let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
-    // Word Rush: the roster change made for this removal is put back by ONE database step that also decides, under the
-    // games + session row locks, whether the seat survived (`restored`), was deleted (`no_seat`: nothing to restore),
-    // or the session was replaced (`not_current_session`). It is the arbiter wherever the delete's outcome is not a
-    // plain success, so a lost response or an unreadable read-back can never strand a seated player off the roster.
-    const restoreRoster = () => revertWordRushRosterAfterFailedPlayerDelete(getSupabaseAdmin(), id, wordRushRollback!)
-    let restored: Awaited<ReturnType<typeof restoreRoster>> | null = null
     if (removal.error) {
-      if (wordRushRollback) {
-        restored = await restoreRoster()
-        if (restored === 'restored') seat = 'retained'
-        else if (restored === 'no_seat') seat = 'deleted'
-        else seat = 'unknown'
-      }
-      if (!wordRushRollback || restored === 'not_current_session' || restored === 'failed') {
-        // After a delete that reported an error, only a read-back tells "rejected" from "committed, response lost".
-        const presence = await seatPresence(id, playerId)
-        seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
-      }
+      // After a delete that reported an error, only a read-back tells "rejected" from "committed, response lost".
+      const presence = await seatPresence(id, playerId)
+      seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
     } else if (removal.gameFinished) {
       seat = 'retained'
-      if (wordRushRollback) {
-        restored = await restoreRoster()
-        // Another removal deleted the seat in the meantime: it is gone, not retained.
-        if (restored === 'no_seat') seat = 'deleted'
-        // The session was replaced, which the restore reports before it looks at the seat: read the seat itself.
-        if (restored === 'not_current_session') {
-          const presence = await seatPresence(id, playerId)
-          seat = presence === 'present' ? 'retained' : presence === 'absent' ? 'deleted' : 'unknown'
-        }
-        // The seat stayed but the roster could not be put back: not a completed leave (a repeat goes through the
-        // finished-game branch, which does not compensate), so say so instead of answering success.
-        if (restored === 'failed') {
-          return NextResponse.json(
-            { error: 'Could not finish leaving the game: your place in the round could not be restored.' },
-            { status: 500 }
-          )
-        }
-      }
     }
     if (seat === 'retained') ctx.seatMayBeRemoved = false
     if (seat !== 'deleted') {

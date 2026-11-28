@@ -256,7 +256,7 @@ describe('completePendingFinishedLeave: Rummy reports whether the seat DELETE wa
   })
 })
 
-describe('completePendingFinishedLeave: Word Rush (a recorded own-finish deletion)', () => {
+describe('completePendingFinishedLeave: Word Rush (a player who LEFT a finished game)', () => {
   const rpcCalls: Array<{ fn: string; args: unknown }> = []
   const client = (answer: { data?: unknown; error?: { message: string } | null }) =>
     ({
@@ -266,11 +266,11 @@ describe('completePendingFinishedLeave: Word Rush (a recorded own-finish deletio
       },
     }) as unknown as SupabaseClient
 
-  it('asks the PENDING-ONLY function for exactly this game and seat (never the general leave)', async () => {
+  it('asks the DELETE STAGE of the one Word Rush function for exactly this game and seat (never the generic leave)', async () => {
     rpcCalls.length = 0
     await completePendingFinishedLeave(client({ data: { status: 'deleted' } }), 'word_rush', 'G', 'a', 'Ann')
     expect(rpcCalls).toEqual([
-      { fn: 'complete_word_rush_pending_seat_deletion', args: { p_game_id: 'G', p_player_id: 'a' } },
+      { fn: 'word_rush_remove_player', args: { p_game_id: 'G', p_player_id: 'a', p_stage: 'delete' } },
     ])
   })
 
@@ -282,11 +282,17 @@ describe('completePendingFinishedLeave: Word Rush (a recorded own-finish deletio
     })
   })
 
-  it('nothing due (no deletion is recorded / bookkeeping still owed): null, the seat is retained', async () => {
-    // The pending-only function answers `not_due`; that refusal must never be mistaken for a completed deletion.
+  it.each(['game_finished', 'not_left', 'game_missing'])(
+    'a refusal (%s: this seat is part of the result, or never left): null, the seat is retained and nothing is claimed deleted',
+    async (status) => {
+      expect(await completePendingFinishedLeave(client({ data: { status } }), 'word_rush', 'G', 'a', 'Ann')).toBeNull()
+    }
+  )
+
+  it("the round's effects still pending (`finalizing`) is retryable too", async () => {
     expect(
-      await completePendingFinishedLeave(client({ data: { status: 'not_due' } }), 'word_rush', 'G', 'a', 'Ann')
-    ).toBeNull()
+      await completePendingFinishedLeave(client({ data: { status: 'finalizing' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toMatchObject({ status: 409, deleteAttempted: false })
   })
 
   it('a recorded deletion whose bookkeeping is still running is a RETRYABLE refusal, not a retained seat', async () => {
