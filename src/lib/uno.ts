@@ -798,7 +798,6 @@ export async function initializeUnoGame(
   const firstPlayerId = turnOrder[0]
   const firstName = firstPlayerId ? (initNames.get(firstPlayerId) ?? 'Player') : 'Player'
   const sessionRow: Partial<UnoSession> = {
-    game_id: gameId,
     turn_order: turnOrder,
     current_turn_index: 0,
     direction: 1,
@@ -822,48 +821,29 @@ export async function initializeUnoGame(
     turn_deadline_at: unoTurnDeadline(timerSeconds),
   }
 
-  // RESUME: a previous start already dealt this room (a live session with every hand) and only its separate games flip to
-  // `active` failed. The start is then completed by the caller's (idempotent) flip; nothing is dealt a second time. A
-  // half-written deal (session without all of its hands) is cleared and dealt again.
-  const { data: existing, error: existingError } = await supabase
-    .from('uno_sessions')
-    .select('phase, turn_order')
-    .eq('game_id', gameId)
-    .maybeSingle()
-  if (existingError) return { error: internalErrorMessage('uno', existingError) }
-  if (existing && existing.phase !== 'finished') {
-    const { data: heldRows, error: countError } = await supabase
-      .from('uno_player_hands')
-      .select('player_id')
-      .eq('game_id', gameId)
-    if (countError) return { error: internalErrorMessage('uno', countError) }
-    // Resume only when the STORED hands are exactly the requested roster (a player who joined before the retry has no
-    // hand and no turn in the old deal). Anything else is a stale deal: its hands AND its session are cleared first.
-    const held = (heldRows ?? []).map((row) => row.player_id as string).sort()
-    const requested = [...playerIds].sort()
-    if (held.length > 0 && held.join('|') === requested.join('|')) return {}
-    const { error: handsClearError } = await supabase.from('uno_player_hands').delete().eq('game_id', gameId)
-    if (handsClearError) return { error: internalErrorMessage('uno', handsClearError) }
-    const { error: clearError } = await supabase.from('uno_sessions').delete().eq('game_id', gameId)
-    if (clearError) return { error: internalErrorMessage('uno', clearError) }
-  }
-
-  const { error: sessionError } = await supabase.from('uno_sessions').insert(sessionRow)
-  if (sessionError) return { error: internalErrorMessage('uno', sessionError) }
-
   const handRows = turnOrder.map((playerId, index) => ({
-    game_id: gameId,
     player_id: playerId,
     cards: hands[index],
     player_order: index,
   }))
 
-  const { error: handsError } = await supabase.from('uno_player_hands').insert(handRows)
-  if (handsError) {
-    await supabase.from('uno_sessions').delete().eq('game_id', gameId)
-    return { error: internalErrorMessage('uno', handsError) }
+  // The start is ONE database transaction under the games row lock (start_uno_game): the previous deal is replaced, the
+  // session and every hand are written, AND the game is flipped to `active`, together. There is no half-started room to
+  // resume or to clean up (a failed start changes nothing and the next one deals again), a second overlapping start
+  // finds the game no longer `waiting` and writes nothing, and a seat whose player row is gone is rejected up front.
+  const { data, error } = await supabase.rpc('start_uno_game', {
+    p_game_id: gameId,
+    p_session_row: sessionRow,
+    p_hand_rows: handRows,
+  })
+  if (error) return { error: internalErrorMessage('uno', error) }
+  const outcome = (data ?? {}) as { status?: string; reason?: string }
+  if (outcome.status === 'not_waiting') return { error: 'Game already in progress' }
+  if (outcome.status !== 'started') {
+    return {
+      error: internalErrorMessage('uno', `start_uno_game rejected the call: ${outcome.reason ?? outcome.status}`),
+    }
   }
-
   return {}
 }
 
@@ -1677,10 +1657,10 @@ async function commitMoveWithKnockouts(
       draw_pile: plan.patch.draw_pile as UnoCard[],
       status_message: plan.patch.status_message ?? state.status_message,
     }
-    if (plan.endsRound) {
-      endsRound = true
-      break
-    }
+    // Never stop at the first plan that ends the round: a LATER candidate of the same move is knocked out too (its cards
+    // return to the deck, it becomes a spectator), and the winner / "everyone knocked out" outcome is the one that holds
+    // after EVERY candidate (each plan counts the standing seats net of all earlier knockouts, so the last plan wins).
+    if (plan.endsRound) endsRound = true
   }
   const merged = mergeHandWrites(writes)
   if (!endsRound && move.knockouts.length > 0) {
@@ -3768,45 +3748,13 @@ async function removeUnoPlayerOnce(
   if (lookupError) return { error: internalErrorMessage('uno', lookupError) }
   const session = sessionRaw as UnoSession | null
 
-  // Retention applies to a PUBLISHED game only: in a reopened lobby (games.status = 'waiting') the old finished session
-  // still lists its players, and those seats are ordinary lobby seats that a leave must drop.
-  let gameWaiting: boolean | null = null
-  const lobbyReopened = async (): Promise<{ waiting: boolean; error?: string }> => {
-    if (gameWaiting === null) {
-      const { data: statusRow, error: statusError } = await supabase
-        .from('games')
-        .select('status')
-        .eq('id', gameId)
-        .maybeSingle()
-      if (statusError) return { waiting: false, error: internalErrorMessage('uno', statusError) }
-      gameWaiting = statusRow?.status === 'waiting'
-    }
-    return { waiting: gameWaiting }
-  }
-
-  // A player who already went out has a locked placement (finish_order) — preserve it.
-  if (session?.finish_order?.includes(playerId)) {
-    const reopened = await lobbyReopened()
-    if (reopened.error) return { error: reopened.error }
-    // the seat is kept: report it as retained so the route unsubscribes the leaver's pushes like every other retained seat
-    if (!reopened.waiting) return { error: null, retained: true }
-  }
-
+  // Seat RETENTION (a published result, a player who already went out) is decided by remove_uno_lobby_seat from the locked
+  // games row and session row together, never here from two separate reads: this function only takes the live-round
+  // branch below for a seat that is actually playing, and hands every other case to that function.
   const order = session ? [...(session.turn_order ?? [])] : []
   const removedIndex = order.indexOf(playerId)
 
-  // The round was published while this leave was retrying and the seat was never removed from the live session:
-  // the finished result keeps its seats (the players route retains them for a finished game). A seat that is
-  // already out of the turn order still gets its cleanup below.
-  // A Team-Up leaver whose departure COMMITTED (left_player_ids) but whose rows are still there is pending cleanup,
-  // not a result seat: it falls through to the cleanup below. Unmarked seats stay retained.
-  if (session?.phase === 'finished' && removedIndex >= 0 && !unoLeftPlayerIds(session).includes(playerId)) {
-    const reopened = await lobbyReopened()
-    if (reopened.error) return { error: reopened.error }
-    if (!reopened.waiting) return { error: null, retained: true }
-  }
-
-  if (session && removedIndex >= 0 && session.phase !== 'finished') {
+  if (session && removedIndex >= 0 && session.phase !== 'finished' && !session.finish_order?.includes(playerId)) {
     const { data: gameRow, error: gameError } = await supabase
       .from('games')
       .select('timer_seconds, uno_team_mode')
@@ -3892,7 +3840,7 @@ async function removeUnoPlayerOnce(
         })
         if (finished.error) return { error: finished.error }
         if (finished.won) return { error: null }
-        return finished.already ? { error: null, retained: true } : 'retry'
+        return 'retry' // another request finished first: decide the seat again from the locked rows (remove_uno_lobby_seat)
       }
 
       return leaveUnoSeat(supabase, gameId, playerId, session.updated_at, teamUpdate)
@@ -3962,7 +3910,7 @@ async function removeUnoPlayerOnce(
       const finished = await finishUnoRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
       if (finished.error) return { error: finished.error }
       if (finished.won) return { error: null }
-      return finished.already ? { error: null, retained: true } : 'retry'
+      return 'retry' // another request finished first: decide the seat again from the locked rows (remove_uno_lobby_seat)
     }
 
     return leaveUnoSeat(supabase, gameId, playerId, session.updated_at, update)

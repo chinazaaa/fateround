@@ -47,6 +47,12 @@ export interface StartSpec {
   maxPlayers?: number
   /** rounds this game will play, for the ones that are not single-round board games. */
   roundsCount?: (game: StartGame) => number
+  /**
+   * The initializer ALSO flips the game to `active` (status, session_started_at, current_round_number, rounds_count,
+   * replay_pending) in the same database transaction as the deal, so the caller must not flip it again: a second,
+   * separate flip is exactly what could be applied late to a round it did not deal.
+   */
+  activates?: boolean
   /** seed the game's tables; runs via the service role (RLS-locked to anon writes). */
   initialize: (
     admin: SupabaseClient,
@@ -91,6 +97,7 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
   uno: {
     minPlayers: UNO_MIN_PLAYERS,
     maxPlayers: UNO_MAX_PLAYERS,
+    activates: true,
     initialize: (admin, code, ids) => initializeUnoGame(admin, code, ids),
   },
   ludo: {
@@ -143,6 +150,7 @@ export const GAME_START_SPECS: Partial<Record<GameType, StartSpec>> = {
   scrabble: {
     minPlayers: SCRABBLE_MIN_PLAYERS,
     maxPlayers: SCRABBLE_MAX_PLAYERS,
+    activates: true,
     initialize: (admin, code, ids) => initializeScrabbleGame(admin, code, ids),
   },
   mafia: {

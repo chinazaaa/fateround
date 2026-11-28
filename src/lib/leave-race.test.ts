@@ -83,6 +83,9 @@ function finishRpc(tables: Tables, name: string, args: Record<string, unknown>):
     const game = tables.games.find((g) => g.id === String(args.p_game_id).toUpperCase())
     const order = ((sess?.turn_order as string[] | undefined) ?? []) as string[]
     const marked = ((sess?.left_player_ids as string[] | undefined) ?? []).includes(pid)
+    // a player who already went out keeps the placement locked in finish_order (published game only)
+    if (sess && ((sess.finish_order as string[] | undefined) ?? []).includes(pid) && game?.status !== 'waiting')
+      return { status: 'retained' }
     if (sess && order.includes(pid) && sess.phase !== 'finished') return { status: 'live' }
     if (sess && order.includes(pid) && game?.status !== 'waiting' && !marked) return { status: 'retained' }
     if (sess && order.includes(pid) && game?.status === 'waiting') sess.turn_order = order.filter((id) => id !== pid)
@@ -1153,6 +1156,32 @@ describe('a Team-Up leaver is skipped as soon as the marker commits', () => {
   })
 })
 
+describe('a move with several knockout candidates plans every one before the round ends', () => {
+  const cards = (prefix: string, n: number) =>
+    Array.from({ length: n }, (_, i) => ({ id: `${prefix}${i}`, color: 'blue', kind: 'number', value: 5 }))
+
+  it('a 7-swap that pushes BOTH swappers over the limit knocks both out (last_standing): neither keeps its cards or its seat', async () => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_team_mode: false, uno_no_mercy_win: 'last_standing' })
+    Object.assign(t.uno_sessions[0], {
+      phase: 'swap_target',
+      left_player_ids: ['C', 'D'],
+      current_turn_index: 0,
+      draw_pile: [{ id: 'd1', color: 'red', kind: 'number', value: 4 }],
+    })
+    t.uno_player_hands[0].cards = cards('A', 26)
+    t.uno_player_hands[1].cards = cards('B', 27)
+    expect(await processUnoSwap(makeDb(t).supabase, 'G', 'A', 'B')).toEqual({})
+    // the first candidate alone would have left B "last standing"; B is a candidate of the SAME move
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['A', 'B'])
+    expect(t.uno_player_hands.find((h) => h.player_id === 'A')?.cards).toEqual([])
+    expect(t.uno_player_hands.find((h) => h.player_id === 'B')?.cards).toEqual([])
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(t.uno_sessions[0].winner_player_id).toBeNull()
+    expect(t.players.filter((p) => p.spectator === true).map((p) => p.id)).toEqual(['A', 'B'])
+  })
+})
+
 describe('planMercyKnockout end conditions (first_out and last_standing)', () => {
   const card = (id: string) => ({ id, color: 'blue', kind: 'number', value: 5 })
   const lastSeat = (winCondition: string, finishOrder: string[] = []) => {
@@ -1215,12 +1244,26 @@ describe('removeUnoPlayer — retention applies to a published game only', () =>
     expect(reopened.players.map((p) => p.id)).not.toContain('C')
   })
 
-  it('a failed status read stops the leave', async () => {
+  it('a failed lobby decision stops the leave and removes nothing', async () => {
     const t = unoTables()
     t.uno_sessions[0].phase = 'finished'
-    const res = await removeUnoPlayer(makeDb(t, { failSelect: (tb) => tb === 'games' }).supabase, 'G', 'C', 'C')
+    const res = await removeUnoPlayer(
+      makeDb(t, { failRpc: (n) => n === 'remove_uno_lobby_seat' }).supabase,
+      'G',
+      'C',
+      'C'
+    )
     expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
     expect(t.players.map((p) => p.id)).toContain('C')
+  })
+
+  it('retention is never decided from the app reads: the games row is not consulted by the leave', async () => {
+    const t = unoTables()
+    Object.assign(t.uno_sessions[0], { phase: 'finished' })
+    t.games[0].status = 'finished'
+    const db = makeDb(t, { failSelect: (tb) => tb === 'games' })
+    // a games read would fail the leave; the locked function decides alone
+    expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
   })
 })
 
@@ -2723,10 +2766,17 @@ describe('round identity and mover writes around a finish', () => {
 
   it('uno expiry decided about an EARLIER round never finishes a later round', async () => {
     const t = unoTables()
+    // the stored limit matches the snapshot, so the changed round count is the ONLY mismatch
+    t.games[0].game_duration_seconds = 60
     t.games[0].sessions_played = 2
     const res = await finishExpiredUnoGame(makeDb(t).supabase, expiredFor() as never)
     expect(res).toEqual({ won: false, roundMismatch: true })
     expect(t.uno_sessions[0].phase).toBe('playing')
+    // ...while the same round (matching count AND limit) finishes
+    const same = unoTables()
+    same.games[0].game_duration_seconds = 60
+    expect(await finishExpiredUnoGame(makeDb(same).supabase, expiredFor() as never)).toMatchObject({ won: true })
+    expect(same.uno_sessions[0].phase).toBe('finished')
   })
 
   it('a move on a round that expired is not applied as a finish of a LATER round (rematch after the read)', async () => {
@@ -3030,6 +3080,7 @@ describe('Uno: optional attribution, committed timer finish, retained seats', ()
         raced = true
         // The round was published between the leave's read and its CAS.
         Object.assign(t.uno_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
+        t.games[0].status = 'finished'
       },
     })
     expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
@@ -3053,11 +3104,106 @@ describe('Uno: optional attribution, committed timer finish, retained seats', ()
         if (tb !== 'scrabble_sessions' || raced) return
         raced = true
         Object.assign(t.scrabble_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
+        t.games[0].status = 'finished'
       },
     })
     expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
     expect(t.players.map((p) => p.id)).toContain('C')
     expect(t.scrabble_player_state.map((x) => x.player_id)).toContain('C')
+  })
+
+  it('a leave that read a FINISHED round just before a rematch started leaves the rematch, never reports a retained seat (Scrabble)', async () => {
+    const t = scrabbleTables()
+    t.scrabble_sessions[0].phase = 'finished'
+    t.games[0].status = 'finished'
+    const finishedRow = { ...t.scrabble_sessions[0] }
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'scrabble_sessions' || raced) return
+        raced = true
+        // the rematch landed after the lookup: a new playing session that lists the leaver, an active game
+        Object.assign(t.scrabble_sessions[0], {
+          ...finishedRow,
+          phase: 'playing',
+          updated_at: '2026-01-01T00:00:09.000Z',
+        })
+        t.games[0].status = 'active'
+      },
+    })
+    expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B'])
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+
+  it('a leave that read a FINISHED round just before a rematch started leaves the rematch, never reports a retained seat (Uno)', async () => {
+    const t = unoTables()
+    t.uno_sessions[0].phase = 'finished'
+    t.games[0].status = 'finished'
+    const finishedRow = { ...t.uno_sessions[0] }
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || raced) return
+        raced = true
+        Object.assign(t.uno_sessions[0], { ...finishedRow, phase: 'playing', updated_at: '2026-01-01T00:00:09.000Z' })
+        t.games[0].status = 'active'
+      },
+    })
+    expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.uno_sessions[0].turn_order).toEqual(['A', 'B', 'D'])
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+
+  it('a finishing leave that another request finished first decides the seat again: a published result keeps it, a reopened lobby drops it (Scrabble)', async () => {
+    const mk = (reopened: boolean) => {
+      const t = scrabbleTables()
+      t.scrabble_sessions[0].turn_order = ['A', 'C']
+      t.players = t.players.filter((p) => p.id !== 'B')
+      t.scrabble_player_state = t.scrabble_player_state.filter((x) => x.player_id !== 'B')
+      let raced = false
+      const db = makeDb(t, {
+        afterSessionRead: (tb) => {
+          if (tb !== 'scrabble_sessions' || raced) return
+          raced = true
+          // another request finished the round first; the host may even have reopened the lobby since
+          Object.assign(t.scrabble_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
+          t.games[0].status = reopened ? 'waiting' : 'finished'
+        },
+      })
+      return { t, db }
+    }
+    const published = mk(false)
+    expect(await removeScrabblePlayer(published.db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
+    expect(published.t.players.map((p) => p.id)).toContain('C')
+    const reopened = mk(true)
+    expect(await removeScrabblePlayer(reopened.db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(reopened.t.players.map((p) => p.id)).not.toContain('C')
+  })
+
+  it('a finishing leave that another request finished first decides the seat again: a published result keeps it, a reopened lobby drops it (Uno)', async () => {
+    const mk = (reopened: boolean) => {
+      const t = unoTables()
+      t.uno_sessions[0].turn_order = ['A', 'C']
+      t.players = t.players.filter((p) => p.id === 'A' || p.id === 'C')
+      t.uno_player_hands = t.uno_player_hands.filter((h) => h.player_id === 'A' || h.player_id === 'C')
+      let raced = false
+      const db = makeDb(t, {
+        afterSessionRead: (tb) => {
+          if (tb !== 'uno_sessions' || raced) return
+          raced = true
+          Object.assign(t.uno_sessions[0], { phase: 'finished', updated_at: '2026-01-01T00:00:07.000Z' })
+          t.games[0].status = reopened ? 'waiting' : 'finished'
+        },
+      })
+      return { t, db }
+    }
+    const published = mk(false)
+    expect(await removeUnoPlayer(published.db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
+    expect(published.t.players.map((p) => p.id)).toContain('C')
+    const reopened = mk(true)
+    expect(await removeUnoPlayer(reopened.db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(reopened.t.players.map((p) => p.id)).not.toContain('C')
   })
 })
 

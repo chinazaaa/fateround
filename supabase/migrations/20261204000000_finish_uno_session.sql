@@ -140,6 +140,12 @@ begin
     return jsonb_build_object('status', 'lost', 'games_flipped', false);
   end if;
 
+  -- A round that has not been published as started cannot be finished: a `waiting` game has no live round (the start
+  -- deals and activates in one transaction), so a finish here would publish a winner before the game began.
+  if v_game.status = 'waiting' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_waiting', 'games_flipped', false);
+  end if;
+
   -- ---- validation (nothing is written until all of it passes) ----
   if jsonb_typeof(p_session_patch) <> 'object' or jsonb_typeof(p_hand_writes) <> 'array' then
     return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape', 'games_flipped', false);
@@ -527,7 +533,9 @@ grant execute on function public.leave_uno_seat(text, uuid, timestamptz, jsonb) 
 -- A leave that is NOT a live-round leave (no session yet, a spectator, a seat that is not in the turn order, a reopened
 -- lobby): the rows go, and a reopened lobby's stale turn_order entry with them, in ONE transaction under the games lock.
 -- `live`: a round that is not finished still lists the player (nothing is deleted; the caller takes the live path).
--- `retained`: a PUBLISHED result (finished, game not `waiting`) keeps its seats, unless the departure is marked.
+-- `retained`: a PUBLISHED result (finished, game not `waiting`) keeps its seats, unless the departure is marked; so does a
+-- player who already went out (finish_order) of a round that is still running. Retention is decided HERE, from the locked
+-- games row and session row together, never by the caller from two earlier reads.
 create or replace function public.remove_uno_lobby_seat(
   p_game_id text,
   p_player_id uuid
@@ -556,6 +564,10 @@ begin
   select * into v_session from public.uno_sessions where game_id = v_id for update;
   v_exists := found;
   v_listed := v_exists and p_player_id = any (v_session.turn_order);
+  -- A player who already went out keeps the placement locked in finish_order (published game only).
+  if v_exists and p_player_id = any (v_session.finish_order) and v_status is distinct from 'waiting' then
+    return jsonb_build_object('status', 'retained');
+  end if;
   if v_listed and v_session.phase <> 'finished' then
     return jsonb_build_object('status', 'live');
   end if;
@@ -575,3 +587,125 @@ $$;
 
 revoke execute on function public.remove_uno_lobby_seat(text, uuid) from public, anon, authenticated;
 grant execute on function public.remove_uno_lobby_seat(text, uuid) to service_role;
+
+-- STARTING a round (a first start or a rematch) is ONE transaction under the games row lock: any previous deal's hands
+-- and session are replaced, the new session and every hand are inserted, AND the games row is flipped to `active`,
+-- together. There is no half-started room: a failed start changes nothing (the next start simply deals again), so a
+-- start never needs a "resume" and a stale-deal cleanup can never delete a deal another start just made; a flip can
+-- never be applied late to a round it did not deal. A start that reaches the lock when the game is no longer `waiting`
+-- (another start won, or the game is over) answers `not_waiting` and writes nothing. A seat whose player row is gone is
+-- `invalid` before anything is written.
+create or replace function public.start_uno_game(
+  p_game_id text,
+  p_session_row jsonb,
+  p_hand_rows jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_status text;
+  v_bad text;
+  v_cols text;
+  v_elem jsonb;
+  v_turn uuid[];
+  v_dealt uuid[];
+begin
+  if p_game_id is null or p_session_row is null or p_hand_rows is null then
+    raise exception 'start_uno_game: game id, session row and hand rows are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  select status into v_status from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
+  end if;
+  if v_status is distinct from 'waiting' then
+    return jsonb_build_object('status', 'not_waiting');
+  end if;
+
+  if jsonb_typeof(p_session_row) <> 'object' or jsonb_typeof(p_hand_rows) <> 'array'
+     or jsonb_array_length(p_hand_rows) = 0 or p_session_row->>'phase' is distinct from 'playing' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
+  end if;
+  select string_agg(k, ',') into v_bad
+    from jsonb_object_keys(p_session_row) as k
+    where k in ('id', 'game_id', 'created_at', 'updated_at')
+       or not exists (
+         select 1 from information_schema.columns c
+         where c.table_schema = 'public' and c.table_name = 'uno_sessions' and c.column_name = k
+       );
+  if v_bad is not null then
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_column: ' || v_bad);
+  end if;
+  begin
+    perform jsonb_populate_record(null::public.uno_sessions, p_session_row);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_value');
+  end;
+
+  for v_elem in select * from jsonb_array_elements(p_hand_rows) loop
+    if jsonb_typeof(v_elem) <> 'object'
+       or jsonb_typeof(v_elem->'player_id') is distinct from 'string'
+       or (v_elem->>'player_id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+       or exists (select 1 from jsonb_object_keys(v_elem) k where k not in ('player_id', 'cards', 'player_order'))
+       or jsonb_typeof(v_elem->'cards') is distinct from 'array'
+       or jsonb_typeof(v_elem->'player_order') is distinct from 'number'
+       or (v_elem->>'player_order') !~ '^[0-9]{1,9}$'
+       or not exists (
+         select 1 from public.players p where p.id = (v_elem->>'player_id')::uuid and p.game_id = v_id
+       ) then
+      return jsonb_build_object('status', 'invalid', 'reason', 'hand_row');
+    end if;
+  end loop;
+  if (select count(distinct (e->>'player_id')::uuid) from jsonb_array_elements(p_hand_rows) e) <> jsonb_array_length(p_hand_rows) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'hand_row_duplicate');
+  end if;
+
+  -- Every seat in turn_order is dealt a hand and vice versa, each exactly once (a round must never start on a seat with
+  -- no hand, nor deal a hand to a seat that has no turn).
+  if array_ndims((jsonb_populate_record(null::public.uno_sessions, p_session_row)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'turn_order_dimensions');
+  end if;
+  select array_agg(t order by t) into v_turn
+    from unnest((jsonb_populate_record(null::public.uno_sessions, p_session_row)).turn_order) t;
+  select array_agg(sid order by sid) into v_dealt
+    from (select (e->>'player_id')::uuid as sid from jsonb_array_elements(p_hand_rows) e) d;
+  if v_turn is null or v_turn is distinct from v_dealt then
+    return jsonb_build_object('status', 'invalid', 'reason', 'turn_order_mismatch');
+  end if;
+
+  -- the previous deal (a finished result of a reopened lobby, or an orphan) goes; the games lock is held, so no start
+  -- or leave can interleave with this replacement.
+  delete from public.uno_player_hands where game_id = v_id;
+  delete from public.uno_sessions where game_id = v_id;
+
+  select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_row) as k;
+  execute format(
+    'insert into public.uno_sessions (game_id, %1$s) select $2, %1$s from jsonb_populate_record(null::public.uno_sessions, $1)',
+    v_cols
+  ) using p_session_row, v_id;
+  insert into public.uno_player_hands (game_id, player_id, cards, player_order)
+    select v_id, (e->>'player_id')::uuid, e->'cards', (e->>'player_order')::integer
+    from jsonb_array_elements(p_hand_rows) e;
+
+  update public.games
+    set status = 'active',
+        session_started_at = now(),
+        current_round_number = 1,
+        rounds_count = 1,
+        replay_pending = false
+    where id = v_id and status = 'waiting';
+  if not found then
+    raise exception 'start_uno_game: game % could not be activated', v_id;
+  end if;
+
+  return jsonb_build_object('status', 'started');
+end;
+$$;
+
+revoke execute on function public.start_uno_game(text, jsonb, jsonb) from public, anon, authenticated;
+grant execute on function public.start_uno_game(text, jsonb, jsonb) to service_role;

@@ -221,18 +221,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cod
       )
       if (initError) return NextResponse.json({ error: initError }, { status: 500 })
 
-      const { error: gameError } = await admin
-        .from('games')
-        .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1, rounds_count: 1 })
-        .eq('id', gameId)
-      if (gameError) {
-        return NextResponse.json(
-          { error: internalErrorMessage('tournaments/code/rounds/start', gameError) },
-          { status: 500 }
-        )
+      // Scrabble's deal already flipped the room to `active` in the same transaction (start_scrabble_game); only Whot
+      // still flips separately.
+      if (tournament.game_type !== 'scrabble') {
+        const { error: gameError } = await admin
+          .from('games')
+          .update({ status: 'active', session_started_at: sessionStartedAt, current_round_number: 1, rounds_count: 1 })
+          .eq('id', gameId)
+        if (gameError) {
+          return NextResponse.json(
+            { error: internalErrorMessage('tournaments/code/rounds/start', gameError) },
+            { status: 500 }
+          )
+        }
       }
 
-      const { error: tgError } = await admin.from('tournament_games').update({ status: 'active' }).eq('id', room.id)
+      // Only a room whose bracket row still needs activating: a delayed update must never reopen a row that finished.
+      const { error: tgError } = await admin
+        .from('tournament_games')
+        .update({ status: 'active' })
+        .eq('id', room.id)
+        .eq('status', 'pending')
       if (tgError) {
         return NextResponse.json(
           { error: internalErrorMessage('tournaments/code/rounds/start', tgError) },

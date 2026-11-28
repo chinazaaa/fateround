@@ -468,8 +468,8 @@ begin
   perform pg_temp.assert_eq('6j left', public.leave_uno_seat('GUJ', pg_temp.pid(211), v_v,
     jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(212), pg_temp.pid(213)), 'status_message', 'A left'))->>'status', 'left');
   perform pg_temp.assert_eq('6j patch applied, rows gone, version advanced', ((pg_temp.sess('GUJ')).status_message,
-    array_length((pg_temp.sess('GUJ')).turn_order, 1), (select count(*) from public.players where id = pg_temp.pid(211)),
-    (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(211)), (pg_temp.sess('GUJ')).updated_at > v_v)::text, '("A left",2,0,0,t)');
+    (pg_temp.sess('GUJ')).turn_order = array[pg_temp.pid(212), pg_temp.pid(213)], (select count(*) from public.players where id = pg_temp.pid(211)),
+    (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(211)), (pg_temp.sess('GUJ')).updated_at > v_v)::text, '("A left",t,0,0,t)');
   perform pg_temp.assert_eq('6j other seats intact', (select count(*) from public.uno_player_hands where game_id = 'GUJ'), 2::bigint);
   -- Team-Up: the leaver stays in turn_order (seat parity) but is MARKED in the same patch: accepted
   perform pg_temp.assert_eq('6j team-up departure (marked)', public.leave_uno_seat('GUJ', pg_temp.pid(212), (pg_temp.sess('GUJ')).updated_at,
@@ -488,7 +488,17 @@ declare
 begin
   perform pg_temp.assert_eq('6k live round lists the player', public.remove_uno_lobby_seat('GUK', pg_temp.pid(221))->>'status', 'live');
   perform pg_temp.assert_eq('6k live: nothing deleted', (select count(*) from public.players where game_id = 'GUK'), 3::bigint);
+  -- a player who already went out keeps the placement locked in finish_order while the round runs (published game only)
+  update public.uno_sessions set finish_order = array[pg_temp.pid(221)] where game_id = 'GUK';
+  perform pg_temp.assert_eq('6k finisher of a running round is retained', public.remove_uno_lobby_seat('GUK', pg_temp.pid(221))->>'status', 'retained');
+  update public.games set status = 'waiting' where id = 'GUK';
+  perform pg_temp.assert_eq('6k finisher placement is not retained in a waiting game', public.remove_uno_lobby_seat('GUK', pg_temp.pid(221))->>'status', 'live');
+  update public.games set status = 'active' where id = 'GUK';
+  update public.uno_sessions set finish_order = '{}' where game_id = 'GUK';
   update public.uno_sessions set phase = 'finished' where game_id = 'GUK';
+  -- the result is PUBLISHED only when the game row says so as well: an `active` game with a finished session is not a
+  -- reopened lobby either, and a regression that retains for active games only would delete result seats
+  update public.games set status = 'finished' where id = 'GUK';
   perform pg_temp.assert_eq('6k published result keeps the seat', public.remove_uno_lobby_seat('GUK', pg_temp.pid(221))->>'status', 'retained');
   perform pg_temp.assert_eq('6k retained: rows intact', ((select count(*) from public.players where game_id = 'GUK'), (select count(*) from public.uno_player_hands where game_id = 'GUK'))::text, '(3,3)');
   -- a marked departure is not a result seat
@@ -505,6 +515,85 @@ begin
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
 end $$;
 
+-- 6m. start_uno_game: the deal AND the activation are ONE transaction under the games lock.
+do $$
+declare
+  v_row jsonb;
+  v_hands jsonb;
+  v_out jsonb;
+begin
+  insert into public.games (id, title, host_token, game_type, status, replay_pending) values ('GUS', 'start test', 'tok-GUS', 'uno', 'waiting', true);
+  insert into public.players (id, game_id, name) values (pg_temp.pid(311), 'GUS', 'A'), (pg_temp.pid(312), 'GUS', 'B');
+  insert into public.games (id, title, host_token, game_type, status) values ('GUT', 'other', 'tok-GUT', 'uno', 'waiting');
+  insert into public.players (id, game_id, name) values (pg_temp.pid(321), 'GUT', 'X');
+  v_row := jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(311), pg_temp.pid(312)), 'current_turn_index', 0, 'direction', 1,
+    'phase', 'playing', 'draw_pile', '[{"id":"d1"}]'::jsonb, 'status_message', 'dealt', 'finish_order', '[]'::jsonb);
+  v_hands := jsonb_build_array(
+    jsonb_build_object('player_id', pg_temp.pid(311), 'cards', '[{"id":"a1"}]'::jsonb, 'player_order', 0),
+    jsonb_build_object('player_id', pg_temp.pid(312), 'cards', '[{"id":"b1"}]'::jsonb, 'player_order', 1));
+  -- malformed starts change nothing (the game stays waiting, no session, no hands)
+  perform pg_temp.assert_eq('6m hand without a turn_order seat', public.start_uno_game('GUS', v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(311))), v_hands)->>'reason', 'turn_order_mismatch');
+  perform pg_temp.assert_eq('6m turn_order seat without a hand', public.start_uno_game('GUS', v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(311), pg_temp.pid(312), pg_temp.pid(311))), v_hands)->>'reason', 'turn_order_mismatch');
+  perform pg_temp.assert_eq('6m seat of another game', public.start_uno_game('GUS', v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(321))),
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(321), 'cards', '[]'::jsonb, 'player_order', 0)))->>'reason', 'hand_row');
+  perform pg_temp.assert_eq('6m duplicate hands', public.start_uno_game('GUS', v_row, v_hands || v_hands)->>'reason', 'hand_row_duplicate');
+  perform pg_temp.assert_eq('6m phase must be playing', public.start_uno_game('GUS', v_row || '{"phase":"finished"}'::jsonb, v_hands)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6m protected column', public.start_uno_game('GUS', v_row || '{"game_id":"X"}'::jsonb, v_hands)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6m unknown column', public.start_uno_game('GUS', v_row || '{"nope":1}'::jsonb, v_hands)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6m unconvertible value', public.start_uno_game('GUS', v_row || '{"winner_player_id":"not-a-uuid"}'::jsonb, v_hands)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6m hand with a non-array cards', public.start_uno_game('GUS', v_row,
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(311), 'cards', '{}'::jsonb, 'player_order', 0), v_hands->1))->>'reason', 'hand_row');
+  perform pg_temp.assert_eq('6m failed starts changed nothing', ((select status from public.games where id = 'GUS'),
+    (select count(*) from public.uno_sessions where game_id = 'GUS'), (select count(*) from public.uno_player_hands where game_id = 'GUS'))::text, '(waiting,0,0)');
+  -- a valid start deals and activates together
+  v_out := public.start_uno_game('GUS', v_row, v_hands);
+  perform pg_temp.assert_eq('6m started', v_out->>'status', 'started');
+  perform pg_temp.assert_eq('6m activated with the deal', (select (status, session_started_at is not null, current_round_number, rounds_count, replay_pending)::text
+    from public.games where id = 'GUS'), '(active,t,1,1,f)');
+  perform pg_temp.assert_eq('6m session and hands', ((pg_temp.sess('GUS')).status_message, array_length((pg_temp.sess('GUS')).turn_order, 1),
+    (select count(*) from public.uno_player_hands where game_id = 'GUS'), (pg_temp.hand('GUS', 31, 1))::text)::text, '(dealt,2,2,"[{""id"": ""a1""}]")');
+  perform pg_temp.assert_eq('6m other game untouched', ((select status from public.games where id = 'GUT'), (select count(*) from public.uno_sessions where game_id = 'GUT'))::text, '(waiting,0)');
+  -- a second start finds the game no longer waiting: refused, nothing is re-dealt
+  perform pg_temp.assert_eq('6m second start refused', public.start_uno_game('GUS', v_row || '{"status_message":"again"}'::jsonb, v_hands)->>'status', 'not_waiting');
+  perform pg_temp.assert_eq('6m second start: nothing re-dealt', (pg_temp.sess('GUS')).status_message, 'dealt');
+  -- a rematch (Play Again: game back to waiting, finished session and hands still there) replaces the previous deal
+  update public.uno_sessions set phase = 'finished' where game_id = 'GUS';
+  update public.uno_player_hands set cards = '[{"id":"old"}]' where game_id = 'GUS';
+  update public.games set status = 'waiting' where id = 'GUS';
+  perform pg_temp.assert_eq('6m rematch', public.start_uno_game('GUS', v_row || '{"status_message":"round 2"}'::jsonb, v_hands)->>'status', 'started');
+  perform pg_temp.assert_eq('6m rematch replaced the deal', ((pg_temp.sess('GUS')).phase, (pg_temp.sess('GUS')).status_message,
+    (select count(*) from public.uno_player_hands where game_id = 'GUS'), (select status from public.games where id = 'GUS'))::text, '(playing,"round 2",2,active)');
+  perform pg_temp.assert_eq('6m rematch hands are new', (pg_temp.hand('GUS', 31, 1))::text, '[{"id": "a1"}]');
+  -- a `waiting` game never has a live round: an orphan session under it is replaced, not resumed
+  update public.games set status = 'waiting' where id = 'GUS';
+  perform pg_temp.assert_eq('6m orphan replaced', public.start_uno_game('GUS', v_row || '{"status_message":"orphan"}'::jsonb, v_hands)->>'status', 'started');
+  perform pg_temp.assert_eq('6m orphan replaced: one session', ((pg_temp.sess('GUS')).status_message, (select count(*) from public.uno_sessions where game_id = 'GUS'))::text, '(orphan,1)');
+  perform pg_temp.assert_eq('6m unknown game', public.start_uno_game('NOPE', v_row, v_hands)->>'status', 'invalid');
+  begin perform public.start_uno_game(null, v_row, v_hands); raise exception 'FAIL 6m: null game id accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.start_uno_game('GUS', null, v_hands); raise exception 'FAIL 6m: null session accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+  begin perform public.start_uno_game('GUS', v_row, null); raise exception 'FAIL 6m: null hands accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+
+-- 6n. A `waiting` game has no live round: a finish (a leave of a two-seat room whose start never flipped) cannot publish a
+--     winner for it, and nothing is written. A finished session of a reopened lobby is still `already_finished`.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GUW', 33, false);
+  v_out jsonb;
+begin
+  update public.games set status = 'waiting' where id = 'GUW';
+  v_out := public.finish_uno_session('GUW', v_v, '{"status_message":"w"}'::jsonb, '[]'::jsonb);
+  perform pg_temp.assert_eq('6n waiting game refused', (v_out->>'status', v_out->>'reason')::text, '(invalid,game_waiting)');
+  perform pg_temp.assert_eq('6n nothing written', ((pg_temp.sess('GUW')).phase, (pg_temp.g('GUW')).status)::text, '(playing,waiting)');
+  update public.games set status = 'active' where id = 'GUW';
+  perform pg_temp.assert_eq('6n the same finish on an active game works', public.finish_uno_session('GUW', v_v, '{"status_message":"w"}'::jsonb, '[]'::jsonb)->>'status', 'finished');
+  update public.games set status = 'waiting' where id = 'GUW';
+  perform pg_temp.assert_eq('6n reopened lobby: already_finished', public.finish_uno_session('GUW', v_v, '{}'::jsonb, '[]'::jsonb)->>'status', 'already_finished');
+end $$;
+
 select pg_temp.assert_eq('priv departure anon', has_function_privilege('anon', 'public.complete_uno_departure(text, uuid)', 'execute'), false);
 select pg_temp.assert_eq('priv departure authenticated', has_function_privilege('authenticated', 'public.complete_uno_departure(text, uuid)', 'execute'), false);
 select pg_temp.assert_eq('priv departure service_role', has_function_privilege('service_role', 'public.complete_uno_departure(text, uuid)', 'execute'), true);
@@ -514,6 +603,9 @@ select pg_temp.assert_eq('priv leave authenticated', has_function_privilege('aut
 select pg_temp.assert_eq('priv leave service_role', has_function_privilege('service_role', 'public.leave_uno_seat(text, uuid, timestamptz, jsonb)', 'execute'), true);
 select pg_temp.assert_eq('priv lobby anon', has_function_privilege('anon', 'public.remove_uno_lobby_seat(text, uuid)', 'execute'), false);
 select pg_temp.assert_eq('priv lobby authenticated', has_function_privilege('authenticated', 'public.remove_uno_lobby_seat(text, uuid)', 'execute'), false);
+select pg_temp.assert_eq('priv start anon', has_function_privilege('anon', 'public.start_uno_game(text, jsonb, jsonb)', 'execute'), false);
+select pg_temp.assert_eq('priv start authenticated', has_function_privilege('authenticated', 'public.start_uno_game(text, jsonb, jsonb)', 'execute'), false);
+select pg_temp.assert_eq('priv start service_role', has_function_privilege('service_role', 'public.start_uno_game(text, jsonb, jsonb)', 'execute'), true);
 select pg_temp.assert_eq('priv lobby service_role', has_function_privilege('service_role', 'public.remove_uno_lobby_seat(text, uuid)', 'execute'), true);
 
 rollback;

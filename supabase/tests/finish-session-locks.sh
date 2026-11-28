@@ -8,6 +8,7 @@
 # Session F2 runs the SAME finish (an identical payload, with series points) at the SAME expected version. The test
 # asserts F2 is observed WAITING on F1, and that once F1 commits F2 answers `already_finished` (not a second
 # `finished`), so the round's series points are added exactly once and the hand is written once.
+# Case G (two overlapping starts): the second answers `not_waiting` and the first start's deal and activation stand.
 # Case B (Scrabble double finish): the same shape; the scores are written once and F2 is `already_finished`.
 #
 # Sessions are coordinated through pg_stat_activity and an advisory-lock gate, not timing. The second worker is observed
@@ -26,12 +27,22 @@ GATE=$((100000 + RANDOM))
 # transaction (on startup, on exit, or in a poll) fails the call instead of hanging CI. (The gate worker and the case
 # workers are separate psql processes by design: their waits are exactly what the cases observe.)
 psqlq() { PGCONNECT_TIMEOUT=10 PGOPTIONS="-c statement_timeout=30000 -c lock_timeout=30000" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
+# The background clients (the gate and the case workers) are separate psql processes by design, but they are bounded too:
+# a finite connect deadline, a statement / lock deadline long enough for the intended gate wait (the gate itself sleeps at
+# most 120s), and their LOCAL pids are tracked so the exit handler can stop and reap them even when no backend of theirs
+# ever shows up in pg_stat_activity. `exec` makes the background pid the psql process itself.
+WORKERS=()
+psqlw() { PGCONNECT_TIMEOUT=10 PGOPTIONS="-c statement_timeout=150000 -c lock_timeout=150000" exec psql "$DB" -X -q "$@"; }
+track() { WORKERS+=("$1"); }
 
 cleanup() {
+  # stop and reap every background client this run started (they may never have reached the server)
+  for w in ${WORKERS[@]+"${WORKERS[@]}"}; do kill "$w" 2>/dev/null || true; done
+  for w in ${WORKERS[@]+"${WORKERS[@]}"}; do wait "$w" 2>/dev/null || true; done
   [ -n "$TMPD" ] && rm -rf "$TMPD"
   # cleanup failures are REPORTED but never change the exit status of the run (the original failure, if any, stays)
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'fin-$RUN-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || echo "cleanup: could not terminate the run's sessions" >&2
-  psqlq -c "delete from public.games where id in ('FINLU$S', 'FINLS$S', 'FINLM$S', 'FINLV$S', 'FINLD$S', 'FINLF$S')" >/dev/null 2>&1 || echo "cleanup: could not delete the run's fixtures (FINL*$S)" >&2
+  psqlq -c "delete from public.games where id in ('FINLU$S', 'FINLS$S', 'FINLM$S', 'FINLV$S', 'FINLD$S', 'FINLF$S', 'FINLG$S')" >/dev/null 2>&1 || echo "cleanup: could not delete the run's fixtures (FINL*$S)" >&2
   return 0
 }
 trap cleanup EXIT
@@ -48,18 +59,27 @@ reap() { # pid, description
   wait "$1" || fail "worker failed: $2"
 }
 wait_for() { # description, sql returning t when satisfied
+  local out
   for _ in $(seq 1 200); do
-    [ "$(psqlq -c "$2")" = "t" ] && return 0
+    # a FAILED query (the database went away, a timeout) stops the wait with its own message: only a query that ran and
+    # answered "not yet" is retried
+    out="$(psqlq -c "$2")" || fail "the database query failed while waiting for: $1"
+    [ "$out" = "t" ] && return 0
     sleep 0.1
   done
   fail "timed out waiting for: $1"
 }
 start_gate() {
-  PGAPPNAME=fin-$RUN-gate psql "$DB" -X -q -c "select pg_advisory_lock($GATE); select pg_sleep(120)" >/dev/null 2>&1 &
-  wait_for "gate held" "select exists (select 1 from pg_locks where locktype = 'advisory' and granted and objid = $GATE)"
+  PGAPPNAME=fin-$RUN-gate psqlw -c "select pg_advisory_lock($GATE); select pg_sleep(120)" >/dev/null 2>&1 &
+  track $!
+  # THIS run's gate backend must hold the exact single-bigint key ($GATE < 2^32: classid 0, objid $GATE, objsubid 1) in
+  # this database: a two-integer advisory lock of another backend with the same objid cannot satisfy the check
+  wait_for "gate held" "select exists (select 1 from pg_locks l join pg_stat_activity a on a.pid = l.pid where l.locktype = 'advisory' and l.granted and l.classid = 0 and l.objid = $GATE and l.objsubid = 1 and l.database = (select oid from pg_database where datname = current_database()) and a.application_name = 'fin-$RUN-gate')"
 }
 open_gate() {
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name = 'fin-$RUN-gate'" >/dev/null
+  # the next case's gate is only judged once this one has really gone (its lock is released with its backend)
+  wait_for "the gate closed" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-gate')"
 }
 
 P1=00000000-0000-0000-$RUN-00000000f001
@@ -74,6 +94,8 @@ P9=00000000-0000-0000-$RUN-00000000f009
 P10=00000000-0000-0000-$RUN-00000000f010
 P11=00000000-0000-0000-$RUN-00000000f011
 P12=00000000-0000-0000-$RUN-00000000f012
+P13=00000000-0000-0000-$RUN-00000000f013
+P14=00000000-0000-0000-$RUN-00000000f014
 
 # ---- Case A: Uno ---------------------------------------------------------------------------------------------
 psqlq <<SQL
@@ -89,11 +111,13 @@ CALL_U="select public.finish_uno_session('FINLU$S', '$VER', '{\"status_message\"
 CALL_U2="select public.finish_uno_session('FINLU$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P1\",\"cards\":[{\"id\":\"second\"}]}]'::jsonb, '{\"winner_id\":\"$P1\",\"points\":50}'::jsonb, null, null)->>'status'"
 
 start_gate
-PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_U; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; $CALL_U; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+track $!
 wait_for "first finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_U="$TMPD/out_U"
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_U2" >"$OUT_U" 2>&1 &
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "$CALL_U2" >"$OUT_U" 2>&1 &
 W_U=$!
+track $W_U
 wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "second finisher answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
@@ -117,11 +141,13 @@ CALL_S="select public.finish_scrabble_session('FINLS$S', '$VER', '{\"status_mess
 CALL_S2="select public.finish_scrabble_session('FINLS$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P3\",\"score\":999},{\"player_id\":\"$P4\",\"score\":998}]'::jsonb)->>'status'"
 
 start_gate
-PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_S; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; $CALL_S; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+track $!
 wait_for "first finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_S="$TMPD/out_S"
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_S2" >"$OUT_S" 2>&1 &
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "$CALL_S2" >"$OUT_S" 2>&1 &
 W_S=$!
+track $W_S
 wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "second finisher answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
@@ -144,11 +170,13 @@ SQL
 VER=$(psqlq -c "select updated_at from public.scrabble_sessions where game_id = 'FINLM$S'")
 CALL_F="select public.finish_scrabble_session('FINLM$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P5\",\"score\":7}]'::jsonb)->>'status'"
 start_gate
-PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_F; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; $CALL_F; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+track $!
 wait_for "finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_M="$TMPD/out_M"
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.apply_scrabble_move('FINLM$S', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P5\",\"score\":999}]'::jsonb)->>'status'" >"$OUT_M" 2>&1 &
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "select public.apply_scrabble_move('FINLM$S', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P5\",\"score\":999}]'::jsonb)->>'status'" >"$OUT_M" 2>&1 &
 W_M=$!
+track $W_M
 wait_for "the move waits on the finish" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the move answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
@@ -167,11 +195,13 @@ SQL
 VER=$(psqlq -c "select updated_at from public.uno_sessions where game_id = 'FINLV$S'")
 CALL_V="select public.finish_uno_session('FINLV$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P7\",\"cards\":[]}]'::jsonb, null, null, null)->>'status'"
 start_gate
-PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_V; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; $CALL_V; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+track $!
 wait_for "uno finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_V="$TMPD/out_V"
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.apply_uno_move('FINLV$S', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P7\",\"cards\":[{\"id\":\"zz\"}]}]'::jsonb)->>'status'" >"$OUT_V" 2>&1 &
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "select public.apply_uno_move('FINLV$S', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P7\",\"cards\":[{\"id\":\"zz\"}]}]'::jsonb)->>'status'" >"$OUT_V" 2>&1 &
 W_V=$!
+track $W_V
 wait_for "the uno move waits on the finish" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the uno move answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
@@ -180,28 +210,31 @@ reap "$W_V" "case V"
 [ "$(psqlq -c "select cards::text from public.uno_player_hands where game_id = 'FINLV$S' and player_id = '$P7'")" = "[]" ] || fail "case D: the move overwrote the finished hand"
 
 # ---- Case E: a lobby leave racing a deal --------------------------------------------------------------------
-# remove_scrabble_lobby_seat() takes the games row lock a deal takes. Session F deals a round (deal_scrabble_session) and
-# keeps its transaction open; session W removes one of the dealt seats as a lobby leave. W must be observed WAITING on F
-# and, once F commits, answer `live` (the round is now playing and lists the seat): NOTHING is deleted, the round keeps
-# both seats with their player rows.
+# remove_scrabble_lobby_seat() takes the games row lock a start takes. Session F starts a round (start_scrabble_game: the
+# deal AND the flip to `active`, one transaction) and keeps its transaction open; session W removes one of the dealt seats as
+# a lobby leave. W must be observed WAITING on F and, once F commits, answer `live` (the round is now playing and lists
+# the seat): NOTHING is deleted, the round keeps both seats with their player rows, in the dealt order.
 psqlq <<SQL
 insert into public.games (id, title, host_token, game_type, status) values ('FINLD$S', 'lock test D', 'tok-finld$S', 'scrabble', 'waiting');
 insert into public.players (id, game_id, name) values ('$P9', 'FINLD$S', 'A'), ('$P10', 'FINLD$S', 'B');
 SQL
-CALL_D="select public.deal_scrabble_session('FINLD$S', '{\"turn_order\":[\"$P9\",\"$P10\"],\"phase\":\"playing\",\"status_message\":\"dealt\"}'::jsonb, '[{\"player_id\":\"$P9\"},{\"player_id\":\"$P10\"}]'::jsonb)->>'status'"
+CALL_D="select public.start_scrabble_game('FINLD$S', '{\"turn_order\":[\"$P9\",\"$P10\"],\"phase\":\"playing\",\"status_message\":\"dealt\"}'::jsonb, '[{\"player_id\":\"$P9\"},{\"player_id\":\"$P10\"}]'::jsonb)->>'status'"
 start_gate
-PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_D; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; $CALL_D; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+track $!
 wait_for "the dealer holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_D="$TMPD/out_D"
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_scrabble_lobby_seat('FINLD$S', '$P10')->>'status'" >"$OUT_D" 2>&1 &
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "select public.remove_scrabble_lobby_seat('FINLD$S', '$P10')->>'status'" >"$OUT_D" 2>&1 &
 W_D=$!
+track $W_D
 wait_for "the lobby leave waits on the deal" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the lobby leave answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 reap "$W_D" "case D"
 [ "$(cat "$OUT_D")" = "live" ] || fail "case E: expected the lobby leave to answer 'live', got '$(cat "$OUT_D")'"
 [ "$(psqlq -c "select count(*) from public.players where game_id = 'FINLD$S'")" = "2" ] || fail "case E: a player row was deleted from the dealt round"
-[ "$(psqlq -c "select array_length(turn_order, 1) from public.scrabble_sessions where game_id = 'FINLD$S'")" = "2" ] || fail "case E: the dealt turn order changed"
+[ "$(psqlq -c "select turn_order = array['$P9'::uuid, '$P10'::uuid] from public.scrabble_sessions where game_id = 'FINLD$S'")" = "t" ] || fail "case E: the dealt turn order [P9, P10] changed (a seat was dropped or replaced)"
+[ "$(psqlq -c "select status from public.games where id = 'FINLD$S'")" = "active" ] || fail "case E: the start did not activate the game in the same transaction"
 [ "$(psqlq -c "select count(*) from public.scrabble_player_state where game_id = 'FINLD$S' and player_id in ('$P9', '$P10')")" = "2" ] || fail "case E: a dealt state row (incl. P10's) was deleted by the lobby leave"
 
 # ---- Case F: a live leave racing a finish -------------------------------------------------------------------
@@ -217,11 +250,13 @@ SQL
 VER=$(psqlq -c "select updated_at from public.scrabble_sessions where game_id = 'FINLF$S'")
 CALL_G="select public.finish_scrabble_session('FINLF$S', '$VER', '{\"status_message\":\"done\"}'::jsonb, '[{\"player_id\":\"$P11\",\"score\":7}]'::jsonb)->>'status'"
 start_gate
-PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_G; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; $CALL_G; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+track $!
 wait_for "the finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_F="$TMPD/out_F"
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.leave_scrabble_seat('FINLF$S', '$P12', '$VER', '{\"turn_order\":[\"$P11\"],\"status_message\":\"B left\"}'::jsonb)->>'status'" >"$OUT_F" 2>&1 &
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "select public.leave_scrabble_seat('FINLF$S', '$P12', '$VER', '{\"turn_order\":[\"$P11\"],\"status_message\":\"B left\"}'::jsonb)->>'status'" >"$OUT_F" 2>&1 &
 W_F=$!
+track $W_F
 wait_for "the live leave waits on the finish" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the live leave answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
@@ -230,5 +265,31 @@ reap "$W_F" "case F"
 [ "$(psqlq -c "select (select count(*) from public.players where game_id = 'FINLF$S') || '/' || (select count(*) from public.scrabble_player_state where game_id = 'FINLF$S')")" = "2/2" ] || fail "case F: the leave deleted rows of the finished round"
 # the published result itself is preserved (the finish committed: game and session finished, P11's score written)
 [ "$(psqlq -c "select (select status from public.games where id = 'FINLF$S') || '/' || (select phase from public.scrabble_sessions where game_id = 'FINLF$S') || '/' || (select score from public.scrabble_player_state where game_id = 'FINLF$S' and player_id = '$P11')")" = "finished/finished/7" ] || fail "case F: the published result (finished game and session, P11 score 7) was not preserved"
+
+# ---- Case G: two overlapping starts ---------------------------------------------------------------------------
+# start_uno_game() deals AND activates under the games row lock. Start 1 deals and keeps its transaction open; start 2 (a
+# second host tap, or a retry) is observed WAITING on it and, once start 1 commits, answers `not_waiting`: it neither
+# replaces the dealt hands and session nor flips anything, and the game stays `active` with start 1's deal.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('FINLG$S', 'lock test G', 'tok-finlg$S', 'uno', 'waiting');
+insert into public.players (id, game_id, name) values ('$P13', 'FINLG$S', 'A'), ('$P14', 'FINLG$S', 'B');
+SQL
+START_ROW1="{\"turn_order\":[\"$P13\",\"$P14\"],\"phase\":\"playing\",\"status_message\":\"deal one\"}"
+START_ROW2="{\"turn_order\":[\"$P14\",\"$P13\"],\"phase\":\"playing\",\"status_message\":\"deal two\"}"
+HANDS="[{\"player_id\":\"$P13\",\"cards\":[],\"player_order\":0},{\"player_id\":\"$P14\",\"cards\":[],\"player_order\":1}]"
+start_gate
+PGAPPNAME=fin-$RUN-first psqlw -v ON_ERROR_STOP=1 -c "begin; select public.start_uno_game('FINLG$S', '$START_ROW1'::jsonb, '$HANDS'::jsonb)->>'status'; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
+track $!
+wait_for "the first start holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_G="$TMPD/out_G"
+PGAPPNAME=fin-$RUN-second psqlw -v ON_ERROR_STOP=1 -t -A -c "select public.start_uno_game('FINLG$S', '$START_ROW2'::jsonb, '$HANDS'::jsonb)->>'status'" >"$OUT_G" 2>&1 &
+W_G=$!
+track $W_G
+wait_for "the second start waits on the first" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
+open_gate
+wait_for "the second start answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
+reap "$W_G" "case G"
+[ "$(cat "$OUT_G")" = "not_waiting" ] || fail "case G: expected the second start to answer 'not_waiting', got '$(cat "$OUT_G")'"
+[ "$(psqlq -c "select (select status from public.games where id = 'FINLG$S') || '/' || (select status_message from public.uno_sessions where game_id = 'FINLG$S') || '/' || (select count(*) from public.uno_sessions where game_id = 'FINLG$S') || '/' || (select count(*) from public.uno_player_hands where game_id = 'FINLG$S')")" = "active/deal one/1/2" ] || fail "case G: the first start's deal was replaced or the game is not active"
 
 echo "finish-session-locks: ok"

@@ -592,26 +592,24 @@ export async function initializeScrabbleGame(
     timed_out: false,
   }))
 
-  // The deal is ONE database transaction under the games row lock (deal_scrabble_session): the previous racks and the
-  // session are replaced together (a failed deal leaves the previous result intact), an overlapping second deal finds
-  // the round already `playing` and never interleaves its racks with the first (this is also the guard that a live
-  // game is never re-dealt, which would reset every score), and a seat whose player row is gone is rejected up front.
-  const { data, error } = await supabase.rpc('deal_scrabble_session', {
+  // The start is ONE database transaction under the games row lock (start_scrabble_game): the previous racks and the
+  // session are replaced AND the game is flipped to `active` together, so there is no half-started room to resume (a
+  // failed start changes nothing and the next one deals again). An overlapping second start finds the game no longer
+  // `waiting` and never interleaves its racks with the first (this is also the guard that a live game is never
+  // re-dealt, which would reset every score), and a seat whose player row is gone is rejected up front.
+  const { data, error } = await supabase.rpc('start_scrabble_game', {
     p_game_id: gameId,
     p_session_row: sessionRow,
     p_state_rows: stateRows,
   })
   if (error) return { error: internalErrorMessage('scrabble', error) }
   const outcome = (data ?? {}) as { status?: string; reason?: string }
-  // `resumed`: this room was already dealt by an earlier start whose games flip failed; nothing was re-dealt, and the
-  // caller's (idempotent) flip to `active` now completes the start.
-  if (outcome.status === 'resumed') return {}
-  if (outcome.status === 'in_progress' || outcome.status === 'not_waiting') return { error: 'Game already in progress' }
-  if (outcome.status !== 'dealt') {
+  if (outcome.status === 'not_waiting') return { error: 'Game already in progress' }
+  if (outcome.status !== 'started') {
     return {
       error: internalErrorMessage(
         'scrabble',
-        `deal_scrabble_session rejected the call: ${outcome.reason ?? outcome.status}`
+        `start_scrabble_game rejected the call: ${outcome.reason ?? outcome.status}`
       ),
     }
   }
@@ -1123,21 +1121,6 @@ async function removeScrabblePlayerOnce(
   const order = session ? [...(session.turn_order ?? [])] : []
   const removedIndex = order.indexOf(playerId)
 
-  // The round was published while this leave was retrying and the seat was never removed from the live session:
-  // the finished result keeps its seats (the players route retains them for a finished game). A seat that is
-  // already out of the turn order still gets its cleanup below.
-  // A reopened lobby (Play Again: games.status is back to 'waiting', the finished session row is still around) is
-  // not a published result: its seats are ordinary lobby seats and the leave must delete them.
-  if (session?.phase === 'finished' && removedIndex >= 0) {
-    const { data: gameRow, error: gameError } = await supabase
-      .from('games')
-      .select('status')
-      .eq('id', gameId)
-      .maybeSingle()
-    if (gameError) return { error: internalErrorMessage('scrabble', gameError) }
-    if (gameRow?.status !== 'waiting') return { error: null, retained: true }
-  }
-
   // In an active game and actually in the turn order: rewrite the turn order.
   if (session && removedIndex >= 0 && session.phase !== 'finished') {
     const turnOrder = order.filter((id) => id !== playerId)
@@ -1220,7 +1203,9 @@ async function removeScrabblePlayerOnce(
       const finished = await finishScrabbleRound(supabase, gameId, session, { patch: update, removePlayerId: playerId })
       if (finished.error) return { error: finished.error }
       if (finished.won) return { error: null }
-      return finished.already ? { error: null, retained: true } : 'retry'
+      // Another request finished the round first (or the version moved): decide again from the locked rows. A
+      // published result keeps the seat, a reopened lobby drops it (remove_scrabble_lobby_seat), a live round is left.
+      return 'retry'
     }
 
     // The session claim, the new turn order and the leaver's rows are ONE transaction (leave_scrabble_seat): a rematch
@@ -1247,8 +1232,10 @@ async function removeScrabblePlayerOnce(
     return { error: null }
   }
 
-  // Lobby (no session yet, a reopened lobby, a spectator, a seat that is not in the turn order): the seat's rows and its
-  // turn_order entry go in ONE transaction under the games lock, the lock a deal takes (remove_scrabble_lobby_seat), so
+  // Not a live-round leave (no session yet, a finished session, a reopened lobby, a spectator, a seat that is not in the
+  // turn order): remove_scrabble_lobby_seat decides EVERYTHING under the games and session locks, the locks a start
+  // takes: a published result keeps its seat (`retained`), a lobby seat is removed, a live round answers `live`. The
+  // seat's rows and its turn_order entry go in ONE transaction under the games lock, so
   // a start never lists a seat whose rows are being deleted and a deleted row is never left in a turn order. A round that
   // started meanwhile and lists the player is a live leave: nothing was deleted, and the retry takes the live path.
   const { data: removed, error: removeError } = await supabase.rpc('remove_scrabble_lobby_seat', {

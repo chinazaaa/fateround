@@ -32,6 +32,20 @@
 --
 -- Additive: two new functions (the finish and the non-finishing move), nothing existing is altered.
 
+-- A JSON number is a usable integer column value only when it is integer syntax AND fits the signed 32-bit range of
+-- the database type it is written to (a nine-digit text check wrongly rejected 1000000000, which fits).
+create or replace function public.scrabble_is_int4(p_text text)
+returns boolean
+language sql
+immutable
+set search_path = public, pg_temp
+as $fn$
+  select case when p_text ~ '^-?[0-9]{1,11}$' then p_text::bigint between -2147483648 and 2147483647 else false end
+$fn$;
+
+revoke execute on function public.scrabble_is_int4(text) from public, anon, authenticated;
+grant execute on function public.scrabble_is_int4(text) to service_role;
+
 create or replace function public.finish_scrabble_session(
   p_game_id text,
   p_expected_updated_at timestamptz,
@@ -123,6 +137,12 @@ begin
     return jsonb_build_object('status', 'lost', 'games_flipped', false);
   end if;
 
+  -- A round that has not been published as started cannot be finished: a `waiting` game has no live round (the start
+  -- deals and activates in one transaction), so a finish here would publish a winner before the game began.
+  if v_game.status = 'waiting' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_waiting', 'games_flipped', false);
+  end if;
+
   -- ---- validation (nothing is written until all of it passes) ----
   if jsonb_typeof(p_session_patch) <> 'object' or jsonb_typeof(p_state_writes) <> 'array' then
     return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape', 'games_flipped', false);
@@ -161,11 +181,11 @@ begin
          select 1 from jsonb_object_keys(v_elem) k
          where k not in ('player_id', 'score', 'rack', 'clock_ms_remaining', 'timed_out', 'stats')
        )
-       or (v_elem ? 'score' and (jsonb_typeof(v_elem->'score') <> 'number' or (v_elem->>'score') !~ '^-?[0-9]{1,9}$'))
+       or (v_elem ? 'score' and (jsonb_typeof(v_elem->'score') <> 'number' or not public.scrabble_is_int4(v_elem->>'score')))
        or (v_elem ? 'rack' and jsonb_typeof(v_elem->'rack') <> 'array')
        or (v_elem ? 'clock_ms_remaining' and (
             jsonb_typeof(v_elem->'clock_ms_remaining') not in ('number', 'null')
-            or (jsonb_typeof(v_elem->'clock_ms_remaining') = 'number' and (v_elem->>'clock_ms_remaining') !~ '^-?[0-9]{1,9}$')))
+            or (jsonb_typeof(v_elem->'clock_ms_remaining') = 'number' and not public.scrabble_is_int4(v_elem->>'clock_ms_remaining'))))
        or (v_elem ? 'timed_out' and jsonb_typeof(v_elem->'timed_out') <> 'boolean')
        or (v_elem ? 'stats' and jsonb_typeof(v_elem->'stats') <> 'object')
        or not exists (
@@ -299,11 +319,11 @@ begin
          select 1 from jsonb_object_keys(v_elem) k
          where k not in ('player_id', 'score', 'rack', 'clock_ms_remaining', 'timed_out', 'stats')
        )
-       or (v_elem ? 'score' and (jsonb_typeof(v_elem->'score') <> 'number' or (v_elem->>'score') !~ '^-?[0-9]{1,9}$'))
+       or (v_elem ? 'score' and (jsonb_typeof(v_elem->'score') <> 'number' or not public.scrabble_is_int4(v_elem->>'score')))
        or (v_elem ? 'rack' and jsonb_typeof(v_elem->'rack') <> 'array')
        or (v_elem ? 'clock_ms_remaining' and (
             jsonb_typeof(v_elem->'clock_ms_remaining') not in ('number', 'null')
-            or (jsonb_typeof(v_elem->'clock_ms_remaining') = 'number' and (v_elem->>'clock_ms_remaining') !~ '^-?[0-9]{1,9}$')))
+            or (jsonb_typeof(v_elem->'clock_ms_remaining') = 'number' and not public.scrabble_is_int4(v_elem->>'clock_ms_remaining'))))
        or (v_elem ? 'timed_out' and jsonb_typeof(v_elem->'timed_out') <> 'boolean')
        or (v_elem ? 'stats' and jsonb_typeof(v_elem->'stats') <> 'object') then
       return jsonb_build_object('status', 'invalid', 'reason', 'state_write');
@@ -340,11 +360,13 @@ $$;
 revoke execute on function public.apply_scrabble_move(text, timestamptz, jsonb, jsonb) from public, anon, authenticated;
 grant execute on function public.apply_scrabble_move(text, timestamptz, jsonb, jsonb) to service_role;
 
--- Dealing a round (a start or a rematch) is ONE transaction under the games row lock: the previous racks and the
--- session are replaced together (a failed deal leaves the previous result intact), a second overlapping deal finds the
--- round already `playing` and answers `in_progress` instead of interleaving its racks and bag with the first, and a
--- seat whose player row is gone (a leave cleaning up a reopened lobby) is `invalid` before anything is written.
-create or replace function public.deal_scrabble_session(
+-- STARTING a round (a first start or a rematch) is ONE transaction under the games row lock: the previous racks and the
+-- session are replaced AND the games row is flipped to `active` together. There is no half-started room: a failed start
+-- changes nothing (the previous result stays intact and the next start simply deals again), so a start never needs a
+-- "resume", and a flip can never be applied late to a round it did not deal. A second overlapping start finds the game
+-- no longer `waiting` and answers `not_waiting` instead of interleaving its racks and bag with the first, and a seat
+-- whose player row is gone (a leave cleaning up a reopened lobby) is `invalid` before anything is written.
+create or replace function public.start_scrabble_game(
   p_game_id text,
   p_session_row jsonb,
   p_state_rows jsonb
@@ -366,7 +388,7 @@ declare
   v_dealt uuid[];
 begin
   if p_game_id is null or p_session_row is null or p_state_rows is null then
-    raise exception 'deal_scrabble_session: game id, session row and state rows are required';
+    raise exception 'start_scrabble_game: game id, session row and state rows are required';
   end if;
   v_id := upper(p_game_id);
 
@@ -374,25 +396,17 @@ begin
   if not found then
     return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
   end if;
-  select * into v_session from public.scrabble_sessions where game_id = v_id for update;
-  v_exists := found;
-  -- Never re-deal a round in progress (it would reset every score).
-  if v_exists and v_session.phase = 'playing' then
-    -- RESUME: the game is still `waiting` although its round is already dealt and playing: a previous start dealt
-    -- (this very transaction committed) and its separate games flip to `active` did not. Nothing is re-dealt; the
-    -- caller re-runs the flip, which is idempotent, so a failed flip never leaves the room unstartable.
-    if v_status = 'waiting' then
-      return jsonb_build_object('status', 'resumed');
-    end if;
-    return jsonb_build_object('status', 'in_progress');
-  end if;
-  -- PERMITTED GAME STATE: a deal is only allowed while the game is `waiting` (a first start, or a rematch: Play Again puts
-  -- the game back to `waiting` and keeps the finished session row until it is re-dealt). Every start deals BEFORE it
-  -- flips the game to `active`. A stale start that read `waiting` earlier, and reaches this lock after another start
-  -- finished the round (the game is `active` / `finished`), is refused here instead of re-dealing a finished round.
+  -- PERMITTED GAME STATE: a start is only allowed while the game is `waiting` (a first start, or a rematch: Play Again
+  -- puts the game back to `waiting` and keeps the finished session row until it is re-dealt). The deal and the flip to
+  -- `active` commit together, so a `waiting` game never has a live round: any session row left under it is a finished
+  -- result (or an orphan) and is replaced. A start that reaches this lock after another start (the game is `active`
+  -- / `finished`) is refused here: it can neither re-deal a round in progress (that would reset every score) nor flip
+  -- a finished one back.
   if v_status is distinct from 'waiting' then
     return jsonb_build_object('status', 'not_waiting');
   end if;
+  select * into v_session from public.scrabble_sessions where game_id = v_id for update;
+  v_exists := found;
 
   if jsonb_typeof(p_session_row) <> 'object' or jsonb_typeof(p_state_rows) <> 'array'
      or jsonb_array_length(p_state_rows) = 0 or p_session_row->>'phase' is distinct from 'playing' then
@@ -423,11 +437,11 @@ begin
          where k not in ('player_id', 'rack', 'score', 'player_order', 'clock_ms_remaining', 'timed_out')
        )
        or (v_elem ? 'rack' and jsonb_typeof(v_elem->'rack') <> 'array')
-       or (v_elem ? 'score' and (jsonb_typeof(v_elem->'score') <> 'number' or (v_elem->>'score') !~ '^-?[0-9]{1,9}$'))
-       or (v_elem ? 'player_order' and (jsonb_typeof(v_elem->'player_order') <> 'number' or (v_elem->>'player_order') !~ '^-?[0-9]{1,9}$'))
+       or (v_elem ? 'score' and (jsonb_typeof(v_elem->'score') <> 'number' or not public.scrabble_is_int4(v_elem->>'score')))
+       or (v_elem ? 'player_order' and (jsonb_typeof(v_elem->'player_order') <> 'number' or not public.scrabble_is_int4(v_elem->>'player_order')))
        or (v_elem ? 'clock_ms_remaining' and (
             jsonb_typeof(v_elem->'clock_ms_remaining') not in ('number', 'null')
-            or (jsonb_typeof(v_elem->'clock_ms_remaining') = 'number' and (v_elem->>'clock_ms_remaining') !~ '^-?[0-9]{1,9}$')))
+            or (jsonb_typeof(v_elem->'clock_ms_remaining') = 'number' and not public.scrabble_is_int4(v_elem->>'clock_ms_remaining'))))
        or (v_elem ? 'timed_out' and jsonb_typeof(v_elem->'timed_out') <> 'boolean')
        or not exists (
          select 1 from public.players p where p.id = (v_elem->>'player_id')::uuid and p.game_id = v_id
@@ -471,12 +485,24 @@ begin
     ) using p_session_row, v_id;
   end if;
 
-  return jsonb_build_object('status', 'dealt');
+  -- The activation is part of the same transaction (and bound to this very deal, which holds the games lock).
+  update public.games
+    set status = 'active',
+        session_started_at = now(),
+        current_round_number = 1,
+        rounds_count = 1,
+        replay_pending = false
+    where id = v_id and status = 'waiting';
+  if not found then
+    raise exception 'start_scrabble_game: game % could not be activated', v_id;
+  end if;
+
+  return jsonb_build_object('status', 'started');
 end;
 $$;
 
-revoke execute on function public.deal_scrabble_session(text, jsonb, jsonb) from public, anon, authenticated;
-grant execute on function public.deal_scrabble_session(text, jsonb, jsonb) to service_role;
+revoke execute on function public.start_scrabble_game(text, jsonb, jsonb) from public, anon, authenticated;
+grant execute on function public.start_scrabble_game(text, jsonb, jsonb) to service_role;
 
 -- A leave in a lobby (no session yet, a reopened lobby whose finished session row is still around, a spectator): the
 -- seat's rows and its turn_order entry go in ONE transaction under the games lock (the same lock a deal takes), so a

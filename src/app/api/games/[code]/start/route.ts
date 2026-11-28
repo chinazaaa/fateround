@@ -520,6 +520,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
       game
     )
     if (initError) return NextResponse.json({ error: initError }, { status: 500 })
+    // The deal and the flip to `active` were ONE transaction (UNO, Scrabble): nothing is left to flip, and nothing can be
+    // flipped late onto a round this request did not deal.
+    if (startSpec.activates) return NextResponse.json({ success: true })
 
     const { error: gameError } = await getSupabaseAdmin()
       .from('games')
