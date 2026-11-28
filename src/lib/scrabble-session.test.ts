@@ -191,8 +191,42 @@ function makeChessSupabase(init: {
     return b
   }
 
+  // finish_scrabble_session: the whole finish (session, player states, games flip) in one step.
+  const rpc = (name: string, args: Record<string, unknown>) => {
+    if (name === 'apply_scrabble_move') {
+      if (session.phase === 'finished' || session.updated_at !== args.p_expected_updated_at)
+        return Promise.resolve({ data: { status: 'lost' }, error: null })
+      Object.assign(session, args.p_session_patch as Row)
+      session.updated_at = `u${++bump}`
+      for (const w of args.p_state_writes as Row[]) {
+        const st = states.find((x) => x.player_id === w.player_id)
+        if (st) Object.assign(st, w)
+      }
+      return Promise.resolve({ data: { status: 'applied' }, error: null })
+    }
+    if (name !== 'finish_scrabble_session') return Promise.resolve({ data: { status: 'none' }, error: null })
+    if (session.phase === 'finished') return Promise.resolve({ data: { status: 'already_finished' }, error: null })
+    if (session.updated_at !== args.p_expected_updated_at)
+      return Promise.resolve({ data: { status: 'lost' }, error: null })
+    // only the FINISH rejects an unknown state target (after its version checks), and the whole call: nothing is written
+    if ((args.p_state_writes as Row[]).some((w) => !states.some((x) => x.player_id === w.player_id)))
+      return Promise.resolve({ data: { status: 'invalid', reason: 'state_write' }, error: null })
+    Object.assign(session, args.p_session_patch as Row, {
+      phase: 'finished',
+      turn_deadline_at: null,
+      turn_started_at: null,
+    })
+    session.updated_at = `u${++bump}`
+    for (const w of args.p_state_writes as Row[]) {
+      const st = states.find((x) => x.player_id === w.player_id)
+      if (st) Object.assign(st, w)
+    }
+    games.status = 'finished'
+    return Promise.resolve({ data: { status: 'finished', games_flipped: true }, error: null })
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { supabase: { from: (t: string) => builder(t) } as any, session, states, games }
+  return { supabase: { from: (t: string) => builder(t), rpc } as any, session, states, games }
 }
 
 function chessSession(overrides: Row): Row {
@@ -261,7 +295,7 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
   })
 
   it('ends the game when the last clock expires — highest score wins', async () => {
-    const { supabase, session, games } = makeChessSupabase({
+    const { supabase, session, games, states } = makeChessSupabase({
       clockSeconds: 300,
       players: [
         { id: 'A', name: 'Alice' },
@@ -298,6 +332,10 @@ describe('processScrabbleExpireTurn — chess-clock flag-out', () => {
     expect(session.phase).toBe('finished')
     expect(session.winner_player_id).toBe('A') // 40 > 12, empty racks so no penalty swing
     expect(games.status).toBe('finished')
+    // the finish payload carries the LAST player's clock too
+    const bob = states.find((s) => s.id === 'sb') as Row
+    expect(bob.timed_out).toBe(true)
+    expect(bob.clock_ms_remaining).toBe(0)
   })
 
   it('does nothing when the active player still has time (guards a premature client fire)', async () => {
@@ -429,5 +467,41 @@ describe('chess-clock deduction on a scoreless turn (pass)', () => {
     expect(a.clock_ms_remaining).toBe(0)
     expect(session.current_turn_index).toBe(1) // Bob still on the clock
     expect(session.phase).toBe('playing')
+  })
+})
+
+describe('the fake finish rejects an unknown state row atomically', () => {
+  it('changes neither the session, the game nor any player state', async () => {
+    const mkState = (id: string, pid: string) => ({
+      id,
+      game_id: 'G',
+      player_id: pid,
+      rack: [],
+      score: 1,
+      player_order: 0,
+      clock_ms_remaining: 100,
+      timed_out: false,
+    })
+    const { supabase, session, states, games } = makeChessSupabase({
+      clockSeconds: 300,
+      players: [
+        { id: 'A', name: 'Alice' },
+        { id: 'B', name: 'Bob' },
+      ],
+      session: chessSession({ current_turn_index: 1 }),
+      states: [mkState('sa', 'A'), mkState('sb', 'B')],
+    })
+    const before = JSON.stringify({ session, states, games })
+    const res = await supabase.rpc('finish_scrabble_session', {
+      p_game_id: 'G',
+      p_expected_updated_at: session.updated_at,
+      p_session_patch: { winner_player_id: 'A' },
+      p_state_writes: [
+        { player_id: 'A', score: 50 },
+        { player_id: '00000000-0000-4000-8000-00000000dead', clock_ms_remaining: 0 },
+      ],
+    })
+    expect(res.data.status).toBe('invalid')
+    expect(JSON.stringify({ session, states, games })).toBe(before)
   })
 })

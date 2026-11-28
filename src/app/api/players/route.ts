@@ -7,13 +7,13 @@ import { internalErrorMessage } from '@/lib/api-errors'
 import { normalizeGender, normalizePlayerGender, type ParticipantGender } from '@/lib/participants'
 import { generateResumeToken, normalizeResumeToken } from '@/lib/utils'
 import { removeMonopolyPlayer } from '@/lib/monopoly'
-import { removeScrabblePlayer } from '@/lib/scrabble'
+import { removeScrabblePlayer, SCRABBLE_REMOVE_CONFLICT_ERROR } from '@/lib/scrabble'
 import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
 import { removeRummyPlayer } from '@/lib/rummy'
 import { completePendingFinishedLeave } from '@/lib/pending-leave'
 import { removeGoFishPlayer } from '@/lib/gofish-server'
-import { removeUnoPlayer } from '@/lib/uno'
+import { removeUnoPlayer, UNO_REMOVE_CONFLICT_ERROR } from '@/lib/uno'
 import { removeLudoPlayer } from '@/lib/ludo'
 import { removeMahjongPlayer } from '@/lib/mahjong'
 import { removeSnakeAndLadderPlayer } from '@/lib/snake-and-ladder'
@@ -1835,6 +1835,18 @@ export async function PATCH(req: NextRequest) {
   })
 }
 
+/**
+ * A leave that keeps the seat (a finished game is a result) still honours the leave: stop pushing to that player about
+ * this game. The delete cascade did this as a side effect when the row went; a retained row keeps the subscriptions.
+ * Best-effort: a failure to unsubscribe must not turn a successful leave into an error.
+ */
+async function unsubscribeRetainedPlayer(gameId: string, playerId: string): Promise<void> {
+  await Promise.all([
+    getSupabaseAdmin().from('push_subscriptions').delete().eq('game_id', gameId).eq('player_id', playerId),
+    getSupabaseAdmin().from('mobile_push_tokens').delete().eq('game_id', gameId).eq('player_id', playerId),
+  ]).catch(() => {})
+}
+
 export async function DELETE(req: NextRequest) {
   const { data: body, error: bodyError } = await parseJsonBody(req, deletePlayerSchema)
   if (bodyError) return bodyError
@@ -1884,6 +1896,7 @@ export async function DELETE(req: NextRequest) {
       const forfeitCleanup =
         isRummyGame(hostGameType) ||
         isWhotGame(hostGameType) ||
+        isUnoGame(hostGameType) ||
         isChessGame(hostGameType) ||
         isCheckersGame(hostGameType) ||
         isDraughts10Game(hostGameType)
@@ -2027,7 +2040,7 @@ export async function DELETE(req: NextRequest) {
    */
   if ((game as { status?: string }).status === 'finished') {
     /**
-     * Exception: a forfeiting leave (Rummy, Whot, Chess, Checkers, Draughts10) commits the finished
+     * Exception: a forfeiting leave (Rummy, Whot, Uno, Chess, Checkers, Draughts10) commits the finished
      * session before it deletes the leaver's seat; if that cleanup failed, the leaver is gone from
      * the session but still holds a seat. A repeat leave must finish the cleanup rather than be
      * answered "retained". Finishers and spectators leave no such trace and fall through below.
@@ -2055,10 +2068,7 @@ export async function DELETE(req: NextRequest) {
      *
      * Best-effort: a failure to unsubscribe must not turn a successful leave into an error.
      */
-    await Promise.all([
-      getSupabaseAdmin().from('push_subscriptions').delete().eq('game_id', id).eq('player_id', playerId),
-      getSupabaseAdmin().from('mobile_push_tokens').delete().eq('game_id', id).eq('player_id', playerId),
-    ]).catch(() => {})
+    await unsubscribeRetainedPlayer(id, playerId)
 
     return NextResponse.json({ success: true, retained: true })
   }
@@ -2096,8 +2106,15 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (isScrabbleGame(gameType)) {
-    const { error } = await removeScrabblePlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
+    const { error, retained } = await removeScrabblePlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) {
+      return NextResponse.json({ error }, { status: error === SCRABBLE_REMOVE_CONFLICT_ERROR ? 409 : 500 })
+    }
+    // A concurrent finish published first: the seat is retained, so unsubscribe like the finished-game path does.
+    if (retained) {
+      await unsubscribeRetainedPlayer(id, playerId)
+      return NextResponse.json({ success: true, retained: true })
+    }
     return NextResponse.json({ success: true })
   }
 
@@ -2127,8 +2144,13 @@ export async function DELETE(req: NextRequest) {
   }
 
   if (isUnoGame(gameType)) {
-    const { error } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
-    if (error) return NextResponse.json({ error }, { status: 500 })
+    const { error, retained } = await removeUnoPlayer(getSupabaseAdmin(), id, playerId, player.name)
+    if (error) return NextResponse.json({ error }, { status: error === UNO_REMOVE_CONFLICT_ERROR ? 409 : 500 })
+    // A concurrent finish published first: the seat is retained, so unsubscribe like the finished-game path does.
+    if (retained) {
+      await unsubscribeRetainedPlayer(id, playerId)
+      return NextResponse.json({ success: true, retained: true })
+    }
     return NextResponse.json({ success: true })
   }
 

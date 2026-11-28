@@ -11,7 +11,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
 
   const { data: game } = await supabase
     .from('games')
-    .select('id, status, game_type, session_started_at, game_duration_seconds, uno_team_mode')
+    .select('id, status, game_type, session_started_at, game_duration_seconds, uno_team_mode, sessions_played')
     .eq('id', gameId)
     .maybeSingle()
 
@@ -26,8 +26,30 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ co
     return NextResponse.json({ expired: false, finished: false })
   }
 
-  const finished = await finishExpiredUnoGame(supabase, game)
-  if (!finished) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
+  const finish = await finishExpiredUnoGame(supabase, game)
+  if (finish.error) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
+  // The expiry was decided about an earlier round (a rematch started): nothing was finished for it.
+  if (finish.roundMismatch) {
+    return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
+  }
+  if (!finish.won) {
+    // The finish lost its claim. Success only when the SAME round is confirmed finished (another finisher won); a
+    // game that is still running (a move won the claim) or a different round (a rematch) is a conflict, not a failure.
+    const { data: after, error: rereadError } = await supabase
+      .from('games')
+      .select('status, sessions_played, session_started_at')
+      .eq('id', gameId)
+      .maybeSingle()
+    // A failed reread says nothing about the round: that is a failure, not a conflict.
+    if (rereadError) return NextResponse.json({ error: 'Failed to end game' }, { status: 500 })
+    const sameRound =
+      !!after &&
+      (after.sessions_played ?? null) === (game.sessions_played ?? null) &&
+      (after.session_started_at ?? null) === (game.session_started_at ?? null)
+    if (!(after?.status === 'finished' && sameRound)) {
+      return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
+    }
+  }
 
   return NextResponse.json({ expired: true, finished: true })
 }

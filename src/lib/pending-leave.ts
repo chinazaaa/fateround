@@ -1,7 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { completePendingRummyRemoval } from '@/lib/rummy'
-import { isCheckersGame, isChessGame, isDraughts10Game, isRummyGame, isWhotGame, parseGameType } from '@/lib/game-types'
+import {
+  isCheckersGame,
+  isChessGame,
+  isDraughts10Game,
+  isRummyGame,
+  isUnoGame,
+  isWhotGame,
+  parseGameType,
+} from '@/lib/game-types'
 
 /**
  * A forfeiting leave commits the finished session (and the games row) BEFORE the leaver's seat is
@@ -38,6 +46,7 @@ export async function completePendingFinishedLeave(
   }
 
   if (isWhotGame(gameType)) return completePendingWhotLeave(supabase, gameId, playerId)
+  if (isUnoGame(gameType)) return completePendingUnoLeave(supabase, gameId, playerId)
 
   if (isChessGame(gameType)) {
     return completePendingForfeit(supabase, 'chess_sessions', ['player_white_id', 'player_black_id'], {
@@ -137,4 +146,20 @@ async function completePendingForfeit(
 
   const { error } = await supabase.from('players').delete().eq('id', ctx.playerId).eq('game_id', ctx.gameId)
   return error ? fail(ctx.scope, error) : { error: null }
+}
+
+/**
+ * Uno Team-Up: a leave keeps the leaver's seat in turn_order and COMMITS the departure as membership in left_player_ids
+ * before it deletes the rows. `complete_uno_departure` finishes a failed cleanup in one transaction that re-checks, under
+ * the games / session locks, that the marked departure still belongs to the finished round (a rematch replaces the
+ * session, so it never deletes a new round's rows). Unmarked seats (finishers, winners) stay retained (`none` -> null).
+ */
+async function completePendingUnoLeave(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string
+): Promise<PendingLeaveResult | null> {
+  const { data, error } = await supabase.rpc('complete_uno_departure', { p_game_id: gameId, p_player_id: playerId })
+  if (error) return fail('uno', error)
+  return (data as { status?: string } | null)?.status === 'completed' ? { error: null } : null
 }

@@ -13,11 +13,9 @@
  * `fallback` overrides the generic line when a more specific (but still safe)
  * message fits — e.g. "Failed to fetch from Klipy" for an upstream call.
  */
-export function internalErrorMessage(
-  context: string,
-  error: unknown,
-  fallback = 'Something went wrong. Please try again.'
-): string {
+export const INTERNAL_ERROR_MESSAGE = 'Something went wrong. Please try again.'
+
+export function internalErrorMessage(context: string, error: unknown, fallback = INTERNAL_ERROR_MESSAGE): string {
   console.error(`[${context}]`, error)
   return fallback
 }
@@ -30,4 +28,9 @@ export function internalErrorMessage(
  */
 export function internalFailure(context: string, error: unknown, fallback?: string): { error: string; internal: true } {
   return { error: internalErrorMessage(context, error, fallback), internal: true }
+}
+
+/** HTTP status for a game-action `error`: the generic internal message marks a database failure (500), anything else is a validation error (400). */
+export function actionErrorStatus(error: string): number {
+  return error === INTERNAL_ERROR_MESSAGE ? 500 : 400
 }

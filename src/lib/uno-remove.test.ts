@@ -22,6 +22,19 @@ function makeMock(opts: { session: unknown; players: { id: string; name: string 
   }
 
   const supabase = {
+    // A finishing leave is ONE finish_uno_session call: record its patch (the function forces phase = finished).
+    rpc(name: string, args: { p_session_patch?: Record<string, unknown> }) {
+      if (name === 'finish_uno_session') {
+        sessionUpdates.push({ ...args.p_session_patch, phase: 'finished', turn_deadline_at: null })
+        return Promise.resolve({ data: { status: 'finished', games_flipped: false }, error: null })
+      }
+      if (name === 'leave_uno_seat') {
+        // The non-finishing leave: claim + patch + the leaver's rows in one call.
+        sessionUpdates.push(args.p_session_patch ?? {})
+        return Promise.resolve({ data: { status: 'left' }, error: null })
+      }
+      return Promise.resolve({ data: null, error: null })
+    },
     from(table: string) {
       return {
         select() {
@@ -32,7 +45,11 @@ function makeMock(opts: { session: unknown; players: { id: string; name: string 
           return chain({ data: null, error: null })
         },
         update(vals: Record<string, unknown>) {
-          if (table === 'uno_sessions') sessionUpdates.push(vals)
+          if (table === 'uno_sessions') {
+            sessionUpdates.push(vals)
+            // The leave's CAS write is `.update().eq().eq().select()`: report one claimed row.
+            return chain({ data: [{ game_id: 'G1' }], error: null })
+          }
           return chain({ data: null, error: null })
         },
         delete() {

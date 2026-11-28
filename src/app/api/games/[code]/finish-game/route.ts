@@ -90,8 +90,13 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   // Scrabble finalizes its own session (tally scores + pick a winner) when ended
   // mid-game. In the lobby there's no session yet, so fall through to markGameFinished.
   if (isScrabbleGame(gameType) && !inLobby) {
-    const { error } = await finishScrabbleGameEarly(admin, gameId)
+    const { error, skipped } = await finishScrabbleGameEarly(admin, gameId, {
+      sessionStartedAt: game.session_started_at ?? null,
+      sessionsPlayed: game.sessions_played ?? undefined,
+    })
     if (error) return NextResponse.json({ error }, { status: 500 })
+    // A play/pass won the session race, so the round is still running: the host's request did NOT end it.
+    if (skipped) return NextResponse.json({ error: 'Game changed, please try again.' }, { status: 409 })
     return NextResponse.json({ success: true })
   }
 

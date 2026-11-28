@@ -782,6 +782,23 @@ function makeSupabase(tables: Record<string, Row[]>): SupabaseClient {
       }
       return builder
     },
+    // apply_uno_move: the move's session claim and hand / stats writes in one step.
+    rpc(name: string, args: Record<string, unknown>) {
+      if (name !== 'apply_uno_move') return Promise.resolve({ data: null, error: null })
+      const sess = (tables.uno_sessions ?? []).find((r) => r.game_id === args.p_game_id)
+      if (!sess) return Promise.resolve({ data: { status: 'invalid', reason: 'session_missing' }, error: null })
+      if (sess.phase === 'finished' || sess.updated_at !== args.p_expected_updated_at) {
+        return Promise.resolve({ data: { status: 'lost' }, error: null })
+      }
+      Object.assign(sess, args.p_session_patch as Row, { updated_at: `${String(sess.updated_at)}+m` })
+      for (const w of args.p_hand_writes as Row[]) {
+        const row = (tables.uno_player_hands ?? []).find(
+          (r) => r.game_id === args.p_game_id && r.player_id === w.player_id
+        )
+        if (row) Object.assign(row, { ...w, player_id: row.player_id })
+      }
+      return Promise.resolve({ data: { status: 'applied' }, error: null })
+    },
   }
   return api as unknown as SupabaseClient
 }
