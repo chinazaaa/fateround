@@ -43,6 +43,9 @@ const wordRush = vi.hoisted(() => ({
     gameSession?: { startedAt: string | null; sessionsPlayed: number | null }
   },
   syncCalls: 0,
+  /** resumeWordRushFinalization calls, and what happens when one runs (the finalization completes). */
+  resumes: 0,
+  onResume: null as (() => void) | null,
   reverts: [] as unknown[],
   restore: 'restored' as string,
   /** Runs just before the sync reads the game (a start / replay lands in between). */
@@ -68,6 +71,11 @@ vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
         : {}),
       ...wordRush.sync,
     }
+  },
+  resumeWordRushFinalization: async () => {
+    wordRush.resumes++
+    wordRush.onResume?.()
+    return { resumed: true }
   },
   revertWordRushRosterAfterFailedPlayerDelete: async (_s: unknown, _g: string, snapshot: unknown) => {
     wordRush.reverts.push(snapshot)
@@ -422,6 +430,17 @@ async function rpc(name: string, args: Record<string, unknown>) {
     removeArgs.push(a)
     const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
     if (!g) return { data: { status: 'game_missing' }, error: null }
+    // This seat's own last-round finalization is still pending: the seat stays until it has been applied.
+    if (
+      g.status !== 'finished' &&
+      (tables.word_rush_sessions ?? []).some(
+        (s) =>
+          s.game_id === g.id &&
+          (s.round_finalize as { leaver_id?: string } | null | undefined)?.leaver_id === a.p_player_id
+      )
+    ) {
+      return { data: { status: 'finalizing' }, error: null }
+    }
     // A finish this leave caused is deleted through only while the game is still the inspected session.
     const sameFinish =
       a.p_own_finish === true &&
@@ -470,6 +489,16 @@ async function rpc(name: string, args: Record<string, unknown>) {
         ? { data: null, error: { message: 'response lost' } }
         : { data: { status: 'game_finished' }, error: null }
     }
+    // An UNLINKED seat whose name matches several participants: refused before anything is deleted (the seat stays too).
+    const seatToRemove = tables.players.find((p) => p.id === a.p_player_id && p.game_id === g.id)
+    if (
+      a.p_participant_name !== undefined &&
+      seatToRemove &&
+      !seatToRemove.participant_id &&
+      (tables.participants ?? []).filter((r) => r.game_id === g.id && r.name === a.p_participant_name).length > 1
+    ) {
+      return { data: { status: 'participant_ambiguous' }, error: null }
+    }
     // Permitted: BOTH rows go (and the commit hook runs once), whether or not the answer then arrives.
     // The seat's OWN participant row goes (by participant_id), and only when this call removed a seat: an absent seat
     // removes nothing, and a same-named participant of someone else is never touched.
@@ -494,13 +523,14 @@ async function rpc(name: string, args: Record<string, unknown>) {
     // PENDING-ONLY, under the game lock: the finish the record was made for, bookkeeping completed, the record itself.
     const a = args as { p_game_id: string; p_player_id: string }
     const g = tables.games.find((x) => x.id === a.p_game_id.toUpperCase())
-    const due =
+    const recorded =
       !!g &&
       g.status === 'finished' &&
       (g.result_reason ?? null) === null &&
-      (g.finish_bookkeeping ?? null) === null &&
       pendingDeletions.some((d) => d.player_id === a.p_player_id && d.finished_at === g.finished_at)
-    if (!due) return { data: { status: 'not_due' }, error: null }
+    if (!recorded) return { data: { status: 'not_due' }, error: null }
+    // A deletion IS recorded, but the finish's bookkeeping is still reading the leaver's rows: retryable, distinct from nothing.
+    if ((g!.finish_bookkeeping ?? null) !== null) return { data: { status: 'bookkeeping_owed' }, error: null }
     deletePlayers([a.p_player_id])
     return { data: { status: 'deleted' }, error: null }
   }
@@ -665,6 +695,8 @@ beforeEach(() => {
   failPlayersRead = false
   wordRush.sync = {}
   wordRush.syncCalls = 0
+  wordRush.resumes = 0
+  wordRush.onResume = null
   wordRush.restore = 'restored'
   wordRush.beforeSync = null
   wordRush.games = () => tables.games
@@ -902,6 +934,17 @@ describe('DELETE /api/players: retained seats', () => {
     const body = (await res.json()) as { error: string; handoff?: string }
     expect(body.handoff).toBe('unresolved')
     expect(body.error).not.toMatch(/try again/i)
+  })
+
+  it('a Start in the SAME generation (session_started_at moved, sessions_played did not) does not stop the retained-host clear', async () => {
+    setup('uno')
+    keepSeat = true
+    removal.uno.onCall = () => {
+      Object.assign(tables.games[0], { status: 'finished', session_started_at: 'S-NEW' })
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].host_user_id).toBeNull()
   })
 
   it('a failed retained-seat clear answers a 500 (the seat still exists, so the same player can repeat the leave)', async () => {
@@ -2257,6 +2300,11 @@ describe('DELETE /api/players: a Word Rush own finish whose bookkeeping is still
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
     expect(pendingDeletions).toEqual([{ player_id: HOST_PID, finished_at: 'WR-FINISH' }])
 
+    // A repeat BEFORE the marker clears: a retryable refusal (409), not a retained success, and the seat is untouched.
+    const early = await leave()
+    expect(early.status).toBe(409)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+
     // The bookkeeping completes later; the same player's repeat leave takes the finished-game branch.
     tables.games[0].finish_bookkeeping = null
     const repeat = await leave()
@@ -2434,6 +2482,99 @@ describe('DELETE /api/players: the host-alone finish is authorised only by the s
     wordRush.sync = {}
     await leave()
     expect(removeArgs[0].p_host_leave).toBe(true)
+  })
+})
+
+describe('DELETE /api/players: an unlinked seat whose name matches several participants', () => {
+  it('is refused before anything is deleted: the seat and both participants stay, and the answer is an error', async () => {
+    setup('trivia', { participant_mode: 'joiners' })
+    tables.participants = [
+      { id: 'p1', game_id: 'ABCD', name: 'Host' },
+      { id: 'p2', game_id: 'ABCD', name: 'Host' },
+    ]
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const res = await leave()
+      expect(res.status).toBeGreaterThanOrEqual(400)
+    } finally {
+      log.mockRestore()
+    }
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(tables.participants.map((r) => r.id)).toEqual(['p1', 'p2'])
+  })
+})
+
+describe('DELETE /api/players: this seat own last-round finalization is still pending', () => {
+  it('the database keeps the seat; the route finishes the finalization and asks again (the seat is not deleted out from under the record)', async () => {
+    setup('word_rush')
+    tables.word_rush_sessions = [{ id: 'S', game_id: 'ABCD', round_finalize: { leaver_id: HOST_PID, is_last: true } }]
+    // Finalization completes when the route resumes it: the game finishes (the finish records the owed deletion).
+    wordRush.onResume = () => {
+      tables.word_rush_sessions = []
+      Object.assign(tables.games[0], { status: 'finished', result_reason: null, finished_at: 'WR-FINISH' })
+      pendingDeletions.push({ player_id: HOST_PID, finished_at: 'WR-FINISH' })
+    }
+    const res = await leave()
+    expect(wordRush.resumes).toBe(1)
+    expect(res.status).toBe(200)
+    // Retained (the game is finished and the deletion is recorded); never deleted by the guarded removal.
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+    expect(pendingDeletions).toEqual([{ player_id: HOST_PID, finished_at: 'WR-FINISH' }])
+  })
+
+  it('still pending after the resume: the seat stays (retained) and nothing is deleted', async () => {
+    setup('word_rush')
+    tables.word_rush_sessions = [{ id: 'S', game_id: 'ABCD', round_finalize: { leaver_id: HOST_PID, is_last: true } }]
+    const res = await leave()
+    expect(wordRush.resumes).toBe(1)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
+  })
+})
+
+describe('DELETE /api/players: the Word Rush roster is restored on the early return too', () => {
+  const rollback = {
+    session_id: 'WRS',
+    removed_player_id: HOST_PID,
+    removed_index: 0,
+    turn_index: 0,
+    prompt_setter_player_id: null,
+  }
+
+  it('a retry whose game read fails puts the roster back from the earlier attempt before answering', async () => {
+    setup('word_rush')
+    wordRush.sync = { rollback }
+    // First attempt: the guarded removal reports a changed session, the retry's games read then fails.
+    beforeSeatDelete = () => {
+      Object.assign(tables.games[0], { sessions_played: 2 })
+      failGamesSessionRead = true
+    }
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const res = await leave()
+      expect(res.status).toBe(500)
+    } finally {
+      log.mockRestore()
+    }
+    expect(wordRush.reverts).toContainEqual(rollback)
+  })
+})
+
+describe('DELETE /api/players: the unresolved response does not claim what could not be checked', () => {
+  it('a seat that cannot be read back is neither "you left" nor "try again"', async () => {
+    setup('trivia', { status: 'finished', result_reason: 'admin_ended', finished_at: 'F' })
+    settleFailBudget = 99
+    // The players read fails only once the settlement has failed (the seat re-check), not for the earlier authority read.
+    onSettleFail = () => {
+      failPlayersRead = true
+    }
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).toMatch(/may or may not/i)
+    expect(body.error).not.toMatch(/^You left the game/)
   })
 })
 

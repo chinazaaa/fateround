@@ -572,9 +572,20 @@ describe("session-bound finish never wipes a newer session's chat", () => {
     await finishCodewordsGame(done.supabase, 'ABCD', { onlyIfActive: true })
     expect(done.wipes).toEqual([{ p_game_id: 'ABCD', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'codewords' }])
 
+    // Each guard on its own: a game that is not finished never wipes, whatever its finished_at says...
     const live = chatDb({ flipWins: false, current: { ...finished, status: 'active', finished_at: null } })
     await finishCodewordsGame(live.supabase, 'ABCD', { onlyIfActive: true })
     expect(live.wipes).toHaveLength(0)
+    const activeWithStamp = chatDb({
+      flipWins: false,
+      current: { ...finished, status: 'active', finished_at: '2026-01-01T00:00:00.000Z' },
+    })
+    await finishCodewordsGame(activeWithStamp.supabase, 'ABCD', { onlyIfActive: true })
+    expect(activeWithStamp.wipes).toHaveLength(0)
+    // ...and a finished game with no finished_at has nothing to bind the wipe to.
+    const noStamp = chatDb({ flipWins: false, current: { ...finished, finished_at: null } })
+    await finishCodewordsGame(noStamp.supabase, 'ABCD', { onlyIfActive: true })
+    expect(noStamp.wipes).toHaveLength(0)
   })
 })
 

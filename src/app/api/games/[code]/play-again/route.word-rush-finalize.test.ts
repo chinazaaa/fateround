@@ -18,11 +18,17 @@ vi.mock('@/lib/game-finish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/game-finish')>()),
   recoverFinishBookkeeping: async () => ({ state: 'none' }),
 }))
-const finalize = vi.hoisted(() => ({ calls: 0, error: null as string | null }))
+const finalize = vi.hoisted(() => ({
+  calls: 0,
+  error: null as string | null,
+  /** When set, the finalizer waits for this promise (a finalization that is still running). */
+  hold: null as Promise<void> | null,
+}))
 vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/word-rush-server')>()),
   ensureWordRushGameFinalized: async () => {
     finalize.calls++
+    if (finalize.hold) await finalize.hold
     return finalize.error ? { error: finalize.error } : {}
   },
   clearWordRushSessionData: async () => ({}),
@@ -61,6 +67,7 @@ beforeAll(async () => {
 beforeEach(() => {
   finalize.calls = 0
   finalize.error = null
+  finalize.hold = null
   writes.length = 0
 })
 
@@ -78,17 +85,38 @@ describe('POST /api/games/[code]/play-again — a finished Word Rush game', () =
     expect(writes).toEqual([])
   })
 
-  it('nothing owed: the reset runs (the check came first)', async () => {
+  it('the first delete waits for a finalization that is still running, then the reset succeeds', async () => {
     current = finished()
+    let release!: () => void
+    finalize.hold = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pending = post()
+    // Let the request run as far as it can: it must be parked on the finalizer, with nothing deleted or reset yet.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(finalize.calls).toBe(1)
+    expect(writes).toEqual([])
+    release()
+    const res = await pending
+    expect(res.status).toBe(200)
+    expect(writes).toContain('rounds:delete')
+  })
+
+  it('nothing owed: the reset runs (the check came first) and the reopened game carries no previous finish reason', async () => {
+    current = finished({ result_reason: 'host_ended' })
     const res = await post()
     expect(res.status).toBe(200)
+    expect(current.result_reason).toBeNull()
     expect(finalize.calls).toBe(1)
     expect(writes).toContain('rounds:delete')
   })
 
   it('another game type is not asked', async () => {
     current = finished({ game_type: 'trivia' })
-    await post()
+    const res = await post()
+    // The control must still replay: a route that rejected Trivia before the Word Rush check also asks nobody.
+    expect(res.status).toBe(200)
+    expect(writes).toContain('rounds:delete')
     expect(finalize.calls).toBe(0)
   })
 })

@@ -384,6 +384,15 @@ begin
       return jsonb_build_object('status', 'game_finished');
     end if;
   end if;
+  -- This seat's OWN leave closed the last round, and the effects that round owes (points, the game finish that records this
+  -- very deletion) have not been applied yet (the marker is still set): the seat must stay until they are, or the record of
+  -- the owed deletion could never be made and the leaver's rows (read by the bookkeeping) would cascade away.
+  if v_game.status <> 'finished' and exists (
+       select 1 from public.word_rush_sessions s
+       where s.game_id = v_game.id and s.round_finalize is not null and s.round_finalize->>'leaver_id' = p_player_id::text
+     ) then
+    return jsonb_build_object('status', 'finalizing');
+  end if;
   if v_game.status <> 'finished' and p_check_session
      and (v_game.sessions_played is distinct from p_sessions_played
           or v_game.session_started_at is distinct from p_session_started_at) then

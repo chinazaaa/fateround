@@ -716,6 +716,8 @@ export async function removePlayerIfGameOpen(
   gameFinished: boolean
   sessionChanged?: boolean
   hostEnded?: { finishedAt: string }
+  /** The seat was kept: this leave's own last-round finalization is still pending (retry once it has completed). */
+  finalizing?: boolean
 }> {
   const identity = expectedSession ?? ownFinish ?? hostLeave?.session
   const { data, error } = await supabase.rpc('remove_player_if_game_open', {
@@ -730,6 +732,7 @@ export async function removePlayerIfGameOpen(
   if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
   const answer = data as { status?: string; finished_at?: string } | null
   const status = answer?.status
+  if (status === 'finalizing') return { error: null, gameFinished: true, finalizing: true }
   // Two participants share the seat's name and the seat has no linked participant: nothing was deleted (the seat stays too).
   if (status === 'participant_ambiguous') {
     return {

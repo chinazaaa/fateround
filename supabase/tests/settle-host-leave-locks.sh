@@ -445,13 +445,17 @@ PGAPPNAME="$APP-finl" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
 FINL_PID=$!
 wait_for "the finish holds its uncommitted update (case L)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-finl' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_L="$OUT_DIR/out_l"
-( PGAPPNAME="$APP-joinl" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "insert into public.players (id, game_id, name) values ('$JOINERL', '$GL', 'Joiner')" >"$OUT_L" 2>&1; echo "rc=$?" >>"$OUT_L" ) &
+PGAPPNAME="$APP-joinl" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "insert into public.players (id, game_id, name) values ('$JOINERL', '$GL', 'Joiner')" >"$OUT_L" 2>&1 &
 JOINL_PID=$!
 wait_blocked "the join waits for the finish (the games row lock)" joinl finl
 open_gate
 reap "$FINL_PID" "finish (case L)"
-wait "$JOINL_PID" 2>/dev/null || true
-grep -q "game_finished" "$OUT_L" || fail "case L: the join was not refused (got $(cat "$OUT_L"))"
+# The join must FAIL (nonzero exit) with the trigger's own ERROR diagnostic: a NOTICE that merely mentions it, or a join that
+# was skipped silently, would not do. `wait` is checked explicitly so `set -e` cannot skip the check.
+JOINL_RC=0
+wait "$JOINL_PID" || JOINL_RC=$?
+[ "$JOINL_RC" -ne 0 ] || fail "case L: the join succeeded (exit 0) into a game its host ended"
+grep -q "ERROR:.*game_finished:" "$OUT_L" || fail "case L: the join was not refused by the trigger (got $(cat "$OUT_L"))"
 [ "$(psqlq -c "select count(*) from public.players where game_id = '$GL'")" = "0" ] || fail "case L: a seat was inserted into the finished game"
 
 echo "ok"

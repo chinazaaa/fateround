@@ -851,6 +851,21 @@ async function finishWordRushGame(
   message: string,
   leaverId?: string
 ): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
+  // The session finish and the owed game flip are made durable TOGETHER: the claim writes a marker (no points are owed here,
+  // so it is already `awarded`) that the round-finalization machinery resumes whenever anyone loads the session or the
+  // cron backstop runs. A game flip that fails (or a process that dies) after the session is finished therefore never
+  // leaves the game `active` forever.
+  const pending: WordRushRoundFinalize = {
+    session_id: session.id,
+    turn_index: session.turn_index,
+    round: session.current_round,
+    setter_id: null,
+    is_last: true,
+    turn_deadline_at: null,
+    turn_seconds: session.turn_seconds,
+    awarded: true,
+    ...(leaverId ? { leaver_id: leaverId } : {}),
+  }
   const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
     .update({
@@ -859,25 +874,26 @@ async function finishWordRushGame(
       status_message: message,
       turn_deadline_at: null,
       intermission_deadline_at: null,
+      round_finalize: pending,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
     // The session the caller inspected: a stale call matches nothing (a replacement session is never marked finished).
     .eq('id', session.id)
     .neq('status', 'finished')
+    // Never overwrite a previous round's still-owed effects (loadSession resumes them first).
+    .is('round_finalize', null)
     .select('id')
   if (error) return internalFailure('word-rush:finish', error)
   if (!claimed?.length) return {}
-  // Bound to the session this claim won: a stale call must never finish a replacement session started on the same game
-  // id (the round finalizer binds its finish the same way; the function also writes the bookkeeping marker itself).
-  const { won } = await markGameFinished(supabase, gameId, undefined, {
-    roundGuard: {
-      rpc: 'word_rush_finish_game_for_session',
-      params: { p_session_id: session.id, ...(leaverId ? { p_leaver_player_id: leaverId } : {}) },
-    },
-    trackBookkeeping: true,
-  })
-  return { finished: won }
+  // Bound to the session this claim won (a stale call must never finish a replacement session started on the same game id);
+  // the finish function also writes the bookkeeping marker and records the leaver's owed seat deletion itself.
+  const finalized = await runRoundFinalization(supabase, gameId, pending)
+  if (finalized.error) {
+    // Resumable: the marker is durable. Reported to the caller as "not (yet) finished by this call".
+    console.error(`word-rush:finish: game finish for ${gameId} is pending and will be resumed`, finalized.error)
+  }
+  return { finished: finalized.gameFinishWon === true }
 }
 
 export async function finishWordRushGameEarly(
@@ -1134,7 +1150,11 @@ async function syncWordRushRemoval(
   })
   // A lost response may still have committed the write: return the snapshot so the route can restore the roster (the restore is
   // idempotent when nothing was written).
-  if (updateError) return { ...internalFailure('word-rush:remove-player', updateError), rollback }
+  // (A setter-only change, with the roster already lacking the player, returns no snapshot: the restore re-adds a roster
+  // member, which this operation never removed.)
+  if (updateError) {
+    return { ...internalFailure('word-rush:remove-player', updateError), ...(rosterUnchanged ? {} : { rollback }) }
+  }
   // `roster_changed` / `no_session`: nothing was written for this read of the session, so go and read it again.
   if ((applied as { status?: string } | null)?.status !== 'applied') return { stale: true }
 

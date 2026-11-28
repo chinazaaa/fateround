@@ -444,6 +444,18 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     })
   })
 
+  it('a game that is no longer THIS finished session when the rounds are closed (not_current_session) is superseded, never success', async () => {
+    // The identity read matched, but the game moved on before the database function took its lock (a replay in between).
+    const { supabase, recorded } = mockSupabase({ gameRow: row(), roundStatus: 'not_current_session' })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      hostEnded: true,
+      error: null,
+      superseded: true,
+    })
+    expect(recorded.roundUpdates).toBe(1)
+  })
+
   it('without an observed finish, the captured session identity binds it: a replayed session is left alone', async () => {
     const mismatched = mockSupabase({ gameRow: row({ sessions_played: 2 }) })
     await completeHostLeftCleanup(mismatched.supabase, 'G', { session: { startedAt: 'S1', sessionsPlayed: 1 } })

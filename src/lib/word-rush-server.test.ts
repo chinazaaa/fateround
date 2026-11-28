@@ -376,11 +376,15 @@ describe('individual round finalization is resumable', () => {
     }
     const withLeaver = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: owed } })
     await processWordRushExpireTurn(withLeaver.client, GAME)
-    expect(withLeaver.state.finishArgs[0]).toMatchObject({ p_session_id: 'S-old', p_leaver_player_id: 'p1' })
+    expect(withLeaver.state.finishArgs[0]).toMatchObject({
+      p_game_id: GAME,
+      p_session_id: 'S-old',
+      p_leaver_player_id: 'p1',
+    })
     const { leaver_id: _l, ...noLeaver } = owed
     const without = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: noLeaver } })
     await processWordRushExpireTurn(without.client, GAME)
-    expect(without.state.finishArgs[0]).toMatchObject({ p_session_id: 'S-old' })
+    expect(without.state.finishArgs[0]).toMatchObject({ p_game_id: GAME, p_session_id: 'S-old' })
     expect(without.state.finishArgs[0]).not.toHaveProperty('p_leaver_player_id')
   })
 

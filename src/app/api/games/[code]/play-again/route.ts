@@ -336,6 +336,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     current_round_number: 0,
     session_started_at: null,
     finished_at: null,
+    // The reopened game carries no reason of the previous finish (a host-ended reason would keep refusing new seats and
+    // the recorded Word Rush seat deletions of the next finish).
+    result_reason: null,
     anonymous_messages_trimmed_at: null,
     // "Play again · same settings" reopens the lobby with the ready-up ring; a plain
     // "Return to lobby" reset (sameSettings falsy) lands in the standard lobby.
