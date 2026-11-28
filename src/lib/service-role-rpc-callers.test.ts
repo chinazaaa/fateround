@@ -17,11 +17,9 @@ const ALLOWED: Record<string, string[]> = {
   insert_codewords_message_if_active: ['src/app/api/codewords/chat/route.ts'],
   remove_player_if_game_open: ['src/lib/codewords.ts'],
   start_two_truths_game: ['src/app/api/games/[code]/start/route.ts'],
-  word_rush_restore_roster_member: ['src/lib/word-rush-server.ts'],
-  word_rush_remove_roster_member: ['src/lib/word-rush-server.ts'],
+  word_rush_remove_player: ['src/lib/word-rush-server.ts', 'src/lib/pending-leave.ts'],
   finish_rounds_of_finished_session: ['src/lib/admin-end-game.ts'],
   activate_ttl_round: ['src/lib/two-truths-advance.ts'],
-  complete_word_rush_pending_seat_deletion: ['src/lib/pending-leave.ts'],
 }
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

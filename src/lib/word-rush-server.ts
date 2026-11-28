@@ -164,11 +164,7 @@ async function runRoundFinalization(
     const finished = await markGameFinished(supabase, gameId, undefined, {
       roundGuard: {
         rpc: 'word_rush_finish_game_for_session',
-        params: {
-          p_session_id: pending.session_id,
-          // The leaver whose seat deletion this finish owes, recorded in the same transaction as the finish.
-          ...(pending.leaver_id ? { p_leaver_player_id: pending.leaver_id } : {}),
-        },
+        params: { p_session_id: pending.session_id },
       },
       trackBookkeeping: true,
     })
@@ -203,11 +199,22 @@ async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
     .not('players.spectator', 'is', true)
     .order('created_at')
   if (error) throw error
-  return (data ?? []).map((r) => ({
-    player_id: (r as { player_id: string }).player_id,
-    team: (r as { team: number }).team,
-    score: (r as { score?: number | null }).score,
-  }))
+  // A player who has LEFT keeps their seat until the leave is completed (see leaveWordRushPlayer): they are not a member of
+  // their team any more.
+  const { data: sessionRow, error: leaversError } = await supabase
+    .from('word_rush_sessions')
+    .select('leavers')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (leaversError) throw leaversError
+  const left = new Set(((sessionRow as { leavers?: string[] | null } | null)?.leavers ?? []) as string[])
+  return (data ?? [])
+    .filter((r) => !left.has((r as { player_id: string }).player_id))
+    .map((r) => ({
+      player_id: (r as { player_id: string }).player_id,
+      team: (r as { team: number }).team,
+      score: (r as { score?: number | null }).score,
+    }))
 }
 
 async function playerName(supabase: SupabaseClient, gameId: string, playerId: string | null): Promise<string> {
@@ -622,8 +629,7 @@ export async function processWordRushSubmit(
 async function endTeamTurn(
   supabase: SupabaseClient,
   gameId: string,
-  session: WordRushSession,
-  leaverId?: string
+  session: WordRushSession
 ): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const totalTeamTurns = wordRushTotalTeamTurns(session.num_teams, session.total_rounds)
 
@@ -649,7 +655,7 @@ async function endTeamTurn(
 
   if (nextTurn >= totalTeamTurns) {
     const message = playable.size <= 1 ? 'Not enough teams left to continue' : 'All rounds complete!'
-    return finishWordRushGame(supabase, gameId, session, message, leaverId)
+    return finishWordRushGame(supabase, gameId, session, message)
   }
 
   const nextTeam = teamForTurnIndex(nextTurn, session.num_teams)
@@ -697,8 +703,7 @@ async function endTeamTurn(
 async function endIndividualRound(
   supabase: SupabaseClient,
   gameId: string,
-  session: WordRushSession,
-  leaverId?: string
+  session: WordRushSession
 ): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const { data: correctGuesses, error: guessesError } = await supabase
     .from('word_rush_answers')
@@ -748,7 +753,6 @@ async function endIndividualRound(
     turn_deadline_at: session.turn_deadline_at,
     turn_seconds: session.turn_seconds,
     awarded: false,
-    ...(leaverId ? { leaver_id: leaverId } : {}),
   }
 
   const { data: claimed, error } = await supabase
@@ -824,6 +828,9 @@ export async function resumeAllWordRushFinalizations(
   supabase: SupabaseClient,
   limit = 20
 ): Promise<{ resumed: number; failed: number }> {
+  // Players who left and whose seat deletion is still owed (their leave was recorded, the process died, or the finished
+  // game's bookkeeping was still running): completed here as well, with no client involved.
+  const leaves = await completeAllWordRushLeaves(supabase, limit)
   const { data, error } = await supabase
     .from('word_rush_sessions')
     .select('game_id, round_finalize')
@@ -841,15 +848,34 @@ export async function resumeAllWordRushFinalizations(
     if (result.error) failed += 1
     else resumed += 1
   }
-  return { resumed, failed }
+  return { resumed: resumed + leaves.completed, failed: failed + leaves.failed }
+}
+
+/** Complete the recorded leaves of every game that has any (bounded per call; the next tick takes the rest). */
+async function completeAllWordRushLeaves(
+  supabase: SupabaseClient,
+  limit: number
+): Promise<{ completed: number; failed: number }> {
+  const { data, error } = await supabase.from('word_rush_sessions').select('game_id').neq('leavers', '{}').limit(limit)
+  if (error) {
+    internalFailure('word-rush:complete-all-leaves', error)
+    return { completed: 0, failed: 1 }
+  }
+  let completed = 0
+  let failed = 0
+  for (const row of (data ?? []) as Array<{ game_id: string }>) {
+    const result = await completeWordRushLeaves(supabase, row.game_id)
+    if (result.error) failed += 1
+    else completed += 1
+  }
+  return { completed, failed }
 }
 
 async function finishWordRushGame(
   supabase: SupabaseClient,
   gameId: string,
   session: WordRushSession,
-  message: string,
-  leaverId?: string
+  message: string
 ): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   // The session finish and the owed game flip are made durable TOGETHER: the claim writes a marker (no points are owed here,
   // so it is already `awarded`) that the round-finalization machinery resumes whenever anyone loads the session or the
@@ -864,7 +890,6 @@ async function finishWordRushGame(
     turn_deadline_at: null,
     turn_seconds: session.turn_seconds,
     awarded: true,
-    ...(leaverId ? { leaver_id: leaverId } : {}),
   }
   const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
@@ -1019,252 +1044,154 @@ export async function processWordRushAdvance(
   return {}
 }
 
-export async function syncWordRushAfterPlayerRemoved(
+/**
+ * Whether a Word Rush round can no longer be played with the players who are left, and if so ends it. Derived ONLY from the
+ * current session (roster, answers, teams), never from who left: a round ends iff it cannot continue, so any runner that
+ * finds the session in this state reaches the same decision and the ending itself is a compare-and-set on the turn, which
+ * makes the whole step idempotent and resumable. Returns the error of whatever it could not apply (nothing is lost: the
+ * decision is simply derived again next time).
+ */
+export async function reconcileWordRushRound(
   supabase: SupabaseClient,
-  gameId: string,
-  removedPlayerId: string
-): Promise<{
-  error?: string
-  internal?: boolean
-  rollback?: WordRushRosterSnapshot
-  /** This removal ended the session's last round / the game itself (not an independent finish). */
-  ownFinish?: boolean
-  /**
-   * The game session the reconciliation was decided against. The session row it worked on was loaded and verified to
-   * belong to exactly this identity (the game row is read before AND after the load, and every write is bound to the
-   * session id), so an own finish is always paired with the session it really finished.
-   */
-  gameSession?: { startedAt: string | null; sessionsPlayed: number | null }
-}> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data: game, error: gameError } = await supabase
-      .from('games')
-      .select('status, session_started_at, sessions_played')
-      .eq('id', gameId)
-      .maybeSingle()
-    // An unreadable game is NOT "not active": reconciling nothing would let the seat go while the roster keeps it.
-    if (gameError) return internalFailure('word-rush:remove-player:game', gameError)
-    const gameSession = game
-      ? { startedAt: game.session_started_at ?? null, sessionsPlayed: game.sessions_played ?? null }
-      : undefined
-    const result = await syncWordRushRemoval(supabase, gameId, removedPlayerId, game?.status ?? null, gameSession)
-    // A start / replay landed while this reconciled: nothing was written for the stale session, so read again.
-    if (result.stale) continue
-    const { stale: _stale, ...rest } = result
-    void _stale
-    return { ...rest, ...(gameSession ? { gameSession } : {}) }
-  }
-  return { error: 'The game changed while you were leaving — try again', internal: false }
-}
-
-async function syncWordRushRemoval(
-  supabase: SupabaseClient,
-  gameId: string,
-  removedPlayerId: string,
-  gameStatus: string | null,
-  gameSession: { startedAt: string | null; sessionsPlayed: number | null } | undefined
-): Promise<{
-  error?: string
-  internal?: boolean
-  rollback?: WordRushRosterSnapshot
-  ownFinish?: boolean
-  /** The game moved to another session while this ran (nothing was written for the old one). */
-  stale?: boolean
-}> {
-  if (gameStatus !== 'active') return {}
-
-  const { session, error, internal } = await loadSession(supabase, gameId)
-  if (error) return { error, internal }
-  if (!session || session.status === 'finished') return {}
-
-  // The session row was loaded after the game row was read: confirm the game is still the same session generation.
-  const { data: again, error: againError } = await supabase
-    .from('games')
-    .select('session_started_at, sessions_played')
-    .eq('id', gameId)
-    .maybeSingle()
-  if (againError) return internalFailure('word-rush:remove-player:game', againError)
-  if (
-    gameSession &&
-    (!again ||
-      (again.session_started_at ?? null) !== gameSession.startedAt ||
-      (again.sessions_played ?? null) !== gameSession.sessionsPlayed)
-  ) {
-    return { stale: true }
-  }
-
-  const newRoster = session.roster.filter((id) => id !== removedPlayerId)
-  // The roster may already lack the player (an earlier attempt took them off) while they are STILL the prompt setter of a
-  // round that awaits its prompt: deleting the seat would then null the setter and nobody could enter the letters. That
-  // case is not "nothing to do": the setter is reassigned below (the database does the same before any seat delete).
-  const setterGone = session.prompt_setter_player_id === removedPlayerId && session.phase === 'awaiting_prompt'
-  const rosterUnchanged = newRoster.length === session.roster.length
-  if (rosterUnchanged && !setterGone) return {}
-
-  const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
-
-  // Only pick a new letter-setter before letters are live — during playing keep the
-  // removed setter id so mirror scoring and answerer eligibility stay consistent.
-  if (session.prompt_setter_player_id === removedPlayerId && session.phase === 'awaiting_prompt') {
-    if (session.mode === 'individual' && session.prompt_mode === 'manual') {
-      sessionPatch.prompt_setter_player_id = promptSetterForIndividualRound(newRoster, session.turn_index)
-    } else if (session.mode === 'team' && session.prompt_mode === 'manual') {
-      const teamRows = await loadTeamRows(supabase, gameId)
-      const members = (teamRoster(teamRows).get(session.active_team) ?? []).filter((id) => id !== removedPlayerId)
-      const roundIndex = teamRoundIndexFromTurn(session.turn_index, session.num_teams)
-      sessionPatch.prompt_setter_player_id = promptSetterForTeamRound(members, roundIndex)
-    } else {
-      sessionPatch.prompt_setter_player_id = null
-    }
-  }
-
-  // What a failed delete must put back: ONLY this player (at their old position) and, if this removal reassigned the
-  // prompt setter, the setter it replaced. Never the whole saved roster: other players may leave in between.
-  const rollback: WordRushRosterSnapshot = {
-    session_id: session.id,
-    removed_player_id: removedPlayerId,
-    removed_index: session.roster.indexOf(removedPlayerId),
-    turn_index: session.turn_index,
-    prompt_setter_player_id: session.prompt_setter_player_id,
-    ...('prompt_setter_player_id' in sessionPatch
-      ? { setter_after: sessionPatch.prompt_setter_player_id ?? null }
-      : {}),
-  }
-
-  // A compare-and-swap in the database under the session row lock: the new roster was computed from the roster this
-  // call READ, so it is written only while the session still has exactly that roster / turn / phase / setter. A seat
-  // restore that committed in between (word_rush_restore_roster_member) is never overwritten by a whole-array write
-  // computed from the older roster; the caller reads again instead (`stale`). A replaced session matches no row.
-  // A setter-only change (the roster already lacked the player) records no rollback: the earlier attempt's snapshot still
-  // describes the roster change and is kept by the caller.
-  const { data: applied, error: updateError } = await supabase.rpc('word_rush_remove_roster_member', {
-    p_game_id: gameId,
-    p_session_id: session.id,
-    p_expected_roster: session.roster,
-    p_expected_turn_index: session.turn_index,
-    p_expected_phase: session.phase,
-    p_expected_setter: session.prompt_setter_player_id ?? null,
-    p_new_roster: newRoster,
-    p_set_setter: 'prompt_setter_player_id' in sessionPatch,
-    p_new_setter: sessionPatch.prompt_setter_player_id ?? null,
-  })
-  // A lost response may still have committed the write: return the snapshot so the route can restore the roster (the restore is
-  // idempotent when nothing was written).
-  // (A setter-only change, with the roster already lacking the player, returns no snapshot: the restore re-adds a roster
-  // member, which this operation never removed.)
-  if (updateError) {
-    return { ...internalFailure('word-rush:remove-player', updateError), ...(rosterUnchanged ? {} : { rollback }) }
-  }
-  // `roster_changed` / `no_session`: nothing was written for this read of the session, so go and read it again.
-  if ((applied as { status?: string } | null)?.status !== 'applied') return { stale: true }
-
-  const updatedSession = { ...session, ...sessionPatch }
-  if (rosterUnchanged) return {}
-  // The roster change is committed from here on: ANY failure below (a thrown read inside the round-ending helpers included)
-  // must come back as an error WITH the rollback, never as an exception that skips the route's compensation.
+  gameId: string
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   try {
-    if (
-      updatedSession.mode === 'individual' &&
-      (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
-    ) {
-      const eligible = wordRushIndividualAnswerers(updatedSession)
+    const { session, error, internal } = await loadSession(supabase, gameId)
+    if (error) return { error, internal }
+    if (!session || session.status === 'finished') return {}
+    if (session.phase !== 'playing' && session.phase !== 'awaiting_prompt') return {}
+
+    if (session.mode === 'individual') {
+      const eligible = wordRushIndividualAnswerers(session)
       const { data: roundAnswers, error: answersError } = await supabase
         .from('word_rush_answers')
         .select('player_id, turn_index, correct')
         .eq('game_id', gameId)
         .eq('turn_index', session.turn_index)
-      // The roster change is already written: an unreadable round must not be treated as "nobody answered".
-      if (answersError) return { ...internalFailure('word-rush:remove-player:answers', answersError), rollback }
-
+      // An unreadable round is not "nobody answered".
+      if (answersError) return internalFailure('word-rush:reconcile-round:answers', answersError)
       const answers = (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
-      if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(updatedSession, answers)) {
-        const endResult = await endIndividualRound(supabase, gameId, updatedSession, removedPlayerId)
-        if (endResult.error) return { ...endResult, rollback }
-        return { rollback, ownFinish: endResult.finished === true }
+      if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(session, answers)) {
+        return await endIndividualRound(supabase, gameId, session)
       }
+      return {}
     }
 
-    if (
-      updatedSession.mode === 'team' &&
-      (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
-    ) {
-      let teamRows: Awaited<ReturnType<typeof loadTeamRows>>
-      try {
-        teamRows = await loadTeamRows(supabase, gameId)
-      } catch (err) {
-        return { ...internalFailure('word-rush:remove-player:teams', err), rollback }
-      }
-      const playable = new Set(
-        wordRushPlayableTeams(teamRoster(teamRows), updatedSession.num_teams, updatedSession.prompt_mode)
-      )
-      // The active team can no longer field a turn, or only one team remains —
-      // end this turn now (endTeamTurn skips the dead team / finishes the game)
-      // rather than letting it run out the clock.
-      if (playable.size <= 1 || !playable.has(updatedSession.active_team)) {
-        const endResult = await endTeamTurn(supabase, gameId, updatedSession, removedPlayerId)
-        if (endResult.error) return { ...endResult, rollback }
-        return { rollback, ownFinish: endResult.finished === true }
-      }
+    const teamRows = await loadTeamRows(supabase, gameId)
+    const playable = new Set(wordRushPlayableTeams(teamRoster(teamRows), session.num_teams, session.prompt_mode))
+    // The active team can no longer field a turn, or only one team remains: end this turn now (endTeamTurn skips the dead
+    // team / finishes the game) rather than letting it run out the clock.
+    if (playable.size <= 1 || !playable.has(session.active_team)) {
+      return await endTeamTurn(supabase, gameId, session)
     }
-
-    return { rollback }
+    return {}
   } catch (err) {
-    return { ...internalFailure('word-rush:remove-player:reconcile', err), rollback }
+    return internalFailure('word-rush:reconcile-round', err)
   }
 }
 
+/** What the database answered for one player's completion (`word_rush_remove_player`, stage `delete`). */
+export type WordRushLeaveStatus =
+  | 'deleted'
+  | 'finalizing'
+  | 'bookkeeping_owed'
+  | 'game_finished'
+  | 'participant_ambiguous'
+  | 'not_left'
+  | 'game_missing'
+
 /**
- * The roster change made before a player delete, with the id of the session it was made on. A finish + Play Again +
- * Start between the removal and a revert replaces the session row (a new id under the same game id), so the revert is
- * bound to the snapshot's session and can never write onto a new one. It names ONE player: the revert re-adds only
- * that player, so another player who left the roster in the meantime is never put back without a seat.
+ * Complete every recorded leave of a game: first decide what the departures mean for the round (reconcileWordRushRound),
+ * then delete the seat of each player who has left, as far as the database allows (it keeps a seat while the round's owed
+ * effects or the finished game's bookkeeping still read the leaver's rows). Safe to call at any time, from anyone; it only
+ * finishes what the durable leavers list says is owed, and every step is idempotent. Never throws.
  */
-export type WordRushRosterSnapshot = {
-  session_id: string
-  removed_player_id: string
-  removed_index: number
-  /** The turn the removal happened in: the prompt setter is only put back while that turn still awaits its prompt. */
-  turn_index: number
-  /** The prompt setter before the removal. */
-  prompt_setter_player_id: string | null
-  /** The prompt setter THIS removal assigned, when it reassigned it (absent: it did not touch the setter). */
-  setter_after?: string | null
+export async function completeWordRushLeaves(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; internal?: boolean; statuses: Record<string, WordRushLeaveStatus> }> {
+  const statuses: Record<string, WordRushLeaveStatus> = {}
+  const decided = await reconcileWordRushRound(supabase, gameId)
+  if (decided.error) return { error: decided.error, internal: decided.internal, statuses }
+  const { data, error } = await supabase
+    .from('word_rush_sessions')
+    .select('leavers')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (error) return { ...internalFailure('word-rush:complete-leaves:read', error), statuses }
+  const leavers = ((data as { leavers?: string[] | null } | null)?.leavers ?? []) as string[]
+  for (const playerId of leavers) {
+    const { data: answer, error: deleteError } = await supabase.rpc('word_rush_remove_player', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+      p_stage: 'delete',
+    })
+    if (deleteError) return { ...internalFailure('word-rush:complete-leaves:delete', deleteError), statuses }
+    statuses[playerId] = ((answer as { status?: string } | null)?.status ?? 'game_missing') as WordRushLeaveStatus
+  }
+  return { statuses }
 }
 
+export type WordRushLeaveOutcome =
+  | { status: 'deleted' }
+  /** The leave is committed (off the roster, recorded) but the seat stays until what it owes is applied: a runner completes it. */
+  | { status: 'pending' }
+  | { status: 'game_finished' }
+  | { status: 'host_ended'; finishedAt: string }
+  | { status: 'participant_ambiguous' }
+  | { status: 'error'; error: string; internal: boolean }
+
 /**
- * `restored` (put back), `not_current_session` (the session was replaced: nothing of the old one is ours to restore),
- * `no_seat` (the player no longer has a seat, so there is nothing to put back) or `failed` (the database could not be
- * reached after every attempt: the roster still lacks a player who kept their seat, which the caller must not call done).
+ * A Word Rush player leaves. The database makes the leave DURABLE in one transaction (roster, prompt setter, the leavers list;
+ * word_rush_remove_player, stage `leave`); the application then decides what it means for the round and asks the database to
+ * complete the seat deletion (stage `delete`). A crash anywhere in between leaves a recorded leave that any runner finishes
+ * (completeWordRushLeaves, called by the cron backstop and by Play Again), so there is nothing to compensate or roll back.
  */
-export type WordRushRestoreResult = 'restored' | 'not_current_session' | 'no_seat' | 'failed'
-
-const RESTORE_ATTEMPTS = 3
-
-export async function revertWordRushRosterAfterFailedPlayerDelete(
+export async function leaveWordRushPlayer(
   supabase: SupabaseClient,
   gameId: string,
-  snapshot: WordRushRosterSnapshot
-): Promise<WordRushRestoreResult> {
-  // One database step (word_rush_restore_roster_member): it re-adds just this player under the games + session row
-  // locks (the same order as the seat removal), and restores the prompt setter only if it is still the one the removal
-  // assigned. Idempotent, so a transport error is simply retried.
-  for (let attempt = 0; attempt < RESTORE_ATTEMPTS; attempt++) {
-    const { data, error } = await supabase.rpc('word_rush_restore_roster_member', {
-      p_game_id: gameId,
-      p_session_id: snapshot.session_id,
-      p_player_id: snapshot.removed_player_id,
-      p_index: snapshot.removed_index,
-      p_turn_index: snapshot.turn_index,
-      p_restore_setter: 'setter_after' in snapshot,
-      p_setter_after: snapshot.setter_after ?? null,
-      p_setter_before: snapshot.prompt_setter_player_id,
-    })
-    if (error) continue
-    const status = (data as { status?: string } | null)?.status
-    if (status === 'restored' || status === 'not_current_session' || status === 'no_seat') return status
+  playerId: string,
+  opts: { hostLeave?: { sessionsPlayed: number | null; trackBookkeeping: boolean } } = {}
+): Promise<WordRushLeaveOutcome> {
+  const { data, error } = await supabase.rpc('word_rush_remove_player', {
+    p_game_id: gameId,
+    p_player_id: playerId,
+    p_stage: 'leave',
+    ...(opts.hostLeave
+      ? {
+          p_host_leave: true,
+          p_sessions_played: opts.hostLeave.sessionsPlayed,
+          p_track_bookkeeping: opts.hostLeave.trackBookkeeping,
+        }
+      : {}),
+  })
+  if (error) return { status: 'error', ...internalFailure('word-rush:leave', error) }
+  const answer = data as { status?: string; finished_at?: string } | null
+  switch (answer?.status) {
+    case 'host_ended':
+      return answer.finished_at ? { status: 'host_ended', finishedAt: answer.finished_at } : { status: 'game_finished' }
+    case 'participant_ambiguous':
+      return { status: 'participant_ambiguous' }
+    case 'game_finished':
+      return { status: 'game_finished' }
+    case 'deleted':
+      return { status: 'deleted' }
+    case 'bookkeeping_owed':
+      return { status: 'pending' }
+    case 'left':
+      break
+    default:
+      return { status: 'error', error: 'Could not finish leaving the game — try again', internal: true }
   }
-  console.error(`word-rush: restoring the roster of ${gameId} after a retained leave failed`)
-  return 'failed'
+  const completed = await completeWordRushLeaves(supabase, gameId)
+  if (completed.error) {
+    // The leave itself is committed and recorded: the round decision / seat deletion is simply derived again by the next runner.
+    return { status: 'pending' }
+  }
+  const mine = completed.statuses[playerId]
+  if (mine === 'deleted' || mine === undefined) return { status: 'deleted' }
+  if (mine === 'game_finished') return { status: 'game_finished' }
+  return { status: 'pending' }
 }
 
 export async function assignWordRushTeam(
@@ -1358,6 +1285,12 @@ export async function ensureWordRushGameFinalized(
   // here; if it is still owed or held by a live runner, refuse the reset so Play Again can simply be retried.
   const bookkeeping = await recoverFinishBookkeeping(supabase, gameId)
   if (bookkeeping.state !== 'none' && bookkeeping.state !== 'done') {
+    return { error: 'The previous game is still being finalized — try again in a moment' }
+  }
+  // ...nor while a player who LEFT still has a seat the finished game's bookkeeping needed: complete the recorded leaves (the
+  // database deletes those seats once nothing reads them any more) and refuse while one cannot be completed yet.
+  const leaves = await completeWordRushLeaves(supabase, gameId)
+  if (leaves.error || Object.values(leaves.statuses).some((st) => st === 'finalizing' || st === 'bookkeeping_owed')) {
     return { error: 'The previous game is still being finalized — try again in a moment' }
   }
   return {}

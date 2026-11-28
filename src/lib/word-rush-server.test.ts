@@ -365,27 +365,18 @@ describe('individual round finalization is resumable', () => {
     return { client: client as unknown as SupabaseClient, state }
   }
 
-  it('the last-round finish names the leaver whose seat deletion it owes (recorded with the finish), and only then', async () => {
+  it('the last-round finish names exactly the game and the session it finalizes (no leaver, no other bookkeeping in the payload)', async () => {
     const owed = {
       session_id: 'S-old',
       turn_index: 0,
       setter_id: SETTER,
       is_last: true,
       awarded: false,
-      leaver_id: 'p1',
     }
-    const withLeaver = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: owed } })
-    await processWordRushExpireTurn(withLeaver.client, GAME)
-    expect(withLeaver.state.finishArgs[0]).toMatchObject({
-      p_game_id: GAME,
-      p_session_id: 'S-old',
-      p_leaver_player_id: 'p1',
-    })
-    const { leaver_id: _l, ...noLeaver } = owed
-    const without = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: noLeaver } })
-    await processWordRushExpireTurn(without.client, GAME)
-    expect(without.state.finishArgs[0]).toMatchObject({ p_game_id: GAME, p_session_id: 'S-old' })
-    expect(without.state.finishArgs[0]).not.toHaveProperty('p_leaver_player_id')
+    const resumed = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: owed } })
+    await processWordRushExpireTurn(resumed.client, GAME)
+    expect(resumed.state.finishArgs[0]).toEqual(expect.objectContaining({ p_game_id: GAME, p_session_id: 'S-old' }))
+    expect(resumed.state.finishArgs[0]).not.toHaveProperty('p_leaver_player_id')
   })
 
   it('applies the points and the game finish in the same request when nothing fails', async () => {

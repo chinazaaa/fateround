@@ -1746,8 +1746,6 @@ export interface WordRushRoundFinalize {
   turn_deadline_at: string | null
   turn_seconds: number
   awarded?: boolean
-  /** The player whose leave closed this round (their seat deletion is recorded in the same transaction as the finish). */
-  leaver_id?: string | null
 }
 
 export interface WordRushSession {
@@ -1775,6 +1773,8 @@ export interface WordRushSession {
   status: 'active' | 'finished'
   status_message: string | null
   round_finalize?: WordRushRoundFinalize | null
+  /** Players who left whose seat deletion is still owed (see word_rush_remove_player). Server-side only. */
+  leavers?: string[] | null
   created_at: string
   updated_at: string
 }
