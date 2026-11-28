@@ -13,6 +13,11 @@ vi.mock('@/lib/push', () => ({ notifyGameEvent: async () => {} }))
  * deletes remove (votes, rounds, participants, ...). The check therefore runs BEFORE the first delete, and refuses the reset
  * while anything is still owed.
  */
+// A bookkeeping guard that may sit in front of this check (the stacked follow-up's) is not what this file tests.
+vi.mock('@/lib/game-finish', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/game-finish')>()),
+  recoverFinishBookkeeping: async () => ({ state: 'none' }),
+}))
 const finalize = vi.hoisted(() => ({ calls: 0, error: null as string | null }))
 vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/word-rush-server')>()),

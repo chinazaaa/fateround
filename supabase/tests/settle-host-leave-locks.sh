@@ -439,7 +439,7 @@ SQL
 start_gate
 PGAPPNAME="$APP-finl" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   begin;
-  update public.games set status = 'finished', finished_at = clock_timestamp() where id = '$GL';
+  update public.games set status = 'finished', result_reason = 'host_ended', finished_at = clock_timestamp() where id = '$GL';
   select pg_advisory_xact_lock($GATE);
   commit;" >/dev/null 2>&1 &
 FINL_PID=$!

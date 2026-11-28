@@ -275,11 +275,14 @@ create table if not exists public.word_rush_pending_seat_deletions (
 alter table public.word_rush_pending_seat_deletions enable row level security;
 revoke all on public.word_rush_pending_seat_deletions from public, anon, authenticated;
 
--- A seat is inserted only into a game that is not FINISHED, decided under the games row lock: the join handler reads the
--- status and inserts in separate calls, so a host-alone finish (settle_host_leave / end_game_if_host_alone /
--- remove_player_if_game_open, all FOR UPDATE or FOR NO KEY UPDATE) could commit between them and leave a seat in a finished
--- game. The lock is FOR NO KEY UPDATE: the same level the lobby's own AFTER INSERT trigger (touch_game_activity) takes on
--- this row, so it adds no new contention, conflicts with every finish, and cannot deadlock with a lock upgrade.
+-- A seat is never inserted into a game that a HOST LEAVE has finished (result_reason 'host_ended'), decided under the games
+-- row lock: the join handler reads the status and inserts in separate calls, so a host-alone finish (settle_host_leave /
+-- end_game_if_host_alone / remove_player_if_game_open, all FOR UPDATE or FOR NO KEY UPDATE) could commit between them and
+-- leave an eligible player seated in a game that was just ended for lack of one (its post-finish cleanup has already run
+-- for the roster it saw). Games that finished any other way keep accepting late joiners exactly as before (they land on
+-- the results screen), so this narrows nothing that worked. The lock is FOR NO KEY UPDATE: the level the lobby's own AFTER
+-- INSERT trigger (touch_game_activity) already takes on this row, so it adds no new contention, conflicts with every
+-- finish, and cannot deadlock with a lock upgrade.
 create or replace function public.players_require_unfinished_game()
 returns trigger
 language plpgsql
@@ -288,10 +291,11 @@ set search_path = public, pg_temp
 as $$
 declare
   v_status text;
+  v_reason text;
 begin
-  select status into v_status from public.games where id = new.game_id for no key update;
-  if found and v_status = 'finished' then
-    raise exception 'game_finished: cannot seat a player in a finished game' using errcode = 'P0001';
+  select status, result_reason into v_status, v_reason from public.games where id = new.game_id for no key update;
+  if found and v_status = 'finished' and v_reason = 'host_ended' then
+    raise exception 'game_finished: cannot seat a player in a game its host ended' using errcode = 'P0001';
   end if;
   return new;
 end;

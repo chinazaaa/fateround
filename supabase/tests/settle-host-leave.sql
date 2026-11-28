@@ -664,8 +664,9 @@ delete from public.players where id = pg_temp.late('ST]');
 select pg_temp.assert_eq('17c team mode: a member of the active team takes over', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST]'), pg_temp.early('ST]'));
 select pg_temp.assert_eq('17c the trigger function is not callable by clients', has_function_privilege('anon', 'public.word_rush_reassign_setter_before_seat_delete()', 'execute') or has_function_privilege('authenticated', 'public.word_rush_reassign_setter_before_seat_delete()', 'execute'), false);
 
--- 17e. A seat is never inserted into a FINISHED game (the status is decided under the games row lock).
+-- 17e. A seat is never inserted into a game its host ENDED (decided under the games row lock); other games are unaffected.
 select pg_temp.mk('ST=', 'finished');
+update public.games set result_reason = 'host_ended' where id = 'ST=';
 do $$ begin
   begin
     insert into public.players (id, game_id, name) values ('00000000-0000-0000-0000-0000000005aa', 'ST=', 'LateJoiner');
@@ -676,6 +677,11 @@ do $$ begin
   end;
 end $$;
 select pg_temp.assert_eq('17e ...nothing was seated', (select count(*) from public.players where id = '00000000-0000-0000-0000-0000000005aa'), 0::bigint);
+-- A game that finished any OTHER way keeps taking late joiners exactly as before.
+select pg_temp.mk('ST^', 'finished');
+update public.games set result_reason = 'admin_ended' where id = 'ST^';
+insert into public.players (id, game_id, name) values ('00000000-0000-0000-0000-0000000005ac', 'ST^', 'ResultsViewer');
+select pg_temp.assert_eq('17e a game finished another way still seats a late joiner', (select count(*) from public.players where id = '00000000-0000-0000-0000-0000000005ac'), 1::bigint);
 select pg_temp.mk('ST:', 'active');
 insert into public.players (id, game_id, name) values ('00000000-0000-0000-0000-0000000005ab', 'ST:', 'Joiner');
 select pg_temp.assert_eq('17e an active game still takes a seat', (select count(*) from public.players where id = '00000000-0000-0000-0000-0000000005ab'), 1::bigint);
