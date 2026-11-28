@@ -1153,6 +1153,44 @@ describe('a Team-Up leaver is skipped as soon as the marker commits', () => {
   })
 })
 
+describe('planMercyKnockout end conditions (first_out and last_standing)', () => {
+  const card = (id: string) => ({ id, color: 'blue', kind: 'number', value: 5 })
+  const lastSeat = (winCondition: string, finishOrder: string[] = []) => {
+    const t = unoTables()
+    Object.assign(t.games[0], { uno_mode: 'no_mercy', uno_no_mercy_win: winCondition })
+    // B, C and D are already knocked out; A is the last seat and is knocked out by this forced draw
+    Object.assign(t.uno_sessions[0], {
+      eliminated_player_ids: ['B', 'C', 'D'],
+      finish_order: finishOrder,
+      top_card: { id: 'top', color: 'red', kind: 'number', value: 3 },
+      draw_pile: [
+        { ...card('d1'), color: 'red' },
+        { ...card('d2'), color: 'red' },
+      ],
+      draw_penalty: 2,
+      draw_penalty_kind: 'draw2',
+    })
+    t.uno_player_hands[0].cards = Array.from({ length: 23 }, (_, i) => card(`A${i}`))
+    for (const i of [1, 2, 3]) t.uno_player_hands[i].cards = []
+    return t
+  }
+
+  it.each(['first_out', 'last_standing'])('%s: knocking out the last standing seat ends the round', async (mode) => {
+    const t = lastSeat(mode)
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('finished')
+    expect(t.uno_sessions[0].eliminated_player_ids).toEqual(['B', 'C', 'D', 'A'])
+  })
+
+  it('first_out with a survivor still standing: the round continues', async () => {
+    const t = lastSeat('first_out')
+    t.uno_sessions[0].eliminated_player_ids = ['C', 'D']
+    t.uno_player_hands[1].cards = [card('B1')]
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('playing')
+  })
+})
+
 describe('removeUnoPlayer — retention applies to a published game only', () => {
   it('a reopened lobby (game waiting) whose old finished session still lists the player drops the seat', async () => {
     const t = unoTables()
@@ -1168,7 +1206,7 @@ describe('removeUnoPlayer — retention applies to a published game only', () =>
     const published = unoTables()
     Object.assign(published.uno_sessions[0], { phase: 'finished', finish_order: ['C'] })
     published.games[0].status = 'finished'
-    expect(await removeUnoPlayer(makeDb(published).supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(await removeUnoPlayer(makeDb(published).supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
     expect(published.players.map((p) => p.id)).toContain('C')
     const reopened = unoTables()
     Object.assign(reopened.uno_sessions[0], { phase: 'finished', finish_order: ['C'] })
@@ -1647,12 +1685,18 @@ describe('processUnoDraw — empty pile: no derived write before the session wri
 
   it('a database error reports the error and writes no hand', async () => {
     const t = emptyPileTables()
-    const res = await processUnoDraw(
-      makeDb(t, { failRpc: (n) => n === 'apply_uno_move' || n === 'finish_uno_session' }).supabase,
-      'G',
-      'A'
-    )
+    // Only the ordinary move is made to fail: a regression that finished the round instead would then WRITE.
+    const db = makeDb(t, { failRpc: (n) => n === 'apply_uno_move' })
+    const calls: string[] = []
+    const realRpc = db.supabase.rpc
+    db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
+      calls.push(name)
+      return realRpc(name, args)
+    }
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
     expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(calls.filter((c) => c === 'apply_uno_move')).toHaveLength(1)
+    expect(calls).not.toContain('finish_uno_session')
     expect(bHand(t)).toBe(1)
   })
 
@@ -2392,6 +2436,8 @@ describe('scrabble finish: seated players only, honest rereads and expiry result
 
   it('expiry whose claim lost to a running round is not finished (and not an error)', async () => {
     const t = rackless()
+    // the stored limit equals the snapshot's (60): the expiry reaches the VERSION check instead of the limit check
+    t.games[0].game_duration_seconds = 60
     let raced = false
     const db = makeDb(t, {
       afterSessionRead: (tb) => {
@@ -2407,6 +2453,12 @@ describe('scrabble finish: seated players only, honest rereads and expiry result
       game_duration_seconds: 60,
     } as unknown as Parameters<typeof finishExpiredScrabbleGame>[1]
     expect(await finishExpiredScrabbleGame(db.supabase, expiredGame)).toEqual({ finished: false })
+    expect(t.scrabble_sessions[0].phase).toBe('playing')
+    // control: the same expiry with an UNCHANGED version finishes the round
+    const control = rackless()
+    control.games[0].game_duration_seconds = 60
+    expect(await finishExpiredScrabbleGame(makeDb(control).supabase, expiredGame)).toEqual({ finished: true })
+    expect(control.scrabble_sessions[0].phase).toBe('finished')
   })
 })
 
@@ -2584,7 +2636,10 @@ describe('every Uno finish site is one finish_uno_session call', () => {
       afterSessionRead: (tb) => {
         if (tb !== 'uno_sessions' || raced) return
         raced = true
+        // the competing finish published BOTH rows: the games row and the session (with its new version)
         t.uno_sessions[0].phase = 'finished'
+        t.uno_sessions[0].updated_at = '2026-01-01T00:00:07.000Z'
+        t.games[0].status = 'finished'
       },
     })
     expect(await removeUnoPlayer(hooked.supabase, 'G', 'B', 'B')).toEqual({ error: null, retained: true })
@@ -2949,14 +3004,16 @@ describe('Uno: optional attribution, committed timer finish, retained seats', ()
     vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-06-01T12:00:00.000Z') })
     try {
       Object.assign(t.games[0], { session_started_at: '2026-06-01T11:59:30.000Z', game_duration_seconds: 60 })
-      let loads = 0
+      let sessionReads = 0
       const db = makeDb(t, {
         afterSessionRead: (tb) => {
-          // 'players' is the last read of a state load: after the expiry handler's own load, 40 s pass
-          if (tb === 'players' && ++loads === 1) vi.setSystemTime(new Date('2026-06-01T12:00:40.000Z'))
+          // read #1 is the expiry handler's own load (its outer expiry check follows it, still in time); read #2 is the
+          // DELEGATE's load: the 40 s pass right after it, so the delegate's own check is the one that finishes the round
+          if (tb === 'uno_sessions' && ++sessionReads === 2) vi.setSystemTime(new Date('2026-06-01T12:00:40.000Z'))
         },
       })
       expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({})
+      expect(sessionReads).toBeGreaterThanOrEqual(2)
       expect(t.games[0].session_started_at).toBe('2026-06-01T11:59:30.000Z')
       expect(t.uno_sessions[0].phase).toBe('finished')
     } finally {

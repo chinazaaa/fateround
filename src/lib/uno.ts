@@ -832,12 +832,18 @@ export async function initializeUnoGame(
     .maybeSingle()
   if (existingError) return { error: internalErrorMessage('uno', existingError) }
   if (existing && existing.phase !== 'finished') {
-    const { count, error: countError } = await supabase
+    const { data: heldRows, error: countError } = await supabase
       .from('uno_player_hands')
-      .select('player_id', { count: 'exact', head: true })
+      .select('player_id')
       .eq('game_id', gameId)
     if (countError) return { error: internalErrorMessage('uno', countError) }
-    if ((count ?? 0) === ((existing.turn_order as string[] | null) ?? []).length && (count ?? 0) > 0) return {}
+    // Resume only when the STORED hands are exactly the requested roster (a player who joined before the retry has no
+    // hand and no turn in the old deal). Anything else is a stale deal: its hands AND its session are cleared first.
+    const held = (heldRows ?? []).map((row) => row.player_id as string).sort()
+    const requested = [...playerIds].sort()
+    if (held.length > 0 && held.join('|') === requested.join('|')) return {}
+    const { error: handsClearError } = await supabase.from('uno_player_hands').delete().eq('game_id', gameId)
+    if (handsClearError) return { error: internalErrorMessage('uno', handsClearError) }
     const { error: clearError } = await supabase.from('uno_sessions').delete().eq('game_id', gameId)
     if (clearError) return { error: internalErrorMessage('uno', clearError) }
   }
@@ -1548,8 +1554,11 @@ function planMercyKnockout(input: {
   const leftIds = new Set<string>(state.left_player_ids ?? [])
   const standing = [...seated].filter((id) => !nextEliminated.includes(id) && !finished.has(id) && !leftIds.has(id))
 
+  // The round ends when nobody is left standing, in EITHER win mode (a continuing knockout that removes the last standing
+  // seat would otherwise leave the turn on a knocked-out seat with no playable hand and nobody to pass it to), and, in
+  // `last_standing`, when a single survivor remains and nobody has gone out yet.
   const endsRound =
-    winCondition === 'last_standing' && standing.length <= 1 && (finished.size === 0 || standing.length === 0)
+    standing.length === 0 || (winCondition === 'last_standing' && standing.length === 1 && finished.size === 0)
   const patch: Partial<UnoSession> = {
     eliminated_player_ids: nextEliminated,
     draw_pile: returnedPile,
@@ -3779,7 +3788,8 @@ async function removeUnoPlayerOnce(
   if (session?.finish_order?.includes(playerId)) {
     const reopened = await lobbyReopened()
     if (reopened.error) return { error: reopened.error }
-    if (!reopened.waiting) return { error: null }
+    // the seat is kept: report it as retained so the route unsubscribes the leaver's pushes like every other retained seat
+    if (!reopened.waiting) return { error: null, retained: true }
   }
 
   const order = session ? [...(session.turn_order ?? [])] : []

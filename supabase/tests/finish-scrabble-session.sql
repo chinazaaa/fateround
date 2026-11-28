@@ -362,10 +362,15 @@ begin
     v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(171))), v_states)->>'status', 'invalid');
   perform pg_temp.assert_eq('6g duplicate turn_order seat', public.deal_scrabble_session('GSG',
     v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(171), pg_temp.pid(171))), v_states)->>'status', 'invalid');
-  perform pg_temp.assert_eq('6g unknown seat', public.deal_scrabble_session('GSG', v_row,
-    v_states || jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'rack', '[]'::jsonb)))->>'status', 'invalid');
-  perform pg_temp.assert_eq('6g seat of another game', public.deal_scrabble_session('GSG', v_row,
-    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111))))->>'status', 'invalid');
+  -- a foreign seat is in BOTH turn_order and the state rows, so only the game-membership check (players.game_id) can reject it
+  v_out := public.deal_scrabble_session('GSG',
+    v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(171), pg_temp.pid(172), pg_temp.pid(111))),
+    v_states || jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'rack', '[]'::jsonb)));
+  perform pg_temp.assert_eq('6g unknown seat', (v_out->>'status', v_out->>'reason')::text, '(invalid,state_row)');
+  v_out := public.deal_scrabble_session('GSG',
+    v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(111))),
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111))));
+  perform pg_temp.assert_eq('6g seat of another game', (v_out->>'status', v_out->>'reason')::text, '(invalid,state_row)');
   perform pg_temp.assert_eq('6g duplicate state rows fail the duplicate check', public.deal_scrabble_session('GSG', v_row,
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(171)), jsonb_build_object('player_id', pg_temp.pid(171))))->>'reason', 'state_row_duplicate');
   perform pg_temp.assert_eq('6g no seats', public.deal_scrabble_session('GSG', v_row, '[]'::jsonb)->>'status', 'invalid');

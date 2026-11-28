@@ -22,12 +22,17 @@ RUN="$(printf '%04x' $((RANDOM % 65536)))"
 S="$(printf '%03d' $((RANDOM % 1000)))"
 TMPD=""
 GATE=$((100000 + RANDOM))
-psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
+# Every database call is bounded: finite connect, statement and lock timeouts, so a conflicting lock held by some other
+# transaction (on startup, on exit, or in a poll) fails the call instead of hanging CI. (The gate worker and the case
+# workers are separate psql processes by design: their waits are exactly what the cases observe.)
+psqlq() { PGCONNECT_TIMEOUT=10 PGOPTIONS="-c statement_timeout=30000 -c lock_timeout=30000" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 
 cleanup() {
   [ -n "$TMPD" ] && rm -rf "$TMPD"
-  psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'fin-$RUN-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('FINLU$S', 'FINLS$S', 'FINLM$S', 'FINLV$S', 'FINLD$S', 'FINLF$S')" >/dev/null 2>&1 || true
+  # cleanup failures are REPORTED but never change the exit status of the run (the original failure, if any, stays)
+  psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like 'fin-$RUN-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || echo "cleanup: could not terminate the run's sessions" >&2
+  psqlq -c "delete from public.games where id in ('FINLU$S', 'FINLS$S', 'FINLM$S', 'FINLV$S', 'FINLD$S', 'FINLF$S')" >/dev/null 2>&1 || echo "cleanup: could not delete the run's fixtures (FINL*$S)" >&2
+  return 0
 }
 trap cleanup EXIT
 cleanup
@@ -215,7 +220,7 @@ start_gate
 PGAPPNAME=fin-$RUN-first psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "begin; $CALL_G; select pg_advisory_xact_lock($GATE); commit;" >/dev/null 2>&1 &
 wait_for "the finisher holds its locks" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-first' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 OUT_F="$TMPD/out_F"
-PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.leave_scrabble_seat('FINLF$S', '$P12', '$VER', '{\"status_message\":\"B left\"}'::jsonb)->>'status'" >"$OUT_F" 2>&1 &
+PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.leave_scrabble_seat('FINLF$S', '$P12', '$VER', '{\"turn_order\":[\"$P11\"],\"status_message\":\"B left\"}'::jsonb)->>'status'" >"$OUT_F" 2>&1 &
 W_F=$!
 wait_for "the live leave waits on the finish" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate

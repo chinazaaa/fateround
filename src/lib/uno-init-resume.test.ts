@@ -11,7 +11,8 @@ type Result = { data: unknown; error: unknown; count?: number | null }
 function makeMock(opts: {
   gameError?: boolean
   existing?: { phase: string; turn_order: string[] } | null
-  hands?: number
+  hands?: string[]
+  failHandsDelete?: boolean
 }) {
   const ops: string[] = []
   function chain(result: Result): Promise<Result> & Record<string, unknown> {
@@ -31,7 +32,8 @@ function makeMock(opts: {
               : chain({ data: { timer_seconds: 0, uno_team_mode: false, uno_mode: 'classic' }, error: null })
           }
           if (table === 'uno_sessions') return chain({ data: opts.existing ?? null, error: null })
-          if (table === 'uno_player_hands') return chain({ data: null, error: null, count: opts.hands ?? 0 })
+          if (table === 'uno_player_hands')
+            return chain({ data: (opts.hands ?? []).map((id) => ({ player_id: id })), error: null })
           if (table === 'players')
             return chain({
               data: [
@@ -48,6 +50,8 @@ function makeMock(opts: {
         },
         delete() {
           ops.push(`${table}:delete`)
+          if (opts.failHandsDelete && table === 'uno_player_hands')
+            return chain({ data: null, error: { message: 'boom' } })
           return chain({ data: null, error: null })
         },
       }
@@ -59,15 +63,41 @@ function makeMock(opts: {
 
 describe('initializeUnoGame — a retry after a failed games flip', () => {
   it('a live session with every hand is resumed: nothing is dealt a second time', async () => {
-    const { supabase, ops } = makeMock({ existing: { phase: 'playing', turn_order: ['A', 'B'] }, hands: 2 })
+    const { supabase, ops } = makeMock({ existing: { phase: 'playing', turn_order: ['A', 'B'] }, hands: ['A', 'B'] })
     expect(await initializeUnoGame(supabase, 'G', ['A', 'B'])).toEqual({})
     expect(ops).toEqual([])
   })
 
-  it('a half-written deal (a session without all of its hands) is cleared and dealt again', async () => {
-    const { supabase, ops } = makeMock({ existing: { phase: 'playing', turn_order: ['A', 'B'] }, hands: 1 })
+  it('a half-written deal (a session without all of its hands) is cleared (hands AND session) and dealt again', async () => {
+    const { supabase, ops } = makeMock({ existing: { phase: 'playing', turn_order: ['A', 'B'] }, hands: ['A'] })
     expect(await initializeUnoGame(supabase, 'G', ['A', 'B'])).toEqual({})
-    expect(ops).toEqual(['uno_sessions:delete', 'uno_sessions:insert', 'uno_player_hands:insert'])
+    expect(ops).toEqual([
+      'uno_player_hands:delete',
+      'uno_sessions:delete',
+      'uno_sessions:insert',
+      'uno_player_hands:insert',
+    ])
+  })
+
+  it('a roster that CHANGED since the failed start (a player joined) is not resumed: the stale deal is cleared and re-dealt', async () => {
+    const { supabase, ops } = makeMock({ existing: { phase: 'playing', turn_order: ['B', 'C'] }, hands: ['B', 'C'] })
+    expect(await initializeUnoGame(supabase, 'G', ['A', 'B'])).toEqual({})
+    expect(ops).toEqual([
+      'uno_player_hands:delete',
+      'uno_sessions:delete',
+      'uno_sessions:insert',
+      'uno_player_hands:insert',
+    ])
+  })
+
+  it('a failed clear of the stale hands stops the deal (nothing is dealt on top of them)', async () => {
+    const { supabase, ops } = makeMock({
+      existing: { phase: 'playing', turn_order: ['B', 'C'] },
+      hands: ['B', 'C'],
+      failHandsDelete: true,
+    })
+    expect(await initializeUnoGame(supabase, 'G', ['A', 'B'])).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(ops).toEqual(['uno_player_hands:delete'])
   })
 
   it('a first start deals normally', async () => {
