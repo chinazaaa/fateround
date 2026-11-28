@@ -43,6 +43,15 @@ const base = makeSupabaseStub({
       error: null,
     }
   },
+  // Any direct write to the rounds or their answer keys would bypass the atomic start: record it.
+  rounds: ({ op }) => {
+    if (op !== 'select') writes.push(`rounds:${op}`)
+    return { data: [], error: null }
+  },
+  ttl_round_lies: ({ op }) => {
+    if (op !== 'select') writes.push(`ttl_round_lies:${op}`)
+    return { data: [], error: null }
+  },
   ttl_statements: () => ({ data: [stmt(A), stmt(B), stmt(C)], error: null }),
 })
 const supabase = {
@@ -88,6 +97,8 @@ describe('POST /api/games/[code]/start — Two Truths', () => {
     expect(rpcCalls.map((c) => c.name)).toEqual(['start_two_truths_game'])
     expect(writes).not.toContain('players:update')
     expect(writes).not.toContain('games:update')
+    // ...and neither the rounds nor their answer keys are written from the route.
+    expect(writes).toEqual([])
   })
 
   it('a game that is no longer waiting (finished by a host leave in between) answers 409 and is never re-activated', async () => {

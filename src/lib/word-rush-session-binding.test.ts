@@ -23,6 +23,15 @@ function unwrap(node: ts.Expression): ts.Expression {
   return n
 }
 
+/** `x.name` and `x['name']` (a string-literal key) are the same member access: its name and receiver, or null. */
+function memberOf(e: ts.Node): { name: string; receiver: ts.Expression } | null {
+  if (ts.isPropertyAccessExpression(e)) return { name: e.name.text, receiver: e.expression }
+  if (ts.isElementAccessExpression(e) && ts.isStringLiteralLike(e.argumentExpression)) {
+    return { name: e.argumentExpression.text, receiver: e.expression }
+  }
+  return null
+}
+
 /** The calls of one method chain, outermost first, down to the receiver that is not itself a call (parentheses are seen through). */
 function chainOf(top: ts.CallExpression): Chain['calls'] {
   const calls: Chain['calls'] = []
@@ -31,10 +40,10 @@ function chainOf(top: ts.CallExpression): Chain['calls'] {
     node = unwrap(node)
     if (!ts.isCallExpression(node)) break
     // The called METHOD may be parenthesized too: `(x.update)(patch)`.
-    const method = unwrap(node.expression)
-    if (!ts.isPropertyAccessExpression(method)) break
-    calls.push({ name: method.name.text, args: node.arguments })
-    node = method.expression
+    const method = memberOf(unwrap(node.expression))
+    if (!method) break
+    calls.push({ name: method.name, args: node.arguments })
+    node = method.receiver
   }
   return calls
 }
@@ -63,7 +72,7 @@ function sessionUpdateChains(sf: ts.SourceFile): Chain[] {
         top = top.parent
       }
       const parent = top.parent
-      const isInner = parent !== undefined && ts.isPropertyAccessExpression(parent) && parent.expression === top
+      const isInner = parent !== undefined && memberOf(parent) !== null && memberOf(parent)!.receiver === top
       if (!isInner) {
         const calls = chainOf(node)
         const from = calls.find(
@@ -146,6 +155,17 @@ describe('the scanner itself (self-checks on synthetic sources, through the same
     const wrapped = scan("void ((supabase.from('word_rush_sessions').update(patch)).eq('game_id', gameId))\n")
     expect(wrapped).toHaveLength(1)
     expect(bindsSessionId(wrapped[0])).toBe(false)
+  })
+
+  it('a literal BRACKET method call is the same as the dot form: found and rejected as unbound', () => {
+    const found = scan("void supabase.from('word_rush_sessions')['update'](patch).eq('game_id', gameId)\n")
+    expect(found).toHaveLength(1)
+    expect(bindsSessionId(found[0])).toBe(false)
+    const viaFrom = scan("void supabase['from']('word_rush_sessions').update(patch).eq('game_id', gameId)\n")
+    expect(viaFrom).toHaveLength(1)
+    const bound = scan("void supabase.from('word_rush_sessions')['update'](p)['eq']('id', session.id)\n")
+    expect(bound).toHaveLength(1)
+    expect(bindsSessionId(bound[0])).toBe(true)
   })
 
   it('a PARENTHESIZED called method is seen through as well', () => {

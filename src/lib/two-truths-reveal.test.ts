@@ -294,7 +294,9 @@ describe('a Two Truths round is activated through the locked database function o
   })
 
   it('a refused activation (the game finished meanwhile) opens nothing', async () => {
-    const { supabase } = makeSupabase({ data: { status: 'not_active' }, error: null })
+    const { supabase, writes } = makeSupabase({ data: { status: 'not_active' }, error: null })
     expect((await syncTwoTruthsGameState(supabase, 'ABCD')).code).toBe('not_finished')
+    // ...and nothing is opened by a direct write either.
+    expect(writes).toEqual([])
   })
 })

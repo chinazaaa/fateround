@@ -31,10 +31,11 @@
 -- no longer exists (unreachable while that foreign key holds; handled so a dangling reference could never pin the
 -- linkage). A linkage that belongs to someone else (another user, another session) is never touched.
 --
--- Bookkeeping: a finish this function commits writes the durable `finish_bookkeeping` marker in the same UPDATE only
--- when `p_track_bookkeeping` is true (Word Rush, whose Play Again already refuses to reset while the marker is owed);
--- every other game's side effects run inline in the caller, exactly as for any other finish. Writing the marker for
--- games whose Play Again does not honour it would let the cron sweep run a finish's bookkeeping against a replayed game.
+-- Bookkeeping: a finish this function commits writes the durable `finish_bookkeeping` marker in the same UPDATE when
+-- `p_track_bookkeeping` is true. The host-leave path asks for it for EVERY game type (src/app/api/players/route.ts), and
+-- resumes it through the existing lease claim (recoverFinishBookkeeping) on the first answer and on any retry. Play Again
+-- (src/app/api/games/[code]/play-again/route.ts) refuses to reset a finished game while that marker is owed or held, for
+-- Word Rush (ensureWordRushGameFinalized) and for every other game type, so a retry can never run against a replayed game.
 --
 -- Additive: one new function, nothing existing is altered.
 
@@ -774,6 +775,9 @@ begin
     v_now := clock_timestamp();
     update public.games
       set status = 'finished', finished_at = v_now, result_reason = 'host_ended', pending_host_player_id = null,
+          -- the departed host's linkage goes with the finish (the same release settle_host_leave makes): the branch already
+          -- requires that the seat is the game's host and the generation is the recorded one
+          host_user_id = null,
           finish_bookkeeping = jsonb_build_object('finished_at', v_now, 'attempts', 0)
       where id = v_game.id;
     update public.word_rush_sessions

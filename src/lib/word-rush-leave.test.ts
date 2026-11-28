@@ -30,6 +30,7 @@ import {
   ensureWordRushGameFinalized,
   leaveWordRushPlayer,
   processWordRushAdvance,
+  processWordRushPrompt,
   resumeWordRushFinalization,
   reconcileWordRushRound,
 } from './word-rush-server'
@@ -89,6 +90,7 @@ function fake(
     rpc?: (fn: string, args: Record<string, unknown>) => { data?: unknown; error?: { message: string } | null }
     teamRows?: Fake['teamRows']
     failMarkerQuery?: boolean
+    failTeamRows?: boolean
     /** Successive reads of the session row (the last one repeats), instead of the one `session`. */
     sessionReads?: Array<Record<string, unknown>>
   } = {}
@@ -166,7 +168,13 @@ function fake(
                       : { data: opts.answers ?? [], error: null }
                   )
                 }
-                if (table === 'word_rush_players') return resolve({ data: out.teamRows, error: null })
+                if (table === 'word_rush_players') {
+                  return resolve(
+                    opts.failTeamRows
+                      ? { data: null, error: { message: 'teams unreadable' } }
+                      : { data: out.teamRows, error: null }
+                  )
+                }
                 if (
                   opts.failMarkerQuery &&
                   table === 'word_rush_sessions' &&
@@ -382,6 +390,7 @@ describe('leaveWordRushPlayer', () => {
     [{ status: 'game_finished' }, { status: 'game_finished' }],
     [{ status: 'deleted' }, { status: 'deleted' }],
     [{ status: 'bookkeeping_owed' }, { status: 'pending' }],
+    [{ status: 'finalizing' }, { status: 'pending' }],
   ])('the database answered %j', async (answer, expected) => {
     const f = fake(baseSession(), { rpc: answerFor(answer) })
     expect(await leaveWordRushPlayer(f.client, 'GAME', 'b')).toEqual(expected)
@@ -565,8 +574,14 @@ describe('review 6098178725', () => {
     const f = fake(baseSession({ status: 'finished', phase: 'finished', round_finalize: owed() }), {
       failAnswers: true,
     })
+    finish.opts = null
     expect((await resumeWordRushFinalization(f.client, 'GAME')).error).toBeUndefined()
     expect(f.events.some((e) => e.startsWith('select:word_rush_answers'))).toBe(false)
+    // The finish itself IS attempted, bound to the session the marker belongs to (it does not return early).
+    expect(finish.opts).toMatchObject({
+      trackBookkeeping: true,
+      roundGuard: { params: { p_session_id: 'S-1' } },
+    })
   })
 
   it('...while a marker that still owes the award reads them (and fails when they are unreadable)', async () => {
@@ -653,5 +668,87 @@ describe('review 6098178725', () => {
     })
     await completeWordRushLeaves(sweep.client, 'GAME')
     expect(deferred.bookkeeping).toEqual([['GAME', 'F9', true]])
+  })
+
+  it('team rows are read AFTER the recorded leavers (a leave in between can never leave a departed player in)', async () => {
+    const rows = [
+      { player_id: 'a', team: 1, score: 0, players: { spectator: false } },
+      { player_id: 'c', team: 2, score: 0, players: { spectator: false } },
+    ]
+    const f = fake(baseSession({ mode: 'team', roster: ['a', 'c'], leavers: [] }), { teamRows: rows })
+    await reconcileWordRushRound(f.client, 'GAME')
+    const leavers = f.events.indexOf('select:word_rush_sessions:leavers')
+    const seats = f.events.findIndex((e) => e.startsWith('select:word_rush_players'))
+    expect(leavers).toBeGreaterThanOrEqual(0)
+    expect(seats).toBeGreaterThan(leavers)
+  })
+
+  it('a lost prompt claim that finds ANOTHER turn is not reported as a setter change; the same turn still is', async () => {
+    const awaiting = (extra: Record<string, unknown>) =>
+      baseSession({ phase: 'awaiting_prompt', prompt_setter_player_id: 'a', turn_index: 2, ...extra })
+    const moved = fake(null, {
+      claimWins: false,
+      sessionReads: [awaiting({}), awaiting({ turn_index: 3, prompt_setter_player_id: 'b' })],
+    })
+    const other = await processWordRushPrompt(moved.client, 'GAME', 'a', 'a', 'z')
+    expect(other.error).not.toBe('Only the prompt setter can enter letters')
+    const same = fake(null, {
+      claimWins: false,
+      sessionReads: [awaiting({}), awaiting({ prompt_setter_player_id: 'b' })],
+    })
+    expect((await processWordRushPrompt(same.client, 'GAME', 'a', 'a', 'z')).error).toBe(
+      'Only the prompt setter can enter letters'
+    )
+  })
+
+  it('a team turn advance never matches a session that has been finished meanwhile', async () => {
+    const rows = [
+      { player_id: 'a', team: 1, score: 0, players: { spectator: false } },
+      { player_id: 'b', team: 1, score: 0, players: { spectator: false } },
+      { player_id: 'c', team: 2, score: 0, players: { spectator: false } },
+      { player_id: 'd', team: 2, score: 0, players: { spectator: false } },
+      { player_id: 'e', team: 3, score: 0, players: { spectator: false } },
+      { player_id: 'f', team: 3, score: 0, players: { spectator: false } },
+    ]
+    // Team 1 can no longer field a turn (its setter + answerer are gone): the turn is ended and the next team's turn started.
+    const f = fake(
+      baseSession({
+        mode: 'team',
+        roster: ['c', 'd', 'e', 'f'],
+        leavers: ['a', 'b'],
+        num_teams: 3,
+        active_team: 1,
+        total_rounds: 3,
+        turn_index: 0,
+      }),
+      {
+        teamRows: rows,
+      }
+    )
+    await reconcileWordRushRound(f.client, 'GAME')
+    const advance = f.updates.find((u) => u.patch.phase === 'intermission')
+    expect(advance).toBeDefined()
+    expect(advance!.filters).toContainEqual(['status', 'finished'])
+  })
+
+  it('an unreadable team read while advancing into a manual round is an internal failure, not a throw', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const f = fake(
+        baseSession({
+          mode: 'team',
+          phase: 'intermission',
+          start_letter: null,
+          intermission_deadline_at: '2000-01-01T00:00:00.000Z',
+          prompt_setter_player_id: 'a',
+        }),
+        { failTeamRows: true }
+      )
+      const result = await processWordRushAdvance(f.client, 'GAME')
+      expect(result.internal).toBe(true)
+      expect(f.updates).toEqual([])
+    } finally {
+      log.mockRestore()
+    }
   })
 })

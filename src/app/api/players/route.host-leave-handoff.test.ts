@@ -225,6 +225,8 @@ type SettleArgs = {
 }
 /** Every end_game_if_host_alone answer. */
 let endCalls: Array<{ status: string; finished_now?: boolean }> = []
+/** The arguments of every end_game_if_host_alone call. */
+let endArgs: Array<Record<string, unknown>> = []
 /** Number of upcoming settle_host_leave CALLS that fail (a transport error, not a decision). */
 let settleFailBudget = 0
 /** Runs when an unreachable settle call fails (the world moves on while the leave cannot settle). */
@@ -456,6 +458,7 @@ async function rpc(name: string, args: Record<string, unknown>) {
     const hook = beforeEndCheck
     beforeEndCheck = null
     hook?.()
+    endArgs.push(args as Record<string, unknown>)
     const answer = endModel(args as Parameters<typeof endModel>[0])
     endCalls.push(answer)
     return { data: answer, error: null }
@@ -578,6 +581,7 @@ beforeAll(async () => {
 beforeEach(() => {
   failEndCheck = false
   endCalls = []
+  endArgs = []
   keepSeat = false
   failPlayerDelete = false
   afterPlayerDelete = null
@@ -1300,6 +1304,8 @@ describe('DELETE /api/players: a host-left finish owes its bookkeeping, durably'
       const res = await leave()
       expect(res.status).toBe(200)
       expect(endCalls).toEqual([{ status: 'finished', finished_now: true, finished_at: FINISHED_AT }])
+      // The finish is asked to write the durable marker (whatever the recovery mock reports afterwards).
+      expect(endArgs.map((a) => a.p_track_bookkeeping)).toEqual([true])
       expect(bookkeeping.calls).toEqual(['ABCD'])
     }
   )
@@ -2026,6 +2032,8 @@ describe('DELETE /api/players: a stale settlement never selects a later finish f
     // The later session's live round was never closed by the stale settlement.
     expect(tables.rounds.map((r) => r.status)).toEqual(['active'])
     expect(roundUpdateLog).toEqual([])
+    // ...and its bookkeeping lease was never claimed on behalf of the replayed session's finish.
+    expect(bookkeeping.calls).toEqual([])
   })
 })
 

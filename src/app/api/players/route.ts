@@ -2017,15 +2017,16 @@ async function settleHostLeave(
     // wrote the durable marker, bound to its own finished_at, so resuming is a lease claim on that marker: it does
     // nothing for a finish without one (someone else's), runs once for one that is owed (a repeat after a lost response
     // included), and cannot award twice. The session-bound cleanup is idempotent too.
-    if (outcome.result_reason === 'host_ended') await resumeHostLeftBookkeeping(admin, h.gameId)
-    // A finish the settlement only OBSERVED (it did not commit it) under a changed session is another session's finish:
-    // this stale leave has no business closing its rounds or wiping its chat, whatever timestamp it carries. A finish the
-    // settlement itself committed (after a same-generation Start) is this leave's own.
-    const cleanup =
-      !outcome.finished_now && (outcome.replayed ?? outcome.session_changed)
-        ? { finished: true, hostEnded: false, error: null }
-        : // Bound to the finish the settlement observed, never to whichever finish the game has by the time this runs.
-          await completeHostLeftCleanup(admin, h.gameId, { finishedAt: outcome.finished_at })
+    // A finish the settlement only OBSERVED (it did not commit it) under a changed session is another session's finish
+    // (a replay that ended again): this stale leave has no business claiming its bookkeeping, closing its rounds or wiping its
+    // chat, whatever timestamp it carries. A finish the settlement itself committed (after a same-generation Start), or one
+    // of the SAME generation seen again after a lost response, is this leave's own.
+    const foreign = !outcome.finished_now && (outcome.replayed ?? outcome.session_changed)
+    if (!foreign && outcome.result_reason === 'host_ended') await resumeHostLeftBookkeeping(admin, h.gameId)
+    const cleanup = foreign
+      ? { finished: true, hostEnded: false, error: null }
+      : // Bound to the finish the settlement observed, never to whichever finish the game has by the time this runs.
+        await completeHostLeftCleanup(admin, h.gameId, { finishedAt: outcome.finished_at })
     // The seat is gone, so a failed cleanup has no later leave to retry it: surface it for an operator.
     if (cleanup.error) console.error(`players: cleanup after host-left finish failed for ${h.gameId}`, cleanup.error)
   }

@@ -318,6 +318,8 @@ export async function reopenSecretMessageBoard(
       status: 'active',
       session_started_at: now,
       anonymous_messages_trimmed_at: null,
+      // A reopened board is a new session: it carries no finish reason of the previous one (the join guard reads it).
+      result_reason: null,
     })
     .eq('id', gameId)
 

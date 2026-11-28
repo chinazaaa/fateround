@@ -4,7 +4,9 @@ import { getSupabaseAnon } from '@/lib/supabase-anon'
 import { createParticipantSchema, updateParticipantSchema, deleteParticipantSchema } from '@/lib/validation'
 import { parseJsonBody } from '@/lib/parse-body'
 import { normalizeGender, type ParticipantInput } from '@/lib/participants'
-import { isMostLikelyTo } from '@/lib/game-types'
+import { isMostLikelyTo, isWordRushGame, parseGameType } from '@/lib/game-types'
+import { PARTICIPANT_AMBIGUOUS_MESSAGE } from '@/lib/codewords'
+import { leaveWordRushPlayer } from '@/lib/word-rush-server'
 import { assertHostGame, deleteJoinerPair } from '@/lib/game-admin'
 import { getSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -201,15 +203,24 @@ export async function DELETE(req: NextRequest) {
       .maybeSingle()
 
     if (linkedPlayer) {
-      // A Word Rush player who has LEFT keeps the seat until the database completes the leave (and settles a departed host's
-      // handoff in that same transaction). Deleting it from here would bypass that, so it waits for the leave to complete.
-      const { data: wr } = await getSupabaseAdmin()
-        .from('word_rush_sessions')
-        .select('leavers')
-        .eq('game_id', auth.id)
-        .maybeSingle()
-      if (((wr as { leavers?: string[] | null } | null)?.leavers ?? []).includes(linkedPlayer.id)) {
-        return NextResponse.json({ error: 'This player is leaving the game — try again in a moment' }, { status: 409 })
+      // Word Rush: the seat of a player who is leaving (or has left) belongs to word_rush_remove_player, which decides under the
+      // games row lock whether the seat goes now or waits for what the leave owes, and settles a departed host's handoff in the
+      // transaction that deletes it. A plain delete from here could race that (and a failed read could not tell), so the host's
+      // removal IS a leave: one database function, the participant row goes with the seat.
+      if (isWordRushGame(parseGameType(auth.game!.game_type))) {
+        const left = await leaveWordRushPlayer(getSupabaseAdmin(), auth.id, linkedPlayer.id)
+        switch (left.status) {
+          case 'deleted':
+          case 'pending':
+            return NextResponse.json({ success: true, ...(left.status === 'pending' ? { pending: true } : {}) })
+          case 'participant_ambiguous':
+            return NextResponse.json({ error: PARTICIPANT_AMBIGUOUS_MESSAGE }, { status: 409 })
+          case 'game_finished':
+          case 'host_ended':
+            return NextResponse.json({ error: 'The game has finished' }, { status: 409 })
+          default:
+            return NextResponse.json({ error: left.error }, { status: 500 })
+        }
       }
       await deleteJoinerPair(getSupabaseAdmin(), auth.id, linkedPlayer)
       return NextResponse.json({ success: true })

@@ -791,7 +791,7 @@ select pg_temp.assert_eq('10 intermission: the departed setter is replaced', (se
 
 -- 19. A departed host who would be ALONE at the deferred delete ends the game and keeps the seat (as the leave stage does).
 select pg_temp.remk('STY', 'active');
-update public.games set host_player_id = pg_temp.late('STY') where id = 'STY';
+update public.games set host_player_id = pg_temp.late('STY'), host_user_id = '11111111-1111-1111-1111-111111111111' where id = 'STY';
 insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, leavers, leaver_handoffs)
   values ('19191919-0000-4000-8000-000000001913', 'STY', 'individual', 'automatic', 1, 3, 60, 'playing', array[]::uuid[],
           array[pg_temp.late('STY'), pg_temp.early('STY')],
@@ -800,6 +800,7 @@ create temp table w_alone2 as select public.word_rush_remove_player('STY', pg_te
 select pg_temp.assert_eq('19 host alone at the deferred delete: host_ended', (select r->>'status' from w_alone2), 'host_ended');
 select pg_temp.assert_eq('19 ...the seat is KEPT', (select count(*) from public.players where id = pg_temp.late('STY')), 1::bigint);
 select pg_temp.assert_eq('19 ...the game is finished with its reason and marker', (pg_temp.g('STY')).result_reason || ':' || ((pg_temp.g('STY')).finish_bookkeeping is not null)::text, 'host_ended:true');
+select pg_temp.assert_eq('19 ...the departed host linkage goes with the finish', (pg_temp.g('STY')).host_user_id, null::uuid);
 select pg_temp.assert_eq('19 ...the handoff record is consumed', (select leaver_handoffs from public.word_rush_sessions where game_id = 'STY'), '{}'::jsonb);
 
 -- 17. The same-name participants a removal counts are LOCKED by that statement and are the rows deleted.

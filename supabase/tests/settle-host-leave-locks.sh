@@ -441,7 +441,9 @@ reap "$FIN_PID" "finish (case I)"
 [ "$(psqlq -c "select status from public.games where id = '$GI'")" = "finished" ] || fail "case I: the finish did not apply after the activation"
 [ "$(psqlq -c "select public.activate_ttl_round('$GI', '$RND2', 2)->>'status'")" = "not_active" ] || fail "case I: a round was activated in a finished game"
 [ "$(psqlq -c "select status from public.rounds where id = '$RND2'")" = "pending" ] || fail "case I: the second round was opened after the finish"
-[ "$(psqlq -c "select jsonb_array_length(public.finish_rounds_of_finished_session('$GI', (select finished_at from public.games where id = '$GI'))->'round_ids') ")" = "1" ] || fail "case I: the cleanup did not close exactly the activated round"
+[ "$(psqlq -c "select public.finish_rounds_of_finished_session('$GI', (select finished_at from public.games where id = '$GI'))->'round_ids'")" = "[\"$RND1\"]" ] || fail "case I: the cleanup did not close exactly the activated round"
+[ "$(psqlq -c "select status from public.rounds where id = '$RND1'")" = "finished" ] || fail "case I: the activated round was not the one closed"
+[ "$(psqlq -c "select status from public.rounds where id = '$RND2'")" = "pending" ] || fail "case I: the cleanup touched the round that was never activated"
 
 # ---- Case J: two concurrent activations serialise on the games row (no lock-upgrade deadlock) ----------------------
 # activate_ttl_round() takes the games row FOR NO KEY UPDATE FIRST. A blocker holds the first pending round, so the first

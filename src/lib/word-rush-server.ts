@@ -193,15 +193,10 @@ async function runRoundFinalization(
 }
 
 async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
-  const { data, error } = await supabase
-    .from('word_rush_players')
-    .select('player_id,team,score,players!inner(spectator)')
-    .eq('game_id', gameId)
-    .not('players.spectator', 'is', true)
-    .order('created_at')
-  if (error) throw error
-  // A player who has LEFT keeps their seat until the leave is completed (see leaveWordRushPlayer): they are not a member of
-  // their team any more.
+  // The recorded leavers are read BEFORE the seats: a leave that commits between the two reads (it records the leaver, and
+  // the completed seat deletion clears the record in the same transaction) can then never leave a departed player in the
+  // result. A player who has LEFT keeps their seat until the leave is completed (see leaveWordRushPlayer) and is not a member
+  // of their team any more, whether or not the seat still exists.
   const { data: sessionRow, error: leaversError } = await supabase
     .from('word_rush_sessions')
     .select('leavers')
@@ -209,6 +204,13 @@ async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
     .maybeSingle()
   if (leaversError) throw leaversError
   const left = new Set(((sessionRow as { leavers?: string[] | null } | null)?.leavers ?? []) as string[])
+  const { data, error } = await supabase
+    .from('word_rush_players')
+    .select('player_id,team,score,players!inner(spectator)')
+    .eq('game_id', gameId)
+    .not('players.spectator', 'is', true)
+    .order('created_at')
+  if (error) throw error
   return (data ?? [])
     .filter((r) => !left.has((r as { player_id: string }).player_id))
     .map((r) => ({
@@ -465,7 +467,13 @@ export async function processWordRushPrompt(
 
   if (!claimed?.length) {
     const { session: now } = await loadSession(supabase, gameId)
-    if (now && now.id === session.id && now.phase === 'awaiting_prompt' && now.prompt_setter_player_id !== playerId) {
+    if (
+      now &&
+      now.id === session.id &&
+      now.turn_index === session.turn_index &&
+      now.phase === 'awaiting_prompt' &&
+      now.prompt_setter_player_id !== playerId
+    ) {
       return { error: 'Only the prompt setter can enter letters' }
     }
     return { error: 'Prompt already set' }
@@ -697,6 +705,8 @@ async function endTeamTurn(
     // turn index) must match no row.
     .eq('id', session.id)
     .eq('turn_index', session.turn_index)
+    // ...and never over a session that has been finished meanwhile (a leave's reconciliation claimed the finish).
+    .neq('status', 'finished')
   if (error) return internalFailure('word-rush:end-team-turn', error)
   return {}
 }
@@ -1045,10 +1055,16 @@ export async function processWordRushAdvance(
   // pick a replacement for a manual round; automatic prompts have no setter.
   let replacementSetter: { id: string | null } | null = null
   if (nextPhase === 'awaiting_prompt' && session.prompt_mode === 'manual') {
-    const members =
-      session.mode === 'individual'
-        ? session.roster
-        : (teamRoster(await loadTeamRows(supabase, gameId)).get(session.active_team) ?? [])
+    let members: string[]
+    try {
+      members =
+        session.mode === 'individual'
+          ? session.roster
+          : (teamRoster(await loadTeamRows(supabase, gameId)).get(session.active_team) ?? [])
+    } catch (err) {
+      // Nothing was written: a retryable internal failure, answered like every other failed read (never an unhandled throw).
+      return internalFailure('word-rush:advance:teams', err)
+    }
     if (!session.prompt_setter_player_id || !members.includes(session.prompt_setter_player_id)) {
       replacementSetter = {
         id:
@@ -1265,6 +1281,8 @@ export async function leaveWordRushPlayer(
     case 'deleted':
       return { status: 'deleted' }
     case 'bookkeeping_owed':
+    case 'finalizing':
+      // Already recorded: the seat deletion waits for what the finish still owes.
       return { status: 'pending' }
     case 'left':
       break
