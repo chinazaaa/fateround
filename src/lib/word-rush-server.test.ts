@@ -280,6 +280,8 @@ describe('individual round finalization is resumable', () => {
           filters.every((f) => {
             const v = read(row, f.col)
             if (f.method === 'eq') return v === f.val
+            // `leavers != '{}'` (PostgREST array literal): only a session that has someone recorded as having left.
+            if (f.method === 'neq' && f.val === '{}') return Array.isArray(v) && v.length > 0
             if (f.method === 'neq') return v !== f.val
             if (f.method === 'in') return (f.val as unknown[]).includes(v)
             if (f.method === 'is') return (v ?? null) === f.val
@@ -314,6 +316,10 @@ describe('individual round finalization is resumable', () => {
               return { data: [{ id: 'S1' }], error: null }
             }
             if (listMode) {
+              // (the leaves sweep asks for sessions with a recorded leaver only: none here)
+              if (filters.some((f) => f.method === 'neq' && f.val === '{}') && !matches(state.session)) {
+                return { data: [], error: null }
+              }
               return { data: state.session.round_finalize ? [{ ...state.session }] : [], error: null }
             }
             return { data: { ...state.session }, error: null }

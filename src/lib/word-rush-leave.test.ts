@@ -10,6 +10,18 @@ vi.mock('@/lib/game-finish', async (importOriginal) => ({
     return { error: null, won: finish.won, bookkeeping: finish.bookkeeping }
   },
   recoverFinishBookkeeping: async () => ({ state: 'none' }),
+  runPostFinishBookkeeping: async (...args: unknown[]) => {
+    deferred.bookkeeping.push(args.slice(1))
+    return 'done'
+  },
+}))
+// What a deferred host-left finish owes besides the bookkeeping: the session-bound cleanup.
+const deferred = vi.hoisted(() => ({ bookkeeping: [] as unknown[][], cleanup: [] as unknown[][] }))
+vi.mock('@/lib/admin-end-game', () => ({
+  completeHostLeftCleanup: async (...args: unknown[]) => {
+    deferred.cleanup.push(args.slice(1))
+    return { finished: true, error: null }
+  },
 }))
 
 import {
@@ -17,6 +29,7 @@ import {
   resumeAllWordRushFinalizations,
   ensureWordRushGameFinalized,
   leaveWordRushPlayer,
+  processWordRushAdvance,
   reconcileWordRushRound,
 } from './word-rush-server'
 
@@ -62,6 +75,8 @@ type Fake = {
   updates: Array<{ patch: Record<string, unknown>; filters: Array<[string, unknown]> }>
   rpcCalls: Array<{ fn: string; args: Record<string, unknown> }>
   teamRows: Array<{ player_id: string; team: number; score: number; players: { spectator: boolean } }>
+  /** Everything the code did, in order: `select:<table>:<columns>`, `update:<table>:<status>`, `rpc:<fn>:<stage>`. */
+  events: string[]
 }
 
 function fake(
@@ -72,6 +87,9 @@ function fake(
     failAnswers?: boolean
     rpc?: (fn: string, args: Record<string, unknown>) => { data?: unknown; error?: { message: string } | null }
     teamRows?: Fake['teamRows']
+    failMarkerQuery?: boolean
+    /** Successive reads of the session row (the last one repeats), instead of the one `session`. */
+    sessionReads?: Array<Record<string, unknown>>
   } = {}
 ): Fake {
   const out: Fake = {
@@ -79,10 +97,13 @@ function fake(
     updates: [],
     rpcCalls: [],
     teamRows: opts.teamRows ?? [],
+    events: [],
   }
+  let sessionReads = 0
   out.client = {
     rpc: async (fn: string, args: Record<string, unknown>) => {
       out.rpcCalls.push({ fn, args })
+      out.events.push(`rpc:${fn}:${String(args.p_stage ?? '')}`)
       const r = opts.rpc?.(fn, args) ?? { data: { status: 'deleted' } }
       return { data: r.data ?? null, error: r.error ?? null }
     },
@@ -94,11 +115,35 @@ function fake(
         {
           get: (_t, prop) => {
             if (prop === 'maybeSingle')
-              return async () => ({ data: table === 'games' ? { status: 'active' } : session, error: null })
+              return async () => {
+                if (table === 'word_rush_sessions' && opts.sessionReads) {
+                  return {
+                    data: opts.sessionReads[Math.min(sessionReads++, opts.sessionReads.length - 1)],
+                    error: null,
+                  }
+                }
+                return { data: table === 'games' ? { status: 'active' } : session, error: null }
+              }
+            if (prop === 'order' || prop === 'limit')
+              return (a: unknown) => {
+                out.events.push(`${String(prop)}:${table}:${String(a)}`)
+                return api
+              }
             if (prop === 'update')
               return (patch: Record<string, unknown>) => {
                 updating = true
                 if (table === 'word_rush_sessions') out.updates.push({ patch, filters })
+                out.events.push(`update:${table}:${String(patch.status ?? '')}`)
+                return api
+              }
+            if (prop === 'select')
+              return (cols?: string) => {
+                out.events.push(`select:${table}:${cols ?? ''}`)
+                return api
+              }
+            if (prop === 'not')
+              return (k: string) => {
+                filters.push([k, 'not'])
                 return api
               }
             if (prop === 'eq' || prop === 'is' || prop === 'in' || prop === 'neq')
@@ -121,6 +166,13 @@ function fake(
                   )
                 }
                 if (table === 'word_rush_players') return resolve({ data: out.teamRows, error: null })
+                if (
+                  opts.failMarkerQuery &&
+                  table === 'word_rush_sessions' &&
+                  filters.some(([k]) => k === 'round_finalize')
+                ) {
+                  return resolve({ data: null, error: { message: 'marker query failed' } })
+                }
                 // The cron backstop's listing of sessions that still have recorded leavers.
                 if (table === 'word_rush_sessions' && filters.some(([k, v]) => k === 'leavers' && v === '{}')) {
                   return resolve({ data: [{ game_id: 'GAME' }], error: null })
@@ -242,23 +294,50 @@ describe('completeWordRushLeaves: every recorded leaver is completed by the data
     }
   })
 
-  it('the round decision comes BEFORE any seat is deleted (the order is part of the contract)', async () => {
-    const order: string[] = []
-    const f = fake(baseSession(), {
-      rpc: (fn, args) => {
-        order.push(`${fn}:${args.p_stage}`)
-        return { data: { status: 'deleted' } }
-      },
-    })
-    const original = f.client.from.bind(f.client)
-    ;(f.client as unknown as { from: unknown }).from = (table: string) => {
-      if (table === 'word_rush_sessions') order.push('read-session')
-      return original(table)
-    }
+  it('the recorded leavers are READ first, then the round is closed, then the seats are deleted (the order is the contract)', async () => {
+    const f = fake(baseSession(), { rpc: () => ({ data: { status: 'deleted' } }) })
     await completeWordRushLeaves(f.client, 'GAME')
-    const firstDelete = order.findIndex((o) => o === 'word_rush_remove_player:delete')
-    expect(firstDelete).toBeGreaterThan(0)
-    expect(order.slice(0, firstDelete)).toContain('read-session')
+    const read = f.events.indexOf('select:word_rush_sessions:leavers')
+    // The round-closing update recorded for THIS fixture (nobody but the setter is left, so the round must be closed).
+    const closed = f.events.indexOf('update:word_rush_sessions:finished')
+    const firstDelete = f.events.indexOf('rpc:word_rush_remove_player:delete')
+    expect(read).toBeGreaterThanOrEqual(0)
+    expect(closed).toBeGreaterThan(read)
+    expect(firstDelete).toBeGreaterThan(closed)
+  })
+
+  it('only the leavers captured BEFORE the decision are deleted (one recorded meanwhile waits for the next runner)', async () => {
+    // The first read of the session (the leavers) sees ['b']; later reads (the round decision) see a newer leave.
+    const f = fake(null, {
+      rpc: () => ({ data: { status: 'deleted' } }),
+      sessionReads: [baseSession({ leavers: ['b'] }), baseSession({ leavers: ['b', 'late'] })],
+    })
+    await completeWordRushLeaves(f.client, 'GAME')
+    expect(f.rpcCalls.filter((c) => c.args.p_stage === 'delete').map((c) => c.args.p_player_id)).toEqual(['b'])
+  })
+
+  it('a departed host whose handoff was settled in the deleting transaction: a game that ENDED there owes its bookkeeping and cleanup', async () => {
+    deferred.bookkeeping.length = 0
+    deferred.cleanup.length = 0
+    const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b'] }), {
+      rpc: () => ({
+        data: { status: 'deleted', settled: { status: 'finished', finished_now: true, finished_at: 'F1' } },
+      }),
+    })
+    await completeWordRushLeaves(f.client, 'GAME')
+    expect(deferred.bookkeeping).toEqual([['GAME', 'F1', true]])
+    expect(deferred.cleanup).toEqual([['GAME', { finishedAt: 'F1' }]])
+  })
+
+  it('...while a settlement that only nominated a successor owes nothing more', async () => {
+    deferred.bookkeeping.length = 0
+    deferred.cleanup.length = 0
+    const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b'] }), {
+      rpc: () => ({ data: { status: 'deleted', settled: { status: 'nominated' } } }),
+    })
+    await completeWordRushLeaves(f.client, 'GAME')
+    expect(deferred.bookkeeping).toEqual([])
+    expect(deferred.cleanup).toEqual([])
   })
 })
 
@@ -271,7 +350,9 @@ describe('leaveWordRushPlayer', () => {
 
   it('stage `leave` names the game and player; a host leave carries the session generation and the bookkeeping flag', async () => {
     const f = fake(baseSession({ leavers: [] }), { rpc: answerFor({ status: 'left' }) })
-    await leaveWordRushPlayer(f.client, 'GAME', 'b', { hostLeave: { sessionsPlayed: 4, trackBookkeeping: true } })
+    await leaveWordRushPlayer(f.client, 'GAME', 'b', {
+      hostLeave: { sessionsPlayed: 4, sessionStartedAt: 'S-T', trackBookkeeping: true },
+    })
     expect(f.rpcCalls[0]).toEqual({
       fn: 'word_rush_remove_player',
       args: {
@@ -281,6 +362,7 @@ describe('leaveWordRushPlayer', () => {
         p_host_leave: true,
         p_sessions_played: 4,
         p_track_bookkeeping: true,
+        p_session_started_at: 'S-T',
       },
     })
     const plain = fake(baseSession({ leavers: [] }), { rpc: answerFor({ status: 'left' }) })
@@ -311,6 +393,29 @@ describe('leaveWordRushPlayer', () => {
     ])
     const held = fake(baseSession({ leavers: ['b'] }), { rpc: answerFor({ status: 'left' }, { status: 'finalizing' }) })
     expect(await leaveWordRushPlayer(held.client, 'GAME', 'b')).toEqual({ status: 'pending' })
+  })
+
+  it('a departing HOST leave is durable: the outcome says the database settles the handoff with the seat deletion', async () => {
+    const hostLeave = { sessionsPlayed: 4, sessionStartedAt: 'S-T', trackBookkeeping: true }
+    const deletedNow = fake(baseSession({ leavers: ['b'] }), {
+      rpc: answerFor({ status: 'left' }, { status: 'deleted' }),
+    })
+    expect(await leaveWordRushPlayer(deletedNow.client, 'GAME', 'b', { hostLeave })).toEqual({
+      status: 'deleted',
+      durableHandoff: true,
+    })
+    const deferredDelete = fake(baseSession({ leavers: ['b'] }), {
+      rpc: answerFor({ status: 'left' }, { status: 'bookkeeping_owed' }),
+    })
+    expect(await leaveWordRushPlayer(deferredDelete.client, 'GAME', 'b', { hostLeave })).toEqual({
+      status: 'pending',
+      durableHandoff: true,
+    })
+    // A result that keeps the seat leaves the handoff to the caller (the retained host stays the host).
+    const finished = fake(baseSession({ leavers: ['b'] }), {
+      rpc: answerFor({ status: 'left' }, { status: 'game_finished' }),
+    })
+    expect(await leaveWordRushPlayer(finished.client, 'GAME', 'b', { hostLeave })).toEqual({ status: 'game_finished' })
   })
 
   it('a failure after the leave is recorded is `pending` (a runner completes it), never an error that implies a rollback', async () => {
@@ -348,6 +453,13 @@ describe('ensureWordRushGameFinalized completes the recorded leaves before Play 
     expect((await ensureWordRushGameFinalized(f.client, 'GAME')).error).toMatch(/still being finalized/)
   })
 
+  it('refuses while a recorded leave could not be deleted at all (an ambiguous participant): the reset would discard the record', async () => {
+    const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b'] }), {
+      rpc: () => ({ data: { status: 'participant_ambiguous' } }),
+    })
+    expect((await ensureWordRushGameFinalized(f.client, 'GAME')).error).toMatch(/could not be removed/)
+  })
+
   it('passes when every recorded leave is completed (or retained for a result)', async () => {
     const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b', 'c'] }), {
       rpc: (_fn, args) => ({ data: { status: args.p_player_id === 'b' ? 'deleted' : 'game_finished' } }),
@@ -365,5 +477,70 @@ describe('the cron backstop completes recorded leaves with no client involved', 
     expect(f.rpcCalls.filter((c) => c.args.p_stage === 'delete').map((c) => c.args.p_player_id)).toEqual(['b'])
     expect(result.failed).toBe(0)
     expect(result.resumed).toBeGreaterThanOrEqual(1)
+  })
+
+  it('counts only seats it actually deleted: a blocked or retained seat is neither completed nor failed', async () => {
+    const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b'] }), {
+      rpc: () => ({ data: { status: 'participant_ambiguous' } }),
+    })
+    expect(await resumeAllWordRushFinalizations(f.client)).toEqual({ resumed: 0, failed: 0 })
+  })
+
+  it('looks at a window wider than the work per tick, oldest first, so a retained entry cannot hide the ones behind it', async () => {
+    const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b'] }))
+    await resumeAllWordRushFinalizations(f.client, 4)
+    expect(f.events).toContain('order:word_rush_sessions:updated_at')
+    expect(f.events).toContain('limit:word_rush_sessions:20')
+  })
+
+  it('when the marker query fails AFTER the leave pass, the leave pass totals are kept and the failure is added', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b'] }), {
+        rpc: () => ({ data: { status: 'deleted' } }),
+        failMarkerQuery: true,
+      })
+      expect(await resumeAllWordRushFinalizations(f.client)).toEqual({ resumed: 1, failed: 1 })
+    } finally {
+      log.mockRestore()
+    }
+  })
+})
+
+describe('advancing into a manual round revalidates the prepared prompt setter', () => {
+  const intermission = (extra: Record<string, unknown> = {}) =>
+    baseSession({
+      phase: 'intermission',
+      start_letter: null,
+      end_letter: null,
+      intermission_deadline_at: '2000-01-01T00:00:00.000Z',
+      prompt_setter_player_id: 'gone',
+      roster: ['a', 'c'],
+      leavers: ['gone'],
+      turn_index: 1,
+      ...extra,
+    })
+
+  it('a setter who left during the intermission is replaced from the current roster', async () => {
+    const f = fake(intermission())
+    expect(await processWordRushAdvance(f.client, 'GAME')).toEqual({})
+    const advance = f.updates.find((u) => u.patch.phase === 'awaiting_prompt')
+    expect(advance?.patch.prompt_setter_player_id).toBe('c')
+  })
+
+  it('a setter who is still in keeps the round untouched', async () => {
+    const f = fake(intermission({ prompt_setter_player_id: 'a' }))
+    await processWordRushAdvance(f.client, 'GAME')
+    const advance = f.updates.find((u) => u.patch.phase === 'awaiting_prompt')
+    expect(advance).toBeDefined()
+    expect(advance!.patch).not.toHaveProperty('prompt_setter_player_id')
+  })
+
+  it('automatic prompts have no setter to revalidate', async () => {
+    const f = fake(intermission({ prompt_mode: 'automatic', start_letter: 'a', end_letter: 'z' }))
+    await processWordRushAdvance(f.client, 'GAME')
+    const advance = f.updates.find((u) => u.patch.phase === 'playing')
+    expect(advance).toBeDefined()
+    expect(advance!.patch).not.toHaveProperty('prompt_setter_player_id')
   })
 })

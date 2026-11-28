@@ -45,6 +45,11 @@
 # Case N (a Word Rush leave vs a Play Again reset, both orders): a reset that is committing makes the leave wait and then find a
 # lobby (the seat goes at once, nothing recorded); a leave that is in flight makes the reset wait and is recorded in the old session.
 #
+# Case Q / R (a joiners-mode removal that deletes a participant BY NAME vs a same-name participant insert in flight): both
+# remove_player_if_game_open (Q) and word_rush_remove_player (R) take the games row FOR UPDATE, which conflicts with the KEY SHARE
+# the insert holds on it, so the removal waits for the insert and then COUNTS it (`participant_ambiguous`, nothing deleted)
+# instead of counting one participant and deleting both.
+#
 # Case I (Two Truths activation vs the finish): the finish waits for a committing activation; afterwards no round can be
 # activated in the finished game.
 #
@@ -64,9 +69,9 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 RUN="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 APP="shl-$RUN"
 GATE=$(( ((0x${RUN} * 131 + $$) % 2000000000) + 1 ))
-GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"; GJ="SHJ$RUN"; GK="SHK$RUN"; GM="SHM$RUN"; GN="SHN$RUN"; GP="SHP$RUN"; GL="SHL$RUN"
+GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"; GJ="SHJ$RUN"; GK="SHK$RUN"; GM="SHM$RUN"; GN="SHN$RUN"; GP="SHP$RUN"; GL="SHL$RUN"; GQ="SHQ$RUN"; GR="SHR$RUN"
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
-HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; RND3="$(new_uuid)"; RND4="$(new_uuid)"; HOSTK="$(new_uuid)"; JOINERK="$(new_uuid)"; JOINERL="$(new_uuid)"; WRSEAT2="$(new_uuid)"; WRSEAT3="$(new_uuid)"; WRSEAT4="$(new_uuid)"; WRSEAT5="$(new_uuid)"; WRKEEP2="$(new_uuid)"; WRKEEP3="$(new_uuid)"; WRSESS3="$(new_uuid)"; WRSESS4="$(new_uuid)"; WRSESS5="$(new_uuid)"; HOSTM="$(new_uuid)"; WRSEAT6="$(new_uuid)"; WRKEEP4="$(new_uuid)"; WRKEEP5="$(new_uuid)"; WRSESS6="$(new_uuid)"; JOINERM="$(new_uuid)"
+HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; RND3="$(new_uuid)"; RND4="$(new_uuid)"; HOSTK="$(new_uuid)"; JOINERK="$(new_uuid)"; JOINERL="$(new_uuid)"; WRSEAT2="$(new_uuid)"; WRSEAT3="$(new_uuid)"; WRSEAT4="$(new_uuid)"; WRSEAT5="$(new_uuid)"; WRKEEP2="$(new_uuid)"; WRKEEP3="$(new_uuid)"; WRSESS3="$(new_uuid)"; WRSESS4="$(new_uuid)"; WRSESS5="$(new_uuid)"; HOSTM="$(new_uuid)"; WRSEAT6="$(new_uuid)"; WRKEEP4="$(new_uuid)"; WRKEEP5="$(new_uuid)"; WRSESS6="$(new_uuid)"; JOINERM="$(new_uuid)"; QSEAT="$(new_uuid)"; RSEAT="$(new_uuid)"
 WORKERS=()
 # Every worker's output lives in ONE run-specific directory that cleanup removes (no temp files are left behind).
 OUT_DIR="$(mktemp -d)"
@@ -74,7 +79,7 @@ OUT_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "$OUT_DIR"
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI', '$GJ', '$GK', '$GL', '$GM', '$GN', '$GP')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI', '$GJ', '$GK', '$GL', '$GM', '$GN', '$GP', '$GQ', '$GR')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -558,5 +563,34 @@ reap "$LEAVEP_PID" "leave (case P)"
 [ "$(tr -d '[:space:]' <"$OUT_P")" = "left" ] || fail "case P: expected left, got '$(cat "$OUT_P")'"
 # turn 1 over the roster without the leaver [B, C] picks C (reading the stale turn 0 would pick B)
 [ "$(psqlq -c "select prompt_setter_player_id from public.word_rush_sessions where id = '$WRSESS6'")" = "$WRKEEP5" ] || fail "case P: the setter was chosen from a stale session"
+
+# ---- Case Q / R: a participant delete by NAME vs a same-name participant insert in flight --------------------------------
+participant_race() { # case letter, game id, seat id, sql of the removal call
+  local c="$1" g="$2" seat="$3" call="$4" out="$OUT_DIR/out_$1"
+  psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status, participant_mode) values ('$g', 'lock test $c', 'tok-$RUN-$c', 'word_rush', 'waiting', 'joiners');
+insert into public.players (id, game_id, name) values ('$seat', '$g', 'Dup');
+insert into public.participants (game_id, name) values ('$g', 'Dup');
+SQL
+  start_gate
+  PGAPPNAME="$APP-ins$c" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+    begin;
+    insert into public.participants (game_id, name) values ('$g', 'Dup');
+    select pg_advisory_xact_lock($GATE);
+    commit;" >/dev/null 2>&1 &
+  local ins_pid=$!
+  wait_for "the insert holds its uncommitted participant (case $c)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-ins$c' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+  PGAPPNAME="$APP-rm$c" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$call" >"$out" 2>&1 &
+  local rm_pid=$!
+  wait_blocked "the removal waits for the participant insert (the games row lock, case $c)" "rm$c" "ins$c"
+  open_gate
+  reap "$ins_pid" "participant insert (case $c)"
+  reap "$rm_pid" "removal (case $c)"
+  [ "$(tr -d '[:space:]' <"$out")" = "participant_ambiguous" ] || fail "case $c: expected participant_ambiguous, got '$(cat "$out")'"
+  [ "$(psqlq -c "select count(*) from public.participants where game_id = '$g'")" = "2" ] || fail "case $c: a participant was deleted"
+  [ "$(psqlq -c "select count(*) from public.players where id = '$seat'")" = "1" ] || fail "case $c: the seat was deleted"
+}
+participant_race Q "$GQ" "$QSEAT" "select public.remove_player_if_game_open('$GQ', '$QSEAT', 'Dup')->>'status'"
+participant_race R "$GR" "$RSEAT" "select public.word_rush_remove_player('$GR', '$RSEAT')->>'status'"
 
 echo "ok"

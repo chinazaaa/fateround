@@ -36,6 +36,7 @@ function mockSupabase(
     deleteError?: { message: string }
     roundError?: { message: string }
     roundStatus?: string
+    wipeStatus?: string
     gameRow?: Record<string, unknown>
   } = {}
 ): {
@@ -84,7 +85,7 @@ function mockSupabase(
         recorded.deletes.push(args.p_kind)
         recorded.deleteBounds.push(args.p_finished_at)
       }
-      return { data: { status: 'wiped' }, error: opts.deleteError ?? null }
+      return { data: { status: opts.wipeStatus ?? 'wiped' }, error: opts.deleteError ?? null }
     },
   } as unknown as SupabaseClient
   return { supabase, recorded }
@@ -450,6 +451,20 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
       superseded: true,
     })
     expect(recorded.roundUpdates).toBe(1)
+  })
+
+  it('a wipe that finds the room reopened (not_current_session) is superseded too, while a wipe FAILURE stays an error', async () => {
+    const moved = mockSupabase({ gameRow: row(), wipeStatus: 'not_current_session' })
+    expect(await completeHostLeftCleanup(moved.supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      error: null,
+      superseded: true,
+    })
+    expect(moved.recorded.deletes).toEqual(['codewords'])
+    const failed = mockSupabase({ gameRow: row(), deleteError: { message: 'boom' } })
+    const result = await completeHostLeftCleanup(failed.supabase, 'G', { finishedAt: FINISHED_AT })
+    expect(result.error).toBeTruthy()
+    expect(result.superseded).toBeUndefined()
   })
 
   it('without an observed finish, the captured session identity binds it: a replayed session is left alone', async () => {

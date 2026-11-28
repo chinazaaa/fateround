@@ -1615,19 +1615,59 @@ describe('DELETE /api/players: the lost response of a delete that the SQL guards
 })
 
 describe('DELETE /api/players: a Word Rush leave is ONE durable database step, never compensated', () => {
-  it('deleted: the seat is gone and the generic handoff follows (the host leave option is session-bound)', async () => {
+  it('deleted (lobby / no durable record): the seat is gone and the generic handoff follows', async () => {
     setup('word_rush')
     const res = await leave()
     expect(res.status).toBe(200)
     expect(wordRush.calls).toHaveLength(1)
     expect(wordRush.calls[0]).toMatchObject({
       playerId: HOST_PID,
-      opts: { hostLeave: { sessionsPlayed: tables.games[0].sessions_played ?? null, trackBookkeeping: true } },
+      opts: {
+        hostLeave: {
+          sessionsPlayed: tables.games[0].sessions_played ?? null,
+          sessionStartedAt: tables.games[0].session_started_at ?? null,
+          trackBookkeeping: true,
+        },
+      },
     })
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
     // The generic removal function is not used for Word Rush.
     expect(removeArgs).toEqual([])
     expect(settleCalls).toHaveLength(1)
+  })
+
+  it('the leave carries the generation and session start CAPTURED before the roster change, not a later read', async () => {
+    setup('word_rush')
+    const captured = {
+      sessionsPlayed: tables.games[0].sessions_played,
+      sessionStartedAt: tables.games[0].session_started_at,
+    }
+    // The game moves on (a replay) after the capture and before the Word Rush removal runs (the end check sits between).
+    beforeEndCheck = () => Object.assign(tables.games[0], { sessions_played: 2, session_started_at: 'S2' })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(wordRush.calls[0]).toMatchObject({
+      opts: { hostLeave: { sessionsPlayed: captured.sessionsPlayed, sessionStartedAt: captured.sessionStartedAt } },
+    })
+    expect(tables.games[0].sessions_played).toBe(2)
+  })
+
+  it('a durable handoff (recorded with the leave, settled by the database in the deleting transaction) is NOT settled by this request', async () => {
+    setup('word_rush')
+    wordRush.outcome = { status: 'deleted', durableHandoff: true }
+    expect((await leave()).status).toBe(200)
+    expect(settleCalls).toHaveLength(0)
+    expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+  })
+
+  it('a deferred seat deletion (pending, durable handoff) settles nothing early either: the seat stays and still names the host', async () => {
+    setup('word_rush')
+    wordRush.outcome = { status: 'pending', durableHandoff: true }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
+    expect(settleCalls).toHaveLength(0)
+    expect(tables.games[0].host_player_id).toBe(HOST_PID)
   })
 
   it('pending: the leave is durable but the seat stays until what it owes is applied: a retained success, no rollback of anything', async () => {
@@ -1803,6 +1843,8 @@ describe('DELETE /api/players: the host-left cleanup is bound to the finish THIS
     bookkeeping.during = () => {
       committedWhenBookkeepingRan = { ...tables.games[0] }
       replayedAndEndedAgain()
+      // F2's own round is live from the moment F2 is installed.
+      tables.rounds = [{ id: 'f2-round', game_id: 'ABCD', status: 'active' }]
     }
     const res = await leave()
     expect(res.status).toBe(200)
@@ -1815,6 +1857,10 @@ describe('DELETE /api/players: the host-left cleanup is bound to the finish THIS
     expect(removeArgs.some((a) => (a as { p_host_leave?: boolean }).p_host_leave)).toBe(true)
     expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
     expect(wipeCalls).toEqual([])
+    // F2 was installed WHILE the bookkeeping ran (the settlement had already committed F1): the cleanup is bound to F1, so F2's
+    // live round is not closed. (Distinct from the schedule below, where the settlement itself observes F2 before any
+    // bookkeeping starts.)
+    expect(tables.rounds.map((r) => r.status)).toEqual(['active'])
   })
 })
 

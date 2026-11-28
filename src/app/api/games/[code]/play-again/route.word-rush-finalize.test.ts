@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GAME_CODE, HOST_TOKEN, codeParams, gameRow, jsonRequest, makeSupabaseStub } from '@/test-support/host-auth'
 
 vi.mock('next/server', async (importOriginal) => ({
@@ -23,11 +23,16 @@ const finalize = vi.hoisted(() => ({
   error: null as string | null,
   /** When set, the finalizer waits for this promise (a finalization that is still running). */
   hold: null as Promise<void> | null,
+  /** Called when the finalizer starts (the test waits on it instead of sleeping). */
+  onStart: null as (() => void) | null,
+  /** Releases a held finalizer: always run by the cleanup, so a failed assertion can never leave the request pending. */
+  release: null as (() => void) | null,
 }))
 vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/word-rush-server')>()),
   ensureWordRushGameFinalized: async () => {
     finalize.calls++
+    finalize.onStart?.()
     if (finalize.hold) await finalize.hold
     return finalize.error ? { error: finalize.error } : {}
   },
@@ -61,8 +66,11 @@ beforeEach(() => {
   finalize.calls = 0
   finalize.error = null
   finalize.hold = null
+  finalize.onStart = null
+  finalize.release = null
   writes.length = 0
 })
+afterEach(() => finalize.release?.())
 
 const post = () => POST(jsonRequest(`/api/games/${GAME_CODE}/play-again`, { hostToken: HOST_TOKEN }), codeParams())
 const finished = (extra: Record<string, unknown> = {}) =>
@@ -80,19 +88,23 @@ describe('POST /api/games/[code]/play-again — a finished Word Rush game', () =
 
   it('the first delete waits for a finalization that is still running, then the reset succeeds', async () => {
     current = finished()
-    let release!: () => void
+    const started = new Promise<void>((resolve) => {
+      finalize.onStart = resolve
+    })
     finalize.hold = new Promise<void>((resolve) => {
-      release = resolve
+      finalize.release = resolve
     })
     const pending = post()
-    // Let the request run as far as it can: it must be parked on the finalizer, with nothing deleted or reset yet.
-    await new Promise((resolve) => setTimeout(resolve, 20))
+    // Wait until the request is PARKED on the finalizer (no sleeping): nothing may have been deleted or reset by then.
+    await started
     expect(finalize.calls).toBe(1)
     expect(writes).toEqual([])
-    release()
+    // Destructive writes begin only after the finalizer settles.
+    finalize.release!()
     const res = await pending
     expect(res.status).toBe(200)
     expect(writes).toContain('rounds:delete')
+    expect(writes.indexOf('rounds:delete')).toBeGreaterThanOrEqual(0)
   })
 
   it('nothing owed: the reset runs (the check came first) and the reopened game carries no previous finish reason', async () => {

@@ -2,7 +2,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
-import { markGameFinished, recoverFinishBookkeeping } from '@/lib/game-finish'
+import { completeHostLeftCleanup } from '@/lib/admin-end-game'
+import { markGameFinished, recoverFinishBookkeeping, runPostFinishBookkeeping } from '@/lib/game-finish'
 import {
   pickRandomLetterPair,
   pairSupportsMinLengthForLetters,
@@ -838,7 +839,7 @@ export async function resumeAllWordRushFinalizations(
     .limit(limit)
   if (error) {
     internalFailure('word-rush:resume-all-finalizations', error)
-    return { resumed: 0, failed: 1 }
+    return { resumed: leaves.completed, failed: leaves.failed + 1 }
   }
   let resumed = 0
   let failed = 0
@@ -851,12 +852,23 @@ export async function resumeAllWordRushFinalizations(
   return { resumed: resumed + leaves.completed, failed: failed + leaves.failed }
 }
 
-/** Complete the recorded leaves of every game that has any (bounded per call; the next tick takes the rest). */
+/**
+ * Complete the recorded leaves of every game that has any. A seat the database keeps on purpose (a finish with a result: the
+ * leave record is dropped there, so it is not swept again) or cannot delete yet (an ambiguous participant, round effects or
+ * bookkeeping still owed) must not hide the games behind it, so the sweep looks at a window several times wider than the
+ * work it does per tick, oldest first, and counts only what it actually completed (a deleted seat) or failed (an error);
+ * a seat that is merely blocked is neither.
+ */
 async function completeAllWordRushLeaves(
   supabase: SupabaseClient,
   limit: number
 ): Promise<{ completed: number; failed: number }> {
-  const { data, error } = await supabase.from('word_rush_sessions').select('game_id').neq('leavers', '{}').limit(limit)
+  const { data, error } = await supabase
+    .from('word_rush_sessions')
+    .select('game_id')
+    .neq('leavers', '{}')
+    .order('updated_at', { ascending: true })
+    .limit(limit * 5)
   if (error) {
     internalFailure('word-rush:complete-all-leaves', error)
     return { completed: 0, failed: 1 }
@@ -866,7 +878,7 @@ async function completeAllWordRushLeaves(
   for (const row of (data ?? []) as Array<{ game_id: string }>) {
     const result = await completeWordRushLeaves(supabase, row.game_id)
     if (result.error) failed += 1
-    else completed += 1
+    else if (Object.values(result.statuses).some((st) => st === 'deleted')) completed += 1
   }
   return { completed, failed }
 }
@@ -1027,12 +1039,32 @@ export async function processWordRushAdvance(
         ? `Round ${session.current_round} — ${teamLabel(session.active_team)} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}${wordRushMinLengthHint(session.min_word_length)}`
         : session.status_message
 
+  // The setter was prepared when the round ended; someone who LEFT during the intermission is no longer eligible (the database
+  // only replaces the setter of a round that is already awaiting its prompt). Revalidate against the CURRENT roster / team and
+  // pick a replacement for a manual round; automatic prompts have no setter.
+  let replacementSetter: { id: string | null } | null = null
+  if (nextPhase === 'awaiting_prompt' && session.prompt_mode === 'manual') {
+    const members =
+      session.mode === 'individual'
+        ? session.roster
+        : (teamRoster(await loadTeamRows(supabase, gameId)).get(session.active_team) ?? [])
+    if (!session.prompt_setter_player_id || !members.includes(session.prompt_setter_player_id)) {
+      replacementSetter = {
+        id:
+          session.mode === 'individual'
+            ? promptSetterForIndividualRound(session.roster, session.turn_index)
+            : promptSetterForTeamRound(members, teamRoundIndexFromTurn(session.turn_index, session.num_teams)),
+      }
+    }
+  }
+
   const { error: updateError } = await supabase
     .from('word_rush_sessions')
     .update({
       phase: nextPhase,
       intermission_deadline_at: null,
       status_message: statusMessage,
+      ...(replacementSetter ? { prompt_setter_player_id: replacementSetter.id } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
@@ -1101,25 +1133,27 @@ export type WordRushLeaveStatus =
   | 'game_missing'
 
 /**
- * Complete every recorded leave of a game: first decide what the departures mean for the round (reconcileWordRushRound),
- * then delete the seat of each player who has left, as far as the database allows (it keeps a seat while the round's owed
- * effects or the finished game's bookkeeping still read the leaver's rows). Safe to call at any time, from anyone; it only
- * finishes what the durable leavers list says is owed, and every step is idempotent. Never throws.
+ * Complete every recorded leave of a game: the recorded leavers are READ first, then the departures are decided for the round
+ * (reconcileWordRushRound), then the seat of each captured player is deleted, as far as the database allows (it keeps a seat
+ * while the round's owed effects or the finished game's bookkeeping still read the leaver's rows). A leave that is recorded
+ * while this runs is not in the captured list, so no seat is deleted on the strength of a round decision that was made
+ * without it: the next runner decides again and takes it. Safe to call at any time, from anyone; it only finishes what the
+ * durable leavers list says is owed, and every step is idempotent. Never throws.
  */
 export async function completeWordRushLeaves(
   supabase: SupabaseClient,
   gameId: string
 ): Promise<{ error?: string; internal?: boolean; statuses: Record<string, WordRushLeaveStatus> }> {
   const statuses: Record<string, WordRushLeaveStatus> = {}
-  const decided = await reconcileWordRushRound(supabase, gameId)
-  if (decided.error) return { error: decided.error, internal: decided.internal, statuses }
   const { data, error } = await supabase
     .from('word_rush_sessions')
     .select('leavers')
     .eq('game_id', gameId)
     .maybeSingle()
   if (error) return { ...internalFailure('word-rush:complete-leaves:read', error), statuses }
-  const leavers = ((data as { leavers?: string[] | null } | null)?.leavers ?? []) as string[]
+  const leavers = [...(((data as { leavers?: string[] | null } | null)?.leavers ?? []) as string[])]
+  const decided = await reconcileWordRushRound(supabase, gameId)
+  if (decided.error) return { error: decided.error, internal: decided.internal, statuses }
   for (const playerId of leavers) {
     const { data: answer, error: deleteError } = await supabase.rpc('word_rush_remove_player', {
       p_game_id: gameId,
@@ -1127,15 +1161,42 @@ export async function completeWordRushLeaves(
       p_stage: 'delete',
     })
     if (deleteError) return { ...internalFailure('word-rush:complete-leaves:delete', deleteError), statuses }
-    statuses[playerId] = ((answer as { status?: string } | null)?.status ?? 'game_missing') as WordRushLeaveStatus
+    const result = answer as { status?: string; settled?: DeferredHostSettle } | null
+    statuses[playerId] = (result?.status ?? 'game_missing') as WordRushLeaveStatus
+    if (result?.settled) await finishDeferredHostSettle(supabase, gameId, result.settled)
   }
   return { statuses }
 }
 
+/** What `settle_host_leave` answered inside the transaction that deleted a departed host's seat. */
+type DeferredHostSettle = { status?: string; finished_now?: boolean; finished_at?: string }
+
+/**
+ * The handoff of a host whose seat deletion was deferred is settled by the database in the same transaction as the deletion
+ * (word_rush_remove_player). When that settlement ENDED the game (nobody was left to take over) the finish owes what every
+ * host-left finish owes: the post-finish bookkeeping (its marker is already durable) and the session-bound cleanup. Best-effort:
+ * the settlement itself is committed and the marker keeps the bookkeeping recoverable, so nothing here is allowed to throw.
+ */
+async function finishDeferredHostSettle(supabase: SupabaseClient, gameId: string, settled: DeferredHostSettle) {
+  if (settled.status !== 'finished' || !settled.finished_now || !settled.finished_at) return
+  try {
+    await runPostFinishBookkeeping(supabase, gameId, settled.finished_at, true)
+    const cleanup = await completeHostLeftCleanup(supabase, gameId, { finishedAt: settled.finished_at })
+    if (cleanup.error)
+      console.error(`word-rush: cleanup after a deferred host-left finish failed for ${gameId}`, cleanup.error)
+  } catch (err) {
+    console.error(`word-rush: post-finish work after a deferred host-left finish failed for ${gameId}`, err)
+  }
+}
+
 export type WordRushLeaveOutcome =
-  | { status: 'deleted' }
+  /**
+   * `durableHandoff`: a departing host's handoff was recorded WITH the leave and is settled by the database in the transaction
+   * that deletes the seat, so the caller must not settle it itself (now or earlier than that deletion).
+   */
+  | { status: 'deleted'; durableHandoff?: boolean }
   /** The leave is committed (off the roster, recorded) but the seat stays until what it owes is applied: a runner completes it. */
-  | { status: 'pending' }
+  | { status: 'pending'; durableHandoff?: boolean }
   | { status: 'game_finished' }
   | { status: 'host_ended'; finishedAt: string }
   | { status: 'participant_ambiguous' }
@@ -1151,7 +1212,9 @@ export async function leaveWordRushPlayer(
   supabase: SupabaseClient,
   gameId: string,
   playerId: string,
-  opts: { hostLeave?: { sessionsPlayed: number | null; trackBookkeeping: boolean } } = {}
+  opts: {
+    hostLeave?: { sessionsPlayed: number | null; sessionStartedAt: string | null; trackBookkeeping: boolean }
+  } = {}
 ): Promise<WordRushLeaveOutcome> {
   const { data, error } = await supabase.rpc('word_rush_remove_player', {
     p_game_id: gameId,
@@ -1162,6 +1225,7 @@ export async function leaveWordRushPlayer(
           p_host_leave: true,
           p_sessions_played: opts.hostLeave.sessionsPlayed,
           p_track_bookkeeping: opts.hostLeave.trackBookkeeping,
+          p_session_started_at: opts.hostLeave.sessionStartedAt,
         }
       : {}),
   })
@@ -1186,12 +1250,14 @@ export async function leaveWordRushPlayer(
   const completed = await completeWordRushLeaves(supabase, gameId)
   if (completed.error) {
     // The leave itself is committed and recorded: the round decision / seat deletion is simply derived again by the next runner.
-    return { status: 'pending' }
+    return { status: 'pending', ...(opts.hostLeave ? { durableHandoff: true } : {}) }
   }
   const mine = completed.statuses[playerId]
-  if (mine === 'deleted' || mine === undefined) return { status: 'deleted' }
+  const durableHandoff = opts.hostLeave ? true : undefined
   if (mine === 'game_finished') return { status: 'game_finished' }
-  return { status: 'pending' }
+  if (mine === 'deleted' || mine === undefined)
+    return { status: 'deleted', ...(durableHandoff ? { durableHandoff } : {}) }
+  return { status: 'pending', ...(durableHandoff ? { durableHandoff } : {}) }
 }
 
 export async function assignWordRushTeam(
@@ -1292,6 +1358,13 @@ export async function ensureWordRushGameFinalized(
   const leaves = await completeWordRushLeaves(supabase, gameId)
   if (leaves.error || Object.values(leaves.statuses).some((st) => st === 'finalizing' || st === 'bookkeeping_owed')) {
     return { error: 'The previous game is still being finalized — try again in a moment' }
+  }
+  // ...and never discard the record of a leave whose seat the database did NOT delete (an ambiguous participant name that
+  // appeared after the leave): the reset deletes the session row, and with it the leavers list, which would turn that seat
+  // back into a lobby player. `game_finished` is the one intentional exception (the seat is part of a finished result and the
+  // database has already dropped its leave record).
+  if (Object.values(leaves.statuses).some((st) => st !== 'deleted' && st !== 'game_finished')) {
+    return { error: 'A player who left still has a seat that could not be removed yet — resolve it or try again' }
   }
   return {}
 }

@@ -581,14 +581,14 @@ select pg_temp.assert_eq('17e not callable by clients', has_function_privilege('
 -- 17d. The host-leave path takes the games row FOR UPDATE (a join's KEY SHARE conflicts with it), the other removals do not;
 --      event times taken after a lock wait are clock_timestamp(), not the transaction start.
 select pg_temp.assert_eq('17d host-leave removal locks FOR UPDATE',
-  pg_get_functiondef('public.remove_player_if_game_open(text, uuid, text, boolean, integer, boolean)'::regprocedure) ~* 'if p_host_leave then\s+select \* into v_game from public.games where id = upper\(p_game_id\) for update;', true);
-select pg_temp.assert_eq('17d the Word Rush host leave locks FOR UPDATE too (stage leave only)',
-  pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean)'::regprocedure) ~* 'if p_stage = ''leave'' and p_host_leave then\s+select \* into v_game from public.games where id = upper\(p_game_id\) for update;', true);
+  pg_get_functiondef('public.remove_player_if_game_open(text, uuid, text, boolean, integer, boolean)'::regprocedure) ~* 'if p_host_leave or p_participant_name is not null then\s+select \* into v_game from public.games where id = upper\(p_game_id\) for update;', true);
+select pg_temp.assert_eq('17d the Word Rush removal locks the games row FOR UPDATE at every stage (host-alone finish; joiners participant delete)',
+  pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)'::regprocedure) ~* 'select \* into v_game from public.games where id = upper\(p_game_id\) for update;\s+if not found', true);
 select pg_temp.assert_eq('17d the Word Rush function takes the session row lock AFTER the games row (the established order)',
-  position('word_rush_sessions where game_id = v_game.id for update' in pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean)'::regprocedure))
-    > position('from public.games where id = upper(p_game_id) for no key update' in pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean)'::regprocedure))
-  and position('from public.games where id = upper(p_game_id) for no key update' in pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean)'::regprocedure)) > 0, true);
-select pg_temp.assert_eq('19 service role only', has_function_privilege('anon', 'public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean)', 'execute') or has_function_privilege('authenticated', 'public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean)', 'execute'), false);
+  position('word_rush_sessions where game_id = v_game.id for update' in pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)'::regprocedure))
+    > position('from public.games where id = upper(p_game_id) for update' in pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)'::regprocedure))
+  and position('from public.games where id = upper(p_game_id) for update' in pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)'::regprocedure)) > 0, true);
+select pg_temp.assert_eq('19 service role only', has_function_privilege('anon', 'public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)', 'execute') or has_function_privilege('authenticated', 'public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)', 'execute'), false);
 select pg_temp.assert_eq('17d activation stamps started_at with clock_timestamp()',
   pg_get_functiondef('public.activate_ttl_round(text, uuid, integer)'::regprocedure) ~* 'started_at = clock_timestamp\(\)', true);
 select pg_temp.assert_eq('17d no function of this change takes the transaction-start time for an event',
@@ -696,6 +696,7 @@ insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams
   values ('19191919-0000-4000-8000-000000001906', 'ST0', 'individual', 'automatic', 1, 3, 60, 'playing',
           array[pg_temp.late('ST0'), pg_temp.early('ST0')]);
 insert into public.participants (game_id, name) values ('ST0', 'Late'), ('ST0', 'Late'), ('ST0', 'Early');
+create temp table pt0 as select (array_agg(id order by id))[1] as linked, (array_agg(id order by id))[2] as other from public.participants where game_id = 'ST0' and name = 'Late';
 select pg_temp.assert_eq('19 ambiguous unlinked name: refused', public.word_rush_remove_player('ST0', pg_temp.late('ST0'))->>'status', 'participant_ambiguous');
 select pg_temp.assert_eq('19 ...nothing changed: still on the roster', (select roster from public.word_rush_sessions where game_id = 'ST0'), array[pg_temp.late('ST0'), pg_temp.early('ST0')]);
 select pg_temp.assert_eq('19 ...not recorded as a leaver', (select cardinality(leavers) from public.word_rush_sessions where game_id = 'ST0'), 0);
@@ -704,10 +705,58 @@ select pg_temp.assert_eq('19 an unambiguous unlinked name leaves and its partici
 select pg_temp.assert_eq('19 ...delete stage', public.word_rush_remove_player('ST0', pg_temp.early('ST0'), 'delete')->>'status', 'deleted');
 select pg_temp.assert_eq('19 ...its participant is gone', (select count(*) from public.participants where game_id = 'ST0' and name = 'Early'), 0::bigint);
 -- A LINKED seat takes precedence over the name.
-update public.players set participant_id = (select id from public.participants where game_id = 'ST0' and name = 'Late' order by id limit 1) where id = pg_temp.late('ST0');
+update public.players set participant_id = (select linked from pt0) where id = pg_temp.late('ST0');
 select pg_temp.assert_eq('19 a linked seat leaves', public.word_rush_remove_player('ST0', pg_temp.late('ST0'))->>'status', 'left');
 select pg_temp.assert_eq('19 ...and is deleted with only ITS participant', public.word_rush_remove_player('ST0', pg_temp.late('ST0'), 'delete')->>'status', 'deleted');
-select pg_temp.assert_eq('19 ...the same-named other participant stays', (select count(*) from public.participants where game_id = 'ST0' and name = 'Late'), 1::bigint);
+select pg_temp.assert_eq('19 ...the linked participant is the one that went', (select count(*) from public.participants where id = (select linked from pt0)), 0::bigint);
+select pg_temp.assert_eq('19 ...the same-named other participant stays', (select count(*) from public.participants where id = (select other from pt0)), 1::bigint);
+
+-- The delete stage with NO session (a lobby that was reopened) never deletes a seat: nothing was recorded for it.
+select pg_temp.mk('STU', 'waiting');
+select pg_temp.assert_eq('19 delete stage on a reopened lobby: not_left', public.word_rush_remove_player('STU', pg_temp.late('STU'), 'delete')->>'status', 'not_left');
+select pg_temp.assert_eq('19 ...the seat of a non-leaver remains', (select count(*) from public.players where id = pg_temp.late('STU')), 1::bigint);
+
+-- A naturally finished game whose round effects are still owed: a recorded leaver's seat waits (the effects read its rows).
+select pg_temp.mk('STY', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, status, roster, leavers)
+  values ('19191919-0000-4000-8000-000000001908', 'STY', 'individual', 'automatic', 1, 3, 60, 'finished', 'finished',
+          array[pg_temp.early('STY')], array[pg_temp.late('STY')]);
+update public.games set status = 'finished', finished_at = now() where id = 'STY';
+update public.word_rush_sessions set round_finalize = jsonb_build_object('session_id', id, 'turn_index', 0, 'round', 1, 'is_last', true, 'turn_seconds', 60) where game_id = 'STY';
+select pg_temp.assert_eq('19 finished, a recorded leaver, round effects owed: finalizing', public.word_rush_remove_player('STY', pg_temp.late('STY'), 'delete')->>'status', 'finalizing');
+select pg_temp.assert_eq('19 ...the seat stays', (select count(*) from public.players where id = pg_temp.late('STY')), 1::bigint);
+update public.word_rush_sessions set round_finalize = null where game_id = 'STY';
+select pg_temp.assert_eq('19 ...and goes once nothing is owed', public.word_rush_remove_player('STY', pg_temp.late('STY'), 'delete')->>'status', 'deleted');
+
+-- A player who has LEFT (recorded, seat awaiting its delete) is not a successor of a host who leaves.
+select pg_temp.mk('ST_', 'active');
+update public.games set host_player_id = pg_temp.late('ST_') where id = 'ST_';
+update public.players set spectator = false where id = pg_temp.early('ST_');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, leavers)
+  values ('19191919-0000-4000-8000-000000001909', 'ST_', 'individual', 'automatic', 1, 3, 60, 'playing', array[pg_temp.late('ST_')], array[pg_temp.early('ST_')]);
+select pg_temp.assert_eq('19 the only other human has already left: the host leaving alone ends the game',
+  public.word_rush_remove_player('ST_', pg_temp.late('ST_'), p_host_leave => true, p_sessions_played => (pg_temp.g('ST_')).sessions_played)->>'status', 'host_ended');
+
+-- A departing HOST's handoff is recorded with the leave and settled in the SAME transaction that deletes the seat.
+select pg_temp.mk('ST\', 'active');
+update public.games set host_player_id = pg_temp.late('ST\'), host_user_id = '11111111-1111-1111-1111-111111111111' where id = 'ST\';
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster)
+  values ('19191919-0000-4000-8000-000000001910', 'ST\', 'individual', 'automatic', 1, 3, 60, 'playing', array[pg_temp.late('ST\'), pg_temp.early('ST\')]);
+select pg_temp.assert_eq('19 host leave with a successor is recorded', public.word_rush_remove_player('ST\', pg_temp.late('ST\'), p_host_leave => true, p_sessions_played => (pg_temp.g('ST\')).sessions_played)->>'status', 'left');
+select pg_temp.assert_eq('19 ...the handoff is recorded with the leave (no user id in the publicly readable row)',
+  (select leaver_handoffs from public.word_rush_sessions where game_id = 'ST\') ? pg_temp.late('ST\')::text
+  and not ((select leaver_handoffs::text from public.word_rush_sessions where game_id = 'ST\') like '%11111111%'), true);
+select pg_temp.assert_eq('19 ...the host is not settled while the seat stays', (pg_temp.g('ST\')).host_player_id, pg_temp.late('ST\'));
+create temp table w_settle as select public.word_rush_remove_player('ST\', pg_temp.late('ST\'), 'delete') as r;
+select pg_temp.assert_eq('19 delete stage deletes the seat', (select r->>'status' from w_settle), 'deleted');
+select pg_temp.assert_eq('19 ...and settles the handoff in the same call', (select r->'settled'->>'status' from w_settle), 'nominated');
+select pg_temp.assert_eq('19 ...the oldest eligible player is nominated', (pg_temp.g('ST\')).pending_host_player_id, pg_temp.early('ST\'));
+select pg_temp.assert_eq('19 ...the departed host user linkage is released', (pg_temp.g('ST\')).host_user_id, null::uuid);
+select pg_temp.assert_eq('19 ...the handoff record is consumed', (select leaver_handoffs from public.word_rush_sessions where game_id = 'ST\'), '{}'::jsonb);
+
+-- A game finished with a reason keeps a leaver's seat as part of the result and drops the leave record (so it is not swept again).
+select public.word_rush_remove_player('ST$', pg_temp.late('ST$'), 'delete');
+select pg_temp.assert_eq('19 ...a finish with a reason drops the leave record of the retained seat', (select cardinality(leavers) from public.word_rush_sessions where game_id = 'ST$'), 0);
 
 -- No session (a lobby): the seat goes right away.
 select pg_temp.mk('ST"', 'waiting');

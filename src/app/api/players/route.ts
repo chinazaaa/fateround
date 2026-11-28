@@ -2482,9 +2482,20 @@ async function removePlayer(
       getSupabaseAdmin(),
       id,
       playerId,
-      ctx.handoff ? { hostLeave: { sessionsPlayed: ctx.handoff.session.sessionsPlayed, trackBookkeeping: true } } : {}
+      ctx.handoff
+        ? {
+            hostLeave: {
+              sessionsPlayed: ctx.handoff.session.sessionsPlayed,
+              sessionStartedAt: ctx.handoff.session.startedAt,
+              trackBookkeeping: true,
+            },
+          }
+        : {}
     )
     if (outcome.status === 'error') return NextResponse.json({ error: outcome.error }, { status: 500 })
+    // A departing host's handoff was recorded WITH the leave and is settled by the database in the transaction that deletes
+    // the seat, whenever that happens (now, or later by a runner): this request must not settle it earlier or a second time.
+    if ((outcome.status === 'deleted' || outcome.status === 'pending') && outcome.durableHandoff) ctx.handoff = null
     if (outcome.status === 'participant_ambiguous') {
       ctx.seatMayBeRemoved = false
       return NextResponse.json({ error: PARTICIPANT_AMBIGUOUS_MESSAGE }, { status: 409 })

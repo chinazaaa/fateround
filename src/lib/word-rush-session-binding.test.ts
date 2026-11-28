@@ -16,11 +16,20 @@ const source = ts.createSourceFile(FILE, readFileSync(FILE, 'utf8'), ts.ScriptTa
 
 type Chain = { calls: Array<{ name: string; args: ts.NodeArray<ts.Expression> }>; fn: string; text: string }
 
-/** The calls of one method chain, outermost first, down to the receiver that is not itself a call. */
+/** Strips the wrappers that do not change what an expression IS: `(x)`, `x!`, `x as T`. */
+function unwrap(node: ts.Expression): ts.Expression {
+  let n = node
+  while (ts.isParenthesizedExpression(n) || ts.isNonNullExpression(n) || ts.isAsExpression(n)) n = n.expression
+  return n
+}
+
+/** The calls of one method chain, outermost first, down to the receiver that is not itself a call (parentheses are seen through). */
 function chainOf(top: ts.CallExpression): Chain['calls'] {
   const calls: Chain['calls'] = []
   let node: ts.Expression = top
-  while (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+  for (;;) {
+    node = unwrap(node)
+    if (!(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression))) break
     calls.push({ name: node.expression.name.text, args: node.arguments })
     node = node.expression.expression
   }
@@ -34,14 +43,24 @@ function enclosingFunction(node: ts.Node): string {
   return '<top level>'
 }
 
-/** Every chain that starts at `from('word_rush_sessions')` and contains an `.update(...)`. */
-function sessionUpdateChains(): Chain[] {
+/** Every chain that starts at `from('word_rush_sessions')` and contains an `.update(...)`, in the given source file. */
+function sessionUpdateChains(sf: ts.SourceFile): Chain[] {
   const out: Chain[] = []
   const visit = (node: ts.Node) => {
     if (ts.isCallExpression(node)) {
-      // Only the OUTERMOST call of a chain (its parent is not a property access that is itself called).
-      const parent = node.parent
-      const isInner = ts.isPropertyAccessExpression(parent) && parent.expression === node
+      // Only the OUTERMOST call of a chain: climb through parentheses / `!` / `as`; its parent is not a property access
+      // whose receiver it is.
+      let top: ts.Node = node
+      while (
+        top.parent &&
+        (ts.isParenthesizedExpression(top.parent) ||
+          ts.isNonNullExpression(top.parent) ||
+          ts.isAsExpression(top.parent))
+      ) {
+        top = top.parent
+      }
+      const parent = top.parent
+      const isInner = parent !== undefined && ts.isPropertyAccessExpression(parent) && parent.expression === top
       if (!isInner) {
         const calls = chainOf(node)
         const from = calls.find(
@@ -52,14 +71,27 @@ function sessionUpdateChains(): Chain[] {
             c.args[0].text === 'word_rush_sessions'
         )
         if (from && calls.some((c) => c.name === 'update')) {
-          out.push({ calls, fn: enclosingFunction(node), text: node.getText(source).replace(/\s+/g, ' ') })
+          out.push({ calls, fn: enclosingFunction(node), text: node.getText(sf).replace(/\s+/g, ' ') })
         }
       }
     }
     ts.forEachChild(node, visit)
   }
-  visit(source)
+  visit(sf)
   return out
+}
+
+/** The member names that hold a SESSION id, by receiver: `session.id` and `pending.session_id` (the round-finalize marker). */
+const SESSION_ID_MEMBERS: Record<string, string> = { session: 'id', pending: 'session_id' }
+
+/** True when the expression is a property access `<session | pending>.<id | session_id>` on the syntax tree (spacing is irrelevant). */
+function namesSessionId(expr: ts.Expression): boolean {
+  const e = unwrap(expr)
+  return (
+    ts.isPropertyAccessExpression(e) &&
+    ts.isIdentifier(e.expression) &&
+    SESSION_ID_MEMBERS[e.expression.text] === e.name.text
+  )
 }
 
 /** True when the chain has a real `.eq('id', <expression naming a session id>)` call. */
@@ -70,12 +102,12 @@ function bindsSessionId(chain: Chain): boolean {
       c.args.length === 2 &&
       ts.isStringLiteralLike(c.args[0]) &&
       c.args[0].text === 'id' &&
-      /^(session\.id|pending\.session_id)$/.test(c.args[1].getText(source))
+      namesSessionId(c.args[1])
   )
 }
 
 describe('word_rush_sessions writes in word-rush-server.ts', () => {
-  const chains = sessionUpdateChains()
+  const chains = sessionUpdateChains(source)
 
   it('finds the statements', () => {
     expect(chains.length).toBeGreaterThanOrEqual(9)
@@ -93,27 +125,52 @@ describe('word_rush_sessions writes in word-rush-server.ts', () => {
   it.each(chains.map((c) => [c.text.slice(0, 80), c] as const))('%s', (_label, chain) => {
     if (!bindsSessionId(chain)) expect(chain.fn).toBe('initializeWordRushGame')
   })
+})
 
-  it('the scanner sees a comment-separated, unbound update (self-check on a synthetic source)', () => {
-    const synthetic = ts.createSourceFile(
-      'x.ts',
-      "await supabase.from('word_rush_sessions') /* c */ .update(patch) // .eq('id', session.id)\n",
-      ts.ScriptTarget.Latest,
-      true
-    )
-    let found = 0
-    const visit = (n: ts.Node) => {
-      if (
-        ts.isCallExpression(n) &&
-        ts.isPropertyAccessExpression(n.expression) &&
-        n.expression.name.text === 'update'
-      ) {
-        found += 1
-        expect(chainOf(n).some((c) => c.name === 'eq')).toBe(false)
-      }
-      ts.forEachChild(n, visit)
+describe('the scanner itself (self-checks on synthetic sources, through the same functions)', () => {
+  const scan = (code: string) => sessionUpdateChains(ts.createSourceFile('x.ts', code, ts.ScriptTarget.Latest, true))
+
+  it('a comment-separated update with a commented-out predicate is found and is NOT bound', () => {
+    const found = scan("await supabase.from('word_rush_sessions') /* c */ .update(patch) // .eq('id', session.id)\n")
+    expect(found).toHaveLength(1)
+    expect(bindsSessionId(found[0])).toBe(false)
+  })
+
+  it('an update through a PARENTHESIZED receiver is found and rejected as unbound', () => {
+    const found = scan("void (supabase.from('word_rush_sessions')).update(patch).eq('game_id', gameId)\n")
+    expect(found).toHaveLength(1)
+    expect(bindsSessionId(found[0])).toBe(false)
+    const wrapped = scan("void ((supabase.from('word_rush_sessions').update(patch)).eq('game_id', gameId))\n")
+    expect(wrapped).toHaveLength(1)
+    expect(bindsSessionId(wrapped[0])).toBe(false)
+  })
+
+  it('a bound update is recognised whatever its spacing or parentheses, by receiver and member', () => {
+    for (const bound of [
+      "supabase.from('word_rush_sessions').update(p).eq('id', session.id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', session . id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', (session.id))",
+      "supabase.from('word_rush_sessions').update(p).eq('id', pending.session_id)",
+      "(supabase.from('word_rush_sessions')).update(p).eq('id', session.id)",
+    ]) {
+      const found = scan(bound)
+      expect(found, bound).toHaveLength(1)
+      expect(bindsSessionId(found[0]), bound).toBe(true)
     }
-    visit(synthetic)
-    expect(found).toBe(1)
+  })
+
+  it('a different receiver or member does not bind the session', () => {
+    for (const unbound of [
+      "supabase.from('word_rush_sessions').update(p).eq('id', other.id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', session.game_id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', pending.id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', session)",
+      "supabase.from('word_rush_sessions').update(p).eq('game_id', session.id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', 'session.id')",
+    ]) {
+      const found = scan(unbound)
+      expect(found, unbound).toHaveLength(1)
+      expect(bindsSessionId(found[0]), unbound).toBe(false)
+    }
   })
 })

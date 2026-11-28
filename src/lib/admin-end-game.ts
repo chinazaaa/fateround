@@ -122,13 +122,16 @@ export async function cleanupFinishedSessionOutcome(
 ): Promise<{ error: string | null; superseded?: boolean }> {
   const rounds = await finishGameRounds(supabase, gameId, gameType, finishedAt, finishedAt)
   const roundsError = rounds.error
-  let wipeError: string | null = null
+  let wipe: { error: string | null; status?: string } = { error: null }
   if (isCodewordsGame(gameType)) {
-    wipeError = (await wipeFinishedSession(supabase, gameId, finishedAt, 'codewords')).error
+    wipe = await wipeFinishedSession(supabase, gameId, finishedAt, 'codewords')
   } else if (isAnonymousMessagesGame(gameType) || isSecretMessageGame(gameType)) {
-    wipeError = (await wipeFinishedSession(supabase, gameId, finishedAt, 'anonymous')).error
+    wipe = await wipeFinishedSession(supabase, gameId, finishedAt, 'anonymous')
   }
-  return { error: roundsError ?? wipeError, ...(rounds.superseded ? { superseded: true } : {}) }
+  // Either step may find the game is no longer the finished session it was bound to (the wipe checks it separately, under
+  // its own lock): that is reported as `superseded`, never as a clean success (wipe failures stay errors).
+  const superseded = rounds.superseded === true || wipe.status === 'not_current_session'
+  return { error: roundsError ?? wipe.error, ...(superseded ? { superseded: true } : {}) }
 }
 
 /**
