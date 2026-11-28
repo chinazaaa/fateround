@@ -573,6 +573,55 @@ $$;
 revoke execute on function public.finish_rounds_of_finished_session(text, timestamptz) from public, anon, authenticated;
 grant execute on function public.finish_rounds_of_finished_session(text, timestamptz) to service_role;
 
+-- Apply a Word Rush roster removal computed from a roster the caller READ: a compare-and-swap under the session row
+-- lock. The roster (and the turn / phase / setter the replacement setter was derived from) must still be exactly what
+-- the caller read, so a seat restore (word_rush_restore_roster_member) that committed in between is never overwritten
+-- by a whole-array write computed from the older roster. `roster_changed` makes the caller read again and recompute.
+create or replace function public.word_rush_remove_roster_member(
+  p_game_id text,
+  p_session_id uuid,
+  p_expected_roster uuid[],
+  p_expected_turn_index integer,
+  p_expected_phase text,
+  p_expected_setter uuid,
+  p_new_roster uuid[],
+  p_set_setter boolean,
+  p_new_setter uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_session public.word_rush_sessions%rowtype;
+begin
+  if p_game_id is null or p_session_id is null or p_expected_roster is null or p_new_roster is null then
+    raise exception 'word_rush_remove_roster_member: game id, session id and rosters are required';
+  end if;
+  select * into v_session from public.word_rush_sessions
+    where id = p_session_id and game_id = upper(p_game_id) for update;
+  if not found then
+    return jsonb_build_object('status', 'no_session');
+  end if;
+  if v_session.roster is distinct from p_expected_roster
+     or v_session.turn_index is distinct from p_expected_turn_index
+     or v_session.phase is distinct from p_expected_phase
+     or v_session.prompt_setter_player_id is distinct from p_expected_setter then
+    return jsonb_build_object('status', 'roster_changed');
+  end if;
+  update public.word_rush_sessions
+    set roster = p_new_roster,
+        prompt_setter_player_id = case when p_set_setter then p_new_setter else prompt_setter_player_id end,
+        updated_at = now()
+    where id = p_session_id;
+  return jsonb_build_object('status', 'applied');
+end;
+$$;
+
+revoke execute on function public.word_rush_remove_roster_member(text, uuid, uuid[], integer, text, uuid, uuid[], boolean, uuid) from public, anon, authenticated;
+grant execute on function public.word_rush_remove_roster_member(text, uuid, uuid[], integer, text, uuid, uuid[], boolean, uuid) to service_role;
+
 -- Complete a recorded Word Rush own-finish seat deletion (see word_rush_pending_seat_deletions). PENDING-ONLY: under the
 -- games row lock it requires the finish the record was made for (same finished_at, no result_reason), a completed
 -- bookkeeping marker and the record itself; a live game (Play Again reopened it) or anything else deletes nothing, so
@@ -675,17 +724,30 @@ set search_path = public, pg_temp
 as $$
 declare
   v_status text;
+  v_pointer integer;
   v_updated integer;
 begin
   if p_game_id is null or p_round_id is null or p_round_number is null then
     raise exception 'activate_ttl_round: game id, round id and round number are required';
   end if;
-  select status into v_status from public.games where id = upper(p_game_id) for share;
+  -- A WRITE lock (not FOR SHARE): two activations that both hold a share lock would deadlock when each then needs the
+  -- games row for the pointer write; this way the second one waits here, before it touches any round.
+  select status, current_round_number into v_status, v_pointer
+    from public.games where id = upper(p_game_id) for no key update;
   if not found then
     return jsonb_build_object('status', 'game_missing');
   end if;
   if v_status <> 'active' then
     return jsonb_build_object('status', 'not_active');
+  end if;
+  -- One round is active at a time: a stale advance must not open a second one.
+  if exists (select 1 from public.rounds where game_id = upper(p_game_id) and status = 'active') then
+    return jsonb_build_object('status', 'round_active');
+  end if;
+  -- The pointer only moves forward: a stale advance that picked an earlier pending round (a later one was activated and
+  -- finished since, the skipped round stays pending) must not move it back.
+  if v_pointer is not null and p_round_number < v_pointer then
+    return jsonb_build_object('status', 'stale_round');
   end if;
   update public.rounds
     set status = 'active', started_at = now(), ended_at = null

@@ -1012,11 +1012,13 @@ export async function syncWordRushAfterPlayerRemoved(
   gameSession?: { startedAt: string | null; sessionsPlayed: number | null }
 }> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const { data: game } = await supabase
+    const { data: game, error: gameError } = await supabase
       .from('games')
       .select('status, session_started_at, sessions_played')
       .eq('id', gameId)
       .maybeSingle()
+    // An unreadable game is NOT "not active": reconciling nothing would let the seat go while the roster keeps it.
+    if (gameError) return internalFailure('word-rush:remove-player:game', gameError)
     const gameSession = game
       ? { startedAt: game.session_started_at ?? null, sessionsPlayed: game.sessions_played ?? null }
       : undefined
@@ -1051,11 +1053,12 @@ async function syncWordRushRemoval(
   if (!session || session.status === 'finished') return {}
 
   // The session row was loaded after the game row was read: confirm the game is still the same session generation.
-  const { data: again } = await supabase
+  const { data: again, error: againError } = await supabase
     .from('games')
     .select('session_started_at, sessions_played')
     .eq('id', gameId)
     .maybeSingle()
+  if (againError) return internalFailure('word-rush:remove-player:game', againError)
   if (
     gameSession &&
     (!again ||
@@ -1098,16 +1101,24 @@ async function syncWordRushRemoval(
       : {}),
   }
 
-  const { data: updatedRows, error: updateError } = await supabase
-    .from('word_rush_sessions')
-    .update({ ...sessionPatch, updated_at: new Date().toISOString() })
-    .eq('game_id', gameId)
-    // Bound to the session this reconciliation read: a replacement session must never receive its roster / setter.
-    .eq('id', session.id)
-    .select('id')
+  // A compare-and-swap in the database under the session row lock: the new roster was computed from the roster this
+  // call READ, so it is written only while the session still has exactly that roster / turn / phase / setter. A seat
+  // restore that committed in between (word_rush_restore_roster_member) is never overwritten by a whole-array write
+  // computed from the older roster; the caller reads again instead (`stale`). A replaced session matches no row.
+  const { data: applied, error: updateError } = await supabase.rpc('word_rush_remove_roster_member', {
+    p_game_id: gameId,
+    p_session_id: session.id,
+    p_expected_roster: session.roster,
+    p_expected_turn_index: session.turn_index,
+    p_expected_phase: session.phase,
+    p_expected_setter: session.prompt_setter_player_id ?? null,
+    p_new_roster: newRoster,
+    p_set_setter: 'prompt_setter_player_id' in sessionPatch,
+    p_new_setter: sessionPatch.prompt_setter_player_id ?? null,
+  })
   if (updateError) return internalFailure('word-rush:remove-player', updateError)
-  // A stale call (the session was replaced) matched nothing: stop, do not go on as if it had changed the old session.
-  if (!updatedRows?.length) return { stale: true }
+  // `roster_changed` / `no_session`: nothing was written for this read of the session, so go and read it again.
+  if ((applied as { status?: string } | null)?.status !== 'applied') return { stale: true }
 
   const updatedSession = { ...session, ...sessionPatch }
 
@@ -1116,11 +1127,13 @@ async function syncWordRushRemoval(
     (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
   ) {
     const eligible = wordRushIndividualAnswerers(updatedSession)
-    const { data: roundAnswers } = await supabase
+    const { data: roundAnswers, error: answersError } = await supabase
       .from('word_rush_answers')
       .select('player_id, turn_index, correct')
       .eq('game_id', gameId)
       .eq('turn_index', session.turn_index)
+    // The roster change is already written: an unreadable round must not be treated as "nobody answered".
+    if (answersError) return { ...internalFailure('word-rush:remove-player:answers', answersError), rollback }
 
     const answers = (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
     if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(updatedSession, answers)) {
@@ -1134,7 +1147,12 @@ async function syncWordRushRemoval(
     updatedSession.mode === 'team' &&
     (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
   ) {
-    const teamRows = await loadTeamRows(supabase, gameId)
+    let teamRows: Awaited<ReturnType<typeof loadTeamRows>>
+    try {
+      teamRows = await loadTeamRows(supabase, gameId)
+    } catch (err) {
+      return { ...internalFailure('word-rush:remove-player:teams', err), rollback }
+    }
     const playable = new Set(
       wordRushPlayableTeams(teamRoster(teamRows), updatedSession.num_teams, updatedSession.prompt_mode)
     )

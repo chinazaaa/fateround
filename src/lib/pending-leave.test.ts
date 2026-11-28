@@ -282,9 +282,10 @@ describe('completePendingFinishedLeave: Word Rush (a recorded own-finish deletio
     })
   })
 
-  it('nothing due (the game is finished and no deletion is recorded / bookkeeping still owed): null, the seat is retained', async () => {
+  it('nothing due (no deletion is recorded / bookkeeping still owed): null, the seat is retained', async () => {
+    // The pending-only function answers `not_due`; that refusal must never be mistaken for a completed deletion.
     expect(
-      await completePendingFinishedLeave(client({ data: { status: 'game_finished' } }), 'word_rush', 'G', 'a', 'Ann')
+      await completePendingFinishedLeave(client({ data: { status: 'not_due' } }), 'word_rush', 'G', 'a', 'Ann')
     ).toBeNull()
   })
 

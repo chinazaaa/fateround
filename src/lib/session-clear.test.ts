@@ -231,9 +231,24 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
 
   it('a lost finish whose room is (still) finished is reported finished, and the wipe is bound to that finish', async () => {
     markGameFinished.mockResolvedValueOnce({ error: null, won: false })
-    const m = makeMockSupabase(undefined, { status: 'finished', finished_at: '2026-02-02T00:00:00.000Z' })
+    const m = makeMockSupabase(undefined, {
+      status: 'finished',
+      finished_at: '2026-02-02T00:00:00.000Z',
+      session_started_at: EXPIRED.session_started_at,
+    })
     expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
     expect(m.wipes).toEqual([{ p_game_id: 'GAME', p_finished_at: '2026-02-02T00:00:00.000Z', p_kind: 'anonymous' }])
+  })
+
+  it('a lost finish whose room finished a LATER session (replayed and ended again) is `superseded` and wipes nothing', async () => {
+    markGameFinished.mockResolvedValueOnce({ error: null, won: false })
+    const m = makeMockSupabase(undefined, {
+      status: 'finished',
+      finished_at: '2026-03-03T00:00:00.000Z',
+      session_started_at: new Date().toISOString(),
+    })
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('superseded')
+    expect(m.wipes).toEqual([])
   })
 
   it('reports failure and logs nothing when the finish itself fails', async () => {

@@ -34,7 +34,7 @@ let startAnswer: { data: unknown; error: unknown } = { data: { status: 'started'
 const base = makeSupabaseStub({
   games: ({ op }) => {
     if (op !== 'select') writes.push(`games:${op}`)
-    return { data: gameRow({ status: 'waiting', game_type: 'two_truths' }), error: null }
+    return { data: gameRow({ status: 'waiting', game_type: 'two_truths', sessions_played: 7 }), error: null }
   },
   players: ({ op }) => {
     if (op !== 'select') writes.push(`players:${op}`)
@@ -78,7 +78,7 @@ describe('POST /api/games/[code]/start — Two Truths', () => {
     const args = calls[0].args
     expect(args).toMatchObject({ p_game_id: 'ABCD', p_min_submitters: 3 })
     // The lobby generation the caller read: the function refuses a start prepared for an earlier lobby.
-    expect(args).toHaveProperty('p_sessions_played', null)
+    expect(args).toHaveProperty('p_sessions_played', 7)
     // One round (and one answer key) per submitter.
     expect((args.p_rounds as unknown[]).length).toBe(3)
     expect((args.p_lies as unknown[]).length).toBe(3)
