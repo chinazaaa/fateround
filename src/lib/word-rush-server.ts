@@ -114,19 +114,19 @@ async function runRoundFinalization(
   gameId: string,
   pending: WordRushRoundFinalize
 ): Promise<{ error?: string; internal?: boolean; gameFinishWon?: boolean }> {
-  const { data: finalGuesses, error: finalError } = await supabase
-    .from('word_rush_answers')
-    .select('player_id, created_at, text')
-    .eq('game_id', gameId)
-    .eq('turn_index', pending.turn_index)
-    .eq('correct', true)
-  if (finalError) return internalFailure('word-rush:finalize-round:answers', finalError)
-  const finalTally = tallyIndividualGuesses(
-    finalGuesses,
-    pending.setter_id,
-    pending.turn_deadline_at,
-    pending.turn_seconds
-  )
+  // The tally feeds only the mirror-point award and the intermission message: a marker that needs neither (an awarded last
+  // round, e.g. a team finish) must not depend on the answers being readable before it can finish the game.
+  let finalTally = { points: 0, count: 0 }
+  if (!pending.awarded || !pending.is_last) {
+    const { data: finalGuesses, error: finalError } = await supabase
+      .from('word_rush_answers')
+      .select('player_id, created_at, text')
+      .eq('game_id', gameId)
+      .eq('turn_index', pending.turn_index)
+      .eq('correct', true)
+    if (finalError) return internalFailure('word-rush:finalize-round:answers', finalError)
+    finalTally = tallyIndividualGuesses(finalGuesses, pending.setter_id, pending.turn_deadline_at, pending.turn_seconds)
+  }
 
   // 1. Mirror points: applied once, atomically with the `awarded` flag in the marker.
   if (!pending.awarded) {
@@ -877,8 +877,9 @@ async function completeAllWordRushLeaves(
   let failed = 0
   for (const row of (data ?? []) as Array<{ game_id: string }>) {
     const result = await completeWordRushLeaves(supabase, row.game_id)
+    // Independent: deletions that committed before a later error still count as completed work.
+    if (Object.values(result.statuses).some((st) => st === 'deleted')) completed += 1
     if (result.error) failed += 1
-    else if (Object.values(result.statuses).some((st) => st === 'deleted')) completed += 1
   }
   return { completed, failed }
 }
@@ -1071,6 +1072,8 @@ export async function processWordRushAdvance(
     // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
     // turn index) must match no row.
     .eq('id', session.id)
+    // ...and to the turn it inspected: a round that opened and closed in between is another intermission.
+    .eq('turn_index', session.turn_index)
     .eq('phase', 'intermission')
   if (updateError) return internalFailure('word-rush:advance', updateError)
   return {}
@@ -1128,6 +1131,7 @@ export type WordRushLeaveStatus =
   | 'finalizing'
   | 'bookkeeping_owed'
   | 'game_finished'
+  | 'host_ended'
   | 'participant_ambiguous'
   | 'not_left'
   | 'game_missing'
@@ -1142,30 +1146,50 @@ export type WordRushLeaveStatus =
  */
 export async function completeWordRushLeaves(
   supabase: SupabaseClient,
-  gameId: string
-): Promise<{ error?: string; internal?: boolean; statuses: Record<string, WordRushLeaveStatus> }> {
+  gameId: string,
+  /** The player whose own request is running this: a host-alone finish of THEIR seat is reported to that request, which owes its work. */
+  opts: { ownPlayerId?: string } = {}
+): Promise<{
+  error?: string
+  internal?: boolean
+  statuses: Record<string, WordRushLeaveStatus>
+  /** player id -> the `finished_at` of the host-alone finish the delete stage wrote instead of deleting that host's seat */
+  hostEnded: Record<string, string>
+}> {
   const statuses: Record<string, WordRushLeaveStatus> = {}
+  const hostEnded: Record<string, string> = {}
   const { data, error } = await supabase
     .from('word_rush_sessions')
     .select('leavers')
     .eq('game_id', gameId)
     .maybeSingle()
-  if (error) return { ...internalFailure('word-rush:complete-leaves:read', error), statuses }
+  if (error) return { ...internalFailure('word-rush:complete-leaves:read', error), statuses, hostEnded }
   const leavers = [...(((data as { leavers?: string[] | null } | null)?.leavers ?? []) as string[])]
   const decided = await reconcileWordRushRound(supabase, gameId)
-  if (decided.error) return { error: decided.error, internal: decided.internal, statuses }
+  if (decided.error) return { error: decided.error, internal: decided.internal, statuses, hostEnded }
   for (const playerId of leavers) {
     const { data: answer, error: deleteError } = await supabase.rpc('word_rush_remove_player', {
       p_game_id: gameId,
       p_player_id: playerId,
       p_stage: 'delete',
     })
-    if (deleteError) return { ...internalFailure('word-rush:complete-leaves:delete', deleteError), statuses }
-    const result = answer as { status?: string; settled?: DeferredHostSettle } | null
+    if (deleteError) return { ...internalFailure('word-rush:complete-leaves:delete', deleteError), statuses, hostEnded }
+    const result = answer as { status?: string; settled?: DeferredHostSettle; finished_at?: string } | null
     statuses[playerId] = (result?.status ?? 'game_missing') as WordRushLeaveStatus
     if (result?.settled) await finishDeferredHostSettle(supabase, gameId, result.settled)
+    if (result?.status === 'host_ended' && result.finished_at) {
+      hostEnded[playerId] = result.finished_at
+      // The host's own request reports it (and owes the work); anyone else finishing the leave owes it here.
+      if (playerId !== opts.ownPlayerId) {
+        await finishDeferredHostSettle(supabase, gameId, {
+          status: 'finished',
+          finished_now: true,
+          finished_at: result.finished_at,
+        })
+      }
+    }
   }
-  return { statuses }
+  return { statuses, hostEnded }
 }
 
 /** What `settle_host_leave` answered inside the transaction that deleted a departed host's seat. */
@@ -1247,17 +1271,29 @@ export async function leaveWordRushPlayer(
     default:
       return { status: 'error', error: 'Could not finish leaving the game — try again', internal: true }
   }
-  const completed = await completeWordRushLeaves(supabase, gameId)
-  if (completed.error) {
-    // The leave itself is committed and recorded: the round decision / seat deletion is simply derived again by the next runner.
-    return { status: 'pending', ...(opts.hostLeave ? { durableHandoff: true } : {}) }
-  }
+  const completed = await completeWordRushLeaves(supabase, gameId, { ownPlayerId: playerId })
   const mine = completed.statuses[playerId]
-  const durableHandoff = opts.hostLeave ? true : undefined
+  const durable = opts.hostLeave ? { durableHandoff: true as const } : {}
+  // The caller's OWN definitive outcome comes first: a later seat's failure in the same batch does not undo it.
+  if (mine === 'host_ended' && completed.hostEnded[playerId]) {
+    return { status: 'host_ended', finishedAt: completed.hostEnded[playerId] }
+  }
   if (mine === 'game_finished') return { status: 'game_finished' }
-  if (mine === 'deleted' || mine === undefined)
-    return { status: 'deleted', ...(durableHandoff ? { durableHandoff } : {}) }
-  return { status: 'pending', ...(durableHandoff ? { durableHandoff } : {}) }
+  if (mine === 'deleted') return { status: 'deleted', ...durable }
+  if (mine === undefined && !completed.error) {
+    // Not in this pass's list: another runner completed the leave meanwhile. That deleted the seat, or the database KEPT it
+    // for a finished result (and dropped the leave record): only the seat itself tells them apart.
+    const { data: seat, error: seatError } = await supabase
+      .from('players')
+      .select('id')
+      .eq('id', playerId)
+      .eq('game_id', gameId)
+      .maybeSingle()
+    if (seatError) return { status: 'pending', ...durable }
+    return seat ? { status: 'game_finished' } : { status: 'deleted', ...durable }
+  }
+  // The leave itself is committed and recorded: the round decision / seat deletion is simply derived again by the next runner.
+  return { status: 'pending', ...durable }
 }
 
 export async function assignWordRushTeam(
@@ -1363,7 +1399,7 @@ export async function ensureWordRushGameFinalized(
   // appeared after the leave): the reset deletes the session row, and with it the leavers list, which would turn that seat
   // back into a lobby player. `game_finished` is the one intentional exception (the seat is part of a finished result and the
   // database has already dropped its leave record).
-  if (Object.values(leaves.statuses).some((st) => st !== 'deleted' && st !== 'game_finished')) {
+  if (Object.values(leaves.statuses).some((st) => st !== 'deleted' && st !== 'game_finished' && st !== 'host_ended')) {
     return { error: 'A player who left still has a seat that could not be removed yet — resolve it or try again' }
   }
   return {}

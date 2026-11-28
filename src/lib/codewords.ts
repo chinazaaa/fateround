@@ -705,6 +705,8 @@ export async function removePlayerIfGameOpen(
   error: string | null
   gameFinished: boolean
   hostEnded?: { finishedAt: string }
+  /** Refused before any write: the seat's participant cannot be told from another one of the same name. */
+  participantAmbiguous?: true
 }> {
   const { data, error } = await supabase.rpc('remove_player_if_game_open', {
     p_game_id: gameId,
@@ -726,6 +728,7 @@ export async function removePlayerIfGameOpen(
     return {
       error: PARTICIPANT_AMBIGUOUS_MESSAGE,
       gameFinished: false,
+      participantAmbiguous: true,
     }
   }
   return {
@@ -737,7 +740,7 @@ export async function removePlayerIfGameOpen(
 }
 
 export const PARTICIPANT_AMBIGUOUS_MESSAGE =
-  'More than one participant has your name, so leaving cannot tell which one is yours — ask the host to remove you'
+  "More than one participant has this seat's name, so the removal cannot tell which one belongs to it — the host should rename or remove the duplicate participant (or restore the seat's link), then try again"
 
 export async function removeCodewordsPlayer(
   supabase: SupabaseClient,

@@ -1353,17 +1353,16 @@ describe('DELETE /api/players: removal disposition is carried separately from th
     expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
   })
 
-  it('a Codewords delete whose outcome is UNKNOWN (an error, seat still present) is never reported as retryable', async () => {
+  it('a Codewords delete that is rejected with the seat still present (settlement unreachable): a fresh read confirms it, the removal error stands alone and the leave can be repeated', async () => {
     setup('codewords')
     failPlayerDelete = true
     settleFailBudget = 99
     const res = await leave()
     expect(res.status).toBe(500)
     const body = (await res.json()) as { error: string; handoff?: string }
-    // The delete may have committed behind the error: keep the original error AND report the handoff unresolved.
-    expect(body.handoff).toBe('unresolved')
+    expect(body.handoff).toBeUndefined()
     expect(body.error).toBeTruthy()
-    expect(body.error).not.toMatch(/try again|retry/i)
+    expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
   })
 
   it('a Codewords delete that COMMITTED but lost its response: original error preserved and handoff unresolved', async () => {
@@ -1687,6 +1686,24 @@ describe('DELETE /api/players: a Word Rush leave is ONE durable database step, n
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
   })
 
+  it('a retained leave stops pushes for THAT player only (web and mobile), and keeps every other row', async () => {
+    setup('word_rush')
+    wordRush.outcome = { status: 'game_finished' }
+    tables.push_subscriptions = [
+      { id: 'w1', game_id: 'ABCD', player_id: HOST_PID },
+      { id: 'w2', game_id: 'ABCD', player_id: OTHER_PID },
+      { id: 'w3', game_id: 'OTHR', player_id: HOST_PID },
+    ]
+    tables.mobile_push_tokens = [
+      { id: 'm1', game_id: 'ABCD', player_id: HOST_PID },
+      { id: 'm2', game_id: 'ABCD', player_id: OTHER_PID },
+      { id: 'm3', game_id: 'OTHR', player_id: HOST_PID },
+    ]
+    expect((await leave()).status).toBe(200)
+    expect(tables.push_subscriptions.map((r) => r.id)).toEqual(['w2', 'w3'])
+    expect(tables.mobile_push_tokens.map((r) => r.id)).toEqual(['m2', 'm3'])
+  })
+
   it('participant_ambiguous: refused with a conflict, nothing changed, and no handoff is claimed', async () => {
     setup('word_rush')
     wordRush.outcome = { status: 'participant_ambiguous' }
@@ -1716,6 +1733,8 @@ describe('DELETE /api/players: a Word Rush leave is ONE durable database step, n
     expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
     expect(tables.rounds.map((r) => r.status)).toEqual(['finished'])
+    // ...and the bookkeeping every finish owes ran for the finish the database wrote.
+    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, true]])
   })
 
   it('host_ended whose cleanup fails is an error (the seat is kept, so a repeat leave reruns the cleanup), not a success', async () => {
@@ -2038,7 +2057,9 @@ describe('DELETE /api/players: an unlinked seat whose name matches several parti
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
       const res = await leave()
-      expect(res.status).toBeGreaterThanOrEqual(400)
+      // A conflict the host resolves (rename / remove the duplicate), not a server error and not advice to the leaver.
+      expect(res.status).toBe(409)
+      expect(((await res.json()) as { error: string }).error).toMatch(/host should rename or remove the duplicate/)
     } finally {
       log.mockRestore()
     }

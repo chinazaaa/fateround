@@ -30,6 +30,7 @@ import {
   ensureWordRushGameFinalized,
   leaveWordRushPlayer,
   processWordRushAdvance,
+  resumeWordRushFinalization,
   reconcileWordRushRound,
 } from './word-rush-server'
 
@@ -197,6 +198,8 @@ describe('reconcileWordRushRound: the decision is derived from the current sessi
     expect(claim).toBeDefined()
     expect(claim!.filters).toContainEqual(['id', 'S-1'])
     expect(claim!.filters).toContainEqual(['turn_index', 2])
+    // ...and to a round that is still being played (a closed or intermission round must match nothing).
+    expect(claim!.filters).toContainEqual(['phase', ['playing', 'awaiting_prompt']])
   })
 
   it('an eligible answerer is still in: nothing is closed', async () => {
@@ -542,5 +545,113 @@ describe('advancing into a manual round revalidates the prepared prompt setter',
     const advance = f.updates.find((u) => u.patch.phase === 'playing')
     expect(advance).toBeDefined()
     expect(advance!.patch).not.toHaveProperty('prompt_setter_player_id')
+  })
+})
+
+describe('review 6098178725', () => {
+  const owed = (extra: Record<string, unknown> = {}) => ({
+    session_id: 'S-1',
+    turn_index: 2,
+    round: 3,
+    setter_id: null,
+    is_last: true,
+    turn_deadline_at: null,
+    turn_seconds: 60,
+    awarded: true,
+    ...extra,
+  })
+
+  it('a finish marker that is already awarded needs no answer read: an unreadable answer set cannot hold the game finish back', async () => {
+    const f = fake(baseSession({ status: 'finished', phase: 'finished', round_finalize: owed() }), {
+      failAnswers: true,
+    })
+    expect((await resumeWordRushFinalization(f.client, 'GAME')).error).toBeUndefined()
+    expect(f.events.some((e) => e.startsWith('select:word_rush_answers'))).toBe(false)
+  })
+
+  it('...while a marker that still owes the award reads them (and fails when they are unreadable)', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const f = fake(baseSession({ status: 'finished', round_finalize: owed({ awarded: false, setter_id: 'a' }) }), {
+        failAnswers: true,
+      })
+      expect((await resumeWordRushFinalization(f.client, 'GAME')).error).toBeDefined()
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('the intermission advance is bound to the turn it inspected', async () => {
+    const f = fake({
+      ...baseSession({
+        phase: 'intermission',
+        start_letter: 'a',
+        intermission_deadline_at: '2000-01-01T00:00:00.000Z',
+      }),
+    })
+    await processWordRushAdvance(f.client, 'GAME')
+    const advance = f.updates.find((u) => u.patch.phase === 'playing')
+    expect(advance!.filters).toContainEqual(['turn_index', 2])
+  })
+
+  it('a deletion that committed before a later seat failed still counts as completed work, and the failure counts too', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b', 'c'] }), {
+        rpc: (_fn, args) =>
+          args.p_player_id === 'c' ? { error: { message: 'down' } } : { data: { status: 'deleted' } },
+      })
+      expect(await resumeAllWordRushFinalizations(f.client)).toEqual({ resumed: 1, failed: 1 })
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it("the caller's own confirmed deletion is not hidden by a later seat's failure", async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const f = fake(baseSession({ roster: ['a', 'd'], leavers: ['b', 'c'] }), {
+        rpc: (_fn, args) =>
+          args.p_stage === 'leave'
+            ? { data: { status: 'left' } }
+            : args.p_player_id === 'c'
+              ? { error: { message: 'down' } }
+              : { data: { status: 'deleted' } },
+      })
+      expect(await leaveWordRushPlayer(f.client, 'GAME', 'b')).toEqual({ status: 'deleted' })
+      // ...while an unknown own outcome stays pending.
+      const g = fake(baseSession({ roster: ['a', 'd'], leavers: ['c', 'b'] }), {
+        rpc: (_fn, args) => (args.p_stage === 'leave' ? { data: { status: 'left' } } : { error: { message: 'down' } }),
+      })
+      expect(await leaveWordRushPlayer(g.client, 'GAME', 'b')).toEqual({ status: 'pending' })
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('a leave another runner already completed: a seat the database KEPT is not reported as deleted', async () => {
+    // b is no longer in the recorded list (the finish with a reason dropped it) but the seat is still there.
+    const kept = fake(baseSession({ roster: ['a', 'd'], leavers: [] }), { rpc: () => ({ data: { status: 'left' } }) })
+    expect(await leaveWordRushPlayer(kept.client, 'GAME', 'b')).toEqual({ status: 'game_finished' })
+  })
+
+  it('a host whose seat deletion became a host-alone finish is reported to its own request, which owes the work', async () => {
+    const f = fake(baseSession({ roster: ['a'], leavers: ['b'] }), {
+      rpc: (_fn, args) =>
+        args.p_stage === 'leave' ? { data: { status: 'left' } } : { data: { status: 'host_ended', finished_at: 'F9' } },
+    })
+    deferred.bookkeeping.length = 0
+    expect(
+      await leaveWordRushPlayer(f.client, 'GAME', 'b', {
+        hostLeave: { sessionsPlayed: 1, sessionStartedAt: null, trackBookkeeping: true },
+      })
+    ).toEqual({ status: 'host_ended', finishedAt: 'F9' })
+    expect(deferred.bookkeeping).toEqual([])
+    // ...while a runner that is not that host's request does the work itself.
+    const sweep = fake(baseSession({ roster: ['a'], leavers: ['b'] }), {
+      rpc: () => ({ data: { status: 'host_ended', finished_at: 'F9' } }),
+    })
+    await completeWordRushLeaves(sweep.client, 'GAME')
+    expect(deferred.bookkeeping).toEqual([['GAME', 'F9', true]])
   })
 })

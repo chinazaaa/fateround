@@ -29,9 +29,12 @@ function chainOf(top: ts.CallExpression): Chain['calls'] {
   let node: ts.Expression = top
   for (;;) {
     node = unwrap(node)
-    if (!(ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression))) break
-    calls.push({ name: node.expression.name.text, args: node.arguments })
-    node = node.expression.expression
+    if (!ts.isCallExpression(node)) break
+    // The called METHOD may be parenthesized too: `(x.update)(patch)`.
+    const method = unwrap(node.expression)
+    if (!ts.isPropertyAccessExpression(method)) break
+    calls.push({ name: method.name.text, args: node.arguments })
+    node = method.expression
   }
   return calls
 }
@@ -89,8 +92,8 @@ function namesSessionId(expr: ts.Expression): boolean {
   const e = unwrap(expr)
   return (
     ts.isPropertyAccessExpression(e) &&
-    ts.isIdentifier(e.expression) &&
-    SESSION_ID_MEMBERS[e.expression.text] === e.name.text
+    ts.isIdentifier(unwrap(e.expression)) &&
+    SESSION_ID_MEMBERS[(unwrap(e.expression) as ts.Identifier).text] === e.name.text
   )
 }
 
@@ -145,6 +148,15 @@ describe('the scanner itself (self-checks on synthetic sources, through the same
     expect(bindsSessionId(wrapped[0])).toBe(false)
   })
 
+  it('a PARENTHESIZED called method is seen through as well', () => {
+    const found = scan("void (supabase.from('word_rush_sessions').update)(patch).eq('game_id', gameId)\n")
+    expect(found).toHaveLength(1)
+    expect(bindsSessionId(found[0])).toBe(false)
+    const bound = scan("void (supabase.from('word_rush_sessions').update)(patch).eq('id', session.id)\n")
+    expect(bound).toHaveLength(1)
+    expect(bindsSessionId(bound[0])).toBe(true)
+  })
+
   it('a bound update is recognised whatever its spacing or parentheses, by receiver and member', () => {
     for (const bound of [
       "supabase.from('word_rush_sessions').update(p).eq('id', session.id)",
@@ -152,6 +164,8 @@ describe('the scanner itself (self-checks on synthetic sources, through the same
       "supabase.from('word_rush_sessions').update(p).eq('id', (session.id))",
       "supabase.from('word_rush_sessions').update(p).eq('id', pending.session_id)",
       "(supabase.from('word_rush_sessions')).update(p).eq('id', session.id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', (session).id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', (pending).session_id)",
     ]) {
       const found = scan(bound)
       expect(found, bound).toHaveLength(1)
@@ -163,6 +177,7 @@ describe('the scanner itself (self-checks on synthetic sources, through the same
     for (const unbound of [
       "supabase.from('word_rush_sessions').update(p).eq('id', other.id)",
       "supabase.from('word_rush_sessions').update(p).eq('id', session.game_id)",
+      "supabase.from('word_rush_sessions').update(p).eq('id', (other).id)",
       "supabase.from('word_rush_sessions').update(p).eq('id', pending.id)",
       "supabase.from('word_rush_sessions').update(p).eq('id', session)",
       "supabase.from('word_rush_sessions').update(p).eq('game_id', session.id)",

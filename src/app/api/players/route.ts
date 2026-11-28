@@ -1871,8 +1871,9 @@ export async function DELETE(req: NextRequest) {
     // error, and a delete whose response was lost can still have committed, so read the seat back: only a seat that is
     // verifiably still there leaves the error standing alone (the leave can be repeated); a missing or unreadable seat
     // means the old resume token cannot retry and the handoff is unresolved.
-    if (!ctx.seatMayBeRemoved && (await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)) === 'present')
-      return res
+    // (Also when the seat MAY have been removed: a fresh read settles it either way, and a seat that is still there means the
+    // removal was rejected and the leave can simply be repeated.)
+    if ((await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)) === 'present') return res
     const original = (await res
       .clone()
       .json()
@@ -2538,6 +2539,11 @@ async function removePlayer(
     }
     if (seat === 'retained') ctx.seatMayBeRemoved = false
     if (seat !== 'deleted') {
+      // Refused before any write because the participant is ambiguous: a conflict the host resolves, not a server error.
+      if (removal.participantAmbiguous) {
+        ctx.seatMayBeRemoved = false
+        return NextResponse.json({ error: removal.error }, { status: 409 })
+      }
       if (removal.error) return NextResponse.json({ error: removal.error }, { status: 500 })
       // The guarded delete refused, but whether the seat still exists could not be confirmed: neither retained nor gone.
       if (seat === 'unknown') {

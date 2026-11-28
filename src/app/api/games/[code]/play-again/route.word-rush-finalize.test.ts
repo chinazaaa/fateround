@@ -95,16 +95,21 @@ describe('POST /api/games/[code]/play-again — a finished Word Rush game', () =
       finalize.release = resolve
     })
     const pending = post()
-    // Wait until the request is PARKED on the finalizer (no sleeping): nothing may have been deleted or reset by then.
-    await started
-    expect(finalize.calls).toBe(1)
-    expect(writes).toEqual([])
-    // Destructive writes begin only after the finalizer settles.
-    finalize.release!()
-    const res = await pending
-    expect(res.status).toBe(200)
-    expect(writes).toContain('rounds:delete')
-    expect(writes.indexOf('rounds:delete')).toBeGreaterThanOrEqual(0)
+    try {
+      // Wait until the request is PARKED on the finalizer (no sleeping): nothing may have been deleted or reset by then.
+      await started
+      expect(finalize.calls).toBe(1)
+      expect(writes).toEqual([])
+      // Destructive writes begin only after the finalizer settles.
+      finalize.release!()
+      const res = await pending
+      expect(res.status).toBe(200)
+      expect(writes).toContain('rounds:delete')
+    } finally {
+      // A failed assertion must not leave the request running into the next test's state: release it and WAIT for it.
+      finalize.release!()
+      await pending.catch(() => {})
+    }
   })
 
   it('nothing owed: the reset runs (the check came first) and the reopened game carries no previous finish reason', async () => {

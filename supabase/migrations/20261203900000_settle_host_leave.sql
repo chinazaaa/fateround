@@ -115,6 +115,8 @@ begin
         and exists (
           select 1 from public.players
           where id = v_game.pending_host_player_id and game_id = v_id and is_bot = false and spectator = false
+          -- (a Word Rush player who has already LEFT, seat awaiting its delete, is no successor)
+          and not exists (select 1 from public.word_rush_sessions s where s.game_id = v_id and players.id = any (s.leavers))
           -- Locked, like the election below: a concurrent spectator / bot update of the nominee waits until this
           -- transaction commits, so a nominee judged eligible here is still eligible when the settlement lands.
           -- Lock order: games row, then the nominee. remove_player_if_game_open follows it (games row first). A removal
@@ -142,6 +144,7 @@ begin
   select id into v_successor
     from public.players
     where game_id = v_id and is_bot = false and spectator = false and id <> p_outgoing_player_id
+      and not exists (select 1 from public.word_rush_sessions s where s.game_id = v_id and players.id = any (s.leavers))
     order by joined_at, id
     limit 1
     for no key update;
@@ -239,6 +242,7 @@ begin
      or exists (
        select 1 from public.players
        where game_id = v_id and is_bot = false and spectator = false and id <> p_outgoing_player_id
+         and not exists (select 1 from public.word_rush_sessions s where s.game_id = v_id and players.id = any (s.leavers))
      ) then
     return jsonb_build_object('status', 'continue', 'game_status', v_game.status);
   end if;
@@ -334,6 +338,7 @@ as $$
 declare
   v_game public.games%rowtype;
   v_participant_id uuid;
+  v_name_ids uuid[];
   v_deleted integer;
   v_now timestamptz;
 begin
@@ -386,10 +391,16 @@ begin
     -- A seat with no linked participant is matched by NAME only when that is unambiguous: two participants with the same
     -- name must never both go with one seat (and neither can be proven to be this seat's). Refuse BEFORE anything is
     -- deleted, so the seat delete is not committed either.
-    if v_participant_id is null
-       and exists (select 1 from public.players where id = p_player_id and game_id = upper(p_game_id))
-       and (select count(*) from public.participants where game_id = upper(p_game_id) and name = p_participant_name) > 1 then
-      return jsonb_build_object('status', 'participant_ambiguous');
+    -- The same-name rows are LOCKED by the statement that counts them and are the ones deleted below: a rename of another
+    -- participant to this name (a participants update does not touch the games row) waits, so it can neither slip between the
+    -- count and the delete nor be deleted with this seat.
+    if v_participant_id is null and exists (select 1 from public.players where id = p_player_id and game_id = upper(p_game_id)) then
+      select array_agg(id) into v_name_ids from (
+        select id from public.participants where game_id = upper(p_game_id) and name = p_participant_name for update
+      ) locked;
+      if cardinality(coalesce(v_name_ids, '{}'::uuid[])) > 1 then
+        return jsonb_build_object('status', 'participant_ambiguous');
+      end if;
     end if;
   end if;
   delete from public.players where id = p_player_id and game_id = upper(p_game_id);
@@ -398,7 +409,7 @@ begin
     if v_participant_id is not null then
       delete from public.participants where id = v_participant_id and game_id = upper(p_game_id);
     else
-      delete from public.participants where game_id = upper(p_game_id) and name = p_participant_name;
+      delete from public.participants where id = any (coalesce(v_name_ids, '{}'::uuid[]));
     end if;
   end if;
   return jsonb_build_object('status', 'deleted');
@@ -576,7 +587,7 @@ begin
       set roster = array_remove(roster, old.id),
           leavers = array_remove(leavers, old.id),
           prompt_setter_player_id = case
-            when prompt_setter_player_id = old.id and phase = 'awaiting_prompt' and prompt_mode = 'manual' and status <> 'finished'
+            when prompt_setter_player_id = old.id and phase in ('awaiting_prompt', 'intermission') and prompt_mode = 'manual' and status <> 'finished'
               then public.word_rush_pick_setter(s, old.id)
             else prompt_setter_player_id
           end,
@@ -639,6 +650,7 @@ declare
   v_has_session boolean;
   v_in_leavers boolean;
   v_participant_id uuid;
+  v_name_ids uuid[];
   v_name text;
   v_seat boolean;
   v_now timestamptz;
@@ -659,6 +671,13 @@ begin
   select participant_id, name, true into v_participant_id, v_name, v_seat from public.players
     where id = p_player_id and game_id = v_game.id;
   v_seat := coalesce(v_seat, false);
+  -- An unlinked seat's participant is found by name: the same-name rows are locked by the statement that collects them and
+  -- are the ones deleted (a rename to this name waits instead of slipping between the count and the delete).
+  if v_game.participant_mode = 'joiners' and v_seat and v_participant_id is null then
+    select array_agg(id) into v_name_ids from (
+      select id from public.participants where game_id = v_game.id and name = v_name for update
+    ) locked;
+  end if;
 
   if v_game.status = 'finished' then
     -- Only a player who had LEFT a naturally finished game is ever deleted; any other seat is part of the result.
@@ -682,8 +701,7 @@ begin
       return jsonb_build_object('status', 'finalizing');
     end if;
   elsif p_stage = 'leave' then
-    if v_game.participant_mode = 'joiners' and v_seat and v_participant_id is null
-       and (select count(*) from public.participants where game_id = v_game.id and name = v_name) > 1 then
+    if cardinality(coalesce(v_name_ids, '{}'::uuid[])) > 1 then
       return jsonb_build_object('status', 'participant_ambiguous');
     end if;
     if p_host_leave and v_game.status in ('waiting', 'active') and v_game.host_player_id = p_player_id
@@ -711,7 +729,7 @@ begin
       update public.word_rush_sessions
         set roster = array_remove(roster, p_player_id),
             prompt_setter_player_id = case
-              when prompt_setter_player_id = p_player_id and phase = 'awaiting_prompt' and prompt_mode = 'manual'
+              when prompt_setter_player_id = p_player_id and phase in ('awaiting_prompt', 'intermission') and prompt_mode = 'manual'
                    and status <> 'finished'
                 then public.word_rush_pick_setter(v_session, p_player_id)
               else prompt_setter_player_id
@@ -740,16 +758,35 @@ begin
 
   -- The seat (and, in joiners mode, ITS participant row) go in this transaction. An unlinked seat's participant is matched
   -- by name only when that is unambiguous.
-  if v_game.participant_mode = 'joiners' and v_seat and v_participant_id is null
-     and (select count(*) from public.participants where game_id = v_game.id and name = v_name) > 1 then
+  if cardinality(coalesce(v_name_ids, '{}'::uuid[])) > 1 then
     return jsonb_build_object('status', 'participant_ambiguous');
+  end if;
+  -- 19. A departed HOST who would now be alone ends the game and KEEPS the seat, exactly as the leave stage does: decided
+  -- before the seat is deleted, from the recorded handoff (its generation) and the roster of players who have not left.
+  if p_stage = 'delete' and v_has_session and v_session.leaver_handoffs ? p_player_id::text
+     and v_game.status in ('waiting', 'active') and v_game.host_player_id = p_player_id
+     and v_game.sessions_played is not distinct from nullif(v_session.leaver_handoffs -> p_player_id::text ->> 'sessions_played', '')::integer
+     and not exists (
+       select 1 from public.players
+       where game_id = v_game.id and is_bot = false and spectator = false and id <> p_player_id
+         and not (id = any (coalesce(v_session.leavers, '{}'::uuid[])))
+     ) then
+    v_now := clock_timestamp();
+    update public.games
+      set status = 'finished', finished_at = v_now, result_reason = 'host_ended', pending_host_player_id = null,
+          finish_bookkeeping = jsonb_build_object('finished_at', v_now, 'attempts', 0)
+      where id = v_game.id;
+    update public.word_rush_sessions
+      set leavers = array_remove(leavers, p_player_id), leaver_handoffs = leaver_handoffs - p_player_id::text
+      where id = v_session.id;
+    return jsonb_build_object('status', 'host_ended', 'finished_at', v_now);
   end if;
   delete from public.players where id = p_player_id and game_id = v_game.id;
   if v_game.participant_mode = 'joiners' and v_seat then
     if v_participant_id is not null then
       delete from public.participants where id = v_participant_id and game_id = v_game.id;
     else
-      delete from public.participants where game_id = v_game.id and name = v_name;
+      delete from public.participants where id = any (coalesce(v_name_ids, '{}'::uuid[]));
     end if;
   end if;
   -- (the BEFORE DELETE trigger has already dropped the player from the roster and the leavers list)
@@ -784,7 +821,10 @@ grant execute on function public.word_rush_remove_player(text, uuid, text, boole
 create or replace function public.activate_ttl_round(
   p_game_id text,
   p_round_id uuid,
-  p_round_number integer
+  p_round_number integer,
+  -- The generation (games.sessions_played) the advance evaluated its rounds in. A Play Again reuses the game id and its rounds
+  -- are created under it: an advance that read the rounds of one generation must never activate (and so skip ahead in) another.
+  p_sessions_played integer default null
 )
 returns jsonb
 language plpgsql
@@ -794,6 +834,7 @@ as $$
 declare
   v_status text;
   v_pointer integer;
+  v_generation integer;
   v_updated integer;
 begin
   if p_game_id is null or p_round_id is null or p_round_number is null then
@@ -801,13 +842,16 @@ begin
   end if;
   -- A WRITE lock (not FOR SHARE): two activations that both hold a share lock would deadlock when each then needs the
   -- games row for the pointer write; this way the second one waits here, before it touches any round.
-  select status, current_round_number into v_status, v_pointer
+  select status, current_round_number, sessions_played into v_status, v_pointer, v_generation
     from public.games where id = upper(p_game_id) for no key update;
   if not found then
     return jsonb_build_object('status', 'game_missing');
   end if;
   if v_status <> 'active' then
     return jsonb_build_object('status', 'not_active');
+  end if;
+  if p_sessions_played is not null and v_generation is distinct from p_sessions_played then
+    return jsonb_build_object('status', 'session_changed');
   end if;
   -- One round is active at a time: a stale advance must not open a second one.
   if exists (select 1 from public.rounds where game_id = upper(p_game_id) and status = 'active') then
@@ -831,5 +875,5 @@ begin
 end;
 $$;
 
-revoke execute on function public.activate_ttl_round(text, uuid, integer) from public, anon, authenticated;
-grant execute on function public.activate_ttl_round(text, uuid, integer) to service_role;
+revoke execute on function public.activate_ttl_round(text, uuid, integer, integer) from public, anon, authenticated;
+grant execute on function public.activate_ttl_round(text, uuid, integer, integer) to service_role;

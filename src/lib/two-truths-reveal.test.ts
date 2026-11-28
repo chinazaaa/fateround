@@ -284,7 +284,10 @@ describe('a Two Truths round is activated through the locked database function o
     const { supabase, rpcCalls, writes } = makeSupabase({ data: { status: 'activated' }, error: null })
     expect((await syncTwoTruthsGameState(supabase, 'ABCD')).code).toBe('synced_pointer')
     expect(rpcCalls).toEqual([
-      { fn: 'activate_ttl_round', args: { p_game_id: 'ABCD', p_round_id: 'r1', p_round_number: 1 } },
+      {
+        fn: 'activate_ttl_round',
+        args: { p_game_id: 'ABCD', p_round_id: 'r1', p_round_number: 1, p_sessions_played: null },
+      },
     ])
     // No direct status write: the round is opened only by the function that holds the games row lock.
     expect(writes).toEqual([])

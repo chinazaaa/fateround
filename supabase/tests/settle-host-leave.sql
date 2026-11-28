@@ -356,7 +356,7 @@ end $$;
 --     UPDATE, the nominee eligibility check locks the nominee the same way, and a removal locks the game row FOR NO KEY
 --     UPDATE (FOR SHARE let two concurrent removals deadlock).
 select pg_temp.assert_eq('15 election lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'for no key update;', true);
-select pg_temp.assert_eq('15 nominee check lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'spectator = false\s+(--[^\n]*\n\s*)*for no key update\s+\)\)', true);
+select pg_temp.assert_eq('15 nominee check lock', pg_get_functiondef('public.settle_host_leave(text, uuid, uuid, timestamptz, integer, boolean)'::regprocedure) ~* 'spectator = false\s+(--[^\n]*\n\s*)*and not exists \(select 1 from public.word_rush_sessions s where s.game_id = v_id and players.id = any \(s.leavers\)\)\s+(--[^\n]*\n\s*)*for no key update\s+\)\)', true);
 select pg_temp.assert_eq('15 removal lock', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, text, boolean, integer, boolean)'::regprocedure) ~* 'upper\(p_game_id\) for no key update', true);
 select pg_temp.assert_eq('15 removal does not take FOR SHARE', pg_get_functiondef('public.remove_player_if_game_open(text, uuid, text, boolean, integer, boolean)'::regprocedure) ~* 'for share', false);
 
@@ -489,11 +489,13 @@ select pg_temp.assert_eq('16d ...nothing was opened and the pointer did not move
 update public.rounds set status = 'finished' where id = 'eeeeeeee-0000-4000-8000-0000000000a1';
 select pg_temp.assert_eq('16d after the active round finished the next one activates', public.activate_ttl_round('ST/', 'eeeeeeee-0000-4000-8000-0000000000a3', 3)->>'status', 'activated');
 update public.rounds set status = 'finished' where id = 'eeeeeeee-0000-4000-8000-0000000000a3';
+-- A round read in another generation (a Play Again replaced the session since) is never activated.
+select pg_temp.assert_eq('16d an advance that evaluated another generation activates nothing', public.activate_ttl_round('ST/', 'eeeeeeee-0000-4000-8000-0000000000a2', 2, (pg_temp.g('ST/')).sessions_played + 1)->>'status', 'session_changed');
 select pg_temp.assert_eq('16d a stale advance cannot move the pointer back to a skipped pending round', public.activate_ttl_round('ST/', 'eeeeeeee-0000-4000-8000-0000000000a2', 2)->>'status', 'stale_round');
 select pg_temp.assert_eq('16d ...the skipped round stays pending and the pointer stays', (select status from public.rounds where id = 'eeeeeeee-0000-4000-8000-0000000000a2') || ':' || (pg_temp.g('ST/')).current_round_number, 'pending:3');
 select pg_temp.assert_eq('16d activation takes a WRITE lock on the game row (two share locks would deadlock on the pointer write)',
-  pg_get_functiondef('public.activate_ttl_round(text, uuid, integer)'::regprocedure) ~* 'from public.games where id = upper\(p_game_id\) for no key update;', true);
-select pg_temp.assert_eq('16c service role only', has_function_privilege('anon', 'public.activate_ttl_round(text, uuid, integer)', 'execute') or has_function_privilege('authenticated', 'public.activate_ttl_round(text, uuid, integer)', 'execute'), false);
+  pg_get_functiondef('public.activate_ttl_round(text, uuid, integer, integer)'::regprocedure) ~* 'from public.games where id = upper\(p_game_id\) for no key update;', true);
+select pg_temp.assert_eq('16c service role only', has_function_privilege('anon', 'public.activate_ttl_round(text, uuid, integer, integer)', 'execute') or has_function_privilege('authenticated', 'public.activate_ttl_round(text, uuid, integer, integer)', 'execute'), false);
 
 -- 9e. A Start in the SAME replay generation (session_started_at set, sessions_played equal) is the same session: the departed
 --     host's linkage is still this leave's to release; a REPLAY (sessions_played differs) keeps it.
@@ -590,7 +592,7 @@ select pg_temp.assert_eq('17d the Word Rush function takes the session row lock 
   and position('from public.games where id = upper(p_game_id) for update' in pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)'::regprocedure)) > 0, true);
 select pg_temp.assert_eq('19 service role only', has_function_privilege('anon', 'public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)', 'execute') or has_function_privilege('authenticated', 'public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)', 'execute'), false);
 select pg_temp.assert_eq('17d activation stamps started_at with clock_timestamp()',
-  pg_get_functiondef('public.activate_ttl_round(text, uuid, integer)'::regprocedure) ~* 'started_at = clock_timestamp\(\)', true);
+  pg_get_functiondef('public.activate_ttl_round(text, uuid, integer, integer)'::regprocedure) ~* 'started_at = clock_timestamp\(\)', true);
 select pg_temp.assert_eq('17d no function of this change takes the transaction-start time for an event',
   (select count(*) from pg_proc where proname in ('settle_host_leave', 'end_game_if_host_alone', 'remove_player_if_game_open', 'activate_ttl_round')
      and pronamespace = 'public'::regnamespace and pg_get_functiondef(oid) ~* 'v_now := now\(\)|started_at = now\(\)'), 0::bigint);
@@ -757,6 +759,58 @@ select pg_temp.assert_eq('19 ...the handoff record is consumed', (select leaver_
 -- A game finished with a reason keeps a leaver's seat as part of the result and drops the leave record (so it is not swept again).
 select public.word_rush_remove_player('ST$', pg_temp.late('ST$'), 'delete');
 select pg_temp.assert_eq('19 ...a finish with a reason drops the leave record of the retained seat', (select cardinality(leavers) from public.word_rush_sessions where game_id = 'ST$'), 0);
+
+-- Re-use of a game id whose 3rd character the fixtures above already took: delete it (everything cascades) and make it again.
+create function pg_temp.remk(gid text, status text) returns void language plpgsql as $$
+begin
+  -- (the session first: the seat-delete trigger rewrites the session row while the cascade removes the seats)
+  delete from public.word_rush_sessions where game_id = gid;
+  delete from public.games where id = gid;
+  perform pg_temp.mk(gid, status);
+end $$;
+
+-- 16. A recorded leaver (seat awaiting its delete) is not a successor: neither as the pending nominee nor in the election.
+select pg_temp.remk('STU', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, leavers)
+  values ('19191919-0000-4000-8000-000000001911', 'STU', 'individual', 'automatic', 1, 3, 60, 'playing', array[pg_temp.late('STU')], array[pg_temp.early('STU')]);
+select pg_temp.assert_eq('16 the election skips the older player who has left', pg_temp.settle('STU', false)->>'nominee', pg_temp.late('STU')::text);
+update public.games set pending_host_player_id = pg_temp.early('STU') where id = 'STU';
+select pg_temp.assert_eq('16 a pending nominee who has left is replaced', pg_temp.settle('STU', false)->>'nominee', pg_temp.late('STU')::text);
+select pg_temp.assert_eq('16 ...a nominee who has NOT left is retained', pg_temp.settle('STU', false)->>'status', 'settled');
+update public.games set host_player_id = pg_temp.late('STU'), pending_host_player_id = null where id = 'STU';
+select pg_temp.assert_eq('16 end_game_if_host_alone: the only other human has left, so the host is alone and the game ends',
+  public.end_game_if_host_alone('STU', pg_temp.late('STU'), (pg_temp.g('STU')).session_started_at, (pg_temp.g('STU')).sessions_played, false)->>'status', 'finished');
+
+-- 10. A prompt setter who leaves during the INTERMISSION before a manual round is replaced in the leave itself.
+select pg_temp.remk('STU', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id, turn_index)
+  values ('19191919-0000-4000-8000-000000001912', 'STU', 'individual', 'manual', 1, 3, 60, 'intermission',
+          array[pg_temp.late('STU'), pg_temp.early('STU')], pg_temp.late('STU'), 1);
+select public.word_rush_remove_player('STU', pg_temp.late('STU'));
+select pg_temp.assert_eq('10 intermission: the departed setter is replaced', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'STU'), pg_temp.early('STU'));
+
+-- 19. A departed host who would be ALONE at the deferred delete ends the game and keeps the seat (as the leave stage does).
+select pg_temp.remk('STY', 'active');
+update public.games set host_player_id = pg_temp.late('STY') where id = 'STY';
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, leavers, leaver_handoffs)
+  values ('19191919-0000-4000-8000-000000001913', 'STY', 'individual', 'automatic', 1, 3, 60, 'playing', array[]::uuid[],
+          array[pg_temp.late('STY'), pg_temp.early('STY')],
+          jsonb_build_object(pg_temp.late('STY')::text, jsonb_build_object('session_started_at', null, 'sessions_played', (pg_temp.g('STY')).sessions_played)));
+create temp table w_alone2 as select public.word_rush_remove_player('STY', pg_temp.late('STY'), 'delete') as r;
+select pg_temp.assert_eq('19 host alone at the deferred delete: host_ended', (select r->>'status' from w_alone2), 'host_ended');
+select pg_temp.assert_eq('19 ...the seat is KEPT', (select count(*) from public.players where id = pg_temp.late('STY')), 1::bigint);
+select pg_temp.assert_eq('19 ...the game is finished with its reason and marker', (pg_temp.g('STY')).result_reason || ':' || ((pg_temp.g('STY')).finish_bookkeeping is not null)::text, 'host_ended:true');
+select pg_temp.assert_eq('19 ...the handoff record is consumed', (select leaver_handoffs from public.word_rush_sessions where game_id = 'STY'), '{}'::jsonb);
+
+-- 17. The same-name participants a removal counts are LOCKED by that statement and are the rows deleted.
+select pg_temp.assert_eq('17 remove_player_if_game_open locks the counted participants',
+  pg_get_functiondef('public.remove_player_if_game_open(text, uuid, text, boolean, integer, boolean)'::regprocedure) ~* 'name = p_participant_name for update', true);
+select pg_temp.assert_eq('17 both delete exactly the locked rows, never by name again',
+  (select count(*) from pg_proc where proname in ('remove_player_if_game_open', 'word_rush_remove_player') and pronamespace = 'public'::regnamespace
+     and pg_get_functiondef(oid) ~* 'delete from public.participants where id = any \(coalesce\(v_name_ids'
+     and pg_get_functiondef(oid) !~* 'delete from public.participants where game_id = [^;]* and name = '), 2::bigint);
+select pg_temp.assert_eq('17 word_rush_remove_player locks the counted participants',
+  pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)'::regprocedure) ~* 'name = v_name for update', true);
 
 -- No session (a lobby): the seat goes right away.
 select pg_temp.mk('ST"', 'waiting');

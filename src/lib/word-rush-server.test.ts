@@ -316,9 +316,9 @@ describe('individual round finalization is resumable', () => {
               return { data: [{ id: 'S1' }], error: null }
             }
             if (listMode) {
-              // (the leaves sweep asks for sessions with a recorded leaver only: none here)
-              if (filters.some((f) => f.method === 'neq' && f.val === '{}') && !matches(state.session)) {
-                return { data: [], error: null }
+              // The leaves sweep asks for sessions with a recorded leaver: the matching row itself, marker or not.
+              if (filters.some((f) => f.method === 'neq' && f.val === '{}')) {
+                return { data: matches(state.session) ? [{ ...state.session }] : [], error: null }
               }
               return { data: state.session.round_finalize ? [{ ...state.session }] : [], error: null }
             }

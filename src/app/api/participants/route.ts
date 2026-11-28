@@ -201,6 +201,16 @@ export async function DELETE(req: NextRequest) {
       .maybeSingle()
 
     if (linkedPlayer) {
+      // A Word Rush player who has LEFT keeps the seat until the database completes the leave (and settles a departed host's
+      // handoff in that same transaction). Deleting it from here would bypass that, so it waits for the leave to complete.
+      const { data: wr } = await getSupabaseAdmin()
+        .from('word_rush_sessions')
+        .select('leavers')
+        .eq('game_id', auth.id)
+        .maybeSingle()
+      if (((wr as { leavers?: string[] | null } | null)?.leavers ?? []).includes(linkedPlayer.id)) {
+        return NextResponse.json({ error: 'This player is leaving the game — try again in a moment' }, { status: 409 })
+      }
       await deleteJoinerPair(getSupabaseAdmin(), auth.id, linkedPlayer)
       return NextResponse.json({ success: true })
     }

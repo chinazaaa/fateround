@@ -309,12 +309,15 @@ async function endActiveRound(supabase: SupabaseClient, roundId: string): Promis
 async function activateRound(
   supabase: SupabaseClient,
   gameId: string,
-  round: { id: string; round_number: number }
+  round: { id: string; round_number: number },
+  /** The generation (games.sessions_played) the advance read its rounds in: another one's rounds are never activated. */
+  sessionsPlayed: number | null
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc('activate_ttl_round', {
     p_game_id: gameId,
     p_round_id: round.id,
     p_round_number: round.round_number,
+    p_sessions_played: sessionsPlayed,
   })
   return !error && (data as { status?: string } | null)?.status === 'activated'
 }
@@ -447,19 +450,19 @@ export async function syncTwoTruthsGameState(
           return { ok: true, code: 'advanced_finish' }
         }
 
-        const activated = await activateRound(supabase, gameId, replacement)
+        const activated = await activateRound(supabase, gameId, replacement, game.sessions_played ?? null)
         if (!activated) return { ok: false, code: 'not_finished' }
         return { ok: true, code: 'advanced_next', nextRound: replacement.round_number }
       }
     }
 
-    const activated = await activateRound(supabase, gameId, nextRound)
+    const activated = await activateRound(supabase, gameId, nextRound, game.sessions_played ?? null)
     if (!activated) return { ok: false, code: 'not_finished' }
     return { ok: true, code: 'advanced_next', nextRound: nextRound.round_number }
   }
 
   if (pointerRound && pointerRound.status === 'pending') {
-    const activated = await activateRound(supabase, gameId, pointerRound)
+    const activated = await activateRound(supabase, gameId, pointerRound, game.sessions_played ?? null)
     if (activated) return { ok: true, code: 'synced_pointer' }
   }
 
