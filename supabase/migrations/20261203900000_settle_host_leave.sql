@@ -146,7 +146,7 @@ begin
   if v_successor is not null then
     update public.games
       set pending_host_player_id = v_successor,
-          pending_host_nominated_at = now(),
+          pending_host_nominated_at = clock_timestamp(),
           host_user_id = case when v_ours then null else host_user_id end
       where id = v_id;
     return jsonb_build_object('status', 'nominated', 'nominee', v_successor, 'session_changed', v_changed);
@@ -159,7 +159,7 @@ begin
   end if;
 
   -- Nobody left to hand it to: end the game, with its reason in the same statement.
-  v_now := now();
+  v_now := clock_timestamp();
   update public.games
     set status = 'finished',
         finished_at = v_now,
@@ -240,7 +240,7 @@ begin
     return jsonb_build_object('status', 'continue', 'game_status', v_game.status);
   end if;
 
-  v_now := now();
+  v_now := clock_timestamp();
   update public.games
     set status = 'finished',
         finished_at = v_now,
@@ -316,7 +316,15 @@ begin
   if p_game_id is null or p_player_id is null or p_own_finish is null then
     raise exception 'remove_player_if_game_open: game id, player id and own-finish flag are required';
   end if;
-  select * into v_game from public.games where id = upper(p_game_id) for no key update;
+  -- A host leave that may FINISH the game needs the strongest row lock: a join only takes KEY SHARE on the games row (its
+  -- foreign key), which FOR NO KEY UPDATE does not conflict with, so a join could commit between the successor check
+  -- below and the finish and leave an eligible player seated in a finished game. FOR UPDATE conflicts with it (and is
+  -- taken first and alone, so removals still serialise exactly as before). Every other removal keeps FOR NO KEY UPDATE.
+  if p_host_leave then
+    select * into v_game from public.games where id = upper(p_game_id) for update;
+  else
+    select * into v_game from public.games where id = upper(p_game_id) for no key update;
+  end if;
   if not found then
     return jsonb_build_object('status', 'game_missing');
   end if;
@@ -351,7 +359,8 @@ begin
        select 1 from public.players
        where game_id = v_game.id and is_bot = false and spectator = false and id <> p_player_id
      ) then
-    v_now := now();
+    -- clock_timestamp(): the finish happens NOW, not when this transaction started (it may have waited for the lock).
+    v_now := clock_timestamp();
     update public.games
       set status = 'finished',
           finished_at = v_now,
@@ -573,6 +582,55 @@ $$;
 revoke execute on function public.finish_rounds_of_finished_session(text, timestamptz) from public, anon, authenticated;
 grant execute on function public.finish_rounds_of_finished_session(text, timestamptz) to service_role;
 
+-- Whatever deletes a seat, a Word Rush round that is still awaiting its prompt must not be left without a setter: the
+-- foreign key (prompt_setter_player_id ON DELETE SET NULL) would null it and nobody could enter the letters. Before the
+-- seat goes, the setter is reassigned with the same rule the application uses (individual: the roster without the leaver at
+-- turn_index mod size; team: the sorted members of the active team without the leaver at the round index mod size).
+-- Only manual-letters sessions that still await the prompt are touched (automatic mode has no setter). An empty
+-- candidate list leaves NULL (nobody can play the round; the application's round-ending logic handles that case).
+-- This covers EVERY path that deletes a seat (the removal functions, the per-engine helpers, a host kick, cascades).
+create or replace function public.word_rush_reassign_setter_before_seat_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  s public.word_rush_sessions%rowtype;
+  v_candidates uuid[];
+  v_new uuid;
+begin
+  for s in
+    select * from public.word_rush_sessions
+      where game_id = old.game_id and prompt_setter_player_id = old.id
+        and phase = 'awaiting_prompt' and prompt_mode = 'manual' and status <> 'finished'
+      for update
+  loop
+    if s.mode = 'team' then
+      select coalesce(array_agg(wp.player_id order by wp.player_id::text collate "C"), '{}'::uuid[]) into v_candidates
+        from public.word_rush_players wp
+        join public.players p on p.id = wp.player_id
+        where wp.game_id = old.game_id and wp.team = s.active_team and wp.player_id <> old.id and p.spectator is not true;
+      v_new := case when cardinality(v_candidates) = 0 then null
+                    else v_candidates[((s.turn_index / greatest(s.num_teams, 1)) % cardinality(v_candidates)) + 1] end;
+    else
+      v_candidates := array_remove(s.roster, old.id);
+      v_new := case when cardinality(v_candidates) = 0 then null
+                    else v_candidates[(s.turn_index % cardinality(v_candidates)) + 1] end;
+    end if;
+    update public.word_rush_sessions set prompt_setter_player_id = v_new, updated_at = clock_timestamp() where id = s.id;
+  end loop;
+  return old;
+end;
+$$;
+
+revoke execute on function public.word_rush_reassign_setter_before_seat_delete() from public, anon, authenticated;
+
+drop trigger if exists word_rush_reassign_setter_before_seat_delete on public.players;
+create trigger word_rush_reassign_setter_before_seat_delete
+  before delete on public.players
+  for each row execute function public.word_rush_reassign_setter_before_seat_delete();
+
 -- Apply a Word Rush roster removal computed from a roster the caller READ: a compare-and-swap under the session row
 -- lock. The roster (and the turn / phase / setter the replacement setter was derived from) must still be exactly what
 -- the caller read, so a seat restore (word_rush_restore_roster_member) that committed in between is never overwritten
@@ -750,7 +808,8 @@ begin
     return jsonb_build_object('status', 'stale_round');
   end if;
   update public.rounds
-    set status = 'active', started_at = now(), ended_at = null
+    -- clock_timestamp(): the round starts when it is activated, not when this transaction began waiting for the games lock.
+    set status = 'active', started_at = clock_timestamp(), ended_at = null
     where id = p_round_id and game_id = upper(p_game_id) and status = 'pending';
   get diagnostics v_updated = row_count;
   if v_updated = 0 then

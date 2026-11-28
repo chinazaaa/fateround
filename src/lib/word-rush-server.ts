@@ -1069,7 +1069,12 @@ async function syncWordRushRemoval(
   }
 
   const newRoster = session.roster.filter((id) => id !== removedPlayerId)
-  if (newRoster.length === session.roster.length) return {}
+  // The roster may already lack the player (an earlier attempt took them off) while they are STILL the prompt setter of a
+  // round that awaits its prompt: deleting the seat would then null the setter and nobody could enter the letters. That
+  // case is not "nothing to do": the setter is reassigned below (the database does the same before any seat delete).
+  const setterGone = session.prompt_setter_player_id === removedPlayerId && session.phase === 'awaiting_prompt'
+  const rosterUnchanged = newRoster.length === session.roster.length
+  if (rosterUnchanged && !setterGone) return {}
 
   const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
 
@@ -1105,6 +1110,8 @@ async function syncWordRushRemoval(
   // call READ, so it is written only while the session still has exactly that roster / turn / phase / setter. A seat
   // restore that committed in between (word_rush_restore_roster_member) is never overwritten by a whole-array write
   // computed from the older roster; the caller reads again instead (`stale`). A replaced session matches no row.
+  // A setter-only change (the roster already lacked the player) records no rollback: the earlier attempt's snapshot still
+  // describes the roster change and is kept by the caller.
   const { data: applied, error: updateError } = await supabase.rpc('word_rush_remove_roster_member', {
     p_game_id: gameId,
     p_session_id: session.id,
@@ -1121,6 +1128,7 @@ async function syncWordRushRemoval(
   if ((applied as { status?: string } | null)?.status !== 'applied') return { stale: true }
 
   const updatedSession = { ...session, ...sessionPatch }
+  if (rosterUnchanged) return {}
 
   if (
     updatedSession.mode === 'individual' &&

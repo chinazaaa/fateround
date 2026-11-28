@@ -125,7 +125,9 @@ update public.games set sessions_played = 3, host_user_id = '11111111-1111-1111-
 create temp table st9_first as select pg_temp.settle('ST9', true, 1) as r;
 select pg_temp.assert_eq('9 status (the call that nominates)', (select r->>'status' from st9_first), 'nominated');
 select pg_temp.assert_eq('9 changed flag (the call that nominates)', (select r->>'session_changed' from st9_first), 'true');
-select pg_temp.assert_eq('9 the repeat settles and still reports the change', pg_temp.settle('ST9', true, 1)->>'status', 'settled');
+create temp table st9_repeat as select pg_temp.settle('ST9', true, 1) as r;
+select pg_temp.assert_eq('9 the repeat settles', (select r->>'status' from st9_repeat), 'settled');
+select pg_temp.assert_eq('9 ...and still reports the change', (select r->>'session_changed' from st9_repeat), 'true');
 -- The linkage belongs to the inspected session only: a replayed session keeps it, the nomination still happens.
 select pg_temp.assert_eq('9 linkage of another session kept', (pg_temp.g('ST9')).host_user_id, '11111111-1111-1111-1111-111111111111'::uuid);
 
@@ -602,6 +604,58 @@ select pg_temp.assert_eq('18 nobody else is touched', (select count(*) from publ
 
 -- A replaced session (another id) matches nothing.
 select pg_temp.assert_eq('17 other session', public.word_rush_restore_roster_member('STU', 'bbbbbbbb-0000-4000-8000-00000000000b', pg_temp.late('STU'), 0, false, null, null, 0)->>'status', 'not_current_session');
+
+-- 17c. The prompt setter of a round that still awaits its prompt is reassigned BEFORE its seat goes (the foreign key would
+--      null it and nobody could enter the letters), by whatever path deletes the seat.
+select pg_temp.mk('ST<', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id, turn_index)
+  values ('17c17c17-0000-4000-8000-0000000017c1', 'ST<', 'individual', 'manual', 1, 3, 60, 'awaiting_prompt',
+          array[pg_temp.late('ST<'), pg_temp.early('ST<')], pg_temp.late('ST<'), 0);
+select pg_temp.assert_eq('17c the setter leaves through the removal function', public.remove_player_if_game_open('ST<', pg_temp.late('ST<'))->>'status', 'deleted');
+select pg_temp.assert_eq('17c ...the setter is the remaining player, never NULL', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST<'), pg_temp.early('ST<'));
+select pg_temp.assert_eq('17c ...and the roster no longer lists the leaver', (select roster from public.word_rush_sessions where game_id = 'ST<'), array[pg_temp.early('ST<')]);
+-- The same through a plain seat DELETE (any other removal path), with a roster that ALREADY lacks the leaver.
+select pg_temp.mk('ST>', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id, turn_index)
+  values ('17c17c17-0000-4000-8000-0000000017c2', 'ST>', 'individual', 'manual', 1, 3, 60, 'awaiting_prompt',
+          array[pg_temp.early('ST>')], pg_temp.late('ST>'), 3);
+delete from public.players where id = pg_temp.late('ST>');
+select pg_temp.assert_eq('17c a plain DELETE of an already off-roster setter still picks a replacement', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST>'), pg_temp.early('ST>'));
+-- Only a setter who awaits the prompt in a manual session is replaced.
+select pg_temp.mk('ST?', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id)
+  values ('17c17c17-0000-4000-8000-0000000017c3', 'ST?', 'individual', 'manual', 1, 3, 60, 'playing',
+          array[pg_temp.late('ST?'), pg_temp.early('ST?')], pg_temp.late('ST?'));
+delete from public.players where id = pg_temp.late('ST?');
+select pg_temp.assert_eq('17c a round already playing is left to the existing foreign key', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST?'), null::uuid);
+select pg_temp.mk('ST[', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id)
+  values ('17c17c17-0000-4000-8000-0000000017c4', 'ST[', 'individual', 'manual', 1, 3, 60, 'awaiting_prompt',
+          array[pg_temp.late('ST[')], pg_temp.late('ST['));
+delete from public.players where id = pg_temp.late('ST[');
+select pg_temp.assert_eq('17c nobody left to set the prompt: NULL (the application ends the round)', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST['), null::uuid);
+-- Team mode: the sorted members of the active team without the leaver, indexed by the round index.
+select pg_temp.mk('ST]', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id, active_team, turn_index)
+  values ('17c17c17-0000-4000-8000-0000000017c5', 'ST]', 'team', 'manual', 2, 3, 60, 'awaiting_prompt',
+          array[pg_temp.late('ST]'), pg_temp.early('ST]')], pg_temp.late('ST]'), 1, 2);
+insert into public.word_rush_players (game_id, player_id, team, score)
+  values ('ST]', pg_temp.late('ST]'), 1, 0), ('ST]', pg_temp.early('ST]'), 1, 0), ('ST]', ('00000000-0000-0000-0000-0000000003' || lpad(ascii(']')::text, 2, '0'))::uuid, 2, 0);
+delete from public.players where id = pg_temp.late('ST]');
+-- Round index 1 (turn 2 of 2 teams): over the active team's members [early] -> early; a member of ANOTHER team (the bot, team 2)
+-- must not be a candidate (index 1 over [early, bot] would pick the bot).
+select pg_temp.assert_eq('17c team mode: a member of the active team takes over', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST]'), pg_temp.early('ST]'));
+select pg_temp.assert_eq('17c the trigger function is not callable by clients', has_function_privilege('anon', 'public.word_rush_reassign_setter_before_seat_delete()', 'execute') or has_function_privilege('authenticated', 'public.word_rush_reassign_setter_before_seat_delete()', 'execute'), false);
+
+-- 17d. The host-leave path takes the games row FOR UPDATE (a join's KEY SHARE conflicts with it), the other removals do not;
+--      event times taken after a lock wait are clock_timestamp(), not the transaction start.
+select pg_temp.assert_eq('17d host-leave removal locks FOR UPDATE',
+  pg_get_functiondef('public.remove_player_if_game_open(text, uuid, boolean, timestamptz, integer, text, boolean, boolean, boolean)'::regprocedure) ~* 'if p_host_leave then\s+select \* into v_game from public.games where id = upper\(p_game_id\) for update;', true);
+select pg_temp.assert_eq('17d activation stamps started_at with clock_timestamp()',
+  pg_get_functiondef('public.activate_ttl_round(text, uuid, integer)'::regprocedure) ~* 'started_at = clock_timestamp\(\)', true);
+select pg_temp.assert_eq('17d no function of this change takes the transaction-start time for an event',
+  (select count(*) from pg_proc where proname in ('settle_host_leave', 'end_game_if_host_alone', 'remove_player_if_game_open', 'activate_ttl_round')
+     and pronamespace = 'public'::regnamespace and pg_get_functiondef(oid) ~* 'v_now := now\(\)|started_at = now\(\)'), 0::bigint);
 
 -- 17b. word_rush_remove_roster_member: a compare-and-swap on the roster the caller READ, under the session row lock.
 select pg_temp.mk('ST@', 'active');
