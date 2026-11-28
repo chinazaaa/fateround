@@ -13,6 +13,16 @@ vi.mock('next/server', async (importOriginal) => ({
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/push', () => ({ notifyGameEvent: async () => {} }))
 
+// The finish's durable bookkeeping marker (a host-left finish writes one for every game type): its state is scripted.
+const marker = vi.hoisted(() => ({ state: 'none' as string, calls: 0 }))
+vi.mock('@/lib/game-finish', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/game-finish')>()),
+  recoverFinishBookkeeping: async () => {
+    marker.calls++
+    return { state: marker.state }
+  },
+}))
+
 const cleanup = vi.hoisted(() => ({
   calls: 0,
   error: null as string | null,
@@ -52,6 +62,8 @@ beforeAll(async () => {
 }, 60_000)
 
 beforeEach(() => {
+  marker.state = 'none'
+  marker.calls = 0
   cleanup.calls = 0
   cleanup.error = null
   cleanup.superseded = false
@@ -89,6 +101,18 @@ describe('POST /api/games/[code]/play-again — a host-left Two Truths finish', 
     expect(cleanup.calls).toBe(1)
     expect(writes).toContain('rounds:delete')
   })
+
+  it.each(['held', 'error', 'pending'])(
+    'a finish whose bookkeeping marker is still %s refuses the reset before anything is deleted',
+    async (state) => {
+      current = hostEnded()
+      marker.state = state
+      const res = await post()
+      expect(res.status).toBe(409)
+      expect(marker.calls).toBe(1)
+      expect(writes).toEqual([])
+    }
+  )
 
   it.each([
     ['another finish reason', hostEnded({ result_reason: 'admin_ended' })],

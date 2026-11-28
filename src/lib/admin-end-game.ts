@@ -155,43 +155,42 @@ export async function completeHostLeftCleanup(
   supabase: SupabaseClient,
   gameId: string,
   bind: HostLeftCleanupBinding = {}
-): Promise<{ finished: boolean; error: string | null; superseded?: boolean }> {
+): Promise<{ finished: boolean; hostEnded: boolean; error: string | null; superseded?: boolean }> {
   const { data: game, error } = await supabase
     .from('games')
     .select('status, game_type, result_reason, finished_at, session_started_at, sessions_played')
     .eq('id', gameId)
     .maybeSingle()
-  if (error) return { finished: false, error: internalErrorMessage('admin-end-game', error) }
+  if (error) return { finished: false, hostEnded: false, error: internalErrorMessage('admin-end-game', error) }
   // `superseded`: the caller named the finish / session it observed and the game is no longer in it.
   if (game?.status !== 'finished') {
-    return { finished: false, error: null, ...(bind.finishedAt || bind.session ? { superseded: true } : {}) }
+    return {
+      finished: false,
+      hostEnded: false,
+      error: null,
+      ...(bind.finishedAt || bind.session ? { superseded: true } : {}),
+    }
   }
   // Which finish is this? Decided BEFORE anything else about the row (its reason included): a finish the caller did not
   // observe (the game was replayed and finished again since, even for another reason such as an admin end) belongs to a
   // later leave / request, whose own handling covers it. Nothing is cleaned up on behalf of an older one, and a caller
   // that is about to delete this session's rows (Play Again) is told the game moved on.
   if (bind.finishedAt && (!game.finished_at || Date.parse(bind.finishedAt) !== Date.parse(game.finished_at))) {
-    return { finished: true, error: null, superseded: true }
+    return { finished: true, hostEnded: false, error: null, superseded: true }
   }
   if (
     bind.session &&
     ((game.session_started_at ?? null) !== bind.session.startedAt ||
       (game.sessions_played ?? null) !== bind.session.sessionsPlayed)
   ) {
-    return { finished: true, error: null, superseded: true }
+    return { finished: true, hostEnded: false, error: null, superseded: true }
   }
-  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
+  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, hostEnded: false, error: null }
+  const outcome = await cleanupFinishedSessionOutcome(supabase, gameId, parseGameType(game.game_type), game.finished_at)
   return {
     finished: true,
-    ...(await (async () => {
-      const outcome = await cleanupFinishedSessionOutcome(
-        supabase,
-        gameId,
-        parseGameType(game.game_type),
-        game.finished_at
-      )
-      return outcome.superseded ? { error: null, superseded: true } : { error: outcome.error }
-    })()),
+    hostEnded: true,
+    ...(outcome.superseded ? { error: null, superseded: true } : { error: outcome.error }),
   }
 }
 

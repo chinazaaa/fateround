@@ -63,6 +63,7 @@ import { clearTwoTruthsSessionData } from '@/lib/two-truths'
 import { clearQuiplashSessionData } from '@/lib/quiplash'
 import { clearQuickDrawSessionData } from '@/lib/quick-draw'
 import { canWordRushPlayAgain } from '@/lib/word-rush'
+import { recoverFinishBookkeeping } from '@/lib/game-finish'
 import { clearWordRushSessionData, ensureWordRushGameFinalized } from '@/lib/word-rush-server'
 import {
   applyCustomQuestionsUpdate,
@@ -273,6 +274,17 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
   // A Word Rush game's owed effects (a closed round's points, the finished game's bookkeeping) read rows that the deletes
   // below remove (votes, rounds, participants, ...): complete them first, before ANY delete, and refuse the reset while they
   // are still owed so it can simply be retried. The session clear repeats the check as a second guard.
+  // Every OTHER game's finish owes its bookkeeping the same way when its finish wrote the durable marker (a host-left finish
+  // does, for every game type): it reads rows the reset deletes, so resume it first and refuse while it is still owed or held.
+  if (!isWordRushGame(gameType) && game.status === 'finished') {
+    const owed = await recoverFinishBookkeeping(getSupabaseAdmin(), gameId)
+    if (owed.state !== 'none' && owed.state !== 'done') {
+      return NextResponse.json(
+        { error: 'The previous game is still being finalized — try again in a moment' },
+        { status: 409 }
+      )
+    }
+  }
   if (isWordRushGame(gameType) && game.status === 'finished') {
     const finalized = await ensureWordRushGameFinalized(getSupabaseAdmin(), gameId)
     if (finalized.error) return NextResponse.json({ error: finalized.error }, { status: 409 })

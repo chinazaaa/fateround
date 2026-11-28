@@ -50,30 +50,34 @@ vi.mock('@/lib/word-rush-server', async (importOriginal) => ({
     return wordRush.outcome
   },
 }))
-// The bookkeeping a finish owes (the route runs it for the finish THIS call committed, like any other finish).
-const recovery = vi.hoisted(() => ({ state: 'held' as string, calls: 0, games: (() => []) as () => unknown[] }))
+// The bookkeeping a host-left finish owes is resumed by claiming its durable marker (recoverFinishBookkeeping).
+const recovery = vi.hoisted(() => ({
+  /** Pinned answer for the own-finish recovery (null: the host-left bookkeeping state below). */
+  state: null as string | null,
+  calls: 0,
+  games: (() => []) as () => unknown[],
+}))
 const bookkeeping = vi.hoisted(() => ({
-  calls: [] as unknown[][],
-  fail: false,
+  calls: [] as string[],
+  state: 'none' as string,
+  throws: false,
   /** Runs while the bookkeeping is in progress (the world moves on: a replay that ends again). */
   during: null as (() => void) | null,
 }))
 vi.mock('@/lib/game-finish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/game-finish')>()),
-  // The recovery the route runs after an own-finish refusal: `done` clears the marker (the bookkeeping completed).
-  recoverFinishBookkeeping: async () => {
+  recoverFinishBookkeeping: async (_s: unknown, gameId: string) => {
+    bookkeeping.calls.push(gameId)
     recovery.calls++
-    if (recovery.state === 'done') {
+    bookkeeping.during?.()
+    if (bookkeeping.throws) throw new Error('recovery threw')
+    const state = recovery.state ?? bookkeeping.state
+    // `done` clears the marker (the bookkeeping completed).
+    if (state === 'done') {
       const g = recovery.games()[0] as Record<string, unknown> | undefined
       if (g) g.finish_bookkeeping = null
     }
-    return { state: recovery.state }
-  },
-  runPostFinishBookkeeping: async (_s: unknown, gameId: string, finishedAt: string, tracked: boolean) => {
-    bookkeeping.calls.push([gameId, finishedAt, tracked])
-    bookkeeping.during?.()
-    if (bookkeeping.fail) throw new Error('bookkeeping failed')
-    return undefined
+    return { state, ...(state === 'error' ? { error: 'claim failed' } : {}) }
   },
 }))
 
@@ -593,13 +597,14 @@ beforeEach(() => {
   wipeFailBudget = 0
   wipeCalls = []
   bookkeeping.calls = []
+  bookkeeping.state = 'none'
+  bookkeeping.throws = false
   bookkeeping.during = null
-  recovery.state = 'held'
+  recovery.state = null
   recovery.calls = 0
   recovery.games = () => tables.games
   removeWordRushDeletes = []
   wordRushDeleteAnswer = { status: 'game_finished' }
-  bookkeeping.fail = false
   settleAttempts = []
   deleteCommitsButErrors = false
   removeArgs = []
@@ -690,22 +695,19 @@ describe('DELETE /api/players: what the leave captures and hands to the database
       p_outgoing_host_user_id: 'user-host',
       p_session_started_at: 'S1',
       p_sessions_played: 1,
-      p_track_bookkeeping: false,
+      // Every host-left finish writes the durable marker (Play Again honours it for every game type).
+      p_track_bookkeeping: true,
     })
   })
 
-  it.each([
-    ['uno', false],
-    ['word_rush', true],
-  ])(
-    '%s: a leave with a successor succeeds with exactly one settle call (tracked bookkeeping: %s)',
-    async (type, tracked) => {
+  it.each(['uno', 'word_rush', 'trivia'])(
+    '%s: a leave with a successor succeeds with exactly one settle call, tracked',
+    async (type) => {
       setup(type)
       const res = await leave()
       expect(res.status).toBe(200)
       expect(settleCalls).toHaveLength(1)
-      // Only Word Rush's Play Again honours the durable marker, so only its finish is tracked.
-      expect(settleCalls[0].args.p_track_bookkeeping).toBe(tracked)
+      expect(settleCalls[0].args.p_track_bookkeeping).toBe(true)
       expect(tables.games[0].pending_host_player_id).toBe(OTHER_PID)
     }
   )
@@ -910,7 +912,7 @@ describe('DELETE /api/players: no-successor end and its cleanup', () => {
     expect(g.status).toBe('finished')
     expect(g.result_reason).toBe('host_ended')
     expect(g.host_user_id).toBeNull()
-    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
+    expect(bookkeeping.calls).toEqual(['ABCD'])
   })
 
   it('does not owe bookkeeping (or relabel) for a game another caller finished first', async () => {
@@ -1290,51 +1292,97 @@ describe('DELETE /api/players: retained host leave (forfeit games)', () => {
   })
 })
 
-describe('DELETE /api/players: the finish a leave commits owes the bookkeeping every finish owes', () => {
-  it.each([
-    ['uno', false],
-    ['trivia', false],
-    ['word_rush', true],
-    ['codewords', false],
-  ])('%s: the pre-removal end runs its bookkeeping once (tracked: %s)', async (type, tracked) => {
-    hostOnly(type)
+describe('DELETE /api/players: a host-left finish owes its bookkeeping, durably', () => {
+  it.each(['uno', 'trivia', 'word_rush', 'codewords'])(
+    '%s: the pre-removal end resumes the bookkeeping its marker owes (every game type)',
+    async (type) => {
+      hostOnly(type)
+      const res = await leave()
+      expect(res.status).toBe(200)
+      expect(endCalls).toEqual([{ status: 'finished', finished_now: true, finished_at: FINISHED_AT }])
+      expect(bookkeeping.calls).toEqual(['ABCD'])
+    }
+  )
+
+  it('a repeat after a lost response (the game is already ended by this leave) resumes the same marker', async () => {
+    hostOnly('uno', { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
     const res = await leave()
     expect(res.status).toBe(200)
-    expect(endCalls).toEqual([{ status: 'finished', finished_now: true, finished_at: FINISHED_AT }])
-    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, tracked]])
+    expect(bookkeeping.calls).toEqual(['ABCD'])
   })
 
-  it('a post-removal finish committed by the settle step runs its bookkeeping once', async () => {
+  it('the end check itself reports a repeat (already ended by this leave) as finished and resumes the marker', async () => {
+    hostOnly('uno')
+    // The first answer was lost: the game is finished by the time the check runs again.
+    beforeEndCheck = () =>
+      Object.assign(tables.games[0], { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(endCalls).toEqual([{ status: 'finished', finished_now: false, finished_at: FINISHED_AT }])
+    expect(bookkeeping.calls).toEqual(['ABCD'])
+  })
+
+  it('the settlement of a RETRY (finished_now: false, the first answer was lost) resumes the marker the finish wrote', async () => {
+    setup('trivia')
+    // A successor is eligible while the seat goes; the game is then ended by the lost first attempt (host_ended, same
+    // session) before this settlement runs, so it only OBSERVES the finish.
+    afterPlayerDelete = () => {
+      tables.players = []
+      Object.assign(tables.games[0], { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(settleResults[0]).toMatchObject({ status: 'finished', finished_now: false, result_reason: 'host_ended' })
+    expect(bookkeeping.calls).toEqual(['ABCD'])
+  })
+
+  it('...and never for a finish of another reason that the settlement merely observes', async () => {
+    setup('trivia')
+    afterPlayerDelete = () => {
+      tables.players = []
+      Object.assign(tables.games[0], { status: 'finished', result_reason: 'admin_ended', finished_at: 'THEIRS' })
+    }
+    expect((await leave()).status).toBe(200)
+    expect(bookkeeping.calls).toEqual([])
+  })
+
+  it('a finish by someone else (another reason) is never resumed by this leave', async () => {
+    hostOnly('uno', { status: 'finished', result_reason: 'admin_ended', finished_at: 'THEIRS' })
+    await leave()
+    expect(bookkeeping.calls).toEqual([])
+  })
+
+  it('a post-removal finish committed by the settle step resumes its marker too, once', async () => {
     setup('uno')
     removal.uno.onCall = () => {
       tables.players = tables.players.filter((p) => p.id !== OTHER_PID)
     }
     await leave()
     expect(settleCalls).toHaveLength(1)
-    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
+    expect(bookkeeping.calls).toEqual(['ABCD'])
   })
 
-  it('a finish this call did NOT commit (already ended, or another reason) runs no bookkeeping', async () => {
-    hostOnly('uno', { status: 'finished', result_reason: 'host_ended', finished_at: FINISHED_AT })
-    await leave()
-    hostOnly('uno', { status: 'finished', result_reason: 'admin_ended', finished_at: 'THEIRS' })
-    await leave()
-    expect(bookkeeping.calls).toEqual([])
-  })
-
-  it('a bookkeeping failure is logged and never fails the leave', async () => {
-    hostOnly('uno')
-    bookkeeping.fail = true
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      const res = await leave()
-      expect(res.status).toBe(200)
-      expect(bookkeeping.calls).toHaveLength(1)
-      expect(log.mock.calls.some(([m]) => typeof m === 'string' && m.includes('post-finish bookkeeping'))).toBe(true)
-    } finally {
-      log.mockRestore()
+  it.each([
+    ['an error state', { state: 'error', throws: false }, 'resuming post-finish bookkeeping failed'],
+    ['a thrown error', { state: 'none', throws: true }, 'resuming post-finish bookkeeping threw'],
+  ])(
+    'a resume that fails (%s) is logged with its diagnostic and never fails the leave',
+    async (_name, mode, diagnostic) => {
+      hostOnly('uno')
+      bookkeeping.state = mode.state
+      bookkeeping.throws = mode.throws
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+      try {
+        const res = await leave()
+        expect(res.status).toBe(200)
+        // Recovery really was attempted, and the failure reached the operator log with the expected diagnostic.
+        expect(bookkeeping.calls).toEqual(['ABCD'])
+        expect(log.mock.calls.some(([m]) => typeof m === 'string' && m.includes(diagnostic))).toBe(true)
+      } finally {
+        log.mockRestore()
+      }
     }
-  })
+  )
 })
 
 describe('DELETE /api/players: removal disposition is carried separately from the HTTP status', () => {
@@ -1734,7 +1782,7 @@ describe('DELETE /api/players: a Word Rush leave is ONE durable database step, n
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
     expect(tables.rounds.map((r) => r.status)).toEqual(['finished'])
     // ...and the bookkeeping every finish owes ran for the finish the database wrote.
-    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, true]])
+    expect(recovery.calls).toBe(1)
   })
 
   it('host_ended whose cleanup fails is an error (the seat is kept, so a repeat leave reruns the cleanup), not a success', async () => {
@@ -1874,7 +1922,7 @@ describe('DELETE /api/players: the host-left cleanup is bound to the finish THIS
     })
     expect(settleCalls).toHaveLength(1)
     expect(removeArgs.some((a) => (a as { p_host_leave?: boolean }).p_host_leave)).toBe(true)
-    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
+    expect(bookkeeping.calls).toEqual(['ABCD'])
     expect(wipeCalls).toEqual([])
     // F2 was installed WHILE the bookkeeping ran (the settlement had already committed F1): the cleanup is bound to F1, so F2's
     // live round is not closed. (Distinct from the schedule below, where the settlement itself observes F2 before any
@@ -2097,13 +2145,15 @@ describe('DELETE /api/players: the last successor leaves between the end check a
     const res = await leave()
     expect(res.status).toBe(200)
     expect(removeArgs[0].p_host_leave).toBe(true)
+    // The finish it may write records the durable bookkeeping marker (every game type).
+    expect(removeArgs[0].p_track_bookkeeping).toBe(true)
     expect(tables.games[0].status).toBe('finished')
     expect(tables.games[0].result_reason).toBe('host_ended')
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
     // The cleanup ran bound to the finish the database wrote.
     expect(tables.rounds.map((r) => r.status)).toEqual(['finished'])
     // ...and so did the finish's bookkeeping, independently of the round cleanup.
-    expect(bookkeeping.calls).toEqual([['ABCD', FINISHED_AT, false]])
+    expect(bookkeeping.calls).toEqual(['ABCD'])
   })
 })
 

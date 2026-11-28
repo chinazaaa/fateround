@@ -361,7 +361,7 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
 
   it('runs the shared cleanup bound to the session finished_at', async () => {
     const { supabase, recorded } = mockSupabase({ gameRow: FINISHED })
-    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished: true, error: null })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished: true, hostEnded: true, error: null })
     expect(recorded.roundBounds).toEqual([FINISHED_AT])
     expect(revealFinishedTtlRounds).toHaveBeenCalledTimes(1)
   })
@@ -387,7 +387,7 @@ describe('completeHostLeftCleanup — recovery bound to the finished session', (
     ['a finished game with no finished_at', { ...FINISHED, finished_at: null }, true],
   ])('touches nothing for %s', async (_name, gameRow, finished) => {
     const { supabase, recorded } = mockSupabase({ gameRow })
-    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished, error: null })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished, hostEnded: false, error: null })
     expect(recorded.roundUpdates).toBe(0)
     expect(recorded.deletes).toEqual([])
     expect(revealFinishedTtlRounds).not.toHaveBeenCalled()
@@ -415,6 +415,7 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     const { supabase, recorded } = mockSupabase({ gameRow: row({ finished_at: '2030-01-01T00:00:00.000Z' }) })
     expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
       finished: true,
+      hostEnded: false,
       error: null,
       superseded: true,
     })
@@ -428,6 +429,7 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     })
     expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
       finished: true,
+      hostEnded: false,
       error: null,
       superseded: true,
     })
@@ -438,6 +440,7 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     const { supabase } = mockSupabase({ gameRow: row({ result_reason: 'admin_ended' }) })
     expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
       finished: true,
+      hostEnded: false,
       error: null,
     })
   })
@@ -447,6 +450,7 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     const { supabase, recorded } = mockSupabase({ gameRow: row(), roundStatus: 'not_current_session' })
     expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
       finished: true,
+      hostEnded: true,
       error: null,
       superseded: true,
     })
@@ -457,6 +461,7 @@ describe('completeHostLeftCleanup — bound to the finish the caller observed', 
     const moved = mockSupabase({ gameRow: row(), wipeStatus: 'not_current_session' })
     expect(await completeHostLeftCleanup(moved.supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
       finished: true,
+      hostEnded: true,
       error: null,
       superseded: true,
     })

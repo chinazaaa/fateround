@@ -812,6 +812,24 @@ select pg_temp.assert_eq('17 both delete exactly the locked rows, never by name 
 select pg_temp.assert_eq('17 word_rush_remove_player locks the counted participants',
   pg_get_functiondef('public.word_rush_remove_player(text, uuid, text, boolean, integer, boolean, timestamptz)'::regprocedure) ~* 'name = v_name for update', true);
 
+-- The finish transaction records the bookkeeping marker, bound to its own finished_at, for EVERY finish path (the route resumes
+-- it on the first answer and on a retry whose answer reports finished_now = false), and a repeat never rewrites it.
+select pg_temp.remk('STU', 'active');
+update public.games set host_player_id = pg_temp.late('STU') where id = 'STU';
+delete from public.players where id = pg_temp.early('STU');
+select pg_temp.assert_eq('M the removal-path finish when asked: host_ended', public.remove_player_if_game_open('STU', pg_temp.late('STU'), p_host_leave => true, p_sessions_played => (pg_temp.g('STU')).sessions_played, p_track_bookkeeping => true)->>'status', 'host_ended');
+select pg_temp.assert_eq('M ...records the marker bound to its finished_at', ((pg_temp.g('STU')).finish_bookkeeping->>'finished_at')::timestamptz, (pg_temp.g('STU')).finished_at);
+select pg_temp.assert_eq('M ...with no attempt made yet', (pg_temp.g('STU')).finish_bookkeeping->>'attempts', '0');
+update public.games set finish_bookkeeping = jsonb_set(finish_bookkeeping, '{attempts}', '2') where id = 'STU';
+select pg_temp.assert_eq('M a repeat of the leave is a finished game: refused, marker untouched', public.remove_player_if_game_open('STU', pg_temp.late('STU'), p_host_leave => true, p_sessions_played => (pg_temp.g('STU')).sessions_played, p_track_bookkeeping => true)->>'status', 'game_finished');
+select pg_temp.assert_eq('M ...the progress already recorded is kept', (pg_temp.g('STU')).finish_bookkeeping->>'attempts', '2');
+select pg_temp.assert_eq('M the end check repeat reports finished_now = false and keeps the marker (a lost first answer is resumed from it)',
+  public.end_game_if_host_alone('STU', pg_temp.late('STU'), (pg_temp.g('STU')).session_started_at, (pg_temp.g('STU')).sessions_played, true)->>'finished_now', 'false');
+select pg_temp.assert_eq('M ...marker still names the same finish', ((pg_temp.g('STU')).finish_bookkeeping->>'finished_at')::timestamptz, (pg_temp.g('STU')).finished_at);
+select pg_temp.assert_eq('M ...and its progress', (pg_temp.g('STU')).finish_bookkeeping->>'attempts', '2');
+select pg_temp.assert_eq('M the settlement repeat reports finished_now = false with the reason and keeps the marker',
+  pg_temp.settle('STU', false, (pg_temp.g('STU')).sessions_played, true)->>'finished_now' || ':' || (pg_temp.settle('STU', false, (pg_temp.g('STU')).sessions_played, true)->>'result_reason') || ':' || ((pg_temp.g('STU')).finish_bookkeeping->>'attempts'), 'false:host_ended:2');
+
 -- No session (a lobby): the seat goes right away.
 select pg_temp.mk('ST"', 'waiting');
 select pg_temp.assert_eq('19 lobby (no session): deleted at once', public.word_rush_remove_player('ST"', pg_temp.late('ST"'))->>'status', 'deleted');
