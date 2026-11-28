@@ -93,9 +93,12 @@ describe('POST /api/games/[code]/play-again — a host-left Two Truths finish', 
   it.each([
     ['another finish reason', hostEnded({ result_reason: 'admin_ended' })],
     ['another game type', hostEnded({ game_type: 'trivia' })],
-  ])('%s: the cleanup is not consulted', async (_name, row) => {
+  ])('%s: the cleanup is not consulted, and the replay is NOT blocked', async (_name, row) => {
     current = row
-    await post()
+    const res = await post()
+    // A route that rejected the control before consulting the cleanup would also record zero calls.
+    expect(res.status).toBe(200)
+    expect(writes).toContain('rounds:delete')
     expect(cleanup.calls).toBe(0)
   })
 })

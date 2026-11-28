@@ -63,7 +63,7 @@ async function finishGameRounds(
   gameType: ReturnType<typeof parseGameType>,
   endedAt: string,
   startedNoLaterThan?: string
-): Promise<string | null> {
+): Promise<{ error: string | null; superseded?: boolean }> {
   let confirmedRoundIds: string[] | undefined
   if (startedNoLaterThan) {
     // The cleanup of an already FINISHED session: decided in the database, bound to that session under the games row
@@ -73,10 +73,13 @@ async function finishGameRounds(
       p_game_id: gameId,
       p_finished_at: startedNoLaterThan,
     })
-    if (error) return internalErrorMessage('admin-end-game', error)
-    // A replayed or missing game has nothing left to clean up for this session (and its new rounds are not ours).
+    if (error) return { error: internalErrorMessage('admin-end-game', error) }
+    // A replayed or missing game has nothing left to clean up for this session (and its new rounds are not ours). A game
+    // that is no longer THIS finished session is reported as such (never as success): a caller that is about to delete
+    // the session's rows must stop.
     const confirmed = data as { status?: string; round_ids?: string[] } | null
-    if (confirmed?.status !== 'finished_session') return null
+    if (confirmed?.status === 'not_current_session') return { error: null, superseded: true }
+    if (confirmed?.status !== 'finished_session') return { error: null }
     confirmedRoundIds = confirmed.round_ids ?? []
   } else {
     const { error } = await supabase
@@ -84,14 +87,14 @@ async function finishGameRounds(
       .update({ status: 'finished', ended_at: endedAt })
       .eq('game_id', gameId)
       .eq('status', 'active')
-    if (error) return internalErrorMessage('admin-end-game', error)
+    if (error) return { error: internalErrorMessage('admin-end-game', error) }
   }
   // For a finished session the database confirmed (under the games row lock) which rounds are its own, so the reveal is
   // limited to exactly those ids: no timestamp cutoff (the clocks differ) and no reaching a replay's rounds.
   if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId, undefined, confirmedRoundIds))) {
-    return 'Could not reveal every Two Truths round'
+    return { error: 'Could not reveal every Two Truths round' }
   }
-  return null
+  return { error: null }
 }
 
 /**
@@ -107,14 +110,25 @@ export async function cleanupFinishedSession(
   gameType: ReturnType<typeof parseGameType>,
   finishedAt: string
 ): Promise<string | null> {
-  const roundsError = await finishGameRounds(supabase, gameId, gameType, finishedAt, finishedAt)
+  return (await cleanupFinishedSessionOutcome(supabase, gameId, gameType, finishedAt)).error
+}
+
+/** {@link cleanupFinishedSession} that also reports a game that is no longer the finished session it was bound to. */
+export async function cleanupFinishedSessionOutcome(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: ReturnType<typeof parseGameType>,
+  finishedAt: string
+): Promise<{ error: string | null; superseded?: boolean }> {
+  const rounds = await finishGameRounds(supabase, gameId, gameType, finishedAt, finishedAt)
+  const roundsError = rounds.error
   let wipeError: string | null = null
   if (isCodewordsGame(gameType)) {
     wipeError = (await wipeFinishedSession(supabase, gameId, finishedAt, 'codewords')).error
   } else if (isAnonymousMessagesGame(gameType) || isSecretMessageGame(gameType)) {
     wipeError = (await wipeFinishedSession(supabase, gameId, finishedAt, 'anonymous')).error
   }
-  return roundsError ?? wipeError
+  return { error: roundsError ?? wipeError, ...(rounds.superseded ? { superseded: true } : {}) }
 }
 
 /**
@@ -166,7 +180,15 @@ export async function completeHostLeftCleanup(
   if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, error: null }
   return {
     finished: true,
-    error: await cleanupFinishedSession(supabase, gameId, parseGameType(game.game_type), game.finished_at),
+    ...(await (async () => {
+      const outcome = await cleanupFinishedSessionOutcome(
+        supabase,
+        gameId,
+        parseGameType(game.game_type),
+        game.finished_at
+      )
+      return outcome.superseded ? { error: null, superseded: true } : { error: outcome.error }
+    })()),
   }
 }
 
@@ -185,7 +207,7 @@ export async function adminEndGame(
   const gameType = parseGameType(game.game_type)
   // Rounds first: a failure here (or a Two Truths reveal that could not be written) leaves the game endable,
   // whereas finishing the game makes this function reject every retry and the round keeps no lie_index forever.
-  const roundsError = await finishGameRounds(supabase, gameId, gameType, now)
+  const roundsError = (await finishGameRounds(supabase, gameId, gameType, now)).error
   if (roundsError) return { error: `${roundsError} — game left endable; retry.`, won: false }
   if (isAnonymousMessagesGame(gameType)) {
     return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive })

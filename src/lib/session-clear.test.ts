@@ -202,6 +202,34 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     }
   })
 
+  it('a skipped wipe on a room that FINISHED A LATER session is `superseded` too (its status says finished, its session is not ours)', async () => {
+    wipeStatus = 'not_current_session'
+    try {
+      const m = makeMockSupabase(undefined, {
+        status: 'finished',
+        finished_at: '2026-03-03T00:00:00.000Z',
+        session_started_at: new Date().toISOString(),
+      })
+      expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('superseded')
+    } finally {
+      wipeStatus = 'wiped'
+    }
+  })
+
+  it('a skipped wipe on the SAME session that is still finished is reported finished', async () => {
+    wipeStatus = 'not_current_session'
+    try {
+      const m = makeMockSupabase(undefined, {
+        status: 'finished',
+        finished_at: '2026-03-03T00:00:00.000Z',
+        session_started_at: EXPIRED.session_started_at,
+      })
+      expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
+    } finally {
+      wipeStatus = 'wiped'
+    }
+  })
+
   it('...and when the room state cannot be read after a skipped wipe, it is an error', async () => {
     wipeStatus = 'not_current_session'
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})

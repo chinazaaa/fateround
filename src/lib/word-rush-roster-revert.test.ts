@@ -312,6 +312,22 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     for (const filters of closing) expect(filters).toContainEqual(['id', 'S-1'])
   })
 
+  it('a TEAM finish is durable: the session claim writes the owed-finish marker (with the leaver) in the same update, so a failed game flip is resumable', async () => {
+    await syncWordRushAfterPlayerRemoved(
+      clientFor(individualSession({ mode: 'team', roster: ['a', 'b', 'c'], active_team: 1 }), true),
+      'GAME',
+      'b'
+    )
+    const finishing = sessionUpdatePatches.find((p) => p.status === 'finished')
+    expect(finishing).toBeDefined()
+    expect(finishing!.round_finalize).toMatchObject({
+      session_id: 'S-1',
+      is_last: true,
+      awarded: true,
+      leaver_id: 'b',
+    })
+  })
+
   it("a held / owed bookkeeping after the won finish still reports the finish as this removal's own", async () => {
     finish.bookkeeping = 'held'
     try {
@@ -353,6 +369,22 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     // Nothing of the roster changed in this call: no rollback (the earlier attempt's snapshot is the caller's).
     expect(result.rollback).toBeUndefined()
     expect(result.error).toBeUndefined()
+  })
+
+  it('a failed SETTER-ONLY write returns no snapshot (the restore would add a roster member this operation never removed)', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const client = clientFor(
+        individualSession({ roster: ['a', 'c'], prompt_setter_player_id: 'b', phase: 'awaiting_prompt' }),
+        true
+      )
+      rosterAnswer = { error: true }
+      const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
+      expect(result.internal).toBe(true)
+      expect(result.rollback).toBeUndefined()
+    } finally {
+      log.mockRestore()
+    }
   })
 
   it('a removed player who is NOT the setter and is already off the roster needs nothing', async () => {
@@ -444,7 +476,13 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   })
 
   it('a forward roster write that matches no session row (the session was replaced) is stale: nothing proceeds, it is re-read, then reported', async () => {
-    const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), false, false, true), 'GAME', 'b')
+    // The replaced session answers `no_session` from the roster RPC (not `roster_changed`).
+    const client = clientFor(individualSession(), false, false, false)
+    rosterAnswer = { status: 'no_session' }
+    const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
+    // Read again every time (bounded), then reported; no closing update was issued for the missing session.
+    expect(rosterCalls).toHaveLength(3)
+    expect(sessionUpdatePatches.filter((p) => p.status === 'finished' || p.phase === 'finished')).toEqual([])
     expect(result.rollback).toBeUndefined()
     expect(result.ownFinish).toBeUndefined()
     expect(result.error).toMatch(/changed while you were leaving/i)

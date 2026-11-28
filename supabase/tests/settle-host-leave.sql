@@ -210,8 +210,11 @@ select pg_temp.assert_eq('12 untouched', (pg_temp.g('STE')).status, 'active');
 delete from public.players where id in (pg_temp.early('STE'), pg_temp.late('STE'));
 insert into public.players (id, game_id, name, joined_at, is_bot, spectator) values ('00000000-0000-0000-0000-0000000005ff', 'STE', 'Spec', now(), false, true);
 select pg_temp.assert_eq('12 session changed: continue', pg_temp.alone('STE', 2)->>'status', 'continue');
-select pg_temp.assert_eq('12 only bot/spectator: finished', pg_temp.alone('STE')->>'status', 'finished');
-select pg_temp.assert_eq('12 finished_now', pg_temp.alone('STE')->>'finished_now', 'false'); -- the repeat
+create temp table ste_first as select pg_temp.alone('STE') as r;
+select pg_temp.assert_eq('12 only bot/spectator: finished', (select r->>'status' from ste_first), 'finished');
+select pg_temp.assert_eq('12 the winning call owns the finish (the route owes the bookkeeping for it)', (select r->>'finished_now' from ste_first), 'true');
+select pg_temp.assert_eq('12 ...and reports the finish it wrote', ((select r->>'finished_at' from ste_first))::timestamptz, (pg_temp.g('STE')).finished_at);
+select pg_temp.assert_eq('12 finished_now on the repeat', pg_temp.alone('STE')->>'finished_now', 'false');
 select pg_temp.assert_eq('12 reason', (pg_temp.g('STE')).result_reason, 'host_ended');
 select pg_temp.assert_eq('12 seat kept', (select count(*) from public.players where id = pg_temp.hostid('STE')), 1::bigint);
 select pg_temp.assert_eq('12 host reference kept', (pg_temp.g('STE')).host_player_id, pg_temp.hostid('STE'));
@@ -688,6 +691,20 @@ select pg_temp.assert_eq('17e an active game still takes a seat', (select count(
 select pg_temp.assert_eq('17e the guard locks the games row FOR NO KEY UPDATE (the level the lobby trigger already takes)',
   pg_get_functiondef('public.players_require_unfinished_game()'::regprocedure) ~* 'from public.games where id = new.game_id for no key update', true);
 select pg_temp.assert_eq('17e not callable by clients', has_function_privilege('anon', 'public.players_require_unfinished_game()', 'execute') or has_function_privilege('authenticated', 'public.players_require_unfinished_game()', 'execute'), false);
+
+-- 17f. A seat whose OWN last-round finalization is still pending (the marker names it as the leaver) is not deleted: the finish that
+--      records the owed deletion has not been applied yet.
+select pg_temp.mk('ST0', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, status, roster, round_finalize)
+  values ('17f17f17-0000-4000-8000-0000000017f1', 'ST0', 'individual', 'automatic', 1, 3, 60, 'finished', 'finished',
+          array[pg_temp.late('ST0'), pg_temp.early('ST0')],
+          jsonb_build_object('session_id', '17f17f17-0000-4000-8000-0000000017f1', 'turn_index', 2, 'round', 3, 'is_last', true,
+                             'awarded', true, 'turn_seconds', 60, 'leaver_id', pg_temp.late('ST0')));
+select pg_temp.assert_eq('17f the named leaver keeps the seat while finalization is pending', public.remove_player_if_game_open('ST0', pg_temp.late('ST0'))->>'status', 'finalizing');
+select pg_temp.assert_eq('17f ...nothing was deleted', (select count(*) from public.players where id = pg_temp.late('ST0')), 1::bigint);
+select pg_temp.assert_eq('17f another player is not held back', public.remove_player_if_game_open('ST0', pg_temp.early('ST0'))->>'status', 'deleted');
+update public.word_rush_sessions set round_finalize = null where game_id = 'ST0';
+select pg_temp.assert_eq('17f once the finalization is applied (marker cleared) the leave goes through', public.remove_player_if_game_open('ST0', pg_temp.late('ST0'))->>'status', 'deleted');
 
 -- 17d. The host-leave path takes the games row FOR UPDATE (a join's KEY SHARE conflicts with it), the other removals do not;
 --      event times taken after a lock wait are clock_timestamp(), not the transaction start.

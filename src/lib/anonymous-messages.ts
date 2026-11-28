@@ -262,13 +262,19 @@ async function finishAndClearSession(
   if (!clearError && wipeStatus === 'not_current_session') {
     // The finish committed, but the room was reopened before the wipe ran (it deleted nothing): report the room's state
     // as it is now, not as the finish left it.
-    const { data: now, error: nowError } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
-    return {
-      error: null,
-      won,
-      cleanupError: null,
-      currentStatus: nowError ? UNKNOWN_STATUS : (now?.status ?? null),
+    const { data: now, error: nowError } = await supabase
+      .from('games')
+      .select('status, session_started_at')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (nowError) return { error: null, won, cleanupError: null, currentStatus: UNKNOWN_STATUS }
+    // ...and a LATER session (another start) is not the one this request saw expire, whatever its status is.
+    if (onlySessionStartedAt !== undefined) {
+      const ours = onlySessionStartedAt === null ? null : Date.parse(onlySessionStartedAt)
+      const theirs = now?.session_started_at ? Date.parse(now.session_started_at as string) : null
+      if (ours !== theirs) return { error: null, won, cleanupError: null, currentStatus: 'superseded_session' }
     }
+    return { error: null, won, cleanupError: null, currentStatus: now?.status ?? null }
   }
   return { error: null, won, cleanupError: clearError, ...(won ? {} : { currentStatus: 'finished' }) }
 }

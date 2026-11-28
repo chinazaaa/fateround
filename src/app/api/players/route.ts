@@ -13,6 +13,7 @@ import { removeWhotPlayer } from '@/lib/whot'
 import { removeCrazyEightsPlayer } from '@/lib/crazy-eights'
 import { removeRummyPlayer } from '@/lib/rummy'
 import { completePendingFinishedLeave } from '@/lib/pending-leave'
+import { playerInsertFailure } from '@/lib/player-insert-failure'
 import { recoverFinishBookkeeping } from '@/lib/game-finish'
 import { removeGoFishPlayer } from '@/lib/gofish-server'
 import { removeUnoPlayer } from '@/lib/uno'
@@ -44,6 +45,7 @@ import { registerQuickDrawLateJoinPlayer } from '@/lib/quick-draw'
 import { reconcileQuickDrawGuessAfterRemoval } from '@/lib/quick-draw-guess'
 import {
   assignWordRushLateJoinTeam,
+  resumeWordRushFinalization,
   revertWordRushRosterAfterFailedPlayerDelete,
   syncWordRushAfterPlayerRemoved,
   type WordRushRosterSnapshot,
@@ -495,7 +497,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
 
@@ -533,7 +535,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     await linkPlayerToRoomMember(supabase, player.id, roomMemberId)
 
@@ -590,7 +592,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     if (!isSpectator && (gameRow.status === 'waiting' || gameRow.status === 'active')) {
       const { error: cardError } = await createBingoCardForPlayer(getSupabaseAdmin(), gameId, player.id)
@@ -694,7 +696,7 @@ export async function POST(req: NextRequest) {
       if (error.code === '23505') {
         return NextResponse.json({ error: 'That token is already taken — pick another' }, { status: 400 })
       }
-      return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+      return playerInsertFailure(error)
     }
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
@@ -750,7 +752,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -833,7 +835,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -893,7 +895,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -963,7 +965,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     return jsonPlayerJoin(roomMemberId, player, gameRow as Game, {}, joinerUserId)
   }
@@ -1015,7 +1017,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     if (gameRow.status === 'active' && !isSpectator) {
       const { role, error: assignError } = await assignCodewordsLateJoinOperative(getSupabaseAdmin(), gameId, player.id)
@@ -1069,7 +1071,7 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single()
-    if (error) return NextResponse.json({ error: internalErrorMessage('describe-it:join', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     // Late joiner as a player → auto-assign to the smallest team so they can play.
     if (gameRow.status === 'active' && !isSpectator) {
@@ -1123,7 +1125,7 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single()
-    if (error) return NextResponse.json({ error: internalErrorMessage('word-rush:join', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     if (gameRow.status === 'active' && !isSpectator) {
       const { error: assignError } = await assignWordRushLateJoinTeam(getSupabaseAdmin(), gameId, player.id)
@@ -1183,7 +1185,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     if (isQuickDrawGame(gameType) && game.status === 'active' && !joinSpectator) {
       const { error: assignError } = await registerQuickDrawLateJoinPlayer(getSupabaseAdmin(), id, player.id)
@@ -1240,7 +1242,7 @@ export async function POST(req: NextRequest) {
 
     if (playerError) {
       await getSupabaseAdmin().from('participants').delete().eq('id', participant.id)
-      return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
+      return playerInsertFailure(playerError)
     }
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
@@ -1268,7 +1270,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
@@ -1315,7 +1317,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
@@ -1376,7 +1378,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) return NextResponse.json({ error: internalErrorMessage('players', error) }, { status: 500 })
+    if (error) return playerInsertFailure(error)
 
     await syncImportParticipantBallot(supabase, id, participantId, gender, identityGender, rawPollGender ?? undefined)
 
@@ -1413,7 +1415,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (playerError) return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
+    if (playerError) return playerInsertFailure(playerError)
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
   }
@@ -1458,7 +1460,7 @@ export async function POST(req: NextRequest) {
 
     if (playerError) {
       await getSupabaseAdmin().from('participants').delete().eq('id', participant.id)
-      return NextResponse.json({ error: internalErrorMessage('players', playerError) }, { status: 500 })
+      return playerInsertFailure(playerError)
     }
 
     return jsonPlayerJoin(roomMemberId, player, game as Game, {}, joinerUserId)
@@ -1894,15 +1896,27 @@ export async function DELETE(req: NextRequest) {
       { status: res.status }
     )
   }
-  if (
-    (settled === 'retained_clear_failed' || ctx.seatRetained) &&
-    // Both flags describe the seat as it was BEFORE (or while) the settlement: a reopened (Play Again) and re-left game may
-    // have deleted it since, and then a "try again" would be advice the resume token can no longer honour. Re-check it.
-    (await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)) === 'present'
-  ) {
+  // Both flags describe the seat as it was BEFORE (or while) the settlement: a reopened (Play Again) and re-left game may
+  // have deleted it since, and then a "try again" would be advice the resume token can no longer honour. Re-check it.
+  const presence =
+    settled === 'retained_clear_failed' || ctx.seatRetained
+      ? await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)
+      : 'absent'
+  if (presence === 'present') {
     // The seat is KNOWN to still exist (a retained leave): the resume token still works, so this one really can be
     // repeated, and nothing is claimed about the handoff beyond that.
     return NextResponse.json({ error: 'Could not finish leaving the game — try again' }, { status: 500 })
+  }
+  if (presence === 'unknown') {
+    // The seat could not be read back: neither "you left" nor "try again" can be claimed.
+    return NextResponse.json(
+      {
+        error:
+          'Leaving the game may or may not have completed (your seat could not be checked) and the host handoff could not be completed. Repeating the leave may not work.',
+        handoff: 'unresolved',
+      },
+      { status: 500 }
+    )
   }
   return NextResponse.json(
     {
@@ -1990,10 +2004,8 @@ async function settleHostLeave(
         h.session.sessionsPlayed === null
           ? clear.is('sessions_played', null)
           : clear.eq('sessions_played', h.session.sessionsPlayed)
-      clear =
-        h.session.startedAt === null
-          ? clear.is('session_started_at', null)
-          : clear.eq('session_started_at', h.session.startedAt)
+      // (No session_started_at filter: a Start in the same generation moves it, and settle_host_leave treats that as the
+      // same session, keying its linkage on the generation, host user and host player only.)
       const { error } = await clear
       if (error) {
         console.error('players: clearing host_user_id after a retained host leave failed', error)
@@ -2484,6 +2496,11 @@ async function removePlayer(
       .maybeSingle()
     // Nothing has changed yet: a failed read leaves the seat and the roster as they are, so the leave can be repeated.
     if (beforeError || !before) {
+      // A previous attempt may already have taken the player off the roster: put them back before answering.
+      if (wordRushRollback) {
+        const restored = await revertWordRushRosterAfterFailedPlayerDelete(admin, id, wordRushRollback)
+        if (restored === 'failed') console.error(`players: could not restore the Word Rush roster for ${id}`)
+      }
       return NextResponse.json({ error: 'Could not finish leaving the game — try again' }, { status: 500 })
     }
     const sync = await syncWordRushAfterPlayerRemoved(admin, id, playerId)
@@ -2539,6 +2556,12 @@ async function removePlayer(
     if (ownFinish && removal.gameFinished && !removal.error) {
       const owed = await recoverFinishBookkeeping(getSupabaseAdmin(), id).catch(() => ({ state: 'error' as const }))
       if (owed.state === 'none' || owed.state === 'done') removal = await removeOnce()
+    }
+    // The leaver's own last-round finalization is still pending (its marker names this seat): the database kept the seat. Finish
+    // the finalization if we can and ask once more; if it is still pending the seat stays and the leave is retained.
+    if (removal.finalizing && !removal.error) {
+      await resumeWordRushFinalization(getSupabaseAdmin(), id).catch(() => undefined)
+      removal = await removeOnce()
     }
     // The game was replayed (or started) after the roster was reconciled: reconcile the CURRENT session, then retry.
     for (let attempt = 0; removal.sessionChanged && attempt < 2; attempt++) {
