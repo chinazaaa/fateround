@@ -130,7 +130,7 @@ begin
   if v_successor is not null then
     update public.games
       set pending_host_player_id = v_successor,
-          pending_host_nominated_at = now(),
+          pending_host_nominated_at = clock_timestamp(),
           host_user_id = case when v_ours then null else host_user_id end
       where id = v_id;
     return jsonb_build_object('status', 'nominated', 'nominee', v_successor, 'session_changed', v_changed);
@@ -149,7 +149,7 @@ begin
   end if;
 
   -- Nobody left to hand it to: end the game, with its reason in the same statement.
-  v_now := now();
+  v_now := clock_timestamp();
   update public.games
     set status = 'finished',
         finished_at = v_now,
@@ -218,7 +218,7 @@ begin
     return jsonb_build_object('status', 'continue', 'game_status', v_game.status);
   end if;
 
-  v_now := now();
+  v_now := clock_timestamp();
   update public.games
     set status = 'finished',
         finished_at = v_now,

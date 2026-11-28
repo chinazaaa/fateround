@@ -1894,10 +1894,10 @@ export async function DELETE(req: NextRequest) {
     )
   }
   if (
-    settled === 'retained_clear_failed' ||
-    // `ctx.seatRetained` was recorded BEFORE the settlement: a reopened (Play Again) and re-left game may have deleted the
-    // seat since, and then a "try again" would be advice the resume token can no longer honour. Re-check the seat.
-    (ctx.seatRetained && (await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)) === 'present')
+    (settled === 'retained_clear_failed' || ctx.seatRetained) &&
+    // Both flags describe the seat as it was BEFORE (or while) the settlement: a reopened (Play Again) and re-left game may
+    // have deleted it since, and then a "try again" would be advice the resume token can no longer honour. Re-check it.
+    (await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)) === 'present'
   ) {
     // The seat is KNOWN to still exist (a retained leave): the resume token still works, so this one really can be
     // repeated, and nothing is claimed about the handoff beyond that.
@@ -2522,7 +2522,11 @@ async function removePlayer(
         expectedSession,
         // The host leaving: if nobody else is eligible the database finishes the game and keeps the seat, in the same
         // locked check that would delete it.
-        ctx.handoff ? { session: ctx.handoff.session, trackBookkeeping: true } : undefined
+        // Only the session the leave INSPECTED may authorise that finish: a lobby replayed since (the reconciliation read a
+        // later generation) is another session, left to the normal removal and the settlement.
+        ctx.handoff && (!expectedSession || expectedSession.sessionsPlayed === ctx.handoff.session.sessionsPlayed)
+          ? { session: ctx.handoff.session, trackBookkeeping: true }
+          : undefined
       )
     let removal = await removeOnce()
     // An own finish is refused while its bookkeeping marker is owed (the deletion is recorded for this exact seat and

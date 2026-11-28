@@ -35,7 +35,13 @@ vi.mock('@/lib/codewords', async (importOriginal) => ({
 // Word Rush's own per-player bookkeeping is not what these tests are about: the roster change the removal made (and
 // whether it ENDED the game) is scripted, and the roster revert is recorded.
 const wordRush = vi.hoisted(() => ({
-  sync: {} as { rollback?: unknown; ownFinish?: boolean; error?: string; internal?: boolean },
+  sync: {} as {
+    rollback?: unknown
+    ownFinish?: boolean
+    error?: string
+    internal?: boolean
+    gameSession?: { startedAt: string | null; sessionsPlayed: number | null }
+  },
   syncCalls: 0,
   reverts: [] as unknown[],
   restore: 'restored' as string,
@@ -187,6 +193,7 @@ function builder(table: string) {
     if (patch) {
       if (table === 'rounds') roundUpdateLog.push(patch)
       if (table === 'games' && failLinkageClear && Object.keys(patch).join() === 'host_user_id') {
+        onSettleFail?.()
         return { data: null, error: { message: 'clear failed' } }
       }
       const rows = match()
@@ -465,8 +472,12 @@ async function rpc(name: string, args: Record<string, unknown>) {
         pid ? r.id !== pid : !(r.game_id === g.id && r.name === a.p_participant_name)
       )
     }
-    deletePlayers([a.p_player_id])
-    afterPlayerDelete?.()
+    // Only the matched seat of THIS game goes (the SQL filters by game id and player id); an absent seat deletes nothing,
+    // runs no commit hook and still answers `deleted` (idempotent).
+    if (seat) {
+      deletePlayers([seat.id as string])
+      afterPlayerDelete?.()
+    }
     if (deleteCommitsButErrors) return { data: null, error: { message: 'response lost' } }
     return { data: { status: 'deleted' }, error: null }
   }
@@ -865,6 +876,22 @@ describe('DELETE /api/players: retained seats', () => {
     ])
   })
 
+  it('a failed retained-seat clear whose seat was deleted meanwhile is the unresolved response, never advice the token cannot honour', async () => {
+    setup('uno')
+    keepSeat = true
+    failLinkageClear = true
+    removal.uno.onCall = () => {
+      tables.games[0].status = 'finished'
+    }
+    // The room reopens and another leave deletes the seat before the clear reports its error.
+    onSettleFail = () => deletePlayers([HOST_PID])
+    const res = await leave()
+    expect(res.status).toBe(500)
+    const body = (await res.json()) as { error: string; handoff?: string }
+    expect(body.handoff).toBe('unresolved')
+    expect(body.error).not.toMatch(/try again/i)
+  })
+
   it('a failed retained-seat clear answers a 500 (the seat still exists, so the same player can repeat the leave)', async () => {
     setup('uno')
     keepSeat = true
@@ -996,24 +1023,51 @@ describe('DELETE /api/players: an older leave never finishes a REPLAYED session'
 })
 
 describe('DELETE /api/players: the stale session is never finished by the leave', () => {
-  it.each([['session_started_at changed (a start or replay)', { status: 'active', session_started_at: 'S2' }]])(
-    'a pre-removal finish that misses is not forced; the game is decided against the CURRENT row after the removal: %s',
+  it.each([
+    ['session_started_at changed (a start in the same generation)', { status: 'active', session_started_at: 'S2' }],
+  ])(
+    'a pre-removal finish that misses is not forced; the SETTLEMENT decides against the CURRENT row after the removal: %s',
     async (_name, change) => {
-      hostOnly('trivia')
+      // A successor stays seated through the guarded removal (so the removal deletes the host seat instead of finishing the
+      // game) and leaves right after it: the settlement then sees the host seat absent and nobody left.
+      setup('trivia')
       beforeEndCheck = () => Object.assign(tables.games[0], change)
+      afterPlayerDelete = () => {
+        tables.players = tables.players.filter((p) => p.id === HOST_PID)
+        deletePlayers([HOST_PID])
+      }
       const res = await leave()
       expect(res.status).toBe(200)
-      // The end check, bound to the inspected session, did not finish a game whose session moved on; the end came from
-      // the settle step, decided against the current row.
+      // The end check, bound to the inspected session, did not finish a game whose session moved on.
       expect(endCalls.map((c) => c.status)).toEqual(['continue'])
+      expect(removeArgs.length).toBe(1)
+      expect(tables.players.map((p) => p.id)).not.toContain(HOST_PID)
+      // The end came from the settle step: it saw the seat absent and committed the finish itself.
       expect(settleCalls).toHaveLength(1)
+      expect(settleCalls[0].seatExisted).toBe(false)
       const g = tables.games[0]
       expect(g.status).toBe('finished')
       expect(g.result_reason).toBe('host_ended')
-      // The linkage belongs to the session the leave inspected; a replayed session's is not this leave's to clear.
-      expect(g.host_user_id).toBe('user-host')
+      expect(g.finished_at).toBe(FINISHED_AT)
+      // A Start in the SAME generation is the same session: the departed host's linkage is this leave's to clear.
+      expect(g.host_user_id).toBeNull()
     }
   )
+
+  it('a REPLAYED lobby (another generation) is never finished by the older leave and keeps the linkage', async () => {
+    setup('trivia')
+    beforeEndCheck = () =>
+      Object.assign(tables.games[0], { status: 'active', session_started_at: 'S2', sessions_played: 2 })
+    afterPlayerDelete = () => {
+      tables.players = tables.players.filter((p) => p.id === HOST_PID)
+      deletePlayers([HOST_PID])
+    }
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(tables.games[0].status).toBe('active')
+    expect(tables.games[0].result_reason).toBeUndefined()
+    expect(tables.games[0].host_user_id).toBe('user-host')
+  })
 
   it('a waiting game that STARTED between the leave read and the finish (a bot beside the host) is ended, not left hostless', async () => {
     setup('trivia', { status: 'waiting', session_started_at: null })
@@ -2301,6 +2355,24 @@ describe('DELETE /api/players: a Word Rush reconciliation that fails after the r
     const res = await leave()
     expect(res.status).toBe(400)
     expect(wordRush.reverts).toEqual([])
+  })
+})
+
+describe('DELETE /api/players: the host-alone finish is authorised only by the session the leave inspected', () => {
+  it('a Word Rush lobby replayed since the owner read is not finished by the older leave (no host-leave option is sent)', async () => {
+    setup('word_rush')
+    // The reconciliation read a LATER generation than the one the leave captured.
+    wordRush.sync = { gameSession: { startedAt: null, sessionsPlayed: 9 } }
+    await leave()
+    expect(removeArgs.length).toBeGreaterThan(0)
+    for (const a of removeArgs) expect(a).not.toHaveProperty('p_host_leave')
+  })
+
+  it('the same generation keeps the option (the leave may finish its own session)', async () => {
+    setup('word_rush')
+    wordRush.sync = {}
+    await leave()
+    expect(removeArgs[0].p_host_leave).toBe(true)
   })
 })
 

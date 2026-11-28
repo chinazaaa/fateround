@@ -327,6 +327,39 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     })
   })
 
+  it('a removed player who is still the awaiting-prompt setter is replaced even when the roster already lacks them', async () => {
+    const result = await syncWordRushAfterPlayerRemoved(
+      clientFor(
+        individualSession({ roster: ['a', 'c'], prompt_setter_player_id: 'b', phase: 'awaiting_prompt' }),
+        true
+      ),
+      'GAME',
+      'b'
+    )
+    expect(rosterCalls).toHaveLength(1)
+    expect(rosterCalls[0]).toMatchObject({
+      p_expected_roster: ['a', 'c'],
+      p_new_roster: ['a', 'c'],
+      p_set_setter: true,
+      p_new_setter: 'a',
+    })
+    // Nothing of the roster changed in this call: no rollback (the earlier attempt's snapshot is the caller's).
+    expect(result.rollback).toBeUndefined()
+    expect(result.error).toBeUndefined()
+  })
+
+  it('a removed player who is NOT the setter and is already off the roster needs nothing', async () => {
+    await syncWordRushAfterPlayerRemoved(
+      clientFor(
+        individualSession({ roster: ['a', 'c'], prompt_setter_player_id: 'a', phase: 'awaiting_prompt' }),
+        true
+      ),
+      'GAME',
+      'b'
+    )
+    expect(rosterCalls).toHaveLength(0)
+  })
+
   it('a roster that changed since the read (`roster_changed`) writes nothing and is read again, then reported', async () => {
     const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true, false, true), 'GAME', 'b')
     expect(rosterCalls).toHaveLength(3)

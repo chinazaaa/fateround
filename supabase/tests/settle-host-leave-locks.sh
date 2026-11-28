@@ -55,9 +55,9 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 RUN="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 APP="shl-$RUN"
 GATE=$(( ((0x${RUN} * 131 + $$) % 2000000000) + 1 ))
-GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"; GJ="SHJ$RUN"
+GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"; GJ="SHJ$RUN"; GK="SHK$RUN"
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
-HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; RND3="$(new_uuid)"; RND4="$(new_uuid)"; WRSEAT2="$(new_uuid)"
+HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; RND3="$(new_uuid)"; RND4="$(new_uuid)"; HOSTK="$(new_uuid)"; JOINERK="$(new_uuid)"; WRSEAT2="$(new_uuid)"
 WORKERS=()
 # Every worker's output lives in ONE run-specific directory that cleanup removes (no temp files are left behind).
 OUT_DIR="$(mktemp -d)"
@@ -65,7 +65,7 @@ OUT_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "$OUT_DIR"
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI', '$GJ')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI', '$GJ', '$GK')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -366,29 +366,68 @@ reap "$FIN_PID" "finish (case I)"
 [ "$(psqlq -c "select jsonb_array_length(public.finish_rounds_of_finished_session('$GI', (select finished_at from public.games where id = '$GI'))->'round_ids') ")" = "1" ] || fail "case I: the cleanup did not close exactly the activated round"
 
 # ---- Case J: two concurrent activations serialise on the games row (no lock-upgrade deadlock) ----------------------
-# activate_ttl_round() takes the games row FOR NO KEY UPDATE first, so the second activation WAITS for the first before it
-# touches any round; once the first committed it answers round_active (one active round) and writes nothing.
+# activate_ttl_round() takes the games row FOR NO KEY UPDATE FIRST. A blocker holds the first pending round, so the first
+# activation is stuck on that round while it already holds the games lock: the second activation must then WAIT for the
+# first before it touches any round. (With a FOR SHARE first lock both activations would hold the games row and then
+# deadlock on the pointer write.) Once the blocker releases, the first activates, and the second sees an active round.
 psqlq <<SQL
 insert into public.games (id, title, host_token, game_type, status) values ('$GJ', 'lock test J', 'tok-$RUN-j', 'two_truths', 'active');
 insert into public.rounds (id, game_id, round_number, status, participant_ids) values
   ('$RND3', '$GJ', 1, 'pending', '{}'), ('$RND4', '$GJ', 2, 'pending', '{}');
 SQL
 start_gate
-PGAPPNAME="$APP-act1" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+PGAPPNAME="$APP-rblock" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
   begin;
-  select public.activate_ttl_round('$GJ', '$RND3', 1);
+  select 1 from public.rounds where id = '$RND3' for update;
   select pg_advisory_xact_lock($GATE);
   commit;" >/dev/null 2>&1 &
+RBLOCK_PID=$!
+wait_for "the blocker holds the first round" "select exists (select 1 from pg_stat_activity where application_name = '$APP-rblock' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_J1="$OUT_DIR/out_j1"
+PGAPPNAME="$APP-act1" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.activate_ttl_round('$GJ', '$RND3', 1)->>'status'" >"$OUT_J1" 2>&1 &
 ACT1_PID=$!
-wait_for "the first activation holds its uncommitted write" "select exists (select 1 from pg_stat_activity where application_name = '$APP-act1' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+wait_blocked "the first activation is stuck on the first round" act1 rblock
 OUT_J="$OUT_DIR/out_j"
 PGAPPNAME="$APP-act2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.activate_ttl_round('$GJ', '$RND4', 2)->>'status'" >"$OUT_J" 2>&1 &
 ACT2_PID=$!
 wait_blocked "the second activation waits for the first (the games row lock)" act2 act1
 open_gate
+reap "$RBLOCK_PID" "round blocker (case J)"
 reap "$ACT1_PID" "first activation (case J)"
 reap "$ACT2_PID" "second activation (case J)"
+[ "$(tr -d '[:space:]' <"$OUT_J1")" = "activated" ] || fail "case J: the first activation did not apply (got $(cat "$OUT_J1"))"
 [ "$(tr -d '[:space:]' <"$OUT_J")" = "round_active" ] || fail "case J: the second activation did not see the first round active (got $(cat "$OUT_J"))"
 [ "$(psqlq -c "select status from public.rounds where id = '$RND4'")" = "pending" ] || fail "case J: the second round was opened"
+
+# ---- Case K: a join vs a host leave that may finish the game (remove_player_if_game_open, p_host_leave) --------------
+# The host-leave path takes the games row FOR UPDATE, which conflicts with the KEY SHARE a join holds through its foreign
+# key. Without it the successor check could miss a join that commits right after it and finish the game over a seated joiner.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('$GK', 'lock test K', 'tok-$RUN-k', 'uno', 'waiting');
+insert into public.players (id, game_id, name) values ('$HOSTK', '$GK', 'Host');
+update public.games set host_player_id = '$HOSTK' where id = '$GK';
+SQL
+start_gate
+# A join in flight holds exactly the KEY SHARE its foreign key takes on the games row; it is taken explicitly here because
+# the lobby's AFTER INSERT trigger (players_touch_game_activity) would otherwise also take a NO KEY UPDATE lock, which
+# would hide whether the host-leave lock itself conflicts. The joiner appears (and commits) only after the gate opens.
+PGAPPNAME="$APP-joink" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+  begin;
+  select 1 from public.games where id = '$GK' for key share;
+  select pg_advisory_xact_lock($GATE);
+  insert into public.players (id, game_id, name) values ('$JOINERK', '$GK', 'Joiner');
+  commit;" >/dev/null 2>&1 &
+JOINK_PID=$!
+wait_for "the join holds its KEY SHARE (case K)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-joink' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_K="$OUT_DIR/out_k"
+PGAPPNAME="$APP-hostleave" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_player_if_game_open('$GK', '$HOSTK', false, null, 1, null, false, true, false)->>'status'" >"$OUT_K" 2>&1 &
+HOSTLEAVE_PID=$!
+wait_blocked "the host leave waits for the join (the games row lock)" hostleave joink
+open_gate
+reap "$JOINK_PID" "join (case K)"
+reap "$HOSTLEAVE_PID" "host leave (case K)"
+[ "$(tr -d '[:space:]' <"$OUT_K")" = "deleted" ] || fail "case K: the host leave finished the game over a seated joiner (got $(cat "$OUT_K"))"
+[ "$(psqlq -c "select status from public.games where id = '$GK'")" = "waiting" ] || fail "case K: the game was finished"
+[ "$(psqlq -c "select count(*) from public.players where game_id = '$GK'")" = "1" ] || fail "case K: the joiner was lost"
 
 echo "ok"
