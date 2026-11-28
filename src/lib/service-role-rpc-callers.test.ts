@@ -103,12 +103,15 @@ describe('service-role-only database functions', () => {
     const fns = Object.keys(ALLOWED)
     const offenders: string[] = []
     for (const f of files) {
-      for (const c of rpcReceivers(readFileSync(f, 'utf8'), fns)) {
+      const code = readFileSync(f, 'utf8')
+      // Cheap text filter first: parsing every source file is slow on CI.
+      if (!fns.some((fn) => code.includes(fn))) continue
+      for (const c of rpcReceivers(code, fns)) {
         if (c.anon) offenders.push(`${relative(process.cwd(), f)}: ${c.fn} on ${c.receiver}`)
       }
     }
     expect(offenders).toEqual([])
-  })
+  }, 30_000)
 
   it('the receiver check sees the anon client (self-check: a second call through the anon client is caught)', () => {
     const code = `
