@@ -198,6 +198,9 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   /** What the next roster compare-and-swap answers (`applied`, or `roster_changed` when a restore committed meanwhile). */
   /** The round's answers cannot be read. */
   let failAnswers = false
+  /** Reads of word_rush_players (the team rows) that THROW: the n-th read onwards (1-based; 0 = never). */
+  let failTeamReadsFrom = 0
+  let teamReads = 0
   let rosterAnswer: { status?: string; error?: boolean } = { status: 'applied' }
   const clientFor = (
     session: Record<string, unknown>,
@@ -211,6 +214,8 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     sessionUpdatePatches.length = 0
     rosterCalls.length = 0
     failAnswers = false
+    failTeamReadsFrom = 0
+    teamReads = 0
     rosterAnswer = { status: staleRoster ? 'roster_changed' : 'applied' }
     return {
       rpc: async (fn: string, args: Record<string, unknown>) => {
@@ -259,11 +264,13 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
                   resolve({
                     data: updating && table === 'word_rush_sessions' && claimWins ? [{ id: 'S-1' }] : [],
                     error:
-                      table === 'word_rush_answers' && failAnswers
-                        ? { message: 'answers unreadable' }
-                        : failClear && clearing
-                          ? { message: 'clear failed' }
-                          : null,
+                      table === 'word_rush_players' && failTeamReadsFrom > 0 && ++teamReads >= failTeamReadsFrom
+                        ? { message: 'team rows unreadable' }
+                        : table === 'word_rush_answers' && failAnswers
+                          ? { message: 'answers unreadable' }
+                          : failClear && clearing
+                            ? { message: 'clear failed' }
+                            : null,
                   })
               return () => api
             },
@@ -382,6 +389,20 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     }
   })
 
+  it('a team read that fails INSIDE the round-ending helper (after the roster write) is an error WITH the rollback, never a throw', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      // The first team read (the playable-teams check) succeeds; the second (inside endTeamTurn) fails.
+      const client = clientFor(individualSession({ mode: 'team', roster: ['a', 'b', 'c'], active_team: 1 }), true)
+      failTeamReadsFrom = 2
+      const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
+      expect(result.internal).toBe(true)
+      expect(result.rollback).toMatchObject({ session_id: 'S-1', removed_player_id: 'b' })
+    } finally {
+      log.mockRestore()
+    }
+  })
+
   it('a failed roster write is an internal error (nothing proceeds)', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {
@@ -389,7 +410,9 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
       rosterAnswer = { error: true }
       const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
       expect(result.internal).toBe(true)
-      expect(result.rollback).toBeUndefined()
+      // The response may have been lost AFTER the write committed: the snapshot lets the route restore the roster (the
+      // restore is idempotent when nothing was written).
+      expect(result.rollback).toMatchObject({ session_id: 'S-1', removed_player_id: 'b' })
     } finally {
       log.mockRestore()
     }

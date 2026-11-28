@@ -64,7 +64,7 @@ import { clearTwoTruthsSessionData } from '@/lib/two-truths'
 import { clearQuiplashSessionData } from '@/lib/quiplash'
 import { clearQuickDrawSessionData } from '@/lib/quick-draw'
 import { canWordRushPlayAgain } from '@/lib/word-rush'
-import { clearWordRushSessionData } from '@/lib/word-rush-server'
+import { clearWordRushSessionData, ensureWordRushGameFinalized } from '@/lib/word-rush-server'
 import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
@@ -283,6 +283,14 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
         { status: 409 }
       )
     }
+  }
+
+  // A Word Rush game's owed effects (a closed round's points, the finished game's bookkeeping) read rows that the deletes
+  // below remove (votes, rounds, participants, ...): complete them first, before ANY delete, and refuse the reset while they
+  // are still owed so it can simply be retried. The session clear repeats the check as a second guard.
+  if (isWordRushGame(gameType) && game.status === 'finished') {
+    const finalized = await ensureWordRushGameFinalized(getSupabaseAdmin(), gameId)
+    if (finalized.error) return NextResponse.json({ error: finalized.error }, { status: 409 })
   }
 
   // Exiting the ready-up ring back to the normal lobby ("Return to lobby" while the ring

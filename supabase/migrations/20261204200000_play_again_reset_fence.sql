@@ -84,7 +84,9 @@ begin
     end if;
     return jsonb_build_object(
       'status', 'finished', 'finished_now', false,
-      'finished_at', v_game.finished_at, 'result_reason', v_game.result_reason, 'session_changed', v_changed
+      'finished_at', v_game.finished_at, 'result_reason', v_game.result_reason, 'session_changed', v_changed,
+      -- A finish of another Play Again generation is not this leave's to clean up; a Start in the SAME generation is.
+      'replayed', v_replayed
     );
   end if;
 

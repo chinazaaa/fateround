@@ -289,6 +289,12 @@ describe('completePendingFinishedLeave: Word Rush (a recorded own-finish deletio
     ).toBeNull()
   })
 
+  it('a recorded deletion whose bookkeeping is still running is a RETRYABLE refusal, not a retained seat', async () => {
+    expect(
+      await completePendingFinishedLeave(client({ data: { status: 'bookkeeping_owed' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toMatchObject({ status: 409, deleteAttempted: false, error: expect.stringMatching(/try again/i) })
+  })
+
   it('a database error is reported as an attempted delete', async () => {
     expect(
       await completePendingFinishedLeave(client({ error: { message: 'boom' } }), 'word_rush', 'G', 'a', 'Ann')

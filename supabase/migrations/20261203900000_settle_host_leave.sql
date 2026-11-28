@@ -96,7 +96,10 @@ begin
     end if;
     return jsonb_build_object(
       'status', 'finished', 'finished_now', false,
-      'finished_at', v_game.finished_at, 'result_reason', v_game.result_reason, 'session_changed', v_changed
+      'finished_at', v_game.finished_at, 'result_reason', v_game.result_reason, 'session_changed', v_changed,
+      -- A finish of another Play Again generation is not this leave's to clean up; a Start in the SAME generation (only
+      -- session_started_at differs) is the same session, so its finish is.
+      'replayed', v_replayed
     );
   end if;
 
@@ -272,6 +275,39 @@ create table if not exists public.word_rush_pending_seat_deletions (
 alter table public.word_rush_pending_seat_deletions enable row level security;
 revoke all on public.word_rush_pending_seat_deletions from public, anon, authenticated;
 
+-- A seat is never inserted into a game that a HOST LEAVE has finished (result_reason 'host_ended'), decided under the games
+-- row lock: the join handler reads the status and inserts in separate calls, so a host-alone finish (settle_host_leave /
+-- end_game_if_host_alone / remove_player_if_game_open, all FOR UPDATE or FOR NO KEY UPDATE) could commit between them and
+-- leave an eligible player seated in a game that was just ended for lack of one (its post-finish cleanup has already run
+-- for the roster it saw). Games that finished any other way keep accepting late joiners exactly as before (they land on
+-- the results screen), so this narrows nothing that worked. The lock is FOR NO KEY UPDATE: the level the lobby's own AFTER
+-- INSERT trigger (touch_game_activity) already takes on this row, so it adds no new contention, conflicts with every
+-- finish, and cannot deadlock with a lock upgrade.
+create or replace function public.players_require_unfinished_game()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+  v_reason text;
+begin
+  select status, result_reason into v_status, v_reason from public.games where id = new.game_id for no key update;
+  if found and v_status = 'finished' and v_reason = 'host_ended' then
+    raise exception 'game_finished: cannot seat a player in a game its host ended' using errcode = 'P0001';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.players_require_unfinished_game() from public, anon, authenticated;
+
+drop trigger if exists players_require_unfinished_game on public.players;
+create trigger players_require_unfinished_game
+  before insert on public.players
+  for each row execute function public.players_require_unfinished_game();
+
 -- Remove a player's seat only while the game is still open. The caller's own status read can be stale by the time it
 -- deletes (another request finishes the game in between), and deleting a seat of a FINISHED game erases that
 -- player's row from the result (the score tables cascade off it). The game row is locked FOR NO KEY UPDATE, which
@@ -379,6 +415,14 @@ begin
   if p_participant_name is not null then
     select participant_id into v_participant_id from public.players
       where id = p_player_id and game_id = upper(p_game_id);
+    -- A seat with no linked participant is matched by NAME only when that is unambiguous: two participants with the same
+    -- name must never both go with one seat (and neither can be proven to be this seat's). Refuse BEFORE anything is
+    -- deleted, so the seat delete is not committed either.
+    if v_participant_id is null
+       and exists (select 1 from public.players where id = p_player_id and game_id = upper(p_game_id))
+       and (select count(*) from public.participants where game_id = upper(p_game_id) and name = p_participant_name) > 1 then
+      return jsonb_build_object('status', 'participant_ambiguous');
+    end if;
   end if;
   delete from public.players where id = p_player_id and game_id = upper(p_game_id);
   get diagnostics v_deleted = row_count;
@@ -703,12 +747,17 @@ begin
   if not found then
     return jsonb_build_object('status', 'game_missing');
   end if;
-  if v_game.status <> 'finished' or v_game.result_reason is not null or v_game.finish_bookkeeping is not null
+  if v_game.status <> 'finished' or v_game.result_reason is not null
      or not exists (
        select 1 from public.word_rush_pending_seat_deletions
        where game_id = v_game.id and player_id = p_player_id and finished_at is not distinct from v_game.finished_at
      ) then
     return jsonb_build_object('status', 'not_due');
+  end if;
+  -- A deletion IS recorded for this seat and finish, but the finish's bookkeeping is still reading the leaver's rows: the
+  -- caller must retry (distinct from `not_due`, which means there is nothing pending at all).
+  if v_game.finish_bookkeeping is not null then
+    return jsonb_build_object('status', 'bookkeeping_owed');
   end if;
   delete from public.players where id = p_player_id and game_id = v_game.id;
   update public.word_rush_sessions

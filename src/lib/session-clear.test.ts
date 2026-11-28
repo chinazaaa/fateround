@@ -89,8 +89,8 @@ describe('clearSessionTables', () => {
     const m = makeMockSupabase('b')
     const r = await clearSessionTables(m.supabase, 'G', ['a', 'b', 'c'])
     // The raw DB message is never surfaced to the caller (and so the client).
-    expect(r.error).toBeTruthy()
-    expect(r.error).not.toBe('boom')
+    // The public fallback, exactly: a response that carries the database diagnostic must fail this.
+    expect(r.error).toBe('Something went wrong. Please try again.')
     expect(m.deletedTables).toEqual(['a', 'b']) // 'c' never attempted
   })
 })

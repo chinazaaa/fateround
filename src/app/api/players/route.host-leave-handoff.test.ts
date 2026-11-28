@@ -259,6 +259,8 @@ let endCalls: Array<{ status: string; finished_now?: boolean }> = []
 let settleFailBudget = 0
 /** Runs when an unreachable settle call fails (the world moves on while the leave cannot settle). */
 let onSettleFail: (() => void) | null = null
+/** Every answer the settle model gave. */
+let settleResults: Array<Record<string, unknown>> = []
 /** The post-finish round cleanup (finish_rounds_of_finished_session) fails. */
 let failFinishRounds = false
 /** Every settle_host_leave call: its arguments and whether the leaver's seat row existed when it ran. */
@@ -308,9 +310,10 @@ function settleModel(a: SettleArgs) {
       finished_at: g.finished_at,
       result_reason: g.result_reason,
       session_changed: changed,
+      replayed: replay,
     }
   }
-  if (g.status !== 'waiting' && g.status !== 'active') return { status: 'settled' }
+  if (g.status !== 'waiting' && g.status !== 'active') return { status: 'settled', session_changed: changed }
   const players = tables.players
   // Eligible like the SQL: in this game, not a bot, not a spectator.
   const nominee =
@@ -321,7 +324,7 @@ function settleModel(a: SettleArgs) {
   const other = g.host_player_id && g.host_player_id !== out && players.some((p) => p.id === g.host_player_id)
   if (nominee || other) {
     clear()
-    return { status: 'settled' }
+    return { status: 'settled', session_changed: changed }
   }
   const replayed = g.sessions_played !== a.p_sessions_played
   const successor = players
@@ -333,7 +336,7 @@ function settleModel(a: SettleArgs) {
       pending_host_nominated_at: 'NOW',
       host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !replay ? null : g.host_user_id,
     })
-    return { status: 'nominated', nominee: successor.id }
+    return { status: 'nominated', nominee: successor.id, session_changed: changed }
   }
   // A replay is another session: an older leave never finishes it.
   if (replayed) return { status: 'settled', session_changed: true }
@@ -344,7 +347,13 @@ function settleModel(a: SettleArgs) {
     host_user_id: g.host_user_id === a.p_outgoing_host_user_id && !replay ? null : g.host_user_id,
     pending_host_player_id: null,
   })
-  return { status: 'finished', finished_now: true, finished_at: FINISHED_AT, result_reason: 'host_ended' }
+  return {
+    status: 'finished',
+    finished_now: true,
+    finished_at: FINISHED_AT,
+    result_reason: 'host_ended',
+    session_changed: changed,
+  }
 }
 
 /** A model of public.end_game_if_host_alone (same migration; tested for real in supabase/tests/). */
@@ -511,7 +520,9 @@ async function rpc(name: string, args: Record<string, unknown>) {
       onSettleFail?.()
       return { data: null, error: { message: 'rpc unreachable' } }
     }
-    return { data: settleModel(args as SettleArgs), error: null }
+    const outcome = settleModel(args as SettleArgs)
+    settleResults.push(outcome)
+    return { data: outcome, error: null }
   }
   if (name === 'finish_rounds_of_finished_session') {
     if (failFinishRounds) return { data: null, error: { message: 'cleanup rpc unreachable' } }
@@ -633,6 +644,7 @@ beforeEach(() => {
   failLinkageClear = false
   settleFailBudget = 0
   onSettleFail = null
+  settleResults = []
   failFinishRounds = false
   settleCalls = []
   wipeFailBudget = 0
@@ -1019,6 +1031,54 @@ describe('DELETE /api/players: an older leave never finishes a REPLAYED session'
     expect(g.result_reason).toBeUndefined()
     // ...and its linkage is not this leave's to clear either.
     expect(g.host_user_id).toBe('user-host')
+  })
+})
+
+describe('DELETE /api/players: a finish observed by the settlement is cleaned up per generation', () => {
+  it('a finish of the SAME generation (only session_started_at moved) is cleaned up even when the settlement merely observed it', async () => {
+    setup('trivia')
+    tables.rounds = [{ id: 'r1', game_id: 'ABCD', status: 'active' }]
+    // The first settle's answer was lost after it committed the finish: the retry only observes it.
+    afterPlayerDelete = () =>
+      Object.assign(tables.games[0], {
+        status: 'finished',
+        result_reason: 'host_ended',
+        finished_at: FINISHED_AT,
+        session_started_at: 'S2',
+      })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(settleResults[0]).toMatchObject({
+      status: 'finished',
+      finished_now: false,
+      session_changed: true,
+      replayed: false,
+    })
+    expect(tables.rounds.map((r) => r.status)).toEqual(['finished'])
+  })
+
+  it('a finish of a REPLAYED generation is left to its own leave', async () => {
+    setup('trivia')
+    tables.rounds = [{ id: 'later', game_id: 'ABCD', status: 'active' }]
+    afterPlayerDelete = () =>
+      Object.assign(tables.games[0], {
+        status: 'finished',
+        result_reason: 'host_ended',
+        finished_at: FINISHED_AT,
+        sessions_played: 7,
+      })
+    const res = await leave()
+    expect(res.status).toBe(200)
+    expect(settleResults[0]).toMatchObject({ finished_now: false, session_changed: true, replayed: true })
+    expect(tables.rounds.map((r) => r.status)).toEqual(['active'])
+  })
+
+  it('a stale nomination reports the changed session', async () => {
+    setup('trivia')
+    afterPlayerDelete = () => {}
+    beforeEndCheck = () => Object.assign(tables.games[0], { status: 'active', sessions_played: 3 })
+    await leave()
+    expect(settleResults[0]).toMatchObject({ status: 'nominated', session_changed: true })
   })
 })
 
@@ -2208,6 +2268,7 @@ describe('DELETE /api/players: a Word Rush own finish whose bookkeeping is still
   it('an ordinary leave from an INDEPENDENTLY finished game still retains the seat (nothing was recorded)', async () => {
     setup('word_rush', { status: 'finished', result_reason: 'admin_ended', finished_at: 'F', finish_bookkeeping: null })
     const res = await leave()
+    expect(res.status).toBe(200)
     expect(((await res.json()) as { retained?: boolean }).retained).toBe(true)
     expect(tables.players.map((p) => p.id)).toContain(HOST_PID)
   })

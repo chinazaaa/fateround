@@ -71,7 +71,18 @@ export async function completePendingFinishedLeave(
       p_player_id: playerId,
     })
     if (error) return fail('word-rush', error, true)
-    return (data as { status?: string } | null)?.status === 'deleted' ? { error: null } : null
+    const status = (data as { status?: string } | null)?.status
+    if (status === 'deleted') return { error: null }
+    // A deletion IS recorded for this seat, but the finish's bookkeeping is still reading the leaver's rows: not the same as
+    // a seat that is simply retained. Retryable, and nothing was attempted.
+    if (status === 'bookkeeping_owed') {
+      return {
+        error: 'Your leave is waiting for the game results to finish saving — try again in a moment',
+        status: 409,
+        deleteAttempted: false,
+      }
+    }
+    return null
   }
 
   if (isChessGame(gameType)) {

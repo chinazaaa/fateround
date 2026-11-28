@@ -1942,6 +1942,8 @@ type SettleOutcome = {
   finished_at?: string
   result_reason?: string | null
   session_changed?: boolean
+  /** Another Play Again generation (not merely a Start in the same one). */
+  replayed?: boolean
 }
 
 const SETTLE_ATTEMPTS = 3
@@ -2012,7 +2014,7 @@ async function settleHostLeave(
     // this stale leave has no business closing its rounds or wiping its chat, whatever timestamp it carries. A finish the
     // settlement itself committed (after a same-generation Start) is this leave's own.
     const cleanup =
-      !outcome.finished_now && outcome.session_changed
+      !outcome.finished_now && (outcome.replayed ?? outcome.session_changed)
         ? { finished: true, hostEnded: false, error: null }
         : // Bound to the finish the settlement observed, never to whichever finish the game has by the time this runs.
           await completeHostLeftCleanup(admin, h.gameId, { finishedAt: outcome.finished_at })
