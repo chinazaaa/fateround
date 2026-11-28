@@ -144,6 +144,11 @@ begin
   exception when others then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_value', 'games_flipped', false);
   end;
+  -- an array column must be one-dimensional (array_remove and the turn logic assume it)
+  if p_session_patch ? 'turn_order'
+     and array_ndims((jsonb_populate_record(null::public.scrabble_sessions, p_session_patch)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value', 'games_flipped', false);
+  end if;
 
   -- Every state write: an object, a non-null uuid-shaped player_id that has a state row in THIS game, only known keys
   -- with the right types, and no player twice.
@@ -276,6 +281,11 @@ begin
   exception when others then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
   end;
+  -- an array column must be one-dimensional (array_remove and the turn logic assume it)
+  if p_session_patch ? 'turn_order'
+     and array_ndims((jsonb_populate_record(null::public.scrabble_sessions, p_session_patch)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end if;
   if p_session_patch->>'phase' = 'finished' then
     return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
   end if;
@@ -424,6 +434,9 @@ begin
   end if;
 
   -- Every seat in turn_order must be dealt a state row and vice versa (a round must never start on a seat with no rack).
+  if array_ndims((jsonb_populate_record(null::public.scrabble_sessions, p_session_row)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'turn_order_dimensions');
+  end if;
   select array_agg(t order by t) into v_turn
     from unnest((jsonb_populate_record(null::public.scrabble_sessions, p_session_row)).turn_order) t;
   select array_agg(sid order by sid) into v_dealt
@@ -474,6 +487,7 @@ set search_path = public, pg_temp
 as $$
 declare
   v_id text;
+  v_status text;
   v_session public.scrabble_sessions%rowtype;
   v_exists boolean;
 begin
@@ -482,7 +496,7 @@ begin
   end if;
   v_id := upper(p_game_id);
 
-  perform 1 from public.games where id = v_id for update;
+  select status into v_status from public.games where id = v_id for update;
   if not found then
     return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
   end if;
@@ -490,6 +504,12 @@ begin
   v_exists := found;
   if v_exists and v_session.phase = 'playing' and p_player_id = any (v_session.turn_order) then
     return jsonb_build_object('status', 'live');
+  end if;
+  -- A PUBLISHED result (finished round, game not `waiting`) keeps its seats and rows; only a reopened lobby
+  -- (game `waiting`) drops the seat of a finished session.
+  if v_exists and v_session.phase = 'finished' and p_player_id = any (v_session.turn_order)
+     and v_status is distinct from 'waiting' then
+    return jsonb_build_object('status', 'retained');
   end if;
 
   -- the seat first (a finished session of a reopened lobby still lists it), then the rows
@@ -506,3 +526,87 @@ $$;
 
 revoke execute on function public.remove_scrabble_lobby_seat(text, uuid) from public, anon, authenticated;
 grant execute on function public.remove_scrabble_lobby_seat(text, uuid) to service_role;
+
+-- A live (non-finishing) leave: the session claim, the patch (new turn order / turn) AND the leaver's state / seat rows are
+-- ONE transaction under the games + session locks. The old shape committed the turn_order change first and deleted the rows
+-- afterwards with unconditional deletes, so a rematch that dealt the same (not yet deleted) player in between lost its new
+-- rack and seat to the delayed deletes.
+create or replace function public.leave_scrabble_seat(
+  p_game_id text,
+  p_player_id uuid,
+  p_expected_updated_at timestamptz,
+  p_session_patch jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_session public.scrabble_sessions%rowtype;
+  v_bad text;
+  v_cols text;
+begin
+  if p_game_id is null or p_player_id is null or p_expected_updated_at is null or p_session_patch is null then
+    raise exception 'leave_scrabble_seat: game id, player id, expected version and session patch are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  perform 1 from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
+  end if;
+  select * into v_session from public.scrabble_sessions where game_id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_missing');
+  end if;
+  if v_session.phase = 'finished' or v_session.updated_at <> p_expected_updated_at then
+    return jsonb_build_object('status', 'lost');
+  end if;
+
+  if jsonb_typeof(p_session_patch) is distinct from 'object' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
+  end if;
+  select string_agg(k, ',') into v_bad
+    from jsonb_object_keys(p_session_patch) as k
+    where k in ('id', 'game_id', 'created_at', 'updated_at')
+       or not exists (
+         select 1 from information_schema.columns c
+         where c.table_schema = 'public' and c.table_name = 'scrabble_sessions' and c.column_name = k
+       );
+  if v_bad is not null then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
+  end if;
+  if p_session_patch->>'phase' = 'finished' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
+  end if;
+  begin
+    perform jsonb_populate_record(null::public.scrabble_sessions, p_session_patch);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end;
+  -- an array column must be one-dimensional (array_remove and the turn logic assume it)
+  if p_session_patch ? 'turn_order'
+     and array_ndims((jsonb_populate_record(null::public.scrabble_sessions, p_session_patch)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end if;
+
+  select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_patch) as k;
+  if v_cols is not null then
+    execute format(
+      'update public.scrabble_sessions s set (%1$s) = (select %1$s from jsonb_populate_record(null::public.scrabble_sessions, $1)) where s.game_id = $2',
+      v_cols
+    ) using p_session_patch, v_id;
+  else
+    update public.scrabble_sessions set updated_at = updated_at where game_id = v_id;
+  end if;
+
+  delete from public.scrabble_player_state where game_id = v_id and player_id = p_player_id;
+  delete from public.players where id = p_player_id and game_id = v_id;
+  return jsonb_build_object('status', 'left');
+end;
+$$;
+
+revoke execute on function public.leave_scrabble_seat(text, uuid, timestamptz, jsonb) from public, anon, authenticated;
+grant execute on function public.leave_scrabble_seat(text, uuid, timestamptz, jsonb) to service_role;

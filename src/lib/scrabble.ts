@@ -1220,18 +1220,28 @@ async function removeScrabblePlayerOnce(
       return finished.already ? { error: null, retained: true } : 'retry'
     }
 
-    const { data: claimed, error: sessionError } = await supabase
-      .from('scrabble_sessions')
-      .update(update)
-      .eq('game_id', gameId)
-      .eq('updated_at', session.updated_at)
-      .select('game_id')
-    if (sessionError) return { error: internalErrorMessage('scrabble', sessionError) }
-    if (!claimed || claimed.length === 0) return 'retry'
-
-    await supabase.from('scrabble_player_state').delete().eq('game_id', gameId).eq('player_id', playerId)
-    const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-    return { error: error ? internalErrorMessage('scrabble', error) : null }
+    // The session claim, the new turn order and the leaver's rows are ONE transaction (leave_scrabble_seat): a rematch
+    // can never deal a seat whose delayed row deletes are still pending, and the deletes can never hit a later deal.
+    const { updated_at: _updatedAt, ...sessionPatch } = update
+    void _updatedAt
+    const { data: left, error: leaveError } = await supabase.rpc('leave_scrabble_seat', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+      p_expected_updated_at: session.updated_at,
+      p_session_patch: sessionPatch,
+    })
+    if (leaveError) return { error: internalErrorMessage('scrabble', leaveError) }
+    const leftOutcome = (left ?? {}) as { status?: string; reason?: string }
+    if (leftOutcome.status === 'lost') return 'retry'
+    if (leftOutcome.status !== 'left') {
+      return {
+        error: internalErrorMessage(
+          'scrabble',
+          `leave_scrabble_seat rejected the call: ${leftOutcome.reason ?? leftOutcome.status}`
+        ),
+      }
+    }
+    return { error: null }
   }
 
   // Lobby (no session yet, a reopened lobby, a spectator, a seat that is not in the turn order): the seat's rows and its
@@ -1245,6 +1255,8 @@ async function removeScrabblePlayerOnce(
   if (removeError) return { error: internalErrorMessage('scrabble', removeError) }
   const outcome = (removed ?? {}) as { status?: string; reason?: string }
   if (outcome.status === 'live') return 'retry'
+  // A published result keeps its seat and rows (decided under the lock, whatever an earlier lookup saw).
+  if (outcome.status === 'retained') return { error: null, retained: true }
   if (outcome.status !== 'removed') {
     return {
       error: internalErrorMessage(

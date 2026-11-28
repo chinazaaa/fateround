@@ -366,8 +366,12 @@ begin
   perform pg_temp.assert_eq('6g protected column', public.deal_scrabble_session('GSG', v_row || '{"id":"x"}'::jsonb, v_states)->>'status', 'invalid');
   perform pg_temp.assert_eq('6g unknown column', public.deal_scrabble_session('GSG', v_row || '{"nope":1}'::jsonb, v_states)->>'status', 'invalid');
   perform pg_temp.assert_eq('6g unconvertible value', public.deal_scrabble_session('GSG', v_row || '{"winner_player_id":"not-a-uuid"}'::jsonb, v_states)->>'status', 'invalid');
-  perform pg_temp.assert_eq('6g fractional score', public.deal_scrabble_session('GSG', v_row,
-    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(171), 'score', 1.5)))->>'status', 'invalid');
+  -- both seats are dealt, only ONE score is fractional: the score check (not a seat mismatch) must be what rejects it
+  v_out := public.deal_scrabble_session('GSG', v_row, jsonb_build_array(
+    jsonb_build_object('player_id', pg_temp.pid(171), 'score', 1.5), jsonb_build_object('player_id', pg_temp.pid(172))));
+  perform pg_temp.assert_eq('6g fractional score', (v_out->>'status', v_out->>'reason')::text, '(invalid,state_row)');
+  perform pg_temp.assert_eq('6g 2-d turn_order', public.deal_scrabble_session('GSG',
+    v_row || jsonb_build_object('turn_order', jsonb_build_array(jsonb_build_array(pg_temp.pid(171), pg_temp.pid(172)))), v_states)->>'reason', 'turn_order_dimensions');
   perform pg_temp.assert_eq('6g failed deals: previous result intact', ((pg_temp.st('GSG', 17, 1)).score, (pg_temp.sess('GSG')).phase)::text, '(10,finished)');
   perform pg_temp.assert_eq('6g failed deals: all previous seats intact', (select count(*) from public.scrabble_player_state where game_id = 'GSG'), 3::bigint);
   -- a valid deal replaces the racks and the session together
@@ -411,6 +415,7 @@ begin
     (select count(*) from public.scrabble_player_state where game_id = 'GSI'), array_length((pg_temp.sess('GSI')).turn_order, 1))::text, '(3,3,3)');
   -- the same round, finished (a reopened lobby): the seat leaves turn_order, the rows go
   update public.scrabble_sessions set phase = 'finished' where game_id = 'GSI';
+  update public.games set status = 'waiting' where id = 'GSI';
   perform pg_temp.assert_eq('6i reopened lobby', public.remove_scrabble_lobby_seat('GSI', pg_temp.pid(191))->>'status', 'removed');
   perform pg_temp.assert_eq('6i seat removed everywhere', ((select count(*) from public.players where id = pg_temp.pid(191)),
     (select count(*) from public.scrabble_player_state where player_id = pg_temp.pid(191)), array_length((pg_temp.sess('GSI')).turn_order, 1))::text, '(0,0,2)');
@@ -419,6 +424,16 @@ begin
   -- another game's player id never matches this game's rows
   perform pg_temp.assert_eq('6i other game untouched', public.remove_scrabble_lobby_seat('GSI', pg_temp.pid(111))->>'status', 'removed');
   perform pg_temp.assert_eq('6i other game rows intact', (select count(*) from public.players where id = pg_temp.pid(111)), 1::bigint);
+  -- a PUBLISHED result (finished round, game not waiting) keeps its seat and rows
+  insert into public.games (id, title, host_token, game_type, status) values ('GSK', 'published', 'tok-GSK', 'scrabble', 'finished');
+  insert into public.players (id, game_id, name) values (pg_temp.pid(211), 'GSK', 'A'), (pg_temp.pid(212), 'GSK', 'B');
+  insert into public.scrabble_sessions (game_id, turn_order, phase) values ('GSK', array[pg_temp.pid(211), pg_temp.pid(212)], 'finished');
+  insert into public.scrabble_player_state (game_id, player_id) values ('GSK', pg_temp.pid(211)), ('GSK', pg_temp.pid(212));
+  perform pg_temp.assert_eq('6i published result', public.remove_scrabble_lobby_seat('GSK', pg_temp.pid(211))->>'status', 'retained');
+  perform pg_temp.assert_eq('6i published: rows and seat intact', ((select count(*) from public.players where game_id = 'GSK'),
+    (select count(*) from public.scrabble_player_state where game_id = 'GSK'), array_length((select turn_order from public.scrabble_sessions where game_id = 'GSK'), 1))::text, '(2,2,2)');
+  update public.games set status = 'waiting' where id = 'GSK';
+  perform pg_temp.assert_eq('6i same session, reopened lobby', public.remove_scrabble_lobby_seat('GSK', pg_temp.pid(211))->>'status', 'removed');
   -- no session at all
   insert into public.games (id, title, host_token, game_type, status) values ('GSJ', 'lobby', 'tok-GSJ', 'scrabble', 'waiting');
   insert into public.players (id, game_id, name) values (pg_temp.pid(201), 'GSJ', 'A');
@@ -434,5 +449,32 @@ end $$;
 select pg_temp.assert_eq('priv lobby seat anon', has_function_privilege('anon', 'public.remove_scrabble_lobby_seat(text, uuid)', 'execute'), false);
 select pg_temp.assert_eq('priv lobby seat authenticated', has_function_privilege('authenticated', 'public.remove_scrabble_lobby_seat(text, uuid)', 'execute'), false);
 select pg_temp.assert_eq('priv lobby seat service_role', has_function_privilege('service_role', 'public.remove_scrabble_lobby_seat(text, uuid)', 'execute'), true);
+
+-- 6j. leave_scrabble_seat: claim + patch + the leaver's rows in ONE step.
+do $$
+declare
+  v_v timestamptz := pg_temp.mk('GSL', 23);
+begin
+  perform pg_temp.assert_eq('6j stale version', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v - interval '1 second', '{"status_message":"x"}'::jsonb)->>'status', 'lost');
+  perform pg_temp.assert_eq('6j stale: nothing deleted', (select count(*) from public.players where game_id = 'GSL'), 3::bigint);
+  perform pg_temp.assert_eq('6j phase finished', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, '{"phase":"finished"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6j protected column', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, '{"game_id":"X"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6j unconvertible value', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, '{"winner_player_id":"not-a-uuid"}'::jsonb)->>'status', 'invalid');
+  perform pg_temp.assert_eq('6j 2-d turn_order', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, jsonb_build_object('turn_order', jsonb_build_array(jsonb_build_array(pg_temp.pid(232), pg_temp.pid(233)))))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6j rejected: nothing changed', ((select count(*) from public.players where game_id = 'GSL'), (pg_temp.sess('GSL')).updated_at = v_v)::text, '(3,t)');
+  perform pg_temp.assert_eq('6j left', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v,
+    jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(232), pg_temp.pid(233)), 'status_message', 'A left'))->>'status', 'left');
+  perform pg_temp.assert_eq('6j patch applied, rows gone, version advanced', ((pg_temp.sess('GSL')).status_message,
+    array_length((pg_temp.sess('GSL')).turn_order, 1), (select count(*) from public.players where id = pg_temp.pid(231)),
+    (select count(*) from public.scrabble_player_state where player_id = pg_temp.pid(231)), (pg_temp.sess('GSL')).updated_at > v_v)::text, '("A left",2,0,0,t)');
+  perform pg_temp.assert_eq('6j other seats intact', (select count(*) from public.scrabble_player_state where game_id = 'GSL'), 2::bigint);
+  perform pg_temp.assert_eq('6j other game intact', (select count(*) from public.players where id = pg_temp.pid(111)), 1::bigint);
+  begin perform public.leave_scrabble_seat(null, pg_temp.pid(232), v_v, '{}'::jsonb); raise exception 'FAIL 6j: null game id accepted';
+  exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;
+end $$;
+
+select pg_temp.assert_eq('priv leave anon', has_function_privilege('anon', 'public.leave_scrabble_seat(text, uuid, timestamptz, jsonb)', 'execute'), false);
+select pg_temp.assert_eq('priv leave authenticated', has_function_privilege('authenticated', 'public.leave_scrabble_seat(text, uuid, timestamptz, jsonb)', 'execute'), false);
+select pg_temp.assert_eq('priv leave service_role', has_function_privilege('service_role', 'public.leave_scrabble_seat(text, uuid, timestamptz, jsonb)', 'execute'), true);
 
 rollback;

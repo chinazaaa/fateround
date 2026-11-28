@@ -47,15 +47,56 @@ function finishRpc(tables: Tables, name: string, args: Record<string, unknown>):
   if (name === 'claim_finish_bookkeeping') return { status: 'none' }
   if (name === 'remove_scrabble_lobby_seat') {
     // One transaction under the games lock: a round that is playing and lists the player is a live leave (nothing
-    // deleted); otherwise the seat leaves turn_order and its rows go.
+    // deleted); a published result keeps its seat; otherwise the seat leaves turn_order and its rows go.
     const pid = args.p_player_id as string
     const sess = tables.scrabble_sessions.find((r) => r.game_id === String(args.p_game_id).toUpperCase())
+    const game = tables.games.find((g) => g.id === String(args.p_game_id).toUpperCase())
     const order = ((sess?.turn_order as string[] | undefined) ?? []) as string[]
     if (sess && sess.phase === 'playing' && order.includes(pid)) return { status: 'live' }
+    if (sess && sess.phase === 'finished' && order.includes(pid) && game?.status !== 'waiting')
+      return { status: 'retained' }
     if (sess && order.includes(pid)) sess.turn_order = order.filter((id) => id !== pid)
     tables.scrabble_player_state = tables.scrabble_player_state.filter((x) => x.player_id !== pid)
     tables.players = tables.players.filter((x) => x.id !== pid)
     return { status: 'removed' }
+  }
+  if (name === 'leave_scrabble_seat' || name === 'leave_uno_seat') {
+    // The live leave: claim + patch + the leaver's rows in ONE step.
+    const isUno = name === 'leave_uno_seat'
+    const sess = tables[isUno ? 'uno_sessions' : 'scrabble_sessions'].find(
+      (r) => r.game_id === String(args.p_game_id).toUpperCase()
+    )
+    if (!sess) return { status: 'invalid', reason: 'session_missing' }
+    if (sess.phase === 'finished' || sess.updated_at !== args.p_expected_updated_at) return { status: 'lost' }
+    Object.assign(sess, args.p_session_patch as Row)
+    sess.updated_at = `${String(args.p_expected_updated_at)}+leave`
+    const pid = args.p_player_id as string
+    tables[isUno ? 'uno_player_hands' : 'scrabble_player_state'] = tables[
+      isUno ? 'uno_player_hands' : 'scrabble_player_state'
+    ].filter((x) => x.player_id !== pid)
+    tables.players = tables.players.filter((x) => x.id !== pid)
+    return { status: 'left' }
+  }
+  if (name === 'remove_uno_lobby_seat') {
+    const pid = args.p_player_id as string
+    const sess = tables.uno_sessions.find((r) => r.game_id === String(args.p_game_id).toUpperCase())
+    const game = tables.games.find((g) => g.id === String(args.p_game_id).toUpperCase())
+    const order = ((sess?.turn_order as string[] | undefined) ?? []) as string[]
+    const marked = ((sess?.left_player_ids as string[] | undefined) ?? []).includes(pid)
+    if (sess && order.includes(pid) && sess.phase !== 'finished') return { status: 'live' }
+    if (sess && order.includes(pid) && game?.status !== 'waiting' && !marked) return { status: 'retained' }
+    if (sess && order.includes(pid) && game?.status === 'waiting') sess.turn_order = order.filter((id) => id !== pid)
+    tables.uno_player_hands = tables.uno_player_hands.filter((x) => x.player_id !== pid)
+    tables.players = tables.players.filter((x) => x.id !== pid)
+    return { status: 'removed' }
+  }
+  if (name === 'complete_uno_departure') {
+    const pid = args.p_player_id as string
+    const sess = tables.uno_sessions.find((r) => r.game_id === String(args.p_game_id).toUpperCase())
+    if (!sess || !((sess.left_player_ids as string[] | undefined) ?? []).includes(pid)) return { status: 'none' }
+    tables.uno_player_hands = tables.uno_player_hands.filter((x) => x.player_id !== pid)
+    tables.players = tables.players.filter((x) => x.id !== pid)
+    return { status: 'completed' }
   }
   if (name === 'apply_uno_move' || name === 'apply_scrabble_move') {
     // The non-finishing move: the session claim and the move's hand / state writes in one step.
@@ -895,12 +936,18 @@ describe('uno draw — deck runs out in No Mercy', () => {
   it('mid-penalty: a database error on the finish claim writes nothing either', async () => {
     const t = midPenalty()
     const before = JSON.stringify({ hands: t.uno_player_hands, pile: t.uno_sessions[0].draw_pile })
-    const res = await processUnoDraw(
-      makeDb(t, { failRpc: (n) => n === 'apply_uno_move' || n === 'finish_uno_session' }).supabase,
-      'G',
-      'A'
-    )
+    // Only the finish is made to fail: a regression that sent this through apply_uno_move would then WRITE and be caught.
+    const db = makeDb(t, { failRpc: (n) => n === 'finish_uno_session' })
+    const calls: string[] = []
+    const realRpc = db.supabase.rpc
+    db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
+      calls.push(name)
+      return realRpc(name, args)
+    }
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
     expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(calls.filter((c) => c === 'finish_uno_session')).toHaveLength(1)
+    expect(calls).not.toContain('apply_uno_move')
     expect(JSON.stringify({ hands: t.uno_player_hands, pile: t.uno_sessions[0].draw_pile })).toBe(before)
   })
 
@@ -1004,6 +1051,24 @@ describe('Team-Up leave hardening', () => {
     expect(t.uno_sessions[0].phase).toBe('finished')
   })
 
+  it('a hand row of a seat that already left turn_order (hand not yet deleted) does not keep the round alive', async () => {
+    const t = teamTables()
+    t.games[0].uno_team_mode = false
+    Object.assign(t.uno_sessions[0], {
+      turn_order: ['A', 'B', 'C'],
+      top_card: { id: 't', color: 'blue', kind: 'skip' },
+      draw_pile: [],
+      discard_pile: [],
+    })
+    t.uno_player_hands[0].cards = [{ id: 'A1', color: 'red', kind: 'number', value: 5 }]
+    t.uno_player_hands[1].cards = [{ id: 'B1', color: 'red', kind: 'number', value: 7 }]
+    t.uno_player_hands[2].cards = [{ id: 'C1', color: 'red', kind: 'number', value: 9 }]
+    // D left (the seat is out of turn_order) but D's hand row, with the only playable card, is still there
+    t.uno_player_hands[3].cards = [{ id: 'D1', color: 'blue', kind: 'number', value: 1 }]
+    expect(await processUnoDraw(makeDb(t).supabase, 'G', 'A')).toEqual({})
+    expect(t.uno_sessions[0].phase).toBe('finished')
+  })
+
   it('a marked leaver cannot be a 7-swap target', async () => {
     const t = teamTables()
     Object.assign(t.uno_sessions[0], { phase: 'swap_target', left_player_ids: ['C'] })
@@ -1084,6 +1149,43 @@ describe('a Team-Up leaver is skipped as soon as the marker commits', () => {
   })
 })
 
+describe('removeUnoPlayer — lobby paths are decided under the lock', () => {
+  const noSessionAtLookup = (t: ReturnType<typeof unoTables>, then: (row: Record<string, unknown>) => void) => {
+    const row = { ...t.uno_sessions[0] }
+    t.uno_sessions = []
+    let done = false
+    return makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'uno_sessions' || done) return
+        done = true
+        then(row)
+      },
+    })
+  }
+
+  it('a start that landed after the lookup and lists the leaver makes the leave retry on the live path', async () => {
+    const t = unoTables()
+    const db = noSessionAtLookup(t, (row) => {
+      t.uno_sessions = [{ ...row }]
+    })
+    expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    // the retry took the live leave: the seat left the turn order through the claim, rows removed with it
+    expect(t.uno_sessions[0].turn_order).toEqual(['A', 'B', 'D'])
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+
+  it('a lookup that missed a round which finished meanwhile keeps the seat (retained)', async () => {
+    const t = unoTables()
+    const db = noSessionAtLookup(t, (row) => {
+      t.uno_sessions = [{ ...row, phase: 'finished' }]
+      t.games[0].status = 'finished'
+    })
+    expect(await removeUnoPlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.uno_player_hands.map((h) => h.player_id)).toContain('C')
+  })
+})
+
 describe('removeUnoPlayer — a finished round', () => {
   it('a Team-Up leaver whose departure committed (left_player_ids) but whose rows remain gets its cleanup', async () => {
     const t = unoTables()
@@ -1125,6 +1227,28 @@ describe('removeScrabblePlayer — no session at lookup', () => {
     t.scrabble_sessions = []
     expect(await removeScrabblePlayer(makeDb(t).supabase, 'G', 'C', 'C')).toEqual({ error: null })
     expect(t.players.map((p) => p.id)).not.toContain('C')
+  })
+})
+
+describe('removeScrabblePlayer — a published result is decided under the lock', () => {
+  it('a lookup that missed a round which finished meanwhile keeps the seat and its rows (retained)', async () => {
+    const t = scrabbleTables()
+    const row = t.scrabble_sessions[0]
+    t.scrabble_sessions = []
+    let published = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'scrabble_sessions' || published) return
+        published = true
+        // after the lookup (no session) a round was dealt AND finished: the published result lists the leaver
+        t.scrabble_sessions = [{ ...row, phase: 'finished' }]
+        t.games[0].status = 'finished'
+      },
+    })
+    expect(await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).toEqual({ error: null, retained: true })
+    expect(t.players.map((p) => p.id)).toContain('C')
+    expect(t.scrabble_player_state.map((x) => x.player_id)).toContain('C')
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B', 'C'])
   })
 })
 
@@ -1257,27 +1381,72 @@ describe('removeScrabblePlayer — session lookup error', () => {
   })
 })
 
-describe('leave — a failed players delete is not echoed to the client', () => {
-  it('uno: returns the generic internal message', async () => {
+describe('leave — a failed leave write is not echoed to the client', () => {
+  const failing = {
+    failRpc: (n: string) => n === 'leave_uno_seat' || n === 'leave_scrabble_seat' || n.startsWith('remove_'),
+  }
+
+  it('uno: returns the generic internal message and changes nothing', async () => {
     const t = unoTables()
-    const res = await removeUnoPlayer(makeDb(t, { failDeletes: (tb) => tb === 'players' }).supabase, 'G', 'C', 'C')
+    const before = JSON.stringify([t.uno_sessions, t.players, t.uno_player_hands])
+    const res = await removeUnoPlayer(makeDb(t, failing).supabase, 'G', 'C', 'C')
     expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+    expect(JSON.stringify([t.uno_sessions, t.players, t.uno_player_hands])).toBe(before)
   })
 
   it('uno Team-Up and no-session cleanup paths: the generic internal message too', async () => {
     const team = unoTables()
     team.games[0].uno_team_mode = true
-    const failing = { failDeletes: (tb: string) => tb === 'players' }
     expect((await removeUnoPlayer(makeDb(team, failing).supabase, 'G', 'C', 'C')).error).toBe(INTERNAL_ERROR_MESSAGE)
     const none = unoTables()
     none.uno_sessions = []
     expect((await removeUnoPlayer(makeDb(none, failing).supabase, 'G', 'C', 'C')).error).toBe(INTERNAL_ERROR_MESSAGE)
   })
 
-  it('scrabble: returns the generic internal message', async () => {
+  it('scrabble: returns the generic internal message and changes nothing', async () => {
     const t = scrabbleTables()
-    const res = await removeScrabblePlayer(makeDb(t, { failDeletes: (tb) => tb === 'players' }).supabase, 'G', 'C', 'C')
+    const before = JSON.stringify([t.scrabble_sessions, t.players, t.scrabble_player_state])
+    const res = await removeScrabblePlayer(makeDb(t, failing).supabase, 'G', 'C', 'C')
     expect(res.error).toBe(INTERNAL_ERROR_MESSAGE)
+    expect(JSON.stringify([t.scrabble_sessions, t.players, t.scrabble_player_state])).toBe(before)
+  })
+
+  it('a live leave is ONE call: the claim, the patch and the rows go together (never delete-after-claim)', async () => {
+    for (const kind of ['uno', 'scrabble'] as const) {
+      const t = kind === 'uno' ? unoTables() : scrabbleTables()
+      const db = makeDb(t)
+      const calls: string[] = []
+      const realRpc = db.supabase.rpc
+      db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
+        calls.push(name)
+        return realRpc(name, args)
+      }
+      const res =
+        kind === 'uno'
+          ? await removeUnoPlayer(db.supabase, 'G', 'C', 'C')
+          : await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')
+      expect(res.error).toBeNull()
+      expect(calls).toEqual([kind === 'uno' ? 'leave_uno_seat' : 'leave_scrabble_seat'])
+      expect(t.players.map((p) => p.id)).not.toContain('C')
+    }
+  })
+
+  it('a rematch that landed between the lookup and the leave makes the claim lose: the new round keeps its rows', async () => {
+    const t = scrabbleTables()
+    let raced = false
+    const db = makeDb(t, {
+      afterSessionRead: (tb) => {
+        if (tb !== 'scrabble_sessions' || raced) return
+        raced = true
+        // a finished round was re-dealt: new version, new state rows (new ids) for the same player
+        t.scrabble_sessions[0].updated_at = '2026-03-01T00:00:00.000Z'
+        t.scrabble_player_state = t.scrabble_player_state.map((x, i) => ({ ...x, id: `round2-${i}` }))
+      },
+    })
+    expect((await removeScrabblePlayer(db.supabase, 'G', 'C', 'C')).error).toBeNull()
+    // the leave retried against the NEW round and removed the seat through the claim (not by a stale delete)
+    expect(t.scrabble_sessions[0].turn_order).toEqual(['A', 'B'])
+    expect(t.scrabble_player_state.map((x) => x.player_id)).toEqual(['A', 'B'])
   })
 })
 
@@ -1636,6 +1805,8 @@ describe('Mercy knockout — committed in the same transaction as the move that 
     expect(t.players.find((p) => p.id === 'A')!.spectator).toBe(true)
     expect((t.uno_player_hands[0].cards as unknown[]).length).toBe(0)
     expect((t.uno_player_hands[2].stats as Record<string, number>).uno_hs_knockouts).toBe(1)
+    // the knocked-out hand went back to the pile: the finished snapshot keeps all 25 cards
+    expect((t.uno_sessions[0].draw_pile as unknown[]).length).toBe(25)
   })
 
   it('a finish names each player once: a missed-UNO penalty hand and a knockout credit for the same seat are merged', async () => {
@@ -2727,16 +2898,24 @@ describe('Uno: optional attribution, committed timer finish, retained seats', ()
   it('a turn expiry whose delegate ended the round on the game timer is a success, not a skip', async () => {
     const t = unoTables()
     t.uno_sessions[0].turn_deadline_at = '2020-01-01T00:00:00.000Z'
-    Object.assign(t.games[0], { session_started_at: '2999-01-01T00:00:00.000Z', game_duration_seconds: 60 })
-    let loads = 0
-    const db = makeDb(t, {
-      afterSessionRead: (tb) => {
-        // 'players' is the last read of a state load. After the expiry handler's own load, the game timer runs out.
-        if (tb === 'players' && ++loads === 1) t.games[0].session_started_at = '2020-01-01T00:00:00.000Z'
-      },
-    })
-    expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({})
-    expect(t.uno_sessions[0].phase).toBe('finished')
+    // ONE round start throughout: the game timer (60 s) runs out BETWEEN the expiry handler's check and the delegate's,
+    // because the clock advances, not because the round start changes.
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-06-01T12:00:00.000Z') })
+    try {
+      Object.assign(t.games[0], { session_started_at: '2026-06-01T11:59:30.000Z', game_duration_seconds: 60 })
+      let loads = 0
+      const db = makeDb(t, {
+        afterSessionRead: (tb) => {
+          // 'players' is the last read of a state load: after the expiry handler's own load, 40 s pass
+          if (tb === 'players' && ++loads === 1) vi.setSystemTime(new Date('2026-06-01T12:00:40.000Z'))
+        },
+      })
+      expect(await processUnoExpireTurn(db.supabase, 'G')).toEqual({})
+      expect(t.games[0].session_started_at).toBe('2026-06-01T11:59:30.000Z')
+      expect(t.uno_sessions[0].phase).toBe('finished')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a leave that retries into a published result keeps the seat (Uno)', async () => {

@@ -28,6 +28,11 @@ function makeMock(opts: { session: unknown; players: { id: string; name: string 
         sessionUpdates.push({ ...args.p_session_patch, phase: 'finished', turn_deadline_at: null })
         return Promise.resolve({ data: { status: 'finished', games_flipped: false }, error: null })
       }
+      if (name === 'leave_uno_seat') {
+        // The non-finishing leave: claim + patch + the leaver's rows in one call.
+        sessionUpdates.push(args.p_session_patch ?? {})
+        return Promise.resolve({ data: { status: 'left' }, error: null })
+      }
       return Promise.resolve({ data: null, error: null })
     },
     from(table: string) {

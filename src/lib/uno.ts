@@ -565,9 +565,12 @@ function activePlayerCount(session: UnoSession, hands: UnoPlayerHand[]): number 
 }
 
 export function anyPlayerCanPlay(hands: UnoPlayerHand[], session: UnoSession): boolean {
+  // A hand counts only for a seat that is still in the round: seated in turn_order (a leave removes the seat BEFORE it
+  // deletes the hand row) and, for Team-Up where a departed seat stays in turn_order, not marked left.
   const left = new Set<string>(unoLeftPlayerIds(session))
+  const seated = new Set<string>(session.turn_order ?? [])
   for (const row of hands) {
-    if (left.has(row.player_id)) continue
+    if (left.has(row.player_id) || !seated.has(row.player_id)) continue
     const cards = (row.cards as UnoCard[]) ?? []
     if (cards.length === 0) continue
     if (hasPlayableCard(cards, session)) return true
@@ -2499,7 +2502,12 @@ export async function processUnoDraw(
         })
         rankHands = updateHand(rankHands, playerId, [])
         handWrites[0] = { playerId, cards: [] }
-        extraPatch = { ...extraPatch, eliminated_player_ids: plan.nextEliminated }
+        extraPatch = {
+          ...extraPatch,
+          eliminated_player_ids: plan.nextEliminated,
+          // the knocked-out hand goes back to the pile: the finished snapshot keeps all of those cards
+          draw_pile: plan.patch.draw_pile,
+        }
         rankSession = { ...session, eliminated_player_ids: plan.nextEliminated }
         statsWrites = plan.hands.filter((w) => w.stats && w.player_id !== playerId) as typeof statsWrites
         spectatorIds = [playerId]
@@ -3686,6 +3694,33 @@ export async function removeUnoPlayer(
   return { error: UNO_REMOVE_CONFLICT_ERROR }
 }
 
+/** The leave claim + patch + the leaver's rows in ONE transaction (leave_uno_seat). A lost claim retries. */
+async function leaveUnoSeat(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  expectedUpdatedAt: string,
+  patch: Record<string, unknown>
+): Promise<{ error: string | null } | 'retry'> {
+  const { updated_at: _updatedAt, ...sessionPatch } = patch
+  void _updatedAt
+  const { data, error } = await supabase.rpc('leave_uno_seat', {
+    p_game_id: gameId,
+    p_player_id: playerId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_session_patch: sessionPatch,
+  })
+  if (error) return { error: internalErrorMessage('uno', error) }
+  const outcome = (data ?? {}) as { status?: string; reason?: string }
+  if (outcome.status === 'lost') return 'retry'
+  if (outcome.status !== 'left') {
+    return {
+      error: internalErrorMessage('uno', `leave_uno_seat rejected the call: ${outcome.reason ?? outcome.status}`),
+    }
+  }
+  return { error: null }
+}
+
 async function removeUnoPlayerOnce(
   supabase: SupabaseClient,
   gameId: string,
@@ -3743,18 +3778,11 @@ async function removeUnoPlayerOnce(
       // A retry of a departure that already COMMITTED (the marker is in left_player_ids) is cleanup only: it must not
       // claim the session again, and above all must not reopen a teammate decision that was already resolved.
       if (unoLeftPlayerIds(session).includes(playerId)) {
-        const { error: handDeleteError } = await supabase
-          .from('uno_player_hands')
-          .delete()
-          .eq('game_id', gameId)
-          .eq('player_id', playerId)
-        if (handDeleteError) return { error: internalErrorMessage('uno', handDeleteError) }
-        const { error: playerDeleteError } = await supabase
-          .from('players')
-          .delete()
-          .eq('id', playerId)
-          .eq('game_id', gameId)
-        return { error: playerDeleteError ? internalErrorMessage('uno', playerDeleteError) : null }
+        const { error: departureError } = await supabase.rpc('complete_uno_departure', {
+          p_game_id: gameId,
+          p_player_id: playerId,
+        })
+        return { error: departureError ? internalErrorMessage('uno', departureError) : null }
       }
       const { data: handRows, error: handError } = await supabase
         .from('uno_player_hands')
@@ -3815,17 +3843,7 @@ async function removeUnoPlayerOnce(
         return finished.already ? { error: null, retained: true } : 'retry'
       }
 
-      const { data: teamClaimed, error: teamError } = await supabase
-        .from('uno_sessions')
-        .update(teamUpdate)
-        .eq('game_id', gameId)
-        .eq('updated_at', session.updated_at)
-        .select('game_id')
-      if (teamError) return { error: internalErrorMessage('uno', teamError) }
-      if (!teamClaimed || teamClaimed.length === 0) return 'retry'
-      await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
-      const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-      return { error: error ? internalErrorMessage('uno', error) : null }
+      return leaveUnoSeat(supabase, gameId, playerId, session.updated_at, teamUpdate)
     }
 
     const turnOrder = order.filter((id) => id !== playerId)
@@ -3895,23 +3913,30 @@ async function removeUnoPlayerOnce(
       return finished.already ? { error: null, retained: true } : 'retry'
     }
 
-    const { data: claimed, error: sessionError } = await supabase
-      .from('uno_sessions')
-      .update(update)
-      .eq('game_id', gameId)
-      .eq('updated_at', session.updated_at)
-      .select('game_id')
-    if (sessionError) return { error: internalErrorMessage('uno', sessionError) }
-    if (!claimed || claimed.length === 0) return 'retry'
-
-    await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
-    const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-    return { error: error ? internalErrorMessage('uno', error) : null }
+    return leaveUnoSeat(supabase, gameId, playerId, session.updated_at, update)
   }
 
-  await supabase.from('uno_player_hands').delete().eq('game_id', gameId).eq('player_id', playerId)
-  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return { error: error ? internalErrorMessage('uno', error) : null }
+  // Not a live-round leave (no session yet, a spectator, a seat outside the turn order, a reopened lobby): the rows go in
+  // ONE transaction under the games lock (remove_uno_lobby_seat). A round that is live and lists the player (a start that
+  // landed after the lookup) answers `live`: nothing was deleted and the retry takes the live path; a published result
+  // keeps its seat.
+  const { data: removed, error: removeError } = await supabase.rpc('remove_uno_lobby_seat', {
+    p_game_id: gameId,
+    p_player_id: playerId,
+  })
+  if (removeError) return { error: internalErrorMessage('uno', removeError) }
+  const outcome = (removed ?? {}) as { status?: string; reason?: string }
+  if (outcome.status === 'live') return 'retry'
+  if (outcome.status === 'retained') return { error: null, retained: true }
+  if (outcome.status !== 'removed') {
+    return {
+      error: internalErrorMessage(
+        'uno',
+        `remove_uno_lobby_seat rejected the call: ${outcome.reason ?? outcome.status}`
+      ),
+    }
+  }
+  return { error: null }
 }
 
 // ── Team-Up mid-round leave: the remaining teammate's decision ─────────────────

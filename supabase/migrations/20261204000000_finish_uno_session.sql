@@ -66,6 +66,7 @@ declare
   v_cols text;
   v_elem jsonb;
   v_winner text;
+  v_winner_uuid uuid;
   v_points integer;
   v_totals jsonb;
   v_total integer;
@@ -160,6 +161,11 @@ begin
   exception when others then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_value', 'games_flipped', false);
   end;
+  -- an array column must be one-dimensional (array_remove and the turn logic assume it)
+  if p_session_patch ? 'turn_order'
+     and array_ndims((jsonb_populate_record(null::public.uno_sessions, p_session_patch)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value', 'games_flipped', false);
+  end if;
 
   -- Every hand write: an object, a non-null uuid-shaped player_id that holds a hand row in THIS game, only known keys,
   -- and no player twice.
@@ -187,10 +193,17 @@ begin
        or jsonb_typeof(p_series->'winner_id') is distinct from 'string'
        or coalesce(p_series->>'winner_id', '') = ''
        or jsonb_typeof(p_series->'points') is distinct from 'number'
-       or (p_series->>'points') !~ '^[0-9]{1,9}$'
-       or not exists (
-         select 1 from public.uno_player_hands h where h.game_id = v_id and h.player_id::text = p_series->>'winner_id'
-       ) then
+       or (p_series->>'points') !~ '^[0-9]{1,9}$' then
+      return jsonb_build_object('status', 'invalid', 'reason', 'series', 'games_flipped', false);
+    end if;
+    -- The winner is parsed ONCE: membership is compared as a uuid and the canonical text is the score key, so two
+    -- spellings of one player (upper / lower case) can neither be rejected nor accumulate under two keys.
+    begin
+      v_winner_uuid := (p_series->>'winner_id')::uuid;
+    exception when others then
+      return jsonb_build_object('status', 'invalid', 'reason', 'series', 'games_flipped', false);
+    end;
+    if not exists (select 1 from public.uno_player_hands h where h.game_id = v_id and h.player_id = v_winner_uuid) then
       return jsonb_build_object('status', 'invalid', 'reason', 'series', 'games_flipped', false);
     end if;
   end if;
@@ -230,7 +243,7 @@ begin
 
   -- Series points: added here, against the CURRENT totals, only while scoring is on and no series winner exists.
   if p_series is not null and v_game.uno_series_scoring = true and v_game.uno_series_winner_id is null then
-    v_winner := p_series->>'winner_id';
+    v_winner := v_winner_uuid::text;
     v_points := (p_series->>'points')::integer;
     v_totals := coalesce(v_game.uno_series_scores, '{}'::jsonb);
     v_total := coalesce((v_totals->>v_winner)::integer, 0) + v_points;
@@ -314,6 +327,11 @@ begin
   exception when others then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
   end;
+  -- an array column must be one-dimensional (array_remove and the turn logic assume it)
+  if p_session_patch ? 'turn_order'
+     and array_ndims((jsonb_populate_record(null::public.uno_sessions, p_session_patch)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end if;
   if p_session_patch->>'phase' = 'finished' then
     return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
   end if;
@@ -396,7 +414,7 @@ begin
     return jsonb_build_object('status', 'none', 'reason', 'game_missing');
   end if;
   select * into v_session from public.uno_sessions where game_id = v_id for update;
-  if not found or v_session.phase <> 'finished' or jsonb_typeof(v_session.left_player_ids) is distinct from 'array'
+  if not found or jsonb_typeof(v_session.left_player_ids) is distinct from 'array'
      or not (v_session.left_player_ids ? p_player_id::text) then
     return jsonb_build_object('status', 'none');
   end if;
@@ -412,3 +430,139 @@ $$;
 
 revoke execute on function public.complete_uno_departure(text, uuid) from public, anon, authenticated;
 grant execute on function public.complete_uno_departure(text, uuid) to service_role;
+
+-- A non-finishing leave (ordinary or Team-Up): the session claim, the patch AND the leaver's hand / seat rows are ONE
+-- transaction under the games + session locks. The old shape committed the turn_order change first and deleted the rows
+-- afterwards with unconditional deletes, so a rematch that dealt the same (not yet deleted) player in between lost its new
+-- hand and seat to the delayed deletes.
+create or replace function public.leave_uno_seat(
+  p_game_id text,
+  p_player_id uuid,
+  p_expected_updated_at timestamptz,
+  p_session_patch jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_session public.uno_sessions%rowtype;
+  v_bad text;
+  v_cols text;
+begin
+  if p_game_id is null or p_player_id is null or p_expected_updated_at is null or p_session_patch is null then
+    raise exception 'leave_uno_seat: game id, player id, expected version and session patch are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  perform 1 from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
+  end if;
+  select * into v_session from public.uno_sessions where game_id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'session_missing');
+  end if;
+  if v_session.phase = 'finished' or v_session.updated_at <> p_expected_updated_at then
+    return jsonb_build_object('status', 'lost');
+  end if;
+
+  if jsonb_typeof(p_session_patch) is distinct from 'object' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'payload_shape');
+  end if;
+  select string_agg(k, ',') into v_bad
+    from jsonb_object_keys(p_session_patch) as k
+    where k in ('id', 'game_id', 'created_at', 'updated_at')
+       or not exists (
+         select 1 from information_schema.columns c
+         where c.table_schema = 'public' and c.table_name = 'uno_sessions' and c.column_name = k
+       );
+  if v_bad is not null then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_column: ' || v_bad);
+  end if;
+  if p_session_patch->>'phase' = 'finished' then
+    return jsonb_build_object('status', 'invalid', 'reason', 'phase_finished');
+  end if;
+  begin
+    perform jsonb_populate_record(null::public.uno_sessions, p_session_patch);
+  exception when others then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end;
+  -- an array column must be one-dimensional (array_remove and the turn logic assume it)
+  if p_session_patch ? 'turn_order'
+     and array_ndims((jsonb_populate_record(null::public.uno_sessions, p_session_patch)).turn_order) > 1 then
+    return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end if;
+
+  select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_patch) as k;
+  if v_cols is not null then
+    execute format(
+      'update public.uno_sessions s set (%1$s) = (select %1$s from jsonb_populate_record(null::public.uno_sessions, $1)) where s.game_id = $2',
+      v_cols
+    ) using p_session_patch, v_id;
+  else
+    update public.uno_sessions set updated_at = updated_at where game_id = v_id;
+  end if;
+
+  delete from public.uno_player_hands where game_id = v_id and player_id = p_player_id;
+  delete from public.players where id = p_player_id and game_id = v_id;
+  return jsonb_build_object('status', 'left');
+end;
+$$;
+
+revoke execute on function public.leave_uno_seat(text, uuid, timestamptz, jsonb) from public, anon, authenticated;
+grant execute on function public.leave_uno_seat(text, uuid, timestamptz, jsonb) to service_role;
+
+-- A leave that is NOT a live-round leave (no session yet, a spectator, a seat that is not in the turn order, a reopened
+-- lobby): the rows go, and a reopened lobby's stale turn_order entry with them, in ONE transaction under the games lock.
+-- `live`: a round that is not finished still lists the player (nothing is deleted; the caller takes the live path).
+-- `retained`: a PUBLISHED result (finished, game not `waiting`) keeps its seats, unless the departure is marked.
+create or replace function public.remove_uno_lobby_seat(
+  p_game_id text,
+  p_player_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id text;
+  v_status text;
+  v_session public.uno_sessions%rowtype;
+  v_exists boolean;
+  v_listed boolean;
+begin
+  if p_game_id is null or p_player_id is null then
+    raise exception 'remove_uno_lobby_seat: game id and player id are required';
+  end if;
+  v_id := upper(p_game_id);
+
+  select status into v_status from public.games where id = v_id for update;
+  if not found then
+    return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
+  end if;
+  select * into v_session from public.uno_sessions where game_id = v_id for update;
+  v_exists := found;
+  v_listed := v_exists and p_player_id = any (v_session.turn_order);
+  if v_listed and v_session.phase <> 'finished' then
+    return jsonb_build_object('status', 'live');
+  end if;
+  if v_listed and v_status is distinct from 'waiting'
+     and not (jsonb_typeof(v_session.left_player_ids) = 'array' and v_session.left_player_ids ? p_player_id::text) then
+    return jsonb_build_object('status', 'retained');
+  end if;
+
+  if v_listed and v_status = 'waiting' then
+    update public.uno_sessions set turn_order = array_remove(turn_order, p_player_id) where game_id = v_id;
+  end if;
+  delete from public.uno_player_hands where game_id = v_id and player_id = p_player_id;
+  delete from public.players where id = p_player_id and game_id = v_id;
+  return jsonb_build_object('status', 'removed');
+end;
+$$;
+
+revoke execute on function public.remove_uno_lobby_seat(text, uuid) from public, anon, authenticated;
+grant execute on function public.remove_uno_lobby_seat(text, uuid) to service_role;
