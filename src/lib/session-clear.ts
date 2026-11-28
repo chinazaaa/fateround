@@ -33,3 +33,30 @@ export async function clearSessionTables(
 
   return { error: null }
 }
+
+/**
+ * Wipe the per-session rows of a FINISHED session ('anonymous': messages and bans; 'codewords': chat), decided
+ * atomically in the database: the function locks the games row, deletes only while the game is still finished with
+ * exactly the `finishedAt` the caller's finish wrote, and deletes everything of that session. A replayed (Play
+ * Again) game is never touched, and no created_at is compared against an app-clock value. Message inserts take the
+ * same lock (see insert_anonymous_message_if_active / insert_codewords_message_if_active), so nothing accepted for the
+ * session can land after this wipe. Idempotent.
+ */
+export async function wipeFinishedSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  finishedAt: string,
+  kind: 'anonymous' | 'codewords'
+): Promise<{ error: string | null; status?: string }> {
+  const { data, error } = await supabase.rpc('wipe_finished_session_rows', {
+    p_game_id: gameId,
+    p_finished_at: finishedAt,
+    p_kind: kind,
+  })
+  // `status` is what the database decided (`wiped`, or `not_current_session` when the room was reopened meanwhile):
+  // callers that report the room's state must not read a skipped wipe as a finished room.
+  return {
+    error: error ? internalErrorMessage('session-clear', error) : null,
+    ...(error ? {} : { status: (data as { status?: string } | null)?.status }),
+  }
+}

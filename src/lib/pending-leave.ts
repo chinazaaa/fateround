@@ -1,7 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { completePendingRummyRemoval } from '@/lib/rummy'
-import { isCheckersGame, isChessGame, isDraughts10Game, isRummyGame, isWhotGame, parseGameType } from '@/lib/game-types'
+import {
+  isCheckersGame,
+  isChessGame,
+  isDraughts10Game,
+  isRummyGame,
+  isWhotGame,
+  isWordRushGame,
+  parseGameType,
+} from '@/lib/game-types'
 
 /**
  * A forfeiting leave commits the finished session (and the games row) BEFORE the leaver's seat is
@@ -13,13 +21,24 @@ import { isCheckersGame, isChessGame, isDraughts10Game, isRummyGame, isWhotGame,
  * who resigned / went out and is meant to stay on the results screen). Returns null when nothing is
  * pending, so the caller keeps the finished-game "retained" behaviour.
  */
-export type PendingLeaveResult = { error: string; status: number } | { error: null }
+export type PendingLeaveResult =
+  | {
+      error: string
+      status: number
+      /**
+       * The seat DELETE was issued before the error: its outcome is uncertain (a delete whose response was lost can
+       * have committed). False for an error raised before any delete was attempted (the seat is untouched).
+       */
+      deleteAttempted: boolean
+    }
+  | { error: null }
 
-type Failure = { error: string; status: number }
+type Failure = { error: string; status: number; deleteAttempted: boolean }
 
-const fail = (scope: string, error: { message?: string }): Failure => ({
+const fail = (scope: string, error: { message?: string }, deleteAttempted = false): Failure => ({
   error: internalErrorMessage(scope, error),
   status: 500,
+  deleteAttempted,
 })
 
 export async function completePendingFinishedLeave(
@@ -34,10 +53,36 @@ export async function completePendingFinishedLeave(
   if (isRummyGame(gameType)) {
     const res = await completePendingRummyRemoval(supabase, gameId, playerId, playerName)
     if (!res) return null
-    return res.error ? { error: res.error, status: res.conflict ? 409 : 500 } : { error: null }
+    // Only an error from the seat DELETE itself is uncertain; the session / seat reads and the hand delete fail before it.
+    return res.error
+      ? { error: res.error, status: res.conflict ? 409 : 500, deleteAttempted: res.seatDeleteIssued === true }
+      : { error: null }
   }
 
   if (isWhotGame(gameType)) return completePendingWhotLeave(supabase, gameId, playerId)
+
+  // Word Rush: a player who LEFT is recorded on the session (word_rush_remove_player); the seat of one who left a naturally
+  // finished game is deleted once the game's bookkeeping no longer reads it. Decided in the database under the game lock.
+  if (isWordRushGame(gameType)) {
+    const { data, error } = await supabase.rpc('word_rush_remove_player', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+      p_stage: 'delete',
+    })
+    if (error) return fail('word-rush', error, true)
+    const status = (data as { status?: string } | null)?.status
+    if (status === 'deleted') return { error: null }
+    // The leave is recorded but the finish's bookkeeping (or the round's owed effects) still reads the leaver's rows: a
+    // retained seat is not the same thing. Retryable, and nothing was attempted.
+    if (status === 'bookkeeping_owed' || status === 'finalizing') {
+      return {
+        error: 'Your leave is waiting for the game results to finish saving — try again in a moment',
+        status: 409,
+        deleteAttempted: false,
+      }
+    }
+    return null
+  }
 
   if (isChessGame(gameType)) {
     return completePendingForfeit(supabase, 'chess_sessions', ['player_white_id', 'player_black_id'], {
@@ -102,7 +147,7 @@ async function completePendingWhotLeave(
     .eq('player_id', playerId)
   if (handError) return fail('whot', handError)
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return error ? fail('whot', error) : { error: null }
+  return error ? fail('whot', error, true) : { error: null }
 }
 
 /**
@@ -136,5 +181,5 @@ async function completePendingForfeit(
   if (!seat) return null
 
   const { error } = await supabase.from('players').delete().eq('id', ctx.playerId).eq('game_id', ctx.gameId)
-  return error ? fail(ctx.scope, error) : { error: null }
+  return error ? fail(ctx.scope, error, true) : { error: null }
 }

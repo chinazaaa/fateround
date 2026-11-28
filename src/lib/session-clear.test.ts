@@ -4,11 +4,17 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 // `finishAnonymousRoomSession` resolves the finish through a dynamic import, so the
 // mock has to be registered before the module under test pulls it in.
 const markGameFinished = vi.hoisted(() =>
-  vi.fn(async (): Promise<{ error: { message: string } | null; won: boolean }> => ({ error: null, won: true }))
+  vi.fn(
+    async (): Promise<{ error: { message: string } | null; won: boolean; finishedAt?: string }> => ({
+      error: null,
+      won: true,
+      finishedAt: '2026-01-01T00:00:00.000Z',
+    })
+  )
 )
 vi.mock('@/lib/game-finish', () => ({ markGameFinished }))
 
-import { clearSessionTables } from './session-clear'
+import { clearSessionTables, wipeFinishedSession } from './session-clear'
 import { clearBingoSessionData } from './bingo'
 import { clearAnonymousRoomSessionData, finishExpiredAnonymousSession } from './anonymous-messages'
 import { clearLudoSessionData } from './ludo'
@@ -19,7 +25,8 @@ import { clearTwoTruthsSessionData } from './two-truths'
 // Minimal Supabase stand-in that records which tables get .delete()'d and whether a
 // spectator reset (players.update({ spectator: false })) was issued. Each builder
 // method is both chainable (.eq().eq()) and awaitable, mirroring supabase-js.
-function makeMockSupabase(errorOnTable?: string) {
+let wipeStatus = 'wiped'
+function makeMockSupabase(errorOnTable?: string, gameRow: Record<string, unknown> | null | 'read-fails' = null) {
   const deletedTables: string[] = []
   let spectatorsReset = false
   const thenable = (result: { error: { message: string } | null }) => {
@@ -27,13 +34,33 @@ function makeMockSupabase(errorOnTable?: string) {
     p.eq = () => p
     return p
   }
+  const wipes: Array<Record<string, unknown>> = []
   const supabase = {
+    // The session wipe is decided in the database (wipe_finished_session_rows); it fails when the test names
+    // the table that kind of wipe deletes from.
+    rpc(name: string, args: Record<string, unknown>) {
+      if (name === 'wipe_finished_session_rows') wipes.push(args)
+      const table = args.p_kind === 'anonymous' ? 'anonymous_messages' : 'codewords_messages'
+      return Promise.resolve({
+        data: { status: wipeStatus },
+        error: table === errorOnTable ? { message: 'boom' } : null,
+      })
+    },
     from(table: string) {
       return {
         delete: () => {
           deletedTables.push(table)
           return thenable(table === errorOnTable ? { error: { message: 'boom' } } : { error: null })
         },
+        // The row a lost finish re-reads to learn what state the room is in now.
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () =>
+              gameRow === 'read-fails'
+                ? { data: null, error: { message: 'read failed' } }
+                : { data: gameRow, error: null },
+          }),
+        }),
         update: (vals: Record<string, unknown>) => {
           if (vals.spectator === false) spectatorsReset = true
           return thenable({ error: null })
@@ -42,7 +69,7 @@ function makeMockSupabase(errorOnTable?: string) {
     },
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return { supabase: supabase as any, deletedTables, getSpectatorsReset: () => spectatorsReset }
+  return { supabase: supabase as any, deletedTables, wipes, getSpectatorsReset: () => spectatorsReset }
 }
 
 describe('clearSessionTables', () => {
@@ -62,9 +89,28 @@ describe('clearSessionTables', () => {
     const m = makeMockSupabase('b')
     const r = await clearSessionTables(m.supabase, 'G', ['a', 'b', 'c'])
     // The raw DB message is never surfaced to the caller (and so the client).
+    // The public fallback, exactly: a response that carries the database diagnostic must fail this.
+    expect(r.error).toBe('Something went wrong. Please try again.')
+    expect(m.deletedTables).toEqual(['a', 'b']) // 'c' never attempted
+  })
+})
+
+describe('wipeFinishedSession', () => {
+  it('asks the database to wipe the session bound to the finished_at, never deleting from the client', async () => {
+    const m = makeMockSupabase()
+    expect(await wipeFinishedSession(m.supabase, 'G', '2026-01-01T00:00:00.000Z', 'codewords')).toEqual({
+      error: null,
+      status: 'wiped',
+    })
+    expect(m.wipes).toEqual([{ p_game_id: 'G', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'codewords' }])
+    expect(m.deletedTables).toEqual([])
+  })
+
+  it('returns a sanitized error when the database call fails', async () => {
+    const m = makeMockSupabase('anonymous_messages')
+    const r = await wipeFinishedSession(m.supabase, 'G', '2026-01-01T00:00:00.000Z', 'anonymous')
     expect(r.error).toBeTruthy()
     expect(r.error).not.toBe('boom')
-    expect(m.deletedTables).toEqual(['a', 'b']) // 'c' never attempted
   })
 })
 
@@ -117,7 +163,7 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     const finished = await finishExpiredAnonymousSession(m.supabase, EXPIRED)
 
     // The finish won; only the wipe failed, so this must NOT become a failure.
-    expect(finished).toBe(true)
+    expect(finished).toBe('finished')
     expect(markGameFinished).toHaveBeenCalledTimes(1)
     // `internalErrorMessage` logs the raw DB error too, so match on our own line.
     const logged = spy.mock.calls.filter(([m]) => typeof m === 'string' && m.includes('not retried'))
@@ -130,9 +176,107 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     const m = makeMockSupabase()
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe(true)
-    expect(m.deletedTables).toEqual(['anonymous_messages', 'anonymous_room_bans'])
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
+    // Bound to the finished_at the finish wrote and decided in the database, never by a client-side delete.
+    expect(m.wipes).toEqual([{ p_game_id: 'GAME', p_finished_at: '2026-01-01T00:00:00.000Z', p_kind: 'anonymous' }])
+    expect(m.deletedTables).toEqual([])
     expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('binds the finish to the session it saw expire (a restarted room is never finished or wiped)', async () => {
+    const m = makeMockSupabase()
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
+    expect(markGameFinished).toHaveBeenCalledWith(m.supabase, 'GAME', undefined, {
+      onlyIfActive: true,
+      onlySessionStartedAt: EXPIRED.session_started_at,
+    })
+  })
+
+  it('a WON finish whose wipe was skipped because the room was reopened meanwhile is `superseded`, never finished', async () => {
+    wipeStatus = 'not_current_session'
+    try {
+      const m = makeMockSupabase(undefined, { status: 'active' })
+      expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('superseded')
+    } finally {
+      wipeStatus = 'wiped'
+    }
+  })
+
+  it('a skipped wipe on a room that FINISHED A LATER session is `superseded` too (its status says finished, its session is not ours)', async () => {
+    wipeStatus = 'not_current_session'
+    try {
+      const m = makeMockSupabase(undefined, {
+        status: 'finished',
+        finished_at: '2026-03-03T00:00:00.000Z',
+        session_started_at: new Date().toISOString(),
+      })
+      expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('superseded')
+    } finally {
+      wipeStatus = 'wiped'
+    }
+  })
+
+  it('a skipped wipe on the SAME session that is still finished is reported finished', async () => {
+    wipeStatus = 'not_current_session'
+    try {
+      const m = makeMockSupabase(undefined, {
+        status: 'finished',
+        finished_at: '2026-03-03T00:00:00.000Z',
+        session_started_at: EXPIRED.session_started_at,
+      })
+      expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
+    } finally {
+      wipeStatus = 'wiped'
+    }
+  })
+
+  it('...and when the room state cannot be read after a skipped wipe, it is an error', async () => {
+    wipeStatus = 'not_current_session'
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const m = makeMockSupabase(undefined, 'read-fails')
+      expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('error')
+    } finally {
+      wipeStatus = 'wiped'
+      spy.mockRestore()
+    }
+  })
+
+  it('a lost session-bound finish whose room was reopened is `superseded` (never reported as finished), and wipes nothing', async () => {
+    markGameFinished.mockResolvedValueOnce({ error: null, won: false })
+    const m = makeMockSupabase(undefined, { status: 'active', finished_at: null })
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('superseded')
+    expect(m.wipes).toEqual([])
+  })
+
+  it('a lost finish whose status read then FAILS is an error: nothing confirms the room finished', async () => {
+    markGameFinished.mockResolvedValueOnce({ error: null, won: false })
+    const m = makeMockSupabase(undefined, 'read-fails')
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('error')
+    spy.mockRestore()
+  })
+
+  it('a lost finish whose room is (still) finished is reported finished, and the wipe is bound to that finish', async () => {
+    markGameFinished.mockResolvedValueOnce({ error: null, won: false })
+    const m = makeMockSupabase(undefined, {
+      status: 'finished',
+      finished_at: '2026-02-02T00:00:00.000Z',
+      session_started_at: EXPIRED.session_started_at,
+    })
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('finished')
+    expect(m.wipes).toEqual([{ p_game_id: 'GAME', p_finished_at: '2026-02-02T00:00:00.000Z', p_kind: 'anonymous' }])
+  })
+
+  it('a lost finish whose room finished a LATER session (replayed and ended again) is `superseded` and wipes nothing', async () => {
+    markGameFinished.mockResolvedValueOnce({ error: null, won: false })
+    const m = makeMockSupabase(undefined, {
+      status: 'finished',
+      finished_at: '2026-03-03T00:00:00.000Z',
+      session_started_at: new Date().toISOString(),
+    })
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('superseded')
+    expect(m.wipes).toEqual([])
   })
 
   it('reports failure and logs nothing when the finish itself fails', async () => {
@@ -140,7 +284,7 @@ describe('finishExpiredAnonymousSession surfaces a failed post-finish wipe', () 
     const m = makeMockSupabase()
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe(false)
+    expect(await finishExpiredAnonymousSession(m.supabase, EXPIRED)).toBe('error')
     // No cleanup line: the finish failed, so there was no completed finish to report on.
     expect(spy.mock.calls.filter(([m]) => typeof m === 'string' && m.includes('not retried'))).toHaveLength(0)
   })

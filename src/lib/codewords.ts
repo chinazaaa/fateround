@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
+import { wipeFinishedSession } from '@/lib/session-clear'
 import { parseQuestionSource } from '@/lib/custom-questions'
 import {
   CODEWORDS_BOARD_SIZE,
@@ -567,21 +568,6 @@ export function setCodewordsHostMode(gameCode: string, mode: CodewordsHostMode) 
   localStorage.setItem(codewordsHostModeKey(gameCode), mode)
 }
 
-export async function clearCodewordsChat(
-  supabase: SupabaseClient,
-  gameId: string,
-  // codewords_messages has no session column, so a session-bound finish scopes its wipe in time:
-  // only messages written up to the moment that session finished. A newer session starts after its
-  // predecessor finished, so its chat is never reached. Omitted = wipe everything (host/admin end).
-  createdAtOrBefore?: string
-): Promise<{ error: string | null }> {
-  let query = supabase.from('codewords_messages').delete().eq('game_id', gameId)
-  if (createdAtOrBefore) query = query.lte('created_at', createdAtOrBefore)
-  const { error } = await query
-  if (error) return { error: internalErrorMessage('codewords', error) }
-  return { error: null }
-}
-
 export async function finishCodewordsGame(
   supabase: SupabaseClient,
   gameId: string,
@@ -595,32 +581,30 @@ export async function finishCodewordsGame(
   if (gameError) return { error: internalErrorMessage('codewords', gameError), won: false }
 
   // The chat wipe is an idempotent retry (a finish that committed but failed to wipe is repeated),
-  // so it also runs when another request won the flip. A session-bound finish must never reach a
-  // newer session's chat though: it wipes only what existed when ITS session finished, and a lost
-  // flip wipes only if the game is still the finished game of the session it observed.
+  // so it also runs when another request won the flip. It never reaches a newer session's chat: the database
+  // deletes only while the game is still finished with exactly the `finished_at` of the finish it follows (this
+  // call's own, or the one a lost flip reads back), and a lost flip wipes only a game that really is finished
+  // and, when the caller named a session, is still that session's finished game.
   //
   // A failed wipe comes back as `cleanupError`, not `error`: the game is already
   // `finished`, so reporting it as a finish failure made callers drop a close they
   // had actually performed (and skip its `result_reason` stamp).
-  let wipeUpTo: string | undefined
-  if (onlySessionStartedAt !== undefined) {
-    if (won) {
-      wipeUpTo = finishedAt
-    } else {
-      const { data: current, error: currentError } = await supabase
-        .from('games')
-        .select('status, session_started_at, finished_at')
-        .eq('id', gameId)
-        .maybeSingle()
-      if (currentError) return { error: null, won, cleanupError: internalErrorMessage('codewords', currentError) }
-      const sameSession = (current?.session_started_at ?? null) === onlySessionStartedAt
-      if (current?.status !== 'finished' || !sameSession || !current.finished_at) {
-        return { error: null, won, cleanupError: null }
-      }
-      wipeUpTo = current.finished_at as string
+  let wipeUpTo = finishedAt
+  if (!won) {
+    const { data: current, error: currentError } = await supabase
+      .from('games')
+      .select('status, session_started_at, finished_at')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (currentError) return { error: null, won, cleanupError: internalErrorMessage('codewords', currentError) }
+    const sameSession =
+      onlySessionStartedAt === undefined || (current?.session_started_at ?? null) === onlySessionStartedAt
+    if (current?.status !== 'finished' || !sameSession || !current.finished_at) {
+      return { error: null, won, cleanupError: null }
     }
+    wipeUpTo = current.finished_at as string
   }
-  const { error: chatError } = await clearCodewordsChat(supabase, gameId, wipeUpTo)
+  const { error: chatError } = await wipeFinishedSession(supabase, gameId, wipeUpTo, 'codewords')
   return { error: null, won, cleanupError: chatError }
 }
 
@@ -701,14 +685,70 @@ export async function removeCodewordsPlayerRole(
   return { error: null }
 }
 
+/**
+ * Delete the seat only while the game is still open, decided in the database under a lock on the game row (see
+ * remove_player_if_game_open): a finish that landed after the caller read the status keeps the seat, and the
+ * caller answers it like any leave of a finished game. `gameFinished` is true when nothing was deleted for that reason.
+ */
+export async function removePlayerIfGameOpen(
+  supabase: SupabaseClient,
+  gameId: string,
+  playerId: string,
+  /** Joiners mode: the participant row (by name) that goes with the seat, deleted in the same transaction. */
+  participantName?: string,
+  /**
+   * The leaver is the game's host. When nobody else is eligible the DATABASE finishes the game (host_ended, bound to this
+   * session) and keeps the seat, in the same locked check that would delete it: `hostEnded` then carries the finish.
+   */
+  hostLeave?: { session: { startedAt: string | null; sessionsPlayed: number | null }; trackBookkeeping: boolean }
+): Promise<{
+  error: string | null
+  gameFinished: boolean
+  hostEnded?: { finishedAt: string }
+  /** Refused before any write: the seat's participant cannot be told from another one of the same name. */
+  participantAmbiguous?: true
+}> {
+  const { data, error } = await supabase.rpc('remove_player_if_game_open', {
+    p_game_id: gameId,
+    p_player_id: playerId,
+    ...(participantName !== undefined ? { p_participant_name: participantName } : {}),
+    ...(hostLeave
+      ? {
+          p_host_leave: true,
+          p_sessions_played: hostLeave.session.sessionsPlayed,
+          p_track_bookkeeping: hostLeave.trackBookkeeping,
+        }
+      : {}),
+  })
+  if (error) return { error: internalErrorMessage('players', error), gameFinished: false }
+  const answer = data as { status?: string; finished_at?: string } | null
+  const status = answer?.status
+  // Two participants share the seat's name and the seat has no linked participant: nothing was deleted (the seat stays too).
+  if (status === 'participant_ambiguous') {
+    return {
+      error: PARTICIPANT_AMBIGUOUS_MESSAGE,
+      gameFinished: false,
+      participantAmbiguous: true,
+    }
+  }
+  return {
+    error: null,
+    // `host_ended`: the game was finished instead of removing the host's seat, so nothing was deleted either.
+    gameFinished: status === 'game_finished' || status === 'host_ended',
+    ...(status === 'host_ended' && answer?.finished_at ? { hostEnded: { finishedAt: answer.finished_at } } : {}),
+  }
+}
+
+export const PARTICIPANT_AMBIGUOUS_MESSAGE =
+  "More than one participant has this seat's name, so the removal cannot tell which one belongs to it — the host should rename or remove the duplicate participant (or restore the seat's link), then try again"
+
 export async function removeCodewordsPlayer(
   supabase: SupabaseClient,
   gameId: string,
-  playerId: string
-): Promise<{ error: string | null }> {
-  const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  if (error) return { error: internalErrorMessage('codewords', error) }
-  return { error: null }
+  playerId: string,
+  hostLeave?: { session: { startedAt: string | null; sessionsPlayed: number | null }; trackBookkeeping: boolean }
+): Promise<{ error: string | null; gameFinished: boolean; hostEnded?: { finishedAt: string } }> {
+  return removePlayerIfGameOpen(supabase, gameId, playerId, undefined, hostLeave)
 }
 
 export type CodewordsRemovalOutcome = {

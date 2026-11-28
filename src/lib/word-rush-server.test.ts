@@ -9,6 +9,7 @@ import {
   clearWordRushSessionData,
   processWordRushEndRoundEarly,
   processWordRushExpireTurn,
+  processWordRushPrompt,
   processWordRushSubmit,
   resumeAllWordRushFinalizations,
   resumeWordRushFinalization,
@@ -156,6 +157,7 @@ describe('individual round finalization is resumable', () => {
       answerReads: 0,
       awardOutcomes: [] as string[],
       gameFinishFailed: false,
+      finishArgs: [] as Array<Record<string, unknown>>,
       events: [] as string[],
       failFactsReads: opts.failFactsReads ?? 0,
       failures: [] as Array<Record<string, unknown>>,
@@ -164,6 +166,7 @@ describe('individual round finalization is resumable', () => {
     const client = {
       rpc: (fn: string, args: Record<string, unknown>) => {
         if (fn === 'word_rush_finish_game_for_session') {
+          state.finishArgs.push(args)
           if (opts.failGameFinish && !state.gameFinishFailed) {
             state.gameFinishFailed = true
             return Promise.resolve({ data: null, error: { message: 'boom' } })
@@ -277,6 +280,8 @@ describe('individual round finalization is resumable', () => {
           filters.every((f) => {
             const v = read(row, f.col)
             if (f.method === 'eq') return v === f.val
+            // `leavers != '{}'` (PostgREST array literal): only a session that has someone recorded as having left.
+            if (f.method === 'neq' && f.val === '{}') return Array.isArray(v) && v.length > 0
             if (f.method === 'neq') return v !== f.val
             if (f.method === 'in') return (f.val as unknown[]).includes(v)
             if (f.method === 'is') return (v ?? null) === f.val
@@ -311,6 +316,10 @@ describe('individual round finalization is resumable', () => {
               return { data: [{ id: 'S1' }], error: null }
             }
             if (listMode) {
+              // The leaves sweep asks for sessions with a recorded leaver: the matching row itself, marker or not.
+              if (filters.some((f) => f.method === 'neq' && f.val === '{}')) {
+                return { data: matches(state.session) ? [{ ...state.session }] : [], error: null }
+              }
               return { data: state.session.round_finalize ? [{ ...state.session }] : [], error: null }
             }
             return { data: { ...state.session }, error: null }
@@ -361,6 +370,20 @@ describe('individual round finalization is resumable', () => {
     }
     return { client: client as unknown as SupabaseClient, state }
   }
+
+  it('the last-round finish names exactly the game and the session it finalizes (no leaver, no other bookkeeping in the payload)', async () => {
+    const owed = {
+      session_id: 'S-old',
+      turn_index: 0,
+      setter_id: SETTER,
+      is_last: true,
+      awarded: false,
+    }
+    const resumed = makeStatefulClient({ session: { phase: 'finished', status: 'finished', round_finalize: owed } })
+    await processWordRushExpireTurn(resumed.client, GAME)
+    expect(resumed.state.finishArgs[0]).toEqual(expect.objectContaining({ p_game_id: GAME, p_session_id: 'S-old' }))
+    expect(resumed.state.finishArgs[0]).not.toHaveProperty('p_leaver_player_id')
+  })
 
   it('applies the points and the game finish in the same request when nothing fails', async () => {
     const { client, state } = makeStatefulClient()
@@ -748,5 +771,68 @@ describe('individual round finalization is resumable', () => {
     expect(state.game.status).toBe('finished')
     expect(state.game.finish_bookkeeping).toBeNull()
     expect(state.events.filter((e) => e === 'bookkeeping')).toHaveLength(1)
+  })
+})
+
+describe('processWordRushPrompt claims the prompt for the setter it checked', () => {
+  const promptSession = {
+    ...session,
+    id: 'S-1',
+    status: 'active',
+    phase: 'awaiting_prompt',
+    prompt_mode: 'manual',
+    prompt_setter_player_id: 'a',
+    roster: ['a', 'b'],
+    used_pairs: [],
+    round_finalize: null,
+    current_round: 1,
+    difficulty: 'easy',
+  }
+
+  function client(claimMatches: boolean, afterClaim: Record<string, unknown>) {
+    const claimFilters: Array<[string, unknown]> = []
+    let reads = 0
+    const c = {
+      from: () => {
+        let updating = false
+        const api: Record<string, unknown> = {}
+        api.select = () => api
+        api.update = () => {
+          updating = true
+          return api
+        }
+        api.eq = (k: string, v: unknown) => {
+          if (updating) claimFilters.push([k, v])
+          return api
+        }
+        api.maybeSingle = async () => ({
+          data: reads++ === 0 ? promptSession : { ...promptSession, ...afterClaim },
+          error: null,
+        })
+        api.then = (res: (v: unknown) => unknown) =>
+          Promise.resolve({ data: claimMatches ? [{ id: 'S-1' }] : [], error: null }).then(res)
+        return api
+      },
+    } as unknown as SupabaseClient
+    return { c, claimFilters }
+  }
+
+  it('the claim names the requesting setter, so a setter change in between matches no row', async () => {
+    const { c, claimFilters } = client(true, {})
+    expect(await processWordRushPrompt(c, GAME, 'a', 'c', 't')).toEqual({})
+    expect(claimFilters).toContainEqual(['prompt_setter_player_id', 'a'])
+    expect(claimFilters).toContainEqual(['id', 'S-1'])
+  })
+
+  it('a refused claim from a removed setter says so (not "Prompt already set")', async () => {
+    const { c } = client(false, { prompt_setter_player_id: 'b' })
+    expect(await processWordRushPrompt(c, GAME, 'a', 'c', 't')).toEqual({
+      error: 'Only the prompt setter can enter letters',
+    })
+  })
+
+  it('a refused claim on a prompt that was already set keeps the existing message', async () => {
+    const { c } = client(false, { phase: 'playing' })
+    expect(await processWordRushPrompt(c, GAME, 'a', 'c', 't')).toEqual({ error: 'Prompt already set' })
   })
 })

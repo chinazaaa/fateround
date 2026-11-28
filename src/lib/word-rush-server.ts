@@ -2,7 +2,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalFailure } from '@/lib/api-errors'
-import { markGameFinished, recoverFinishBookkeeping } from '@/lib/game-finish'
+import { completeHostLeftCleanup } from '@/lib/admin-end-game'
+import { markGameFinished, recoverFinishBookkeeping, runPostFinishBookkeeping } from '@/lib/game-finish'
 import {
   pickRandomLetterPair,
   pairSupportsMinLengthForLetters,
@@ -112,20 +113,20 @@ async function runRoundFinalization(
   supabase: SupabaseClient,
   gameId: string,
   pending: WordRushRoundFinalize
-): Promise<{ error?: string; internal?: boolean }> {
-  const { data: finalGuesses, error: finalError } = await supabase
-    .from('word_rush_answers')
-    .select('player_id, created_at, text')
-    .eq('game_id', gameId)
-    .eq('turn_index', pending.turn_index)
-    .eq('correct', true)
-  if (finalError) return internalFailure('word-rush:finalize-round:answers', finalError)
-  const finalTally = tallyIndividualGuesses(
-    finalGuesses,
-    pending.setter_id,
-    pending.turn_deadline_at,
-    pending.turn_seconds
-  )
+): Promise<{ error?: string; internal?: boolean; gameFinishWon?: boolean }> {
+  // The tally feeds only the mirror-point award and the intermission message: a marker that needs neither (an awarded last
+  // round, e.g. a team finish) must not depend on the answers being readable before it can finish the game.
+  let finalTally = { points: 0, count: 0 }
+  if (!pending.awarded || !pending.is_last) {
+    const { data: finalGuesses, error: finalError } = await supabase
+      .from('word_rush_answers')
+      .select('player_id, created_at, text')
+      .eq('game_id', gameId)
+      .eq('turn_index', pending.turn_index)
+      .eq('correct', true)
+    if (finalError) return internalFailure('word-rush:finalize-round:answers', finalError)
+    finalTally = tallyIndividualGuesses(finalGuesses, pending.setter_id, pending.turn_deadline_at, pending.turn_seconds)
+  }
 
   // 1. Mirror points: applied once, atomically with the `awarded` flag in the marker.
   if (!pending.awarded) {
@@ -158,16 +159,25 @@ async function runRoundFinalization(
   // durable `games.finish_bookkeeping` marker in the same statement and the bookkeeping runs under a
   // lease (see recoverFinishBookkeeping); every other way this game can finish (admin, idle reaper)
   // does the same. A resumed attempt that lost the flip recovers whatever its predecessor left owed.
+  let gameFinishWon = false
   if (pending.is_last) {
     // Bound to this session: a finalizer that outlives Play Again must not finish the new game.
     const finished = await markGameFinished(supabase, gameId, undefined, {
-      roundGuard: { rpc: 'word_rush_finish_game_for_session', params: { p_session_id: pending.session_id } },
+      roundGuard: {
+        rpc: 'word_rush_finish_game_for_session',
+        params: { p_session_id: pending.session_id },
+      },
       trackBookkeeping: true,
     })
     if (finished.error) return internalFailure('word-rush:finalize-round:finish', finished.error)
+    // Only the request that flipped the GAME row owns the finish; an independent finish that landed first made this a loss.
+    gameFinishWon = finished.won
     const bookkeeping = finished.won ? finished.bookkeeping : (await recoverFinishBookkeeping(supabase, gameId)).state
     // Only a runner that saw the bookkeeping through may clear the marker (which lets Play Again reset).
-    if (bookkeeping !== 'none' && bookkeeping !== 'done') return { error: 'Game finish is still in progress' }
+    if (bookkeeping !== 'none' && bookkeeping !== 'done') {
+      // The flip is committed even when its bookkeeping is held / still owed: keep reporting the ownership.
+      return { error: 'Game finish is still in progress', gameFinishWon }
+    }
   }
 
   // 4. Everything applied: clear the marker (only for this round).
@@ -177,11 +187,23 @@ async function runRoundFinalization(
     .eq('game_id', gameId)
     .eq('id', pending.session_id)
     .eq('round_finalize->>turn_index', String(pending.turn_index))
-  if (clearError) return internalFailure('word-rush:finalize-round:clear', clearError)
-  return {}
+  // The game finish this call won is committed even when clearing the marker fails: keep reporting the ownership.
+  if (clearError) return { ...internalFailure('word-rush:finalize-round:clear', clearError), gameFinishWon }
+  return { gameFinishWon }
 }
 
 async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
+  // The recorded leavers are read BEFORE the seats: a leave that commits between the two reads (it records the leaver, and
+  // the completed seat deletion clears the record in the same transaction) can then never leave a departed player in the
+  // result. A player who has LEFT keeps their seat until the leave is completed (see leaveWordRushPlayer) and is not a member
+  // of their team any more, whether or not the seat still exists.
+  const { data: sessionRow, error: leaversError } = await supabase
+    .from('word_rush_sessions')
+    .select('leavers')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (leaversError) throw leaversError
+  const left = new Set(((sessionRow as { leavers?: string[] | null } | null)?.leavers ?? []) as string[])
   const { data, error } = await supabase
     .from('word_rush_players')
     .select('player_id,team,score,players!inner(spectator)')
@@ -189,11 +211,13 @@ async function loadTeamRows(supabase: SupabaseClient, gameId: string) {
     .not('players.spectator', 'is', true)
     .order('created_at')
   if (error) throw error
-  return (data ?? []).map((r) => ({
-    player_id: (r as { player_id: string }).player_id,
-    team: (r as { team: number }).team,
-    score: (r as { score?: number | null }).score,
-  }))
+  return (data ?? [])
+    .filter((r) => !left.has((r as { player_id: string }).player_id))
+    .map((r) => ({
+      player_id: (r as { player_id: string }).player_id,
+      team: (r as { team: number }).team,
+      score: (r as { score?: number | null }).score,
+    }))
 }
 
 async function playerName(supabase: SupabaseClient, gameId: string, playerId: string | null): Promise<string> {
@@ -431,11 +455,29 @@ export async function processWordRushPrompt(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
+    // ...and to the setter this call checked: a setter change (the setter left and another was assigned) keeps the phase and
+    // the turn, so without this a request from the removed setter could still store the letters.
+    .eq('prompt_setter_player_id', playerId)
     .eq('phase', 'awaiting_prompt')
     .eq('turn_index', session.turn_index)
     .select('id')
 
-  if (!claimed?.length) return { error: 'Prompt already set' }
+  if (!claimed?.length) {
+    const { session: now } = await loadSession(supabase, gameId)
+    if (
+      now &&
+      now.id === session.id &&
+      now.turn_index === session.turn_index &&
+      now.phase === 'awaiting_prompt' &&
+      now.prompt_setter_player_id !== playerId
+    ) {
+      return { error: 'Only the prompt setter can enter letters' }
+    }
+    return { error: 'Prompt already set' }
+  }
   return {}
 }
 
@@ -559,6 +601,9 @@ export async function processWordRushSubmit(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .eq('phase', 'playing')
     .eq('turn_index', session.turn_index)
     .eq('prompt_index', session.prompt_index)
@@ -594,7 +639,7 @@ async function endTeamTurn(
   supabase: SupabaseClient,
   gameId: string,
   session: WordRushSession
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const totalTeamTurns = wordRushTotalTeamTurns(session.num_teams, session.total_rounds)
 
   const { count } = await supabase
@@ -656,7 +701,12 @@ async function endTeamTurn(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .eq('turn_index', session.turn_index)
+    // ...and never over a session that has been finished meanwhile (a leave's reconciliation claimed the finish).
+    .neq('status', 'finished')
   if (error) return internalFailure('word-rush:end-team-turn', error)
   return {}
 }
@@ -665,7 +715,7 @@ async function endIndividualRound(
   supabase: SupabaseClient,
   gameId: string,
   session: WordRushSession
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
   const { data: correctGuesses, error: guessesError } = await supabase
     .from('word_rush_answers')
     .select('player_id, created_at, text')
@@ -737,6 +787,7 @@ async function endIndividualRound(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    .eq('id', session.id)
     .eq('turn_index', session.turn_index)
     .in('phase', ['playing', 'awaiting_prompt'])
     // Never overwrite a previous round's still-owed effects (loadSession resumes them first).
@@ -750,8 +801,10 @@ async function endIndividualRound(
   // can be admitted: finalization reads the final answer set. It is safe to fail from here on — the
   // marker stays and the next request that loads the session resumes it (see loadSession). The
   // round itself has ended, so report success to this caller.
-  await runRoundFinalization(supabase, gameId, pending)
-  return {}
+  const finalized = await runRoundFinalization(supabase, gameId, pending)
+  // `finished`: THIS call closed the last round AND its finalization won the game-row transition, so the game finish is
+  // its own (an independent finish that landed first, or a finalization that must be resumed, is not).
+  return { finished: isLastRound && finalized.gameFinishWon === true }
 }
 
 /**
@@ -786,6 +839,9 @@ export async function resumeAllWordRushFinalizations(
   supabase: SupabaseClient,
   limit = 20
 ): Promise<{ resumed: number; failed: number }> {
+  // Players who left and whose seat deletion is still owed (their leave was recorded, the process died, or the finished
+  // game's bookkeeping was still running): completed here as well, with no client involved.
+  const leaves = await completeAllWordRushLeaves(supabase, limit)
   const { data, error } = await supabase
     .from('word_rush_sessions')
     .select('game_id, round_finalize')
@@ -793,7 +849,7 @@ export async function resumeAllWordRushFinalizations(
     .limit(limit)
   if (error) {
     internalFailure('word-rush:resume-all-finalizations', error)
-    return { resumed: 0, failed: 1 }
+    return { resumed: leaves.completed, failed: leaves.failed + 1 }
   }
   let resumed = 0
   let failed = 0
@@ -803,7 +859,39 @@ export async function resumeAllWordRushFinalizations(
     if (result.error) failed += 1
     else resumed += 1
   }
-  return { resumed, failed }
+  return { resumed: resumed + leaves.completed, failed: failed + leaves.failed }
+}
+
+/**
+ * Complete the recorded leaves of every game that has any. A seat the database keeps on purpose (a finish with a result: the
+ * leave record is dropped there, so it is not swept again) or cannot delete yet (an ambiguous participant, round effects or
+ * bookkeeping still owed) must not hide the games behind it, so the sweep looks at a window several times wider than the
+ * work it does per tick, oldest first, and counts only what it actually completed (a deleted seat) or failed (an error);
+ * a seat that is merely blocked is neither.
+ */
+async function completeAllWordRushLeaves(
+  supabase: SupabaseClient,
+  limit: number
+): Promise<{ completed: number; failed: number }> {
+  const { data, error } = await supabase
+    .from('word_rush_sessions')
+    .select('game_id')
+    .neq('leavers', '{}')
+    .order('updated_at', { ascending: true })
+    .limit(limit * 5)
+  if (error) {
+    internalFailure('word-rush:complete-all-leaves', error)
+    return { completed: 0, failed: 1 }
+  }
+  let completed = 0
+  let failed = 0
+  for (const row of (data ?? []) as Array<{ game_id: string }>) {
+    const result = await completeWordRushLeaves(supabase, row.game_id)
+    // Independent: deletions that committed before a later error still count as completed work.
+    if (Object.values(result.statuses).some((st) => st === 'deleted')) completed += 1
+    if (result.error) failed += 1
+  }
+  return { completed, failed }
 }
 
 async function finishWordRushGame(
@@ -811,7 +899,21 @@ async function finishWordRushGame(
   gameId: string,
   session: WordRushSession,
   message: string
-): Promise<{ error?: string; internal?: boolean }> {
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
+  // The session finish and the owed game flip are made durable TOGETHER: the claim writes a marker (no points are owed here,
+  // so it is already `awarded`) that the round-finalization machinery resumes whenever anyone loads the session or the
+  // cron backstop runs. A game flip that fails (or a process that dies) after the session is finished therefore never
+  // leaves the game `active` forever.
+  const pending: WordRushRoundFinalize = {
+    session_id: session.id,
+    turn_index: session.turn_index,
+    round: session.current_round,
+    setter_id: null,
+    is_last: true,
+    turn_deadline_at: null,
+    turn_seconds: session.turn_seconds,
+    awarded: true,
+  }
   const { data: claimed, error } = await supabase
     .from('word_rush_sessions')
     .update({
@@ -820,15 +922,26 @@ async function finishWordRushGame(
       status_message: message,
       turn_deadline_at: null,
       intermission_deadline_at: null,
+      round_finalize: pending,
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // The session the caller inspected: a stale call matches nothing (a replacement session is never marked finished).
+    .eq('id', session.id)
     .neq('status', 'finished')
+    // Never overwrite a previous round's still-owed effects (loadSession resumes them first).
+    .is('round_finalize', null)
     .select('id')
   if (error) return internalFailure('word-rush:finish', error)
   if (!claimed?.length) return {}
-  await markGameFinished(supabase, gameId, undefined, { trackBookkeeping: true })
-  return {}
+  // Bound to the session this claim won (a stale call must never finish a replacement session started on the same game id);
+  // the finish function also writes the bookkeeping marker and records the leaver's owed seat deletion itself.
+  const finalized = await runRoundFinalization(supabase, gameId, pending)
+  if (finalized.error) {
+    // Resumable: the marker is durable. Reported to the caller as "not (yet) finished by this call".
+    console.error(`word-rush:finish: game finish for ${gameId} is pending and will be resumed`, finalized.error)
+  }
+  return { finished: finalized.gameFinishWon === true }
 }
 
 export async function finishWordRushGameEarly(
@@ -850,6 +963,9 @@ export async function finishWordRushGameEarly(
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
     .neq('status', 'finished')
   if (updateError) return internalFailure('word-rush:finish-early', updateError)
   return {}
@@ -872,8 +988,12 @@ export async function processWordRushEndRoundEarly(
     return { error: 'Round already ended' }
   }
 
-  if (session.mode === 'team') return endTeamTurn(supabase, gameId, session)
-  return endIndividualRound(supabase, gameId, session)
+  // The `finished` marker is for the removal sync only; these callers report just the outcome.
+  const ended =
+    session.mode === 'team'
+      ? await endTeamTurn(supabase, gameId, session)
+      : await endIndividualRound(supabase, gameId, session)
+  return ended.error ? { error: ended.error, internal: ended.internal } : {}
 }
 
 export async function processWordRushExpireTurn(
@@ -887,8 +1007,12 @@ export async function processWordRushExpireTurn(
   if (!session.turn_deadline_at) return {}
   if (new Date(session.turn_deadline_at).getTime() > Date.now()) return {}
 
-  if (session.mode === 'team') return endTeamTurn(supabase, gameId, session)
-  return endIndividualRound(supabase, gameId, session)
+  // The `finished` marker is for the removal sync only; these callers report just the outcome.
+  const ended =
+    session.mode === 'team'
+      ? await endTeamTurn(supabase, gameId, session)
+      : await endIndividualRound(supabase, gameId, session)
+  return ended.error ? { error: ended.error, internal: ended.internal } : {}
 }
 
 function individualPlayingStatusMessage(
@@ -926,117 +1050,268 @@ export async function processWordRushAdvance(
         ? `Round ${session.current_round} — ${teamLabel(session.active_team)} — Starts with ${session.start_letter.toUpperCase()}, Ends with ${session.end_letter.toUpperCase()}${wordRushMinLengthHint(session.min_word_length)}`
         : session.status_message
 
+  // The setter was prepared when the round ended; someone who LEFT during the intermission is no longer eligible (the database
+  // only replaces the setter of a round that is already awaiting its prompt). Revalidate against the CURRENT roster / team and
+  // pick a replacement for a manual round; automatic prompts have no setter.
+  let replacementSetter: { id: string | null } | null = null
+  if (nextPhase === 'awaiting_prompt' && session.prompt_mode === 'manual') {
+    let members: string[]
+    try {
+      members =
+        session.mode === 'individual'
+          ? session.roster
+          : (teamRoster(await loadTeamRows(supabase, gameId)).get(session.active_team) ?? [])
+    } catch (err) {
+      // Nothing was written: a retryable internal failure, answered like every other failed read (never an unhandled throw).
+      return internalFailure('word-rush:advance:teams', err)
+    }
+    if (!session.prompt_setter_player_id || !members.includes(session.prompt_setter_player_id)) {
+      replacementSetter = {
+        id:
+          session.mode === 'individual'
+            ? promptSetterForIndividualRound(session.roster, session.turn_index)
+            : promptSetterForTeamRound(members, teamRoundIndexFromTurn(session.turn_index, session.num_teams)),
+      }
+    }
+  }
+
   const { error: updateError } = await supabase
     .from('word_rush_sessions')
     .update({
       phase: nextPhase,
       intermission_deadline_at: null,
       status_message: statusMessage,
+      ...(replacementSetter ? { prompt_setter_player_id: replacementSetter.id } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('game_id', gameId)
+    // Bound to the session this call inspected: a replacement session (Play Again reuses the game id and can reuse the
+    // turn index) must match no row.
+    .eq('id', session.id)
+    // ...and to the turn it inspected: a round that opened and closed in between is another intermission.
+    .eq('turn_index', session.turn_index)
     .eq('phase', 'intermission')
   if (updateError) return internalFailure('word-rush:advance', updateError)
   return {}
 }
 
-export async function syncWordRushAfterPlayerRemoved(
+/**
+ * Whether a Word Rush round can no longer be played with the players who are left, and if so ends it. Derived ONLY from the
+ * current session (roster, answers, teams), never from who left: a round ends iff it cannot continue, so any runner that
+ * finds the session in this state reaches the same decision and the ending itself is a compare-and-set on the turn, which
+ * makes the whole step idempotent and resumable. Returns the error of whatever it could not apply (nothing is lost: the
+ * decision is simply derived again next time).
+ */
+export async function reconcileWordRushRound(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; internal?: boolean; finished?: boolean }> {
+  try {
+    const { session, error, internal } = await loadSession(supabase, gameId)
+    if (error) return { error, internal }
+    if (!session || session.status === 'finished') return {}
+    if (session.phase !== 'playing' && session.phase !== 'awaiting_prompt') return {}
+
+    if (session.mode === 'individual') {
+      const eligible = wordRushIndividualAnswerers(session)
+      const { data: roundAnswers, error: answersError } = await supabase
+        .from('word_rush_answers')
+        .select('player_id, turn_index, correct')
+        .eq('game_id', gameId)
+        .eq('turn_index', session.turn_index)
+      // An unreadable round is not "nobody answered".
+      if (answersError) return internalFailure('word-rush:reconcile-round:answers', answersError)
+      const answers = (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
+      if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(session, answers)) {
+        return await endIndividualRound(supabase, gameId, session)
+      }
+      return {}
+    }
+
+    const teamRows = await loadTeamRows(supabase, gameId)
+    const playable = new Set(wordRushPlayableTeams(teamRoster(teamRows), session.num_teams, session.prompt_mode))
+    // The active team can no longer field a turn, or only one team remains: end this turn now (endTeamTurn skips the dead
+    // team / finishes the game) rather than letting it run out the clock.
+    if (playable.size <= 1 || !playable.has(session.active_team)) {
+      return await endTeamTurn(supabase, gameId, session)
+    }
+    return {}
+  } catch (err) {
+    return internalFailure('word-rush:reconcile-round', err)
+  }
+}
+
+/** What the database answered for one player's completion (`word_rush_remove_player`, stage `delete`). */
+export type WordRushLeaveStatus =
+  | 'deleted'
+  | 'finalizing'
+  | 'bookkeeping_owed'
+  | 'game_finished'
+  | 'host_ended'
+  | 'participant_ambiguous'
+  | 'not_left'
+  | 'game_missing'
+
+/**
+ * Complete every recorded leave of a game: the recorded leavers are READ first, then the departures are decided for the round
+ * (reconcileWordRushRound), then the seat of each captured player is deleted, as far as the database allows (it keeps a seat
+ * while the round's owed effects or the finished game's bookkeeping still read the leaver's rows). A leave that is recorded
+ * while this runs is not in the captured list, so no seat is deleted on the strength of a round decision that was made
+ * without it: the next runner decides again and takes it. Safe to call at any time, from anyone; it only finishes what the
+ * durable leavers list says is owed, and every step is idempotent. Never throws.
+ */
+export async function completeWordRushLeaves(
   supabase: SupabaseClient,
   gameId: string,
-  removedPlayerId: string
+  /** The player whose own request is running this: a host-alone finish of THEIR seat is reported to that request, which owes its work. */
+  opts: { ownPlayerId?: string } = {}
 ): Promise<{
   error?: string
   internal?: boolean
-  rollback?: { roster: string[]; prompt_setter_player_id: string | null }
+  statuses: Record<string, WordRushLeaveStatus>
+  /** player id -> the `finished_at` of the host-alone finish the delete stage wrote instead of deleting that host's seat */
+  hostEnded: Record<string, string>
 }> {
-  const { data: game } = await supabase.from('games').select('status').eq('id', gameId).maybeSingle()
-  if (!game || game.status !== 'active') return {}
-
-  const { session, error, internal } = await loadSession(supabase, gameId)
-  if (error) return { error, internal }
-  if (!session || session.status === 'finished') return {}
-
-  const newRoster = session.roster.filter((id) => id !== removedPlayerId)
-  if (newRoster.length === session.roster.length) return {}
-
-  const rollback = { roster: session.roster, prompt_setter_player_id: session.prompt_setter_player_id }
-  const sessionPatch: Partial<WordRushSession> = { roster: newRoster }
-
-  // Only pick a new letter-setter before letters are live — during playing keep the
-  // removed setter id so mirror scoring and answerer eligibility stay consistent.
-  if (session.prompt_setter_player_id === removedPlayerId && session.phase === 'awaiting_prompt') {
-    if (session.mode === 'individual' && session.prompt_mode === 'manual') {
-      sessionPatch.prompt_setter_player_id = promptSetterForIndividualRound(newRoster, session.turn_index)
-    } else if (session.mode === 'team' && session.prompt_mode === 'manual') {
-      const teamRows = await loadTeamRows(supabase, gameId)
-      const members = (teamRoster(teamRows).get(session.active_team) ?? []).filter((id) => id !== removedPlayerId)
-      const roundIndex = teamRoundIndexFromTurn(session.turn_index, session.num_teams)
-      sessionPatch.prompt_setter_player_id = promptSetterForTeamRound(members, roundIndex)
-    } else {
-      sessionPatch.prompt_setter_player_id = null
-    }
-  }
-
-  const { error: updateError } = await supabase
+  const statuses: Record<string, WordRushLeaveStatus> = {}
+  const hostEnded: Record<string, string> = {}
+  const { data, error } = await supabase
     .from('word_rush_sessions')
-    .update({ ...sessionPatch, updated_at: new Date().toISOString() })
+    .select('leavers')
     .eq('game_id', gameId)
-  if (updateError) return internalFailure('word-rush:remove-player', updateError)
-
-  const updatedSession = { ...session, ...sessionPatch }
-
-  if (
-    updatedSession.mode === 'individual' &&
-    (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
-  ) {
-    const eligible = wordRushIndividualAnswerers(updatedSession)
-    const { data: roundAnswers } = await supabase
-      .from('word_rush_answers')
-      .select('player_id, turn_index, correct')
-      .eq('game_id', gameId)
-      .eq('turn_index', session.turn_index)
-
-    const answers = (roundAnswers ?? []) as Array<{ player_id: string; turn_index: number; correct: boolean }>
-    if (eligible.length === 0 || allWordRushIndividualPlayersSubmitted(updatedSession, answers)) {
-      const endResult = await endIndividualRound(supabase, gameId, updatedSession)
-      if (endResult.error) return { ...endResult, rollback }
-      return { rollback }
+    .maybeSingle()
+  if (error) return { ...internalFailure('word-rush:complete-leaves:read', error), statuses, hostEnded }
+  const leavers = [...(((data as { leavers?: string[] | null } | null)?.leavers ?? []) as string[])]
+  const decided = await reconcileWordRushRound(supabase, gameId)
+  if (decided.error) return { error: decided.error, internal: decided.internal, statuses, hostEnded }
+  for (const playerId of leavers) {
+    const { data: answer, error: deleteError } = await supabase.rpc('word_rush_remove_player', {
+      p_game_id: gameId,
+      p_player_id: playerId,
+      p_stage: 'delete',
+    })
+    if (deleteError) return { ...internalFailure('word-rush:complete-leaves:delete', deleteError), statuses, hostEnded }
+    const result = answer as { status?: string; settled?: DeferredHostSettle; finished_at?: string } | null
+    statuses[playerId] = (result?.status ?? 'game_missing') as WordRushLeaveStatus
+    if (result?.settled) await finishDeferredHostSettle(supabase, gameId, result.settled)
+    if (result?.status === 'host_ended' && result.finished_at) {
+      hostEnded[playerId] = result.finished_at
+      // The host's own request reports it (and owes the work); anyone else finishing the leave owes it here.
+      if (playerId !== opts.ownPlayerId) {
+        await finishDeferredHostSettle(supabase, gameId, {
+          status: 'finished',
+          finished_now: true,
+          finished_at: result.finished_at,
+        })
+      }
     }
   }
-
-  if (
-    updatedSession.mode === 'team' &&
-    (updatedSession.phase === 'playing' || updatedSession.phase === 'awaiting_prompt')
-  ) {
-    const teamRows = await loadTeamRows(supabase, gameId)
-    const playable = new Set(
-      wordRushPlayableTeams(teamRoster(teamRows), updatedSession.num_teams, updatedSession.prompt_mode)
-    )
-    // The active team can no longer field a turn, or only one team remains —
-    // end this turn now (endTeamTurn skips the dead team / finishes the game)
-    // rather than letting it run out the clock.
-    if (playable.size <= 1 || !playable.has(updatedSession.active_team)) {
-      const endResult = await endTeamTurn(supabase, gameId, updatedSession)
-      if (endResult.error) return { ...endResult, rollback }
-    }
-  }
-
-  return { rollback }
+  return { statuses, hostEnded }
 }
 
-export async function revertWordRushRosterAfterFailedPlayerDelete(
+/** What `settle_host_leave` answered inside the transaction that deleted a departed host's seat. */
+type DeferredHostSettle = { status?: string; finished_now?: boolean; finished_at?: string }
+
+/**
+ * The handoff of a host whose seat deletion was deferred is settled by the database in the same transaction as the deletion
+ * (word_rush_remove_player). When that settlement ENDED the game (nobody was left to take over) the finish owes what every
+ * host-left finish owes: the post-finish bookkeeping (its marker is already durable) and the session-bound cleanup. Best-effort:
+ * the settlement itself is committed and the marker keeps the bookkeeping recoverable, so nothing here is allowed to throw.
+ */
+async function finishDeferredHostSettle(supabase: SupabaseClient, gameId: string, settled: DeferredHostSettle) {
+  if (settled.status !== 'finished' || !settled.finished_now || !settled.finished_at) return
+  try {
+    await runPostFinishBookkeeping(supabase, gameId, settled.finished_at, true)
+    const cleanup = await completeHostLeftCleanup(supabase, gameId, { finishedAt: settled.finished_at })
+    if (cleanup.error)
+      console.error(`word-rush: cleanup after a deferred host-left finish failed for ${gameId}`, cleanup.error)
+  } catch (err) {
+    console.error(`word-rush: post-finish work after a deferred host-left finish failed for ${gameId}`, err)
+  }
+}
+
+export type WordRushLeaveOutcome =
+  /**
+   * `durableHandoff`: a departing host's handoff was recorded WITH the leave and is settled by the database in the transaction
+   * that deletes the seat, so the caller must not settle it itself (now or earlier than that deletion).
+   */
+  | { status: 'deleted'; durableHandoff?: boolean }
+  /** The leave is committed (off the roster, recorded) but the seat stays until what it owes is applied: a runner completes it. */
+  | { status: 'pending'; durableHandoff?: boolean }
+  | { status: 'game_finished' }
+  | { status: 'host_ended'; finishedAt: string }
+  | { status: 'participant_ambiguous' }
+  | { status: 'error'; error: string; internal: boolean }
+
+/**
+ * A Word Rush player leaves. The database makes the leave DURABLE in one transaction (roster, prompt setter, the leavers list;
+ * word_rush_remove_player, stage `leave`); the application then decides what it means for the round and asks the database to
+ * complete the seat deletion (stage `delete`). A crash anywhere in between leaves a recorded leave that any runner finishes
+ * (completeWordRushLeaves, called by the cron backstop and by Play Again), so there is nothing to compensate or roll back.
+ */
+export async function leaveWordRushPlayer(
   supabase: SupabaseClient,
   gameId: string,
-  snapshot: { roster: string[]; prompt_setter_player_id: string | null }
-): Promise<void> {
-  await supabase
-    .from('word_rush_sessions')
-    .update({
-      roster: snapshot.roster,
-      prompt_setter_player_id: snapshot.prompt_setter_player_id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('game_id', gameId)
+  playerId: string,
+  opts: {
+    hostLeave?: { sessionsPlayed: number | null; sessionStartedAt: string | null; trackBookkeeping: boolean }
+  } = {}
+): Promise<WordRushLeaveOutcome> {
+  const { data, error } = await supabase.rpc('word_rush_remove_player', {
+    p_game_id: gameId,
+    p_player_id: playerId,
+    p_stage: 'leave',
+    ...(opts.hostLeave
+      ? {
+          p_host_leave: true,
+          p_sessions_played: opts.hostLeave.sessionsPlayed,
+          p_track_bookkeeping: opts.hostLeave.trackBookkeeping,
+          p_session_started_at: opts.hostLeave.sessionStartedAt,
+        }
+      : {}),
+  })
+  if (error) return { status: 'error', ...internalFailure('word-rush:leave', error) }
+  const answer = data as { status?: string; finished_at?: string } | null
+  switch (answer?.status) {
+    case 'host_ended':
+      return answer.finished_at ? { status: 'host_ended', finishedAt: answer.finished_at } : { status: 'game_finished' }
+    case 'participant_ambiguous':
+      return { status: 'participant_ambiguous' }
+    case 'game_finished':
+      return { status: 'game_finished' }
+    case 'deleted':
+      return { status: 'deleted' }
+    case 'bookkeeping_owed':
+    case 'finalizing':
+      // Already recorded: the seat deletion waits for what the finish still owes.
+      return { status: 'pending' }
+    case 'left':
+      break
+    default:
+      return { status: 'error', error: 'Could not finish leaving the game — try again', internal: true }
+  }
+  const completed = await completeWordRushLeaves(supabase, gameId, { ownPlayerId: playerId })
+  const mine = completed.statuses[playerId]
+  const durable = opts.hostLeave ? { durableHandoff: true as const } : {}
+  // The caller's OWN definitive outcome comes first: a later seat's failure in the same batch does not undo it.
+  if (mine === 'host_ended' && completed.hostEnded[playerId]) {
+    return { status: 'host_ended', finishedAt: completed.hostEnded[playerId] }
+  }
+  if (mine === 'game_finished') return { status: 'game_finished' }
+  if (mine === 'deleted') return { status: 'deleted', ...durable }
+  if (mine === undefined && !completed.error) {
+    // Not in this pass's list: another runner completed the leave meanwhile. That deleted the seat, or the database KEPT it
+    // for a finished result (and dropped the leave record): only the seat itself tells them apart.
+    const { data: seat, error: seatError } = await supabase
+      .from('players')
+      .select('id')
+      .eq('id', playerId)
+      .eq('game_id', gameId)
+      .maybeSingle()
+    if (seatError) return { status: 'pending', ...durable }
+    return seat ? { status: 'game_finished' } : { status: 'deleted', ...durable }
+  }
+  // The leave itself is committed and recorded: the round decision / seat deletion is simply derived again by the next runner.
+  return { status: 'pending', ...durable }
 }
 
 export async function assignWordRushTeam(
@@ -1112,22 +1387,48 @@ export async function persistWordRushTeamAssignment(
   return {}
 }
 
-export async function clearWordRushSessionData(
+/**
+ * Whether the previous Word Rush game's effects are all applied: a closed round's owed effects and the finished game's own
+ * bookkeeping (room points, trophy snapshot). Play Again calls this BEFORE its first destructive delete (the rows that
+ * bookkeeping reads are among them) and the session clear below checks it again.
+ */
+export async function ensureWordRushGameFinalized(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ error?: string; poolUsage?: Record<string, unknown> }> {
+): Promise<{ error?: string }> {
   // Never reset while a closed round's effects are still owed: deleting the session drops the
   // marker and the answers the setter's points are computed from, so they could never be awarded.
   // Finish them first; if that fails, refuse the reset so Play Again can simply be retried.
   const owed = await resumeWordRushFinalization(supabase, gameId)
   if (owed.error) return { error: 'The previous game is still being finalized — try again in a moment' }
-  // ...nor while the finished game's own bookkeeping (room points, trophy snapshot) is still reading
-  // these rows, whichever path finished it. Recover it here; if it is still owed or held by a live
-  // runner, refuse the reset so Play Again can simply be retried.
+  // ...nor while the finished game's own bookkeeping is still reading these rows, whichever path finished it. Recover it
+  // here; if it is still owed or held by a live runner, refuse the reset so Play Again can simply be retried.
   const bookkeeping = await recoverFinishBookkeeping(supabase, gameId)
   if (bookkeeping.state !== 'none' && bookkeeping.state !== 'done') {
     return { error: 'The previous game is still being finalized — try again in a moment' }
   }
+  // ...nor while a player who LEFT still has a seat the finished game's bookkeeping needed: complete the recorded leaves (the
+  // database deletes those seats once nothing reads them any more) and refuse while one cannot be completed yet.
+  const leaves = await completeWordRushLeaves(supabase, gameId)
+  if (leaves.error || Object.values(leaves.statuses).some((st) => st === 'finalizing' || st === 'bookkeeping_owed')) {
+    return { error: 'The previous game is still being finalized — try again in a moment' }
+  }
+  // ...and never discard the record of a leave whose seat the database did NOT delete (an ambiguous participant name that
+  // appeared after the leave): the reset deletes the session row, and with it the leavers list, which would turn that seat
+  // back into a lobby player. `game_finished` is the one intentional exception (the seat is part of a finished result and the
+  // database has already dropped its leave record).
+  if (Object.values(leaves.statuses).some((st) => st !== 'deleted' && st !== 'game_finished' && st !== 'host_ended')) {
+    return { error: 'A player who left still has a seat that could not be removed yet — resolve it or try again' }
+  }
+  return {}
+}
+
+export async function clearWordRushSessionData(
+  supabase: SupabaseClient,
+  gameId: string
+): Promise<{ error?: string; poolUsage?: Record<string, unknown> }> {
+  const finalized = await ensureWordRushGameFinalized(supabase, gameId)
+  if (finalized.error) return { error: finalized.error }
 
   const { data: session } = await supabase
     .from('word_rush_sessions')

@@ -63,7 +63,8 @@ import { clearTwoTruthsSessionData } from '@/lib/two-truths'
 import { clearQuiplashSessionData } from '@/lib/quiplash'
 import { clearQuickDrawSessionData } from '@/lib/quick-draw'
 import { canWordRushPlayAgain } from '@/lib/word-rush'
-import { clearWordRushSessionData } from '@/lib/word-rush-server'
+import { recoverFinishBookkeeping } from '@/lib/game-finish'
+import { clearWordRushSessionData, ensureWordRushGameFinalized } from '@/lib/word-rush-server'
 import {
   applyCustomQuestionsUpdate,
   applyParticipantListUpdate,
@@ -85,6 +86,7 @@ import { parseJsonBody } from '@/lib/parse-body'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { GameType } from '@/types'
 import { assertHostAny } from '@/lib/game-admin'
+import { completeHostLeftCleanup } from '@/lib/admin-end-game'
 
 const supabase = getSupabaseAnon()
 
@@ -250,6 +252,44 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     return NextResponse.json({ error: 'Game must be finished before playing again' }, { status: 400 })
   }
 
+  // A Two Truths game ended by its host leaving closes and REVEALS its rounds in a cleanup that runs after the finish
+  // commits (the hidden lies and guesses are folded back into the rounds). Play Again deletes those rounds, so a reveal
+  // that failed must be completed first; otherwise it could never run again and the lies and guesses would be lost.
+  // Idempotent, bound to the finished session; a failure refuses the reset so it can simply be retried.
+  if (game.status === 'finished' && isTwoTruthsGame(gameType) && game.result_reason === 'host_ended') {
+    // Bound to the finish THIS request read: a game replayed (and perhaps ended again) since is another finish, whose own
+    // leave handles it, and its live rounds must not be deleted by this reset.
+    const cleanup = await completeHostLeftCleanup(getSupabaseAdmin(), gameId, { finishedAt: game.finished_at })
+    if (cleanup.superseded) {
+      return NextResponse.json({ error: 'The game changed while you were resetting it — try again' }, { status: 409 })
+    }
+    if (cleanup.error) {
+      return NextResponse.json(
+        { error: 'The previous game is still being finalized — try again in a moment' },
+        { status: 409 }
+      )
+    }
+  }
+
+  // A Word Rush game's owed effects (a closed round's points, the finished game's bookkeeping) read rows that the deletes
+  // below remove (votes, rounds, participants, ...): complete them first, before ANY delete, and refuse the reset while they
+  // are still owed so it can simply be retried. The session clear repeats the check as a second guard.
+  // Every OTHER game's finish owes its bookkeeping the same way when its finish wrote the durable marker (a host-left finish
+  // does, for every game type): it reads rows the reset deletes, so resume it first and refuse while it is still owed or held.
+  if (!isWordRushGame(gameType) && game.status === 'finished') {
+    const owed = await recoverFinishBookkeeping(getSupabaseAdmin(), gameId)
+    if (owed.state !== 'none' && owed.state !== 'done') {
+      return NextResponse.json(
+        { error: 'The previous game is still being finalized — try again in a moment' },
+        { status: 409 }
+      )
+    }
+  }
+  if (isWordRushGame(gameType) && game.status === 'finished') {
+    const finalized = await ensureWordRushGameFinalized(getSupabaseAdmin(), gameId)
+    if (finalized.error) return NextResponse.json({ error: finalized.error }, { status: 409 })
+  }
+
   // Exiting the ready-up ring back to the normal lobby ("Return to lobby" while the ring
   // is armed): the game is already reset (waiting), so just drop the ring flag and KEEP
   // everyone's seats — players who tapped "ready" stay ready instead of being reset to
@@ -293,6 +333,9 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     current_round_number: 0,
     session_started_at: null,
     finished_at: null,
+    // The reopened game carries no reason of the previous finish (a host-ended reason would keep refusing new seats and
+    // the recorded Word Rush seat deletions of the next finish).
+    result_reason: null,
     anonymous_messages_trimmed_at: null,
     // "Play again · same settings" reopens the lobby with the ready-up ring; a plain
     // "Return to lobby" reset (sameSettings falsy) lands in the standard lobby.

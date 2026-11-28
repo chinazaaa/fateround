@@ -206,12 +206,21 @@ async function reconcileRevealedGuesses(supabase: SupabaseClient, roundId: strin
  * no results, because both now live outside the anon-readable metadata (`ttl_round_lies` and
  * the redacted `ttl_guesses` columns).
  */
-export async function revealFinishedTtlRounds(supabase: SupabaseClient, gameId: string): Promise<boolean> {
-  const { data: rounds, error: roundsError } = await supabase
-    .from('rounds')
-    .select('id, ttl_metadata')
-    .eq('game_id', gameId)
-    .eq('status', 'finished')
+export async function revealFinishedTtlRounds(
+  supabase: SupabaseClient,
+  gameId: string,
+  // Bound to rounds of an already-finished session (see adminEndGame): a new session's finished round under the
+  // same game id must not be revealed by a late cleanup of the old one.
+  startedNoLaterThan?: string,
+  // The rounds a database function confirmed (under the games row lock) belong to the finished session: the reveal is
+  // limited to exactly these, so a replay's rounds under the same game id are never revealed by a late cleanup.
+  onlyRoundIds?: string[]
+): Promise<boolean> {
+  if (onlyRoundIds && onlyRoundIds.length === 0) return true
+  let roundsQuery = supabase.from('rounds').select('id, ttl_metadata').eq('game_id', gameId).eq('status', 'finished')
+  if (startedNoLaterThan) roundsQuery = roundsQuery.lte('started_at', startedNoLaterThan)
+  if (onlyRoundIds) roundsQuery = roundsQuery.in('id', onlyRoundIds)
+  const { data: rounds, error: roundsError } = await roundsQuery
 
   // A failed select yields no rows, which is indistinguishable from "nothing to reveal" once it
   // reaches `rounds ?? []` — the loop would not run and this would report success, letting the
@@ -292,21 +301,25 @@ async function endActiveRound(supabase: SupabaseClient, roundId: string): Promis
   return true
 }
 
-async function syncGamePointer(supabase: SupabaseClient, gameId: string, roundNumber: number): Promise<boolean> {
-  const { error } = await supabase.from('games').update({ current_round_number: roundNumber }).eq('id', gameId)
-  return !error
-}
-
-async function activateRound(supabase: SupabaseClient, roundId: string): Promise<boolean> {
-  const now = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('rounds')
-    .update({ status: 'active', started_at: now, ended_at: null })
-    .eq('id', roundId)
-    .eq('status', 'pending')
-    .select('id')
-    .maybeSingle()
-  return !error && !!data
+/**
+ * Activate a pending round and move the game's round pointer to it, in ONE database step under the games row lock
+ * (activate_ttl_round): only while the game is still active. The finish cleanup takes the same lock and needs a finished
+ * game, so an advance that read an active game earlier can no longer open a round of a game that has since finished.
+ */
+async function activateRound(
+  supabase: SupabaseClient,
+  gameId: string,
+  round: { id: string; round_number: number },
+  /** The generation (games.sessions_played) the advance read its rounds in: another one's rounds are never activated. */
+  sessionsPlayed: number | null
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc('activate_ttl_round', {
+    p_game_id: gameId,
+    p_round_id: round.id,
+    p_round_number: round.round_number,
+    p_sessions_played: sessionsPlayed,
+  })
+  return !error && (data as { status?: string } | null)?.status === 'activated'
 }
 
 export async function syncTwoTruthsGameState(
@@ -437,21 +450,19 @@ export async function syncTwoTruthsGameState(
           return { ok: true, code: 'advanced_finish' }
         }
 
-        const activated = await activateRound(supabase, replacement.id)
+        const activated = await activateRound(supabase, gameId, replacement, game.sessions_played ?? null)
         if (!activated) return { ok: false, code: 'not_finished' }
-        await syncGamePointer(supabase, gameId, replacement.round_number)
         return { ok: true, code: 'advanced_next', nextRound: replacement.round_number }
       }
     }
 
-    const activated = await activateRound(supabase, nextRound.id)
+    const activated = await activateRound(supabase, gameId, nextRound, game.sessions_played ?? null)
     if (!activated) return { ok: false, code: 'not_finished' }
-    await syncGamePointer(supabase, gameId, nextRound.round_number)
     return { ok: true, code: 'advanced_next', nextRound: nextRound.round_number }
   }
 
   if (pointerRound && pointerRound.status === 'pending') {
-    const activated = await activateRound(supabase, pointerRound.id)
+    const activated = await activateRound(supabase, gameId, pointerRound, game.sessions_played ?? null)
     if (activated) return { ok: true, code: 'synced_pointer' }
   }
 

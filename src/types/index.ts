@@ -1773,6 +1773,10 @@ export interface WordRushSession {
   status: 'active' | 'finished'
   status_message: string | null
   round_finalize?: WordRushRoundFinalize | null
+  /** Players who left whose seat deletion is still owed (see word_rush_remove_player). Server-side only. */
+  leavers?: string[] | null
+  /** The host handoff a departed host's deferred seat deletion settles (player id -> session generation). Server-side only. */
+  leaver_handoffs?: Record<string, { session_started_at: string | null; sessions_played: number | null }> | null
   created_at: string
   updated_at: string
 }

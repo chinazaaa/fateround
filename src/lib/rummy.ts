@@ -684,7 +684,15 @@ export async function completePendingRummyRemoval(
  * 409; repeating the leave is idempotent because a leaver already dropped from turn_order falls
  * through to the hand + seat cleanup below.
  */
-type RummyRemoveResult = { error: string | null; conflict?: boolean }
+type RummyRemoveResult = {
+  error: string | null
+  conflict?: boolean
+  /**
+   * The seat DELETE was issued and failed with an error that does not prove it was rolled back: a delete whose response
+   * was lost can still have committed. Absent for every error raised BEFORE that delete (or a deadlock abort).
+   */
+  seatDeleteIssued?: boolean
+}
 
 /** Postgres deadlock_detected / serialization_failure: the statement was aborted, not rejected. */
 function isRetryableDbError(error: { code?: string; message?: string }): boolean {
@@ -785,14 +793,18 @@ async function removeRummyPlayerOnce(
     // The claim above already dropped the leaver from turn_order, so a retry takes the cleanup
     // branch below and finishes the hand + seat removal.
     if (handError) return removalFailure(handError)
-    const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-    return error ? removalFailure(error) : { error: null }
+    return deleteRummySeat(supabase, gameId, playerId)
   }
 
   const { error: handError } = await supabase.from(RUMMY_HANDS).delete().eq('game_id', gameId).eq('player_id', playerId)
   if (handError) return removalFailure(handError)
+  return deleteRummySeat(supabase, gameId, playerId)
+}
+
+async function deleteRummySeat(supabase: SupabaseClient, gameId: string, playerId: string): Promise<RummyRemoveResult> {
   const { error } = await supabase.from('players').delete().eq('id', playerId).eq('game_id', gameId)
-  return error ? removalFailure(error) : { error: null }
+  if (!error) return { error: null }
+  return { ...removalFailure(error), seatDeleteIssued: !isRetryableDbError(error) }
 }
 
 // Reads the session, hands, player names, and game-clock fields together. If any of the three

@@ -44,7 +44,9 @@ export async function POST(req: NextRequest) {
 
   if (isAnonymousMessagesGame(gameType)) {
     if (anonymousSessionExpired(game.session_started_at)) {
-      await finishExpiredAnonymousSession(supabase, { ...game, id: gameCode })
+      // Service role: the finish's session wipe (wipe_finished_session_rows) is granted to service_role only, so an
+      // anon client would finish the room and then fail to clean it up.
+      await finishExpiredAnonymousSession(getSupabaseAdmin(), { ...game, id: gameCode })
       return NextResponse.json({ error: 'Session has ended' }, { status: 400 })
     }
   }
@@ -110,20 +112,23 @@ export async function POST(req: NextRequest) {
     replyToText = parent.text?.trim() ? truncateReplyPreview(parent.text) : '[GIF]'
   }
 
-  // Service role: `anonymous_messages` is write-locked for anon since 20260803140000.
-  const { error } = await getSupabaseAdmin()
-    .from('anonymous_messages')
-    .insert({
-      game_id: gameCode,
-      player_id: playerId,
-      text: text || '',
-      reply_to_id: replyToIdValue,
-      reply_to_text: replyToText,
-      message_type: messageType,
-      media_url: mediaUrl,
-    })
+  // Service role: `anonymous_messages` is write-locked for anon since 20260803140000. The status check above can
+  // be stale by now, so the insert re-checks it under a lock on the game row: a finish either committed first
+  // (rejected here) or waits for this insert, and its session wipe then removes the message.
+  const { data: inserted, error } = await getSupabaseAdmin().rpc('insert_anonymous_message_if_active', {
+    p_game_id: gameCode,
+    p_player_id: playerId,
+    p_text: text || '',
+    p_reply_to_id: replyToIdValue,
+    p_reply_to_text: replyToText,
+    p_message_type: messageType,
+    p_media_url: mediaUrl,
+  })
 
   if (error) return NextResponse.json({ error: internalErrorMessage('anonymous-messages', error) }, { status: 500 })
+  if ((inserted as { status?: string } | null)?.status === 'game_not_active') {
+    return NextResponse.json({ error: 'Board is not accepting messages' }, { status: 400 })
+  }
 
   await trimAnonymousMessagesIfDue(getSupabaseAdmin(), gameCode)
 

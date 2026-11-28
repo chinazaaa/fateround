@@ -41,14 +41,19 @@ export async function POST(req: NextRequest) {
   const { data: board } = await supabase.from('codewords_boards').select('winner').eq('game_id', code).maybeSingle()
   if (board?.winner) return NextResponse.json({ error: 'Game is over' }, { status: 400 })
 
-  const { error } = await supabase.from('codewords_messages').insert({
-    game_id: code,
-    player_id: playerId,
-    team: role.team,
-    text: text.trim(),
+  // The status check above can be stale by now: the insert re-checks it under a lock on the game row, so a finish
+  // either committed first (rejected) or waits for this insert and its session wipe removes the message.
+  const { data: inserted, error } = await supabase.rpc('insert_codewords_message_if_active', {
+    p_game_id: code,
+    p_player_id: playerId,
+    p_team: role.team,
+    p_text: text.trim(),
   })
 
   if (error) return NextResponse.json({ error: internalErrorMessage('codewords/chat', error) }, { status: 500 })
+  if ((inserted as { status?: string } | null)?.status === 'game_not_active') {
+    return NextResponse.json({ error: 'Game is not active' }, { status: 400 })
+  }
 
   return NextResponse.json({ success: true })
 }

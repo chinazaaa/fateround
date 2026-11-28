@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import type { FinishGameResult } from '@/lib/game-finish'
-import { clearSessionTables } from './session-clear'
+import { clearSessionTables, wipeFinishedSession } from './session-clear'
 import type { Game, Player } from '@/types'
 import {
   ANONYMOUS_ROOM_DEFAULT_MAX_PLAYERS,
@@ -196,7 +196,7 @@ export async function trimAnonymousMessagesIfDue(
   return { trimmed: deleted }
 }
 
-/** Wipe live session data when an anonymous room ends — messages are not kept. */
+/** Wipe the whole game's messages and bans (Play Again's / a reopen's reset of a game that is being replayed). */
 export async function clearAnonymousRoomSessionData(
   supabase: SupabaseClient,
   gameId: string
@@ -204,24 +204,94 @@ export async function clearAnonymousRoomSessionData(
   return clearSessionTables(supabase, gameId, ['anonymous_messages', 'anonymous_room_bans'])
 }
 
+/**
+ * Finish the game row, then wipe the finished session's data. A lost compare-and-set (`won` false) can mean
+ * another request already finished it (the wipe is an idempotent retry, so it still runs) or that
+ * `onlyIfActive` rejected the flip and the game is still live (its data must survive), so the two are told
+ * apart by reading the row. Either way the wipe is bound to the `finished_at` of the finish it follows and decided
+ * in the database (see wipeFinishedSession): a stalled request that wakes after Play Again started a new session
+ * deletes nothing, and a message accepted just before the finish cannot survive it.
+ *
+ * A failed clear is reported as `cleanupError`, never as `error`: the game IS finished at this point, and
+ * folding the wipe failure into `error` made callers (the idle reaper) treat a completed close as a failure
+ * and skip its stamp.
+ */
+/** The room's status could not be read after its wipe was skipped (a sentinel, never a real games.status). */
+const UNKNOWN_STATUS = '__unknown__'
+
+async function finishAndClearSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  onlyIfActive: boolean,
+  onlySessionStartedAt?: string | null
+): Promise<FinishGameResult> {
+  const { markGameFinished } = await import('@/lib/game-finish')
+  const {
+    error: gameError,
+    won,
+    finishedAt,
+  } = await markGameFinished(supabase, gameId, undefined, {
+    onlyIfActive,
+    ...(onlySessionStartedAt !== undefined ? { onlySessionStartedAt } : {}),
+  })
+  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
+
+  let wipeUpTo = won ? finishedAt : undefined
+  if (!won) {
+    const { data: current, error: currentError } = await supabase
+      .from('games')
+      .select('status, finished_at, session_started_at')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (currentError)
+      return { error: null, won, cleanupError: internalErrorMessage('anonymous-messages', currentError) }
+    if (current?.status !== 'finished' || !current.finished_at) {
+      return { error: null, won, cleanupError: null, currentStatus: current?.status ?? null }
+    }
+    // The caller named the session it saw expire: a finished room that is in a LATER session (replayed and finished
+    // again) is not the finish this request lost to, and its wipe is not this request's to run or to report on.
+    if (onlySessionStartedAt !== undefined) {
+      const ours = onlySessionStartedAt === null ? null : Date.parse(onlySessionStartedAt)
+      const theirs = current.session_started_at ? Date.parse(current.session_started_at as string) : null
+      if (ours !== theirs) return { error: null, won, cleanupError: null, currentStatus: 'superseded_session' }
+    }
+    wipeUpTo = current.finished_at as string
+  }
+  if (!wipeUpTo) return { error: null, won, cleanupError: null }
+  const { error: clearError, status: wipeStatus } = await wipeFinishedSession(supabase, gameId, wipeUpTo, 'anonymous')
+  if (!clearError && wipeStatus === 'not_current_session') {
+    // The finish committed, but the room was reopened before the wipe ran (it deleted nothing): report the room's state
+    // as it is now, not as the finish left it.
+    const { data: now, error: nowError } = await supabase
+      .from('games')
+      .select('status, session_started_at')
+      .eq('id', gameId)
+      .maybeSingle()
+    if (nowError) return { error: null, won, cleanupError: null, currentStatus: UNKNOWN_STATUS }
+    // ...and a LATER session (another start) is not the one this request saw expire, whatever its status is.
+    if (onlySessionStartedAt !== undefined) {
+      const ours = onlySessionStartedAt === null ? null : Date.parse(onlySessionStartedAt)
+      const theirs = now?.session_started_at ? Date.parse(now.session_started_at as string) : null
+      if (ours !== theirs) return { error: null, won, cleanupError: null, currentStatus: 'superseded_session' }
+    }
+    return { error: null, won, cleanupError: null, currentStatus: now?.status ?? null }
+  }
+  return { error: null, won, cleanupError: clearError, ...(won ? {} : { currentStatus: 'finished' }) }
+}
+
 export async function finishAnonymousRoomSession(
   supabase: SupabaseClient,
   gameId: string,
-  { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
+  {
+    onlyIfActive = false,
+    onlySessionStartedAt,
+  }: {
+    onlyIfActive?: boolean
+    /** Finish only the session that started at this time (requires onlyIfActive): a restarted room is left alone. */
+    onlySessionStartedAt?: string | null
+  } = {}
 ): Promise<FinishGameResult> {
-  const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
-  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
-
-  // Clearing stays unconditional (it is an idempotent delete, and skipping it on a lost
-  // race would leave data behind if the winner's own clear failed) — only the `won`
-  // signal is threaded out, so callers can tell who actually flipped the row.
-  //
-  // A failed clear is reported as `cleanupError`, never as `error`: the game IS
-  // finished at this point, and folding the wipe failure into `error` made callers
-  // (the idle reaper) treat a completed close as a failure and skip its stamp.
-  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
-  return { error: null, won, cleanupError: clearError }
+  return finishAndClearSession(supabase, gameId, onlyIfActive, onlySessionStartedAt)
 }
 
 /** Close a secret message board and wipe inbox data (same retention as anonymous rooms). */
@@ -230,13 +300,7 @@ export async function finishSecretMessageBoard(
   gameId: string,
   { onlyIfActive = false }: { onlyIfActive?: boolean } = {}
 ): Promise<FinishGameResult> {
-  const { markGameFinished } = await import('@/lib/game-finish')
-  const { error: gameError, won } = await markGameFinished(supabase, gameId, undefined, { onlyIfActive })
-  if (gameError) return { error: internalErrorMessage('anonymous-messages', gameError), won: false }
-
-  // Cleanup failure is reported separately from the finish — see finishAnonymousRoomSession.
-  const { error: clearError } = await clearAnonymousRoomSessionData(supabase, gameId)
-  return { error: null, won, cleanupError: clearError }
+  return finishAndClearSession(supabase, gameId, onlyIfActive)
 }
 
 /** Clear inbox and reopen a secret message board. */
@@ -254,6 +318,8 @@ export async function reopenSecretMessageBoard(
       status: 'active',
       session_started_at: now,
       anonymous_messages_trimmed_at: null,
+      // A reopened board is a new session: it carries no finish reason of the previous one (the join guard reads it).
+      result_reason: null,
     })
     .eq('id', gameId)
 
@@ -264,12 +330,25 @@ export async function reopenSecretMessageBoard(
 export async function finishExpiredAnonymousSession(
   supabase: SupabaseClient,
   game: { id: string; status: string; game_type: string; session_started_at?: string | null }
-): Promise<boolean> {
-  if (game.status !== 'active') return false
-  if (!anonymousSessionExpired(game.session_started_at)) return false
+): Promise<'finished' | 'superseded' | 'error'> {
+  // `superseded`: not expired any more (or not ours to finish): the room is not in the state this request saw.
+  if (game.status !== 'active') return 'superseded'
+  if (!anonymousSessionExpired(game.session_started_at)) return 'superseded'
 
-  const { error, cleanupError } = await finishAnonymousRoomSession(supabase, game.id)
-  if (error) return false
+  // Bound to the session the caller saw expire: a request that stalled while another one finished the expired session
+  // and reopened the room must not finish (and wipe) the NEW session. `onlyIfActive` alone cannot tell them apart.
+  const { error, cleanupError, won, currentStatus } = await finishAnonymousRoomSession(supabase, game.id, {
+    onlyIfActive: true,
+    onlySessionStartedAt: game.session_started_at ?? null,
+  })
+  if (error) return 'error'
+  // The session-bound finish lost: another request finished the expired session, and the room may already have been
+  // reopened with a NEW session. Only a room that is still finished is reported as finished.
+  // The status read after a lost update (or after a skipped wipe) failed: nothing confirms what state the room is in.
+  if (!won && currentStatus === undefined) return 'error'
+  if (currentStatus !== undefined && currentStatus !== 'finished') {
+    return currentStatus === UNKNOWN_STATUS ? 'error' : 'superseded'
+  }
 
   // The room IS finished at this point — only the post-finish message/ban wipe failed,
   // and that cannot un-finish it. Folding it into the return value would report a
@@ -284,5 +363,5 @@ export async function finishExpiredAnonymousSession(
     )
   }
 
-  return true
+  return 'finished'
 }

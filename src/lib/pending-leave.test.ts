@@ -174,6 +174,47 @@ describe('completePendingFinishedLeave: whot', () => {
     expect(await completePendingFinishedLeave(db.client, 'whot', 'G', 'a', 'Ann')).toBeNull()
   })
 
+  it('reports whether a seat DELETE was attempted before the error (uncertain) or not (the seat is untouched)', async () => {
+    // Error BEFORE any delete of the seat: the hand delete fails.
+    const before = build()
+    before.failNext['players:delete'] = 1
+    await removeWhotPlayer(before.client, 'G', 'a', 'Ann')
+    before.failNext['whot_player_hands:delete'] = 1
+    const early = await completePendingFinishedLeave(before.client, 'whot', 'G', 'a', 'Ann')
+    expect(early).toMatchObject({ status: 500, deleteAttempted: false })
+    expect(ids(before.tables)).toEqual(['a', 'b'])
+
+    // Error AFTER the seat delete was issued: its outcome is uncertain.
+    const after = build()
+    after.failNext['players:delete'] = 1
+    await removeWhotPlayer(after.client, 'G', 'a', 'Ann')
+    after.failNext['players:delete'] = 1
+    const late = await completePendingFinishedLeave(after.client, 'whot', 'G', 'a', 'Ann')
+    expect(late).toMatchObject({ status: 500, deleteAttempted: true })
+  })
+
+  it('a forfeit cleanup whose seat delete errors reports the attempt', async () => {
+    const db = makeDb({
+      chess_sessions: [
+        {
+          game_id: 'G',
+          status: 'finished',
+          player_white_id: 'a',
+          player_black_id: 'b',
+          winner_player_id: 'b',
+          is_draw: false,
+          status_message: 'Ann left — Bob wins!',
+        },
+      ],
+      players: [seat('a', 'Ann'), seat('b', 'Bob')],
+    })
+    db.failNext['players:delete'] = 1
+    expect(await completePendingFinishedLeave(db.client, 'chess', 'G', 'a', 'Ann')).toMatchObject({
+      status: 500,
+      deleteAttempted: true,
+    })
+  })
+
   it('keeps the rows of everyone still in the session, finishers and spectators', async () => {
     const db = build()
     Object.assign(db.tables.whot_sessions[0], { phase: 'finished', finish_order: ['b'] })
@@ -186,5 +227,83 @@ describe('completePendingFinishedLeave: whot', () => {
       expect(await completePendingFinishedLeave(db.client, 'whot', 'G', id, name)).toBeNull()
     }
     expect(ids(db.tables)).toEqual(['a', 'b', 'w'])
+  })
+})
+
+describe('completePendingFinishedLeave: Rummy reports whether the seat DELETE was issued', () => {
+  const build = () =>
+    makeDb({
+      rummy_sessions: [{ game_id: 'G', turn_order: ['b'], phase: 'finished' }],
+      rummy_player_hands: [{ game_id: 'G', player_id: 'a' }],
+      players: [seat('a', 'Ann'), seat('b', 'Bob')],
+    })
+
+  it('an error before the seat delete (the hand delete fails) leaves deleteAttempted false: the seat is untouched', async () => {
+    const db = build()
+    db.failNext['rummy_player_hands:delete'] = 1
+    const res = await completePendingFinishedLeave(db.client, 'rummy', 'G', 'a', 'Ann')
+    expect(res).toMatchObject({ deleteAttempted: false })
+    expect(res && 'error' in res && res.error).toBeTruthy()
+    expect(ids(db.tables)).toEqual(['a', 'b'])
+  })
+
+  it('an error from the seat DELETE itself keeps deleteAttempted true (a lost response can still have committed)', async () => {
+    const db = build()
+    db.failNext['players:delete'] = 1
+    expect(await completePendingFinishedLeave(db.client, 'rummy', 'G', 'a', 'Ann')).toMatchObject({
+      deleteAttempted: true,
+    })
+  })
+})
+
+describe('completePendingFinishedLeave: Word Rush (a player who LEFT a finished game)', () => {
+  const rpcCalls: Array<{ fn: string; args: unknown }> = []
+  const client = (answer: { data?: unknown; error?: { message: string } | null }) =>
+    ({
+      rpc: async (fn: string, args: unknown) => {
+        rpcCalls.push({ fn, args })
+        return { data: answer.data ?? null, error: answer.error ?? null }
+      },
+    }) as unknown as SupabaseClient
+
+  it('asks the DELETE STAGE of the one Word Rush function for exactly this game and seat (never the generic leave)', async () => {
+    rpcCalls.length = 0
+    await completePendingFinishedLeave(client({ data: { status: 'deleted' } }), 'word_rush', 'G', 'a', 'Ann')
+    expect(rpcCalls).toEqual([
+      { fn: 'word_rush_remove_player', args: { p_game_id: 'G', p_player_id: 'a', p_stage: 'delete' } },
+    ])
+  })
+
+  it('a due deletion (the database deleted the seat) completes the leave', async () => {
+    expect(
+      await completePendingFinishedLeave(client({ data: { status: 'deleted' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toEqual({
+      error: null,
+    })
+  })
+
+  it.each(['game_finished', 'not_left', 'game_missing'])(
+    'a refusal (%s: this seat is part of the result, or never left): null, the seat is retained and nothing is claimed deleted',
+    async (status) => {
+      expect(await completePendingFinishedLeave(client({ data: { status } }), 'word_rush', 'G', 'a', 'Ann')).toBeNull()
+    }
+  )
+
+  it("the round's effects still pending (`finalizing`) is retryable too", async () => {
+    expect(
+      await completePendingFinishedLeave(client({ data: { status: 'finalizing' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toMatchObject({ status: 409, deleteAttempted: false })
+  })
+
+  it('a recorded deletion whose bookkeeping is still running is a RETRYABLE refusal, not a retained seat', async () => {
+    expect(
+      await completePendingFinishedLeave(client({ data: { status: 'bookkeeping_owed' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toMatchObject({ status: 409, deleteAttempted: false, error: expect.stringMatching(/try again/i) })
+  })
+
+  it('a database error is reported as an attempted delete', async () => {
+    expect(
+      await completePendingFinishedLeave(client({ error: { message: 'boom' } }), 'word_rush', 'G', 'a', 'Ann')
+    ).toMatchObject({ status: 500, deleteAttempted: true })
   })
 })

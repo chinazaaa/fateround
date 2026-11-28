@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { internalErrorMessage } from '@/lib/api-errors'
 import { finishAnonymousRoomSession, finishSecretMessageBoard } from '@/lib/anonymous-messages'
 import { finishCodewordsGame } from '@/lib/codewords'
+import { wipeFinishedSession } from '@/lib/session-clear'
 import { markGameFinished, type FinishGameResult } from '@/lib/game-finish'
 import {
   isAnonymousMessagesGame,
@@ -47,6 +48,152 @@ export type AdminEndGameOptions = {
   onlyIfActive?: boolean
 }
 
+/**
+ * Bulk-finish a game's active rounds and, for Two Truths, fold each finished round's hidden lie and guesses back
+ * into `ttl_metadata` (the bulk update bypasses the normal end-of-round path, so an ended game would otherwise
+ * render its last round with no lie highlighted). Idempotent. `startedNoLaterThan` binds it to the rounds of a
+ * finished session: Play Again deletes the old rounds and a new session's rounds start after the old
+ * `finished_at`, so a late cleanup can never touch a live game's round.
+ *
+ * The messages are neutral about the game: callers know whether it is still endable and say what to retry.
+ */
+async function finishGameRounds(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: ReturnType<typeof parseGameType>,
+  endedAt: string,
+  startedNoLaterThan?: string
+): Promise<{ error: string | null; superseded?: boolean }> {
+  let confirmedRoundIds: string[] | undefined
+  if (startedNoLaterThan) {
+    // The cleanup of an already FINISHED session: decided in the database, bound to that session under the games row
+    // lock (it must still be finished with exactly this finished_at), so a replayed session's live round is never
+    // finished by a late cleanup. A timestamp cutoff alone cannot identify the session (the clocks differ).
+    const { data, error } = await supabase.rpc('finish_rounds_of_finished_session', {
+      p_game_id: gameId,
+      p_finished_at: startedNoLaterThan,
+    })
+    if (error) return { error: internalErrorMessage('admin-end-game', error) }
+    // A replayed or missing game has nothing left to clean up for this session (and its new rounds are not ours). A game
+    // that is no longer THIS finished session is reported as such (never as success): a caller that is about to delete
+    // the session's rows must stop.
+    const confirmed = data as { status?: string; round_ids?: string[] } | null
+    if (confirmed?.status === 'not_current_session') return { error: null, superseded: true }
+    if (confirmed?.status !== 'finished_session') return { error: null }
+    confirmedRoundIds = confirmed.round_ids ?? []
+  } else {
+    const { error } = await supabase
+      .from('rounds')
+      .update({ status: 'finished', ended_at: endedAt })
+      .eq('game_id', gameId)
+      .eq('status', 'active')
+    if (error) return { error: internalErrorMessage('admin-end-game', error) }
+  }
+  // For a finished session the database confirmed (under the games row lock) which rounds are its own, so the reveal is
+  // limited to exactly those ids: no timestamp cutoff (the clocks differ) and no reaching a replay's rounds.
+  if (isTwoTruthsGame(gameType) && !(await revealFinishedTtlRounds(supabase, gameId, undefined, confirmedRoundIds))) {
+    return { error: 'Could not reveal every Two Truths round' }
+  }
+  return { error: null }
+}
+
+/**
+ * The ONE cleanup of a finished session's leftovers: its rounds (plus the Two Truths reveal), and the per-feature
+ * session data that is deleted rather than kept (Codewords chat; Anonymous Messages messages and bans, which the
+ * Secret Message Board shares). Everything is bound to `finishedAt`, the `finished_at` the finish wrote, so it is
+ * idempotent and can be re-run at any later time without reaching a replayed (Play Again) session's rows, which
+ * are all created after it. Runs every step and reports the first failure so a retry can finish the rest.
+ */
+export async function cleanupFinishedSession(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: ReturnType<typeof parseGameType>,
+  finishedAt: string
+): Promise<string | null> {
+  return (await cleanupFinishedSessionOutcome(supabase, gameId, gameType, finishedAt)).error
+}
+
+/** {@link cleanupFinishedSession} that also reports a game that is no longer the finished session it was bound to. */
+export async function cleanupFinishedSessionOutcome(
+  supabase: SupabaseClient,
+  gameId: string,
+  gameType: ReturnType<typeof parseGameType>,
+  finishedAt: string
+): Promise<{ error: string | null; superseded?: boolean }> {
+  const rounds = await finishGameRounds(supabase, gameId, gameType, finishedAt, finishedAt)
+  const roundsError = rounds.error
+  let wipe: { error: string | null; status?: string } = { error: null }
+  if (isCodewordsGame(gameType)) {
+    wipe = await wipeFinishedSession(supabase, gameId, finishedAt, 'codewords')
+  } else if (isAnonymousMessagesGame(gameType) || isSecretMessageGame(gameType)) {
+    wipe = await wipeFinishedSession(supabase, gameId, finishedAt, 'anonymous')
+  }
+  // Either step may find the game is no longer the finished session it was bound to (the wipe checks it separately, under
+  // its own lock): that is reported as `superseded`, never as a clean success (wipe failures stay errors).
+  const superseded = rounds.superseded === true || wipe.status === 'not_current_session'
+  return { error: roundsError ?? wipe.error, ...(superseded ? { superseded: true } : {}) }
+}
+
+/**
+ * What a cleanup is bound to, so an OLD leave can never select a LATER finish of the same game id (a replay that ends
+ * with `host_ended` again): `finishedAt` is the finish the caller itself observed (from the settlement); `session` is
+ * the session identity the leave captured, used when no finish was observed from a database answer.
+ */
+export type HostLeftCleanupBinding = {
+  finishedAt?: string | null
+  session?: { startedAt: string | null; sessionsPlayed: number | null }
+}
+
+/**
+ * Finish the leftovers of a host-left finish (see `end_game_if_host_alone` / `settle_host_leave`). Does nothing unless the game is
+ * currently the finished session that was ended by a host leaving, and runs the shared cleanup bound to that
+ * session's own `finished_at`, so a Play Again game under the same id (status no longer `finished`) is never
+ * touched. Safe to call on every later leave of the retained host seat, and after any finish attempt whose
+ * response was lost.
+ */
+export async function completeHostLeftCleanup(
+  supabase: SupabaseClient,
+  gameId: string,
+  bind: HostLeftCleanupBinding = {}
+): Promise<{ finished: boolean; hostEnded: boolean; error: string | null; superseded?: boolean }> {
+  const { data: game, error } = await supabase
+    .from('games')
+    .select('status, game_type, result_reason, finished_at, session_started_at, sessions_played')
+    .eq('id', gameId)
+    .maybeSingle()
+  if (error) return { finished: false, hostEnded: false, error: internalErrorMessage('admin-end-game', error) }
+  // `superseded`: the caller named the finish / session it observed and the game is no longer in it.
+  if (game?.status !== 'finished') {
+    return {
+      finished: false,
+      hostEnded: false,
+      error: null,
+      ...(bind.finishedAt || bind.session ? { superseded: true } : {}),
+    }
+  }
+  // Which finish is this? Decided BEFORE anything else about the row (its reason included): a finish the caller did not
+  // observe (the game was replayed and finished again since, even for another reason such as an admin end) belongs to a
+  // later leave / request, whose own handling covers it. Nothing is cleaned up on behalf of an older one, and a caller
+  // that is about to delete this session's rows (Play Again) is told the game moved on.
+  if (bind.finishedAt && (!game.finished_at || Date.parse(bind.finishedAt) !== Date.parse(game.finished_at))) {
+    return { finished: true, hostEnded: false, error: null, superseded: true }
+  }
+  if (
+    bind.session &&
+    ((game.session_started_at ?? null) !== bind.session.startedAt ||
+      (game.sessions_played ?? null) !== bind.session.sessionsPlayed)
+  ) {
+    return { finished: true, hostEnded: false, error: null, superseded: true }
+  }
+  if (game.result_reason !== 'host_ended' || !game.finished_at) return { finished: true, hostEnded: false, error: null }
+  const outcome = await cleanupFinishedSessionOutcome(supabase, gameId, parseGameType(game.game_type), game.finished_at)
+  return {
+    finished: true,
+    hostEnded: true,
+    ...(outcome.superseded ? { error: null, superseded: true } : { error: outcome.error }),
+  }
+}
+
 export async function adminEndGame(
   supabase: SupabaseClient,
   game: AdminGameToEnd,
@@ -59,28 +206,11 @@ export async function adminEndGame(
   const gameId = game.id
   const now = new Date().toISOString()
 
-  const { error: roundError } = await supabase
-    .from('rounds')
-    .update({ status: 'finished', ended_at: now })
-    .eq('game_id', gameId)
-    .eq('status', 'active')
-
-  if (roundError) return { error: internalErrorMessage('admin-end-game', roundError), won: false }
-
   const gameType = parseGameType(game.game_type)
-  // The bulk round update above finishes rounds without going through the Two Truths reveal,
-  // so fold each finished round's lie back into its metadata — otherwise an admin-ended game
-  // renders its last round with no lie highlighted.
-  if (isTwoTruthsGame(gameType)) {
-    // Bail before the game is marked finished if any reveal could not be written. The rounds are
-    // already 'finished' at this point, but revealFinishedTtlRounds picks those up again, so a
-    // retry recovers — whereas finishing the game makes this function reject every retry and the
-    // round keeps no lie_index forever.
-    const revealed = await revealFinishedTtlRounds(supabase, gameId)
-    if (!revealed) {
-      return { error: 'Could not reveal every Two Truths round — game left endable; retry.', won: false }
-    }
-  }
+  // Rounds first: a failure here (or a Two Truths reveal that could not be written) leaves the game endable,
+  // whereas finishing the game makes this function reject every retry and the round keeps no lie_index forever.
+  const roundsError = (await finishGameRounds(supabase, gameId, gameType, now)).error
+  if (roundsError) return { error: `${roundsError} — game left endable; retry.`, won: false }
   if (isAnonymousMessagesGame(gameType)) {
     return finishAnonymousRoomSession(supabase, gameId, { onlyIfActive })
   }

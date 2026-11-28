@@ -733,50 +733,40 @@ async function handlePost(req: NextRequest, { params }: { params: Promise<{ code
     const roundRows = built.rows
 
     // The round rows carry only the shuffled statements — the lie is NOT in ttl_metadata,
-    // which is anon-readable. `.select()` gives us the generated ids so each round's lie can
-    // be stored in ttl_round_lies (service-role only) and matched back by round_number.
-    // Rounds and their answer keys are created by ONE rpc, inside one transaction. Doing it as
-    // two client calls meant a failure between them left rounds with no key in ttl_round_lies:
-    // /api/two-truths/guess fails closed on a missing key (deliberately), so the game could not
-    // be scored — and could not be restarted either, because rounds already existed for those
-    // round numbers. See 20261115120000_ttl_atomic_rounds_and_guess_guard.sql.
-    const { error: roundError } = await getSupabaseAdmin().rpc('create_ttl_rounds', {
+    // which is anon-readable; each round's lie goes to ttl_round_lies (service-role only), matched by round_number.
+    //
+    // ONE database function does the whole start in one transaction under the games row lock
+    // (start_two_truths_game): it re-checks that the game is still waiting and that every submitter still has a
+    // seat, THEN creates the rounds and their answer keys (create_ttl_rounds, atomic so a game can never have rounds
+    // without keys: /api/two-truths/guess fails closed on a missing key), applies the spectator flags (only the
+    // players who submitted statements play; the "Waiting…" ones watch) and activates the game. A rejected start
+    // writes nothing: a host leave that ended the game in between can neither get round data written to it nor be
+    // re-activated by the start.
+    const { data: started, error: gameError } = await getSupabaseAdmin().rpc('start_two_truths_game', {
+      p_game_id: code.toUpperCase(),
+      p_submitted_player_ids: submittedPlayerIds,
+      p_session_started_at: sessionStartedAt,
       p_rounds: roundRows,
       p_lies: built.lies,
+      p_min_submitters: TTL_MIN_PLAYERS,
+      // The lobby generation this start was prepared from (statements read, rounds built): a Play Again since is `lost`.
+      p_sessions_played: game.sessions_played ?? null,
     })
-    if (roundError)
-      return NextResponse.json({ error: internalErrorMessage('games/code/start', roundError) }, { status: 500 })
-
-    // Only players who submitted statements enter the game; everyone else (the "Waiting…"
-    // players in the lobby) becomes a watch-only viewer so they don't count as guessers.
-    // Mirror resetSpectatorsForLobby: mark everyone a spectator, then un-spectator submitters.
-    const { error: spectatorError } = await getSupabaseAdmin()
-      .from('players')
-      .update({ spectator: true })
-      .eq('game_id', code.toUpperCase())
-    if (spectatorError)
-      return NextResponse.json({ error: internalErrorMessage('games/code/start', spectatorError) }, { status: 500 })
-
-    const { error: participantError } = await getSupabaseAdmin()
-      .from('players')
-      .update({ spectator: false })
-      .eq('game_id', code.toUpperCase())
-      .in('id', submittedPlayerIds)
-    if (participantError)
-      return NextResponse.json({ error: internalErrorMessage('games/code/start', participantError) }, { status: 500 })
-
-    const { error: gameError } = await getSupabaseAdmin()
-      .from('games')
-      .update({
-        status: 'active',
-        session_started_at: sessionStartedAt,
-        current_round_number: 1,
-        rounds_count: roundRows.length,
-      })
-      .eq('id', code.toUpperCase())
-
     if (gameError)
       return NextResponse.json({ error: internalErrorMessage('games/code/start', gameError) }, { status: 500 })
+    const startStatus = (started as { status?: string } | null)?.status
+    if (startStatus === 'lost') {
+      return NextResponse.json({ error: 'The game changed while it was starting — try again' }, { status: 409 })
+    }
+    if (startStatus === 'submitters_changed') {
+      return NextResponse.json(
+        { error: 'A player who submitted statements left while the game was starting — try again' },
+        { status: 409 }
+      )
+    }
+    if (startStatus !== 'started') {
+      return NextResponse.json({ error: 'Game not found' }, { status: 404 })
+    }
 
     const { error: elimError } = await initializeEliminationLives(code.toUpperCase(), game.elimination_config)
     if (elimError) return NextResponse.json({ error: elimError }, { status: 500 })

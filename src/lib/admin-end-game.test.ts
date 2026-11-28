@@ -13,42 +13,88 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 
 const markGameFinished = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/game-finish', () => ({ markGameFinished }))
+const revealFinishedTtlRounds = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/two-truths-advance', () => ({ revealFinishedTtlRounds }))
 
-import { adminEndGame } from './admin-end-game'
+import { adminEndGame, cleanupFinishedSession, completeHostLeftCleanup } from './admin-end-game'
 
-type Recorded = { gameUpdates: Array<Record<string, unknown>>; deletes: string[] }
+type Recorded = {
+  gameUpdates: Array<Record<string, unknown>>
+  /** Kinds of session wipe requested ('anonymous' | 'codewords'). */
+  deletes: string[]
+  /** The finished_at each session wipe is bound to (decided in the database). */
+  deleteBounds: string[]
+  roundUpdates: number
+  /** `started_at <=` bounds of the round updates. */
+  roundBounds: string[]
+}
 
-function mockSupabase(opts: { deleteError?: { message: string } } = {}): {
+const FINISHED_AT = '2026-01-01T00:00:00.000Z'
+
+function mockSupabase(
+  opts: {
+    deleteError?: { message: string }
+    roundError?: { message: string }
+    roundStatus?: string
+    wipeStatus?: string
+    gameRow?: Record<string, unknown>
+  } = {}
+): {
   supabase: SupabaseClient
   recorded: Recorded
 } {
-  const recorded: Recorded = { gameUpdates: [], deletes: [] }
+  const recorded: Recorded = { gameUpdates: [], deletes: [], deleteBounds: [], roundUpdates: 0, roundBounds: [] }
   const supabase = {
     from: (table: string) => ({
       update: (patch: Record<string, unknown>) => {
         if (table === 'games') recorded.gameUpdates.push(patch)
+        if (table === 'rounds') recorded.roundUpdates += 1
         const chain: Record<string, unknown> = {}
         chain.eq = () => chain
         chain.is = () => chain
+        chain.lte = (_col: string, v: string) => (recorded.roundBounds.push(v), chain)
         // Awaitable at any point in the chain — the rounds update ends on `.eq`, the
         // result_reason update ends on `.is`.
         chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-          Promise.resolve({ error: null }).then(resolve, reject)
+          Promise.resolve({ error: table === 'rounds' ? (opts.roundError ?? null) : null }).then(resolve, reject)
         return chain
       },
-      delete: () => ({
-        eq: async () => {
-          recorded.deletes.push(table)
-          return { error: opts.deleteError ?? null }
-        },
+      // The row a lost finish / a cleanup recovery reads back.
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: opts.gameRow ?? { status: 'finished', session_started_at: null, finished_at: FINISHED_AT },
+            error: null,
+          }),
+        }),
       }),
     }),
+    // The session wipe is one database function (wipe_finished_session_rows): it records the kind of wipe and the
+    // finished_at it is bound to, and fails when the test asks for a failing wipe.
+    rpc: async (name: string, args: { p_kind: string; p_finished_at: string }) => {
+      // The post-finish round cleanup is one database function bound to the finished session.
+      if (name === 'finish_rounds_of_finished_session') {
+        recorded.roundUpdates += 1
+        recorded.roundBounds.push(args.p_finished_at)
+        return {
+          data: { status: opts.roundStatus ?? 'finished_session', round_ids: ['r1', 'r2'] },
+          error: opts.roundError ?? null,
+        }
+      }
+      if (name === 'wipe_finished_session_rows') {
+        recorded.deletes.push(args.p_kind)
+        recorded.deleteBounds.push(args.p_finished_at)
+      }
+      return { data: { status: opts.wipeStatus ?? 'wiped' }, error: opts.deleteError ?? null }
+    },
   } as unknown as SupabaseClient
   return { supabase, recorded }
 }
 
 beforeEach(() => {
   markGameFinished.mockReset()
+  revealFinishedTtlRounds.mockReset()
+  revealFinishedTtlRounds.mockResolvedValue(true)
 })
 
 describe('adminEndGame — finish outcome propagation', () => {
@@ -127,7 +173,7 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
 
     expect(result).toEqual({ error: null, won: false, cleanupError: null })
     // Delegated, not handled by the generic path.
-    expect(recorded.deletes).toContain('codewords_messages')
+    expect(recorded.deletes).toContain('codewords')
     expect(recorded.gameUpdates).toEqual([])
   })
 
@@ -179,7 +225,7 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
     expect(result.error).toBeNull()
     expect(result.cleanupError).toBeTruthy()
     // The wipe was still attempted, and its failure did not abort the finish.
-    expect(recorded.deletes).toContain('codewords_messages')
+    expect(recorded.deletes).toContain('codewords')
   })
 
   it('keeps a lost CAS a lost CAS even when the cleanup also fails', async () => {
@@ -195,5 +241,243 @@ describe('adminEndGame — delegating finishers carry the outcome too', () => {
     expect(result.won).toBe(false)
     expect(result.error).toBeNull()
     expect(result.cleanupError).toBeTruthy()
+  })
+})
+
+describe('adminEndGame — every post-finish wipe is bound to the finished session', () => {
+  it.each(['codewords', 'anonymous_messages', 'secret_message'])(
+    '%s: a won finish wipes only rows created up to the finished_at it wrote',
+    async (gameType) => {
+      let written: string | undefined
+      markGameFinished.mockImplementation(async (_s: unknown, _g: string, finishedAt?: string) => {
+        // The finished_at the (mocked) finish wrote: the caller's own when it supplied one, else a fixed value.
+        written = finishedAt ?? '2026-02-02T00:00:00.000Z'
+        return { error: null, won: true, finishedAt: written }
+      })
+      const { supabase, recorded } = mockSupabase()
+      await adminEndGame(supabase, { id: 'G', status: 'active', game_type: gameType })
+      // Exactly ONE session wipe, bound to EXACTLY the finished_at the finish wrote (not merely "some timestamp").
+      expect(written).toBeTruthy()
+      expect(recorded.deleteBounds).toEqual([written])
+      expect(recorded.deletes).toHaveLength(1)
+    }
+  )
+
+  it.each(['codewords', 'anonymous_messages', 'secret_message'])(
+    '%s: a lost finish that reads back a finished game wipes only up to that finished_at',
+    async (gameType) => {
+      markGameFinished.mockResolvedValue({ error: null, won: false })
+      const { supabase, recorded } = mockSupabase()
+      await adminEndGame(supabase, { id: 'G', status: 'active', game_type: gameType }, { onlyIfActive: true })
+      expect(recorded.deleteBounds.length).toBeGreaterThan(0)
+      expect(recorded.deleteBounds.every((b) => b === FINISHED_AT)).toBe(true)
+    }
+  )
+
+  it.each(['codewords', 'anonymous_messages', 'secret_message'])(
+    '%s: a lost finish that finds the game live again wipes nothing',
+    async (gameType) => {
+      markGameFinished.mockResolvedValue({ error: null, won: false })
+      const { supabase, recorded } = mockSupabase({ gameRow: { status: 'active', finished_at: null } })
+      await adminEndGame(supabase, { id: 'G', status: 'active', game_type: gameType }, { onlyIfActive: true })
+      expect(recorded.deletes).toEqual([])
+    }
+  )
+})
+
+describe('adminEndGame — an unguarded end that cannot reveal says the game is still endable', () => {
+  it('names the retry because nothing was finished', async () => {
+    revealFinishedTtlRounds.mockResolvedValue(false)
+    const { supabase } = mockSupabase()
+    const result = await adminEndGame(supabase, { id: 'G', status: 'active', game_type: 'two_truths' })
+    expect(result.error).toMatch(/left endable; retry/)
+    expect(markGameFinished).not.toHaveBeenCalled()
+  })
+})
+
+describe('cleanupFinishedSession — the one session-bound cleanup', () => {
+  it('a replayed (or missing) game is not this session: its rounds are left alone and nothing is revealed', async () => {
+    const { supabase } = mockSupabase({ roundStatus: 'not_current_session' })
+    expect(await cleanupFinishedSession(supabase, 'G', 'two_truths', FINISHED_AT)).toBeNull()
+    expect(revealFinishedTtlRounds).not.toHaveBeenCalled()
+  })
+
+  it('finishes the rounds of the finished session only, and reveals Two Truths for the same bound', async () => {
+    const { supabase, recorded } = mockSupabase()
+    expect(await cleanupFinishedSession(supabase, 'G', 'two_truths', FINISHED_AT)).toBeNull()
+    expect(recorded.roundUpdates).toBe(1)
+    expect(recorded.roundBounds).toEqual([FINISHED_AT])
+    // The database confirmed this IS the current finished session, so no timestamp cutoff is applied (the round and finish clocks differ).
+    expect(revealFinishedTtlRounds).toHaveBeenCalledWith(supabase, 'G', undefined, ['r1', 'r2'])
+  })
+
+  it.each([
+    ['codewords', ['codewords']],
+    ['anonymous_messages', ['anonymous']],
+    ['secret_message', ['anonymous']],
+  ])('%s: one database wipe %j bound to the finished_at', async (gameType, tables) => {
+    const { supabase, recorded } = mockSupabase()
+    expect(await cleanupFinishedSession(supabase, 'G', gameType as never, FINISHED_AT)).toBeNull()
+    expect(recorded.deletes).toEqual(tables)
+    expect(recorded.deleteBounds).toEqual(tables.map(() => FINISHED_AT))
+  })
+
+  it('a failing round update still runs the Codewords chat wipe bound to FINISHED_AT, and returns the round error', async () => {
+    const { supabase, recorded } = mockSupabase({ roundError: { message: 'round update failed' } })
+    const error = await cleanupFinishedSession(supabase, 'G', 'codewords', FINISHED_AT)
+    expect(error).toBeTruthy()
+    expect(recorded.deletes).toEqual(['codewords'])
+    expect(recorded.deleteBounds).toEqual([FINISHED_AT])
+  })
+
+  it('wipes nothing for a game type that keeps no deletable session data', async () => {
+    const { supabase, recorded } = mockSupabase()
+    await cleanupFinishedSession(supabase, 'G', 'trivia', FINISHED_AT)
+    expect(recorded.deletes).toEqual([])
+  })
+
+  it('still runs the wipe when the rounds step fails, and reports a failure in neutral words', async () => {
+    revealFinishedTtlRounds.mockResolvedValue(false)
+    const { supabase, recorded } = mockSupabase()
+    const error = await cleanupFinishedSession(supabase, 'G', 'two_truths', FINISHED_AT)
+    expect(error).toBe('Could not reveal every Two Truths round')
+    expect(error).not.toMatch(/endable/)
+    expect(recorded.roundUpdates).toBe(1)
+  })
+
+  it('reports a failed wipe', async () => {
+    const { supabase } = mockSupabase({ deleteError: { message: 'boom' } })
+    expect(await cleanupFinishedSession(supabase, 'G', 'codewords', FINISHED_AT)).toBeTruthy()
+  })
+})
+
+describe('completeHostLeftCleanup — recovery bound to the finished session', () => {
+  const FINISHED = {
+    status: 'finished',
+    game_type: 'two_truths',
+    result_reason: 'host_ended',
+    finished_at: FINISHED_AT,
+  }
+
+  it('runs the shared cleanup bound to the session finished_at', async () => {
+    const { supabase, recorded } = mockSupabase({ gameRow: FINISHED })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished: true, hostEnded: true, error: null })
+    expect(recorded.roundBounds).toEqual([FINISHED_AT])
+    expect(revealFinishedTtlRounds).toHaveBeenCalledTimes(1)
+  })
+
+  it('wipes the per-feature data of the finished session too (Codewords chat)', async () => {
+    const { supabase, recorded } = mockSupabase({ gameRow: { ...FINISHED, game_type: 'codewords' } })
+    await completeHostLeftCleanup(supabase, 'G')
+    expect(recorded.deletes).toEqual(['codewords'])
+    expect(recorded.deleteBounds).toEqual([FINISHED_AT])
+  })
+
+  it('reports a still-failing cleanup so the leave can be retried', async () => {
+    revealFinishedTtlRounds.mockResolvedValue(false)
+    const { supabase } = mockSupabase({ gameRow: FINISHED })
+    const result = await completeHostLeftCleanup(supabase, 'G')
+    expect(result.finished).toBe(true)
+    expect(result.error).toBeTruthy()
+  })
+
+  it.each([
+    ['a live game (Play Again started a new session)', { ...FINISHED, status: 'active' }, false],
+    ['a game finished for another reason', { ...FINISHED, result_reason: 'admin_ended' }, true],
+    ['a finished game with no finished_at', { ...FINISHED, finished_at: null }, true],
+  ])('touches nothing for %s', async (_name, gameRow, finished) => {
+    const { supabase, recorded } = mockSupabase({ gameRow })
+    expect(await completeHostLeftCleanup(supabase, 'G')).toEqual({ finished, hostEnded: false, error: null })
+    expect(recorded.roundUpdates).toBe(0)
+    expect(recorded.deletes).toEqual([])
+    expect(revealFinishedTtlRounds).not.toHaveBeenCalled()
+  })
+})
+
+describe('completeHostLeftCleanup — bound to the finish the caller observed', () => {
+  const row = (extra: Record<string, unknown> = {}) => ({
+    status: 'finished',
+    game_type: 'codewords',
+    result_reason: 'host_ended',
+    finished_at: FINISHED_AT,
+    session_started_at: 'S1',
+    sessions_played: 1,
+    ...extra,
+  })
+
+  it('runs for the observed finish', async () => {
+    const { supabase, recorded } = mockSupabase({ gameRow: row() })
+    expect((await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).error).toBeNull()
+    expect(recorded.deleteBounds).toEqual([FINISHED_AT])
+  })
+
+  it('does NOT run for a later finish (F2) of the same game id', async () => {
+    const { supabase, recorded } = mockSupabase({ gameRow: row({ finished_at: '2030-01-01T00:00:00.000Z' }) })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      hostEnded: false,
+      error: null,
+      superseded: true,
+    })
+    expect(recorded.deletes).toEqual([])
+    expect(recorded.roundUpdates).toBe(0)
+  })
+
+  it('a DIFFERENT finish of another reason (admin_ended) is reported superseded, not "nothing to clean up" (Play Again must not delete its rounds)', async () => {
+    const { supabase, recorded } = mockSupabase({
+      gameRow: row({ result_reason: 'admin_ended', finished_at: '2030-01-01T00:00:00.000Z' }),
+    })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      hostEnded: false,
+      error: null,
+      superseded: true,
+    })
+    expect(recorded.deletes).toEqual([])
+  })
+
+  it('the SAME finish of another reason is simply finished (nothing to clean up, not superseded)', async () => {
+    const { supabase } = mockSupabase({ gameRow: row({ result_reason: 'admin_ended' }) })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      hostEnded: false,
+      error: null,
+    })
+  })
+
+  it('a game that is no longer THIS finished session when the rounds are closed (not_current_session) is superseded, never success', async () => {
+    // The identity read matched, but the game moved on before the database function took its lock (a replay in between).
+    const { supabase, recorded } = mockSupabase({ gameRow: row(), roundStatus: 'not_current_session' })
+    expect(await completeHostLeftCleanup(supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      hostEnded: true,
+      error: null,
+      superseded: true,
+    })
+    expect(recorded.roundUpdates).toBe(1)
+  })
+
+  it('a wipe that finds the room reopened (not_current_session) is superseded too, while a wipe FAILURE stays an error', async () => {
+    const moved = mockSupabase({ gameRow: row(), wipeStatus: 'not_current_session' })
+    expect(await completeHostLeftCleanup(moved.supabase, 'G', { finishedAt: FINISHED_AT })).toEqual({
+      finished: true,
+      hostEnded: true,
+      error: null,
+      superseded: true,
+    })
+    expect(moved.recorded.deletes).toEqual(['codewords'])
+    const failed = mockSupabase({ gameRow: row(), deleteError: { message: 'boom' } })
+    const result = await completeHostLeftCleanup(failed.supabase, 'G', { finishedAt: FINISHED_AT })
+    expect(result.error).toBeTruthy()
+    expect(result.superseded).toBeUndefined()
+  })
+
+  it('without an observed finish, the captured session identity binds it: a replayed session is left alone', async () => {
+    const mismatched = mockSupabase({ gameRow: row({ sessions_played: 2 }) })
+    await completeHostLeftCleanup(mismatched.supabase, 'G', { session: { startedAt: 'S1', sessionsPlayed: 1 } })
+    expect(mismatched.recorded.deletes).toEqual([])
+    const matched = mockSupabase({ gameRow: row() })
+    await completeHostLeftCleanup(matched.supabase, 'G', { session: { startedAt: 'S1', sessionsPlayed: 1 } })
+    expect(matched.recorded.deleteBounds).toEqual([FINISHED_AT])
   })
 })

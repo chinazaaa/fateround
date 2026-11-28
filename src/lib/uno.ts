@@ -3212,13 +3212,14 @@ export async function removeUnoPlayer(
   gameId: string,
   playerId: string,
   playerNameArg?: string
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; retained?: boolean }> {
   const { data: sessionRaw } = await supabase.from('uno_sessions').select('*').eq('game_id', gameId).maybeSingle()
   const session = sessionRaw as UnoSession | null
 
   // A player who already went out has a locked placement (finish_order) — preserve it.
   if (session?.finish_order?.includes(playerId)) {
-    return { error: null }
+    // Reported explicitly: the seat was NOT deleted (the caller must not treat this leave as a removal).
+    return { error: null, retained: true }
   }
 
   const order = session ? [...(session.turn_order ?? [])] : []
