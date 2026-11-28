@@ -107,6 +107,12 @@ describe('initializeScrabbleGame — one transactional deal', () => {
     expect(await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).toEqual({ error: 'Game already in progress' })
   })
 
+  it('a room already dealt whose games flip failed is resumed (success: the caller re-runs the flip), never "in progress"', async () => {
+    const { supabase, rpcCalls } = makeMockSupabase({ status: 'resumed' })
+    expect(await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).toEqual({})
+    expect(rpcCalls).toHaveLength(1)
+  })
+
   it('a stale start on a game that is no longer waiting is refused', async () => {
     const { supabase } = makeMockSupabase({ status: 'not_waiting' })
     expect(await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).toEqual({ error: 'Game already in progress' })

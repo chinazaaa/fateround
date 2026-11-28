@@ -119,6 +119,10 @@ function finishRpc(tables: Tables, name: string, args: Record<string, unknown>):
     }
     return { status: 'applied' }
   }
+  // Only the two finish functions are emulated below: an unknown RPC name must never pass as a Scrabble finish.
+  if (name !== 'finish_uno_session' && name !== 'finish_scrabble_session') {
+    return { status: 'invalid', reason: `unknown rpc ${name}`, games_flipped: false }
+  }
   const uno = name === 'finish_uno_session'
   const sessions = uno ? 'uno_sessions' : 'scrabble_sessions'
   const rows = uno ? 'uno_player_hands' : 'scrabble_player_state'
@@ -139,10 +143,8 @@ function finishRpc(tables: Tables, name: string, args: Record<string, unknown>):
     round &&
     (('sessions_played' in round && (game.sessions_played ?? null) !== round.sessions_played) ||
       ('session_started_at' in round && (game.session_started_at ?? null) !== round.session_started_at) ||
-      // (a fixture game row that carries no time limit is not compared)
-      ('game_duration_seconds' in round &&
-        game.game_duration_seconds !== undefined &&
-        game.game_duration_seconds !== round.game_duration_seconds))
+      // every supplied field is compared, a missing fixture value as null (as the SQL does)
+      ('game_duration_seconds' in round && (game.game_duration_seconds ?? null) !== round.game_duration_seconds))
   ) {
     return { status: 'lost', reason: 'round', games_flipped: false }
   }
@@ -637,12 +639,14 @@ describe('expiry and call outcomes are not mislabelled', () => {
 
   it('finishExpiredUnoGame reports false (not a finished round) when its finish CAS loses', async () => {
     const t = unoTables()
+    t.games[0].game_duration_seconds = 60 // the snapshot's limit: every supplied round field is compared
     expect(await finishExpiredUnoGame(bumpAfterFirstRead(t).supabase, expiredGame)).toEqual({ won: false })
     expect(t.uno_sessions[0].phase).toBe('playing')
   })
 
   it('finishExpiredUnoGame reports true when the finish lands', async () => {
     const t = unoTables()
+    t.games[0].game_duration_seconds = 60
     expect(await finishExpiredUnoGame(makeDb(t).supabase, expiredGame)).toEqual({ won: true })
     expect(t.uno_sessions[0].phase).toBe('finished')
   })
@@ -1149,6 +1153,39 @@ describe('a Team-Up leaver is skipped as soon as the marker commits', () => {
   })
 })
 
+describe('removeUnoPlayer — retention applies to a published game only', () => {
+  it('a reopened lobby (game waiting) whose old finished session still lists the player drops the seat', async () => {
+    const t = unoTables()
+    t.games[0].status = 'waiting'
+    t.uno_sessions[0].phase = 'finished'
+    expect(await removeUnoPlayer(makeDb(t).supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(t.players.map((p) => p.id)).not.toContain('C')
+    expect(t.uno_player_hands.map((h) => h.player_id)).not.toContain('C')
+    expect(t.uno_sessions[0].turn_order).toEqual(['A', 'B', 'D'])
+  })
+
+  it('the finish_order guard keeps a finisher only while the game is published', async () => {
+    const published = unoTables()
+    Object.assign(published.uno_sessions[0], { phase: 'finished', finish_order: ['C'] })
+    published.games[0].status = 'finished'
+    expect(await removeUnoPlayer(makeDb(published).supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(published.players.map((p) => p.id)).toContain('C')
+    const reopened = unoTables()
+    Object.assign(reopened.uno_sessions[0], { phase: 'finished', finish_order: ['C'] })
+    reopened.games[0].status = 'waiting'
+    expect(await removeUnoPlayer(makeDb(reopened).supabase, 'G', 'C', 'C')).toEqual({ error: null })
+    expect(reopened.players.map((p) => p.id)).not.toContain('C')
+  })
+
+  it('a failed status read stops the leave', async () => {
+    const t = unoTables()
+    t.uno_sessions[0].phase = 'finished'
+    const res = await removeUnoPlayer(makeDb(t, { failSelect: (tb) => tb === 'games' }).supabase, 'G', 'C', 'C')
+    expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(t.players.map((p) => p.id)).toContain('C')
+  })
+})
+
 describe('removeUnoPlayer — lobby paths are decided under the lock', () => {
   const noSessionAtLookup = (t: ReturnType<typeof unoTables>, then: (row: Record<string, unknown>) => void) => {
     const row = { ...t.uno_sessions[0] }
@@ -1558,12 +1595,18 @@ describe('finish write outcomes are three-state (landed / lost / failed)', () =>
       draw_pile: [],
       discard_pile: [],
     })
-    const res = await processUnoDraw(
-      makeDb(t, { failRpc: (n) => n === 'apply_uno_move' || n === 'finish_uno_session' }).supabase,
-      'G',
-      'A'
-    )
+    // Only the finish is made to fail: an ordinary move attempted instead would WRITE and be caught.
+    const db = makeDb(t, { failRpc: (n) => n === 'finish_uno_session' })
+    const calls: string[] = []
+    const realRpc = db.supabase.rpc
+    db.supabase.rpc = (name: string, args: Record<string, unknown>) => {
+      calls.push(name)
+      return realRpc(name, args)
+    }
+    const res = await processUnoDraw(db.supabase, 'G', 'A')
     expect(res).toEqual({ error: INTERNAL_ERROR_MESSAGE })
+    expect(calls.filter((c) => c === 'finish_uno_session')).toHaveLength(1)
+    expect(calls).not.toContain('apply_uno_move')
   })
 })
 
@@ -2282,6 +2325,7 @@ describe('scrabble host end-game and finished-session repair', () => {
       const t = scrabbleTables()
       t.scrabble_sessions[0].phase = 'finished'
       t.games[0].status = 'active'
+      t.games[0].game_duration_seconds = 60
       return t
     }
     const expiredGame = {
@@ -2608,6 +2652,7 @@ describe('round identity and mover writes around a finish', () => {
 
   it('scrabble expiry decided about an EARLIER round never finishes a later round', async () => {
     const t = rackless()
+    t.games[0].game_duration_seconds = 60
     // A rematch installed round 2 after the expiry snapshot (round 1) was taken.
     t.games[0].sessions_played = 2
     t.games[0].session_started_at = '2026-02-01T00:00:00.000Z'
@@ -2617,6 +2662,7 @@ describe('round identity and mover writes around a finish', () => {
     expect(t.games[0].status).toBe('active')
     // ...while the same round finishes.
     const same = rackless()
+    same.games[0].game_duration_seconds = 60
     expect(await finishExpiredScrabbleGame(makeDb(same).supabase, expiredFor())).toEqual({ finished: true })
   })
 

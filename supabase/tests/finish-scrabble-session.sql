@@ -340,6 +340,13 @@ begin
   -- a round in progress is never re-dealt (this is also what serializes two overlapping starts)
   perform pg_temp.assert_eq('6g in progress', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'in_progress');
   perform pg_temp.assert_eq('6g in progress: scores untouched', (pg_temp.st('GSG', 17, 1)).score, 10);
+  -- RESUME: the round is already dealt and playing but the game is still `waiting` (a previous start's separate games flip
+  -- failed): nothing is re-dealt and the caller completes the start
+  update public.games set status = 'waiting' where id = 'GSG';
+  perform pg_temp.assert_eq('6g resumed', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'resumed');
+  perform pg_temp.assert_eq('6g resumed: nothing re-dealt', ((pg_temp.st('GSG', 17, 1)).score, (pg_temp.st('GSG', 17, 1)).rack::text,
+    (pg_temp.sess('GSG')).status_message, (select count(*) from public.scrabble_player_state where game_id = 'GSG'))::text, '(10,"[""A"", ""B""]",playing,3)');
+  update public.games set status = 'active' where id = 'GSG';
   update public.scrabble_sessions set phase = 'finished' where game_id = 'GSG';
   -- a deal is only allowed while the game is `waiting`: a stale start that reaches the lock after another start already
   -- ran the round (the game is active / finished) must not re-deal the finished round
@@ -359,8 +366,8 @@ begin
     v_states || jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111), 'rack', '[]'::jsonb)))->>'status', 'invalid');
   perform pg_temp.assert_eq('6g seat of another game', public.deal_scrabble_session('GSG', v_row,
     jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(111))))->>'status', 'invalid');
-  perform pg_temp.assert_eq('6g duplicate seat', public.deal_scrabble_session('GSG', v_row,
-    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(171)), jsonb_build_object('player_id', pg_temp.pid(171))))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6g duplicate state rows fail the duplicate check', public.deal_scrabble_session('GSG', v_row,
+    jsonb_build_array(jsonb_build_object('player_id', pg_temp.pid(171)), jsonb_build_object('player_id', pg_temp.pid(171))))->>'reason', 'state_row_duplicate');
   perform pg_temp.assert_eq('6g no seats', public.deal_scrabble_session('GSG', v_row, '[]'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6g phase must be playing', public.deal_scrabble_session('GSG', v_row || '{"phase":"finished"}'::jsonb, v_states)->>'status', 'invalid');
   perform pg_temp.assert_eq('6g protected column', public.deal_scrabble_session('GSG', v_row || '{"id":"x"}'::jsonb, v_states)->>'status', 'invalid');
@@ -383,7 +390,11 @@ begin
   perform pg_temp.assert_eq('6g other game untouched', (pg_temp.st('GSC', 11, 1)).score, 10);
   perform pg_temp.assert_eq('6g other game session untouched', ((pg_temp.sess('GSC')).phase, (pg_temp.sess('GSC')).status_message)::text, '(playing,playing)');
   -- a second deal now finds the round playing
-  perform pg_temp.assert_eq('6g second deal', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'in_progress');
+  -- a second deal finds the round playing: while the game is still `waiting` (the flip has not happened) it is a RESUME,
+  -- once the game is active it is refused; either way nothing is re-dealt
+  perform pg_temp.assert_eq('6g second deal while waiting', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'resumed');
+  update public.games set status = 'active' where id = 'GSG';
+  perform pg_temp.assert_eq('6g second deal once active', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'in_progress');
   -- a game with no session yet: the session row is created
   insert into public.games (id, title, host_token, game_type, status) values ('GSH', 'deal test', 'tok-GSH', 'scrabble', 'waiting');
   insert into public.players (id, game_id, name) values (pg_temp.pid(181), 'GSH', 'A'), (pg_temp.pid(182), 'GSH', 'B');
@@ -461,6 +472,8 @@ begin
   perform pg_temp.assert_eq('6j protected column', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, '{"game_id":"X"}'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6j unconvertible value', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, '{"winner_player_id":"not-a-uuid"}'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6j 2-d turn_order', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, jsonb_build_object('turn_order', jsonb_build_array(jsonb_build_array(pg_temp.pid(232), pg_temp.pid(233)))))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6j empty patch keeps the leaver in turn_order', (public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, '{}'::jsonb))::text, '{"reason": "seat_not_removed", "status": "invalid"}');
+  perform pg_temp.assert_eq('6j a patch that keeps the leaver', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v, jsonb_build_object('status_message', 'x'))->>'reason', 'seat_not_removed');
   perform pg_temp.assert_eq('6j rejected: nothing changed', ((select count(*) from public.players where game_id = 'GSL'), (pg_temp.sess('GSL')).updated_at = v_v)::text, '(3,t)');
   perform pg_temp.assert_eq('6j left', public.leave_scrabble_seat('GSL', pg_temp.pid(231), v_v,
     jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(232), pg_temp.pid(233)), 'status_message', 'A left'))->>'status', 'left');

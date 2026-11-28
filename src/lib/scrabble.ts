@@ -603,6 +603,9 @@ export async function initializeScrabbleGame(
   })
   if (error) return { error: internalErrorMessage('scrabble', error) }
   const outcome = (data ?? {}) as { status?: string; reason?: string }
+  // `resumed`: this room was already dealt by an earlier start whose games flip failed; nothing was re-dealt, and the
+  // caller's (idempotent) flip to `active` now completes the start.
+  if (outcome.status === 'resumed') return {}
   if (outcome.status === 'in_progress' || outcome.status === 'not_waiting') return { error: 'Game already in progress' }
   if (outcome.status !== 'dealt') {
     return {

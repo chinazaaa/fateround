@@ -449,6 +449,7 @@ as $$
 declare
   v_id text;
   v_session public.uno_sessions%rowtype;
+  v_next public.uno_sessions%rowtype;
   v_bad text;
   v_cols text;
 begin
@@ -494,6 +495,14 @@ begin
   if p_session_patch ? 'turn_order'
      and array_ndims((jsonb_populate_record(null::public.uno_sessions, p_session_patch)).turn_order) > 1 then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end if;
+
+  -- The resulting session must NOT keep the deleted player in the rotation: an ordinary leave removes the seat from
+  -- turn_order; a Team-Up leave keeps it there (seat parity) but MARKS it in left_player_ids in the same patch.
+  v_next := jsonb_populate_record(v_session, p_session_patch);
+  if p_player_id = any (v_next.turn_order)
+     and not (jsonb_typeof(v_next.left_player_ids) = 'array' and v_next.left_player_ids ? p_player_id::text) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'seat_not_removed');
   end if;
 
   select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_patch) as k;

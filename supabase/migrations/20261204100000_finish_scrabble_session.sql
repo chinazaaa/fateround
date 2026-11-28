@@ -378,6 +378,12 @@ begin
   v_exists := found;
   -- Never re-deal a round in progress (it would reset every score).
   if v_exists and v_session.phase = 'playing' then
+    -- RESUME: the game is still `waiting` although its round is already dealt and playing: a previous start dealt
+    -- (this very transaction committed) and its separate games flip to `active` did not. Nothing is re-dealt; the
+    -- caller re-runs the flip, which is idempotent, so a failed flip never leaves the room unstartable.
+    if v_status = 'waiting' then
+      return jsonb_build_object('status', 'resumed');
+    end if;
     return jsonb_build_object('status', 'in_progress');
   end if;
   -- PERMITTED GAME STATE: a deal is only allowed while the game is `waiting` (a first start, or a rematch: Play Again puts
@@ -545,6 +551,7 @@ as $$
 declare
   v_id text;
   v_session public.scrabble_sessions%rowtype;
+  v_next public.scrabble_sessions%rowtype;
   v_bad text;
   v_cols text;
 begin
@@ -590,6 +597,12 @@ begin
   if p_session_patch ? 'turn_order'
      and array_ndims((jsonb_populate_record(null::public.scrabble_sessions, p_session_patch)).turn_order) > 1 then
     return jsonb_build_object('status', 'invalid', 'reason', 'patch_value');
+  end if;
+
+  -- The resulting session must NOT keep the deleted player in the rotation (a seat with no rack or clock row).
+  v_next := jsonb_populate_record(v_session, p_session_patch);
+  if p_player_id = any (v_next.turn_order) then
+    return jsonb_build_object('status', 'invalid', 'reason', 'seat_not_removed');
   end if;
 
   select string_agg(quote_ident(k), ', ') into v_cols from jsonb_object_keys(p_session_patch) as k;

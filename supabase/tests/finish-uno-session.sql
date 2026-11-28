@@ -462,6 +462,8 @@ begin
   perform pg_temp.assert_eq('6j unknown column', public.leave_uno_seat('GUJ', pg_temp.pid(211), v_v, '{"nope":1}'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6j unconvertible value', public.leave_uno_seat('GUJ', pg_temp.pid(211), v_v, '{"winner_player_id":"not-a-uuid"}'::jsonb)->>'status', 'invalid');
   perform pg_temp.assert_eq('6j 2-d turn_order', public.leave_uno_seat('GUJ', pg_temp.pid(211), v_v, jsonb_build_object('turn_order', jsonb_build_array(jsonb_build_array(pg_temp.pid(212), pg_temp.pid(213)))))->>'status', 'invalid');
+  perform pg_temp.assert_eq('6j empty patch keeps the leaver in turn_order', public.leave_uno_seat('GUJ', pg_temp.pid(211), v_v, '{}'::jsonb)->>'reason', 'seat_not_removed');
+  perform pg_temp.assert_eq('6j a patch that keeps the leaver', public.leave_uno_seat('GUJ', pg_temp.pid(211), v_v, jsonb_build_object('status_message', 'x'))->>'reason', 'seat_not_removed');
   perform pg_temp.assert_eq('6j rejected: nothing changed', ((select count(*) from public.players where game_id = 'GUJ'), (pg_temp.sess('GUJ')).updated_at = v_v)::text, '(3,t)');
   perform pg_temp.assert_eq('6j left', public.leave_uno_seat('GUJ', pg_temp.pid(211), v_v,
     jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(212), pg_temp.pid(213)), 'status_message', 'A left'))->>'status', 'left');
@@ -469,6 +471,11 @@ begin
     array_length((pg_temp.sess('GUJ')).turn_order, 1), (select count(*) from public.players where id = pg_temp.pid(211)),
     (select count(*) from public.uno_player_hands where player_id = pg_temp.pid(211)), (pg_temp.sess('GUJ')).updated_at > v_v)::text, '("A left",2,0,0,t)');
   perform pg_temp.assert_eq('6j other seats intact', (select count(*) from public.uno_player_hands where game_id = 'GUJ'), 2::bigint);
+  -- Team-Up: the leaver stays in turn_order (seat parity) but is MARKED in the same patch: accepted
+  perform pg_temp.assert_eq('6j team-up departure (marked)', public.leave_uno_seat('GUJ', pg_temp.pid(212), (pg_temp.sess('GUJ')).updated_at,
+    jsonb_build_object('left_player_ids', jsonb_build_array(pg_temp.pid(212)::text)))->>'status', 'left');
+  perform pg_temp.assert_eq('6j team-up: seat kept, rows gone', (array_length((pg_temp.sess('GUJ')).turn_order, 1),
+    (select count(*) from public.players where id = pg_temp.pid(212)))::text, '(2,0)');
   perform pg_temp.assert_eq('6j other game intact', (select count(*) from public.players where id = pg_temp.pid(111)), 1::bigint);
   begin perform public.leave_uno_seat(null, pg_temp.pid(212), v_v, '{}'::jsonb); raise exception 'FAIL 6j: null game id accepted';
   exception when raise_exception then if sqlerrm like 'FAIL%' then raise; end if; end;

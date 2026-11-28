@@ -10,7 +10,8 @@
 # `finished`), so the round's series points are added exactly once and the hand is written once.
 # Case B (Scrabble double finish): the same shape; the scores are written once and F2 is `already_finished`.
 #
-# Sessions are coordinated through pg_stat_activity and an advisory-lock gate, not timing. Fixtures are committed
+# Sessions are coordinated through pg_stat_activity and an advisory-lock gate, not timing. The second worker is observed
+# BLOCKED BY THE FIRST WORKER'S BACKEND (pg_blocking_pids), not merely waiting on some lock, before the gate opens. Fixtures are committed
 # (two sessions cannot share a transaction) and removed on exit.
 set -euo pipefail
 
@@ -88,7 +89,7 @@ wait_for "first finisher holds its locks" "select exists (select 1 from pg_stat_
 OUT_U="$TMPD/out_U"
 PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_U2" >"$OUT_U" 2>&1 &
 W_U=$!
-wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
+wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "second finisher answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 reap "$W_U" "case U"
@@ -116,7 +117,7 @@ wait_for "first finisher holds its locks" "select exists (select 1 from pg_stat_
 OUT_S="$TMPD/out_S"
 PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "$CALL_S2" >"$OUT_S" 2>&1 &
 W_S=$!
-wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
+wait_for "second finisher waits on the first" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "second finisher answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 reap "$W_S" "case S"
@@ -143,7 +144,7 @@ wait_for "finisher holds its locks" "select exists (select 1 from pg_stat_activi
 OUT_M="$TMPD/out_M"
 PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.apply_scrabble_move('FINLM$S', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P5\",\"score\":999}]'::jsonb)->>'status'" >"$OUT_M" 2>&1 &
 W_M=$!
-wait_for "the move waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
+wait_for "the move waits on the finish" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the move answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 reap "$W_M" "case M"
@@ -166,7 +167,7 @@ wait_for "uno finisher holds its locks" "select exists (select 1 from pg_stat_ac
 OUT_V="$TMPD/out_V"
 PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.apply_uno_move('FINLV$S', '$VER', '{}'::jsonb, '[{\"player_id\":\"$P7\",\"cards\":[{\"id\":\"zz\"}]}]'::jsonb)->>'status'" >"$OUT_V" 2>&1 &
 W_V=$!
-wait_for "the uno move waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
+wait_for "the uno move waits on the finish" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the uno move answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 reap "$W_V" "case V"
@@ -189,7 +190,7 @@ wait_for "the dealer holds its locks" "select exists (select 1 from pg_stat_acti
 OUT_D="$TMPD/out_D"
 PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_scrabble_lobby_seat('FINLD$S', '$P10')->>'status'" >"$OUT_D" 2>&1 &
 W_D=$!
-wait_for "the lobby leave waits on the deal" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
+wait_for "the lobby leave waits on the deal" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the lobby leave answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 reap "$W_D" "case D"
@@ -216,11 +217,13 @@ wait_for "the finisher holds its locks" "select exists (select 1 from pg_stat_ac
 OUT_F="$TMPD/out_F"
 PGAPPNAME=fin-$RUN-second psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.leave_scrabble_seat('FINLF$S', '$P12', '$VER', '{\"status_message\":\"B left\"}'::jsonb)->>'status'" >"$OUT_F" 2>&1 &
 W_F=$!
-wait_for "the live leave waits on the finish" "select exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second' and wait_event_type = 'Lock')"
+wait_for "the live leave waits on the finish" "select exists (select 1 from pg_stat_activity w where w.application_name = 'fin-$RUN-second' and (select f.pid from pg_stat_activity f where f.application_name = 'fin-$RUN-first' limit 1) = any (pg_blocking_pids(w.pid)))"
 open_gate
 wait_for "the live leave answered" "select not exists (select 1 from pg_stat_activity where application_name = 'fin-$RUN-second')"
 reap "$W_F" "case F"
 [ "$(cat "$OUT_F")" = "lost" ] || fail "case F: expected the live leave to be 'lost', got '$(cat "$OUT_F")'"
 [ "$(psqlq -c "select (select count(*) from public.players where game_id = 'FINLF$S') || '/' || (select count(*) from public.scrabble_player_state where game_id = 'FINLF$S')")" = "2/2" ] || fail "case F: the leave deleted rows of the finished round"
+# the published result itself is preserved (the finish committed: game and session finished, P11's score written)
+[ "$(psqlq -c "select (select status from public.games where id = 'FINLF$S') || '/' || (select phase from public.scrabble_sessions where game_id = 'FINLF$S') || '/' || (select score from public.scrabble_player_state where game_id = 'FINLF$S' and player_id = '$P11')")" = "finished/finished/7" ] || fail "case F: the published result (finished game and session, P11 score 7) was not preserved"
 
 echo "finish-session-locks: ok"

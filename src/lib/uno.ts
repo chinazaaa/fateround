@@ -751,11 +751,13 @@ export async function initializeUnoGame(
   gameId: string,
   playerIds: string[]
 ): Promise<{ error?: string }> {
-  const { data: gameRow } = await supabase
+  const { data: gameRow, error: gameError } = await supabase
     .from('games')
     .select('timer_seconds, uno_team_mode, uno_mode')
     .eq('id', gameId)
     .maybeSingle()
+  // A failed settings read must not deal a Team-Up / No Mercy lobby as a classic game.
+  if (gameError) return { error: internalErrorMessage('uno', gameError) }
   const timerSeconds = gameRow?.timer_seconds ?? 0
   const mode = parseUnoMode(gameRow?.uno_mode)
   const noMercy = mode === 'no_mercy'
@@ -818,6 +820,26 @@ export async function initializeUnoGame(
     eliminated_player_ids: [],
     color_roulette_player_id: null,
     turn_deadline_at: unoTurnDeadline(timerSeconds),
+  }
+
+  // RESUME: a previous start already dealt this room (a live session with every hand) and only its separate games flip to
+  // `active` failed. The start is then completed by the caller's (idempotent) flip; nothing is dealt a second time. A
+  // half-written deal (session without all of its hands) is cleared and dealt again.
+  const { data: existing, error: existingError } = await supabase
+    .from('uno_sessions')
+    .select('phase, turn_order')
+    .eq('game_id', gameId)
+    .maybeSingle()
+  if (existingError) return { error: internalErrorMessage('uno', existingError) }
+  if (existing && existing.phase !== 'finished') {
+    const { count, error: countError } = await supabase
+      .from('uno_player_hands')
+      .select('player_id', { count: 'exact', head: true })
+      .eq('game_id', gameId)
+    if (countError) return { error: internalErrorMessage('uno', countError) }
+    if ((count ?? 0) === ((existing.turn_order as string[] | null) ?? []).length && (count ?? 0) > 0) return {}
+    const { error: clearError } = await supabase.from('uno_sessions').delete().eq('game_id', gameId)
+    if (clearError) return { error: internalErrorMessage('uno', clearError) }
   }
 
   const { error: sessionError } = await supabase.from('uno_sessions').insert(sessionRow)
@@ -3737,9 +3759,27 @@ async function removeUnoPlayerOnce(
   if (lookupError) return { error: internalErrorMessage('uno', lookupError) }
   const session = sessionRaw as UnoSession | null
 
+  // Retention applies to a PUBLISHED game only: in a reopened lobby (games.status = 'waiting') the old finished session
+  // still lists its players, and those seats are ordinary lobby seats that a leave must drop.
+  let gameWaiting: boolean | null = null
+  const lobbyReopened = async (): Promise<{ waiting: boolean; error?: string }> => {
+    if (gameWaiting === null) {
+      const { data: statusRow, error: statusError } = await supabase
+        .from('games')
+        .select('status')
+        .eq('id', gameId)
+        .maybeSingle()
+      if (statusError) return { waiting: false, error: internalErrorMessage('uno', statusError) }
+      gameWaiting = statusRow?.status === 'waiting'
+    }
+    return { waiting: gameWaiting }
+  }
+
   // A player who already went out has a locked placement (finish_order) — preserve it.
   if (session?.finish_order?.includes(playerId)) {
-    return { error: null }
+    const reopened = await lobbyReopened()
+    if (reopened.error) return { error: reopened.error }
+    if (!reopened.waiting) return { error: null }
   }
 
   const order = session ? [...(session.turn_order ?? [])] : []
@@ -3751,7 +3791,9 @@ async function removeUnoPlayerOnce(
   // A Team-Up leaver whose departure COMMITTED (left_player_ids) but whose rows are still there is pending cleanup,
   // not a result seat: it falls through to the cleanup below. Unmarked seats stay retained.
   if (session?.phase === 'finished' && removedIndex >= 0 && !unoLeftPlayerIds(session).includes(playerId)) {
-    return { error: null, retained: true }
+    const reopened = await lobbyReopened()
+    if (reopened.error) return { error: reopened.error }
+    if (!reopened.waiting) return { error: null, retained: true }
   }
 
   if (session && removedIndex >= 0 && session.phase !== 'finished') {

@@ -197,10 +197,8 @@ describe('completePendingFinishedLeave: Uno Team-Up', () => {
     const client = {
       rpc: async (name: string, args: Row) => {
         calls.push({ name, args })
-        const marked =
-          session &&
-          session.phase === 'finished' &&
-          (session.left_player_ids as string[]).includes(String(args.p_player_id))
+        // complete_uno_departure: a player marked in left_player_ids of the CURRENT session, in any phase
+        const marked = session && (session.left_player_ids as string[]).includes(String(args.p_player_id))
         return { data: { status: marked ? 'completed' : 'none' }, error: null }
       },
     } as unknown as SupabaseClient
@@ -223,6 +221,19 @@ describe('completePendingFinishedLeave: Uno Team-Up', () => {
         'Bob'
       )
     ).toBeNull()
+    // a replacement round carries no departure marker for the (re-dealt) player: nothing is pending, whatever the phase
+    expect(
+      await completePendingFinishedLeave(
+        build({ phase: 'finished', left_player_ids: [] }).client,
+        'uno',
+        'G',
+        'a',
+        'Ann'
+      )
+    ).toBeNull()
+  })
+
+  it('a marked departure is completed on a live round too (the marker, not the phase, is the identity)', async () => {
     expect(
       await completePendingFinishedLeave(
         build({ phase: 'playing', left_player_ids: ['a'] }).client,
@@ -231,7 +242,7 @@ describe('completePendingFinishedLeave: Uno Team-Up', () => {
         'a',
         'Ann'
       )
-    ).toBeNull()
+    ).toEqual({ error: null })
   })
 
   it('a database failure is a 500', async () => {
