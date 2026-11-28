@@ -511,7 +511,7 @@ select pg_temp.assert_eq('16b nothing finished for it', (select count(*) from pu
 create temp table stx_first as select public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:00Z') as r;
 select pg_temp.assert_eq('16b the session', (select r->>'status' from stx_first), 'finished_session');
 select pg_temp.assert_eq('16b the FIRST successful call returns exactly the ids of the two played rounds (not the pending one)', (select array_agg(x order by x) from stx_first, jsonb_array_elements_text(r->'round_ids') x), (select array_agg(id::text order by id::text) from public.rounds where game_id = 'STX' and round_number < 3));
-select pg_temp.assert_eq('16b a repeat returns the same ids (idempotent)', (select count(*) from jsonb_array_elements_text(public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:00Z')->'round_ids')), 2::bigint);
+select pg_temp.assert_eq('16b a repeat returns exactly the same ids (idempotent)', (select array_agg(x order by x) from jsonb_array_elements_text(public.finish_rounds_of_finished_session('STX', '2026-01-01T00:00:00Z')->'round_ids') x), (select array_agg(x order by x) from stx_first, jsonb_array_elements_text(r->'round_ids') x));
 select pg_temp.assert_eq('16b the round of that session is finished', (select status from public.rounds where game_id = 'STX' and round_number = 1), 'finished');
 select pg_temp.assert_eq('16b a round stamped AFTER the finish by a skewed app clock is finished too (no clock comparison)', (select status from public.rounds where game_id = 'STX' and round_number = 2), 'finished');
 update public.games set status = 'active' where id = 'STX';
@@ -526,12 +526,30 @@ insert into public.rounds (id, game_id, round_number, status, participant_ids) v
   ('eeeeeeee-0000-4000-8000-000000000003', 'ST-', 3, 'pending', '{}');
 select pg_temp.assert_eq('16c activates a pending round of an active game', public.activate_ttl_round('ST-', 'eeeeeeee-0000-4000-8000-000000000002', 2)->>'status', 'activated');
 select pg_temp.assert_eq('16c ...and moves the pointer in the same step', (pg_temp.g('ST-')).current_round_number, 2);
+select pg_temp.assert_eq('16c the active round is not activated again (one round is active at a time)', public.activate_ttl_round('ST-', 'eeeeeeee-0000-4000-8000-000000000002', 2)->>'status', 'round_active');
+update public.rounds set status = 'finished' where id = 'eeeeeeee-0000-4000-8000-000000000002';
 select pg_temp.assert_eq('16c a round that is not pending is not activated again', public.activate_ttl_round('ST-', 'eeeeeeee-0000-4000-8000-000000000002', 2)->>'status', 'not_pending');
 update public.games set status = 'finished', finished_at = now() where id = 'ST-';
 select pg_temp.assert_eq('16c a FINISHED game activates nothing', public.activate_ttl_round('ST-', 'eeeeeeee-0000-4000-8000-000000000003', 3)->>'status', 'not_active');
 select pg_temp.assert_eq('16c ...the round stays pending', (select status from public.rounds where id = 'eeeeeeee-0000-4000-8000-000000000003'), 'pending');
 select pg_temp.assert_eq('16c ...and the pointer is untouched', (pg_temp.g('ST-')).current_round_number, 2);
 select pg_temp.assert_eq('16c a round of ANOTHER game is never activated through this game', public.activate_ttl_round('STX', 'eeeeeeee-0000-4000-8000-000000000003', 3)->>'status', 'not_pending');
+-- 16d. One round is active at a time and the pointer only moves forward (a stale advance picked an earlier pending round).
+select pg_temp.mk('ST/', 'active');
+insert into public.rounds (id, game_id, round_number, status, participant_ids) values
+  ('eeeeeeee-0000-4000-8000-0000000000a1', 'ST/', 1, 'pending', '{}'),
+  ('eeeeeeee-0000-4000-8000-0000000000a2', 'ST/', 2, 'pending', '{}'),
+  ('eeeeeeee-0000-4000-8000-0000000000a3', 'ST/', 3, 'pending', '{}');
+select pg_temp.assert_eq('16d the first round activates', public.activate_ttl_round('ST/', 'eeeeeeee-0000-4000-8000-0000000000a1', 1)->>'status', 'activated');
+select pg_temp.assert_eq('16d another round is refused while one is active', public.activate_ttl_round('ST/', 'eeeeeeee-0000-4000-8000-0000000000a2', 2)->>'status', 'round_active');
+select pg_temp.assert_eq('16d ...nothing was opened and the pointer did not move', (select count(*) from public.rounds where game_id = 'ST/' and status = 'active')::int || ':' || (pg_temp.g('ST/')).current_round_number, '1:1');
+update public.rounds set status = 'finished' where id = 'eeeeeeee-0000-4000-8000-0000000000a1';
+select pg_temp.assert_eq('16d after the active round finished the next one activates', public.activate_ttl_round('ST/', 'eeeeeeee-0000-4000-8000-0000000000a3', 3)->>'status', 'activated');
+update public.rounds set status = 'finished' where id = 'eeeeeeee-0000-4000-8000-0000000000a3';
+select pg_temp.assert_eq('16d a stale advance cannot move the pointer back to a skipped pending round', public.activate_ttl_round('ST/', 'eeeeeeee-0000-4000-8000-0000000000a2', 2)->>'status', 'stale_round');
+select pg_temp.assert_eq('16d ...the skipped round stays pending and the pointer stays', (select status from public.rounds where id = 'eeeeeeee-0000-4000-8000-0000000000a2') || ':' || (pg_temp.g('ST/')).current_round_number, 'pending:3');
+select pg_temp.assert_eq('16d activation takes a WRITE lock on the game row (two share locks would deadlock on the pointer write)',
+  pg_get_functiondef('public.activate_ttl_round(text, uuid, integer)'::regprocedure) ~* 'from public.games where id = upper\(p_game_id\) for no key update;', true);
 select pg_temp.assert_eq('16c service role only', has_function_privilege('anon', 'public.activate_ttl_round(text, uuid, integer)', 'execute') or has_function_privilege('authenticated', 'public.activate_ttl_round(text, uuid, integer)', 'execute'), false);
 
 -- 9e. A Start in the SAME replay generation (session_started_at set, sessions_played equal) is the same session: the departed
@@ -577,12 +595,43 @@ select pg_temp.assert_eq('17 foreign setter untouched', (select prompt_setter_pl
 --     overlapping leaves ran in: a compensating restore may have re-added the entry just before).
 select pg_temp.mk('STZ', 'active');
 insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, roster)
-  values ('cccccccc-0000-4000-8000-00000000000c', 'STZ', 'individual', 'automatic', 1, 3, 60, array[pg_temp.late('STZ'), pg_temp.early('STZ')]);
+  values ('c1c1c1c1-0000-4000-8000-0000000000c1', 'STZ', 'individual', 'automatic', 1, 3, 60, array[pg_temp.late('STZ'), pg_temp.early('STZ')]);
 select public.remove_player_if_game_open('STZ', pg_temp.late('STZ'));
 select pg_temp.assert_eq('18 the entry leaves the roster with the seat', (select roster from public.word_rush_sessions where game_id = 'STZ'), array[pg_temp.early('STZ')]);
 select pg_temp.assert_eq('18 nobody else is touched', (select count(*) from public.players where game_id = 'STZ' and id = pg_temp.early('STZ')), 1::bigint);
 
 -- A replaced session (another id) matches nothing.
 select pg_temp.assert_eq('17 other session', public.word_rush_restore_roster_member('STU', 'bbbbbbbb-0000-4000-8000-00000000000b', pg_temp.late('STU'), 0, false, null, null, 0)->>'status', 'not_current_session');
+
+-- 17b. word_rush_remove_roster_member: a compare-and-swap on the roster the caller READ, under the session row lock.
+select pg_temp.mk('ST@', 'active');
+insert into public.word_rush_sessions (id, game_id, mode, prompt_mode, num_teams, total_rounds, turn_seconds, phase, roster, prompt_setter_player_id)
+  values ('17b17b17-0000-4000-8000-0000000017b1', 'ST@', 'individual', 'manual', 1, 3, 60, 'awaiting_prompt',
+          array[pg_temp.late('ST@'), pg_temp.early('ST@')], pg_temp.late('ST@'));
+select pg_temp.assert_eq('17b the roster read is still current: applied (with the new setter)',
+  public.word_rush_remove_roster_member('ST@', '17b17b17-0000-4000-8000-0000000017b1',
+    array[pg_temp.late('ST@'), pg_temp.early('ST@')], 0, 'awaiting_prompt', pg_temp.late('ST@'),
+    array[pg_temp.early('ST@')], true, pg_temp.early('ST@'))->>'status', 'applied');
+select pg_temp.assert_eq('17b the roster and setter were written', (select roster from public.word_rush_sessions where game_id = 'ST@'), array[pg_temp.early('ST@')]);
+select pg_temp.assert_eq('17b ...setter too', (select prompt_setter_player_id from public.word_rush_sessions where game_id = 'ST@'), pg_temp.early('ST@'));
+-- A restore commits the failed leaver back; a removal computed from the OLDER roster ([early]) must not overwrite it.
+select public.word_rush_restore_roster_member('ST@', '17b17b17-0000-4000-8000-0000000017b1', pg_temp.late('ST@'), 0, false, null, null, 0);
+select pg_temp.assert_eq('17b the restore put the player back', (select cardinality(roster) from public.word_rush_sessions where game_id = 'ST@'), 2);
+select pg_temp.assert_eq('17b a write computed from the older roster is refused (the restored seat is not dropped)',
+  public.word_rush_remove_roster_member('ST@', '17b17b17-0000-4000-8000-0000000017b1',
+    array[pg_temp.early('ST@')], 0, 'awaiting_prompt', pg_temp.early('ST@'),
+    array[]::uuid[], false, null)->>'status', 'roster_changed');
+select pg_temp.assert_eq('17b ...and the roster is untouched', (select cardinality(roster) from public.word_rush_sessions where game_id = 'ST@'), 2);
+select pg_temp.assert_eq('17b a phase that moved on since the read is refused too',
+  public.word_rush_remove_roster_member('ST@', '17b17b17-0000-4000-8000-0000000017b1',
+    (select roster from public.word_rush_sessions where game_id = 'ST@'), 0, 'playing', pg_temp.early('ST@'),
+    array[pg_temp.early('ST@')], false, null)->>'status', 'roster_changed');
+select pg_temp.assert_eq('17b a prompt setter that changed since the read is refused too',
+  public.word_rush_remove_roster_member('ST@', '17b17b17-0000-4000-8000-0000000017b1',
+    (select roster from public.word_rush_sessions where game_id = 'ST@'), 0, 'awaiting_prompt', pg_temp.late('ST@'),
+    array[pg_temp.early('ST@')], false, null)->>'status', 'roster_changed');
+select pg_temp.assert_eq('17b another session id matches nothing',
+  public.word_rush_remove_roster_member('ST@', 'dddddddd-0000-4000-8000-00000000000d', array[]::uuid[], 0, 'awaiting_prompt', null, array[]::uuid[], false, null)->>'status', 'no_session');
+select pg_temp.assert_eq('17b service role only', has_function_privilege('anon', 'public.word_rush_remove_roster_member(text, uuid, uuid[], integer, text, uuid, uuid[], boolean, uuid)', 'execute') or has_function_privilege('authenticated', 'public.word_rush_remove_roster_member(text, uuid, uuid[], integer, text, uuid, uuid[], boolean, uuid)', 'execute'), false);
 
 rollback;

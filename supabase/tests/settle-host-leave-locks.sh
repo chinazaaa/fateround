@@ -55,9 +55,9 @@ psqlq() { psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A "$@"; }
 RUN="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n' | tr 'a-f' 'A-F')"
 APP="shl-$RUN"
 GATE=$(( ((0x${RUN} * 131 + $$) % 2000000000) + 1 ))
-GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"
+GA="SHA$RUN"; GB="SHB$RUN"; GC="SHC$RUN"; GD="SHD$RUN"; GE="SHE$RUN"; GF="SHF$RUN"; GG="SHG$RUN"; GH="SHH$RUN"; GI="SHI$RUN"; GJ="SHJ$RUN"
 new_uuid() { psqlq -c "select gen_random_uuid()"; }
-HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; WRSEAT2="$(new_uuid)"
+HOST="$(new_uuid)"; OTHER="$(new_uuid)"; JOINER="$(new_uuid)"; GONE="$(new_uuid)"; OTHER2="$(new_uuid)"; SEATED="$(new_uuid)"; NOMINEE="$(new_uuid)"; TTHOST="$(new_uuid)"; TTSUB="$(new_uuid)"; WRSEAT="$(new_uuid)"; WRKEEP="$(new_uuid)"; WRSESS="$(new_uuid)"; WRSESS2="$(new_uuid)"; RND1="$(new_uuid)"; RND2="$(new_uuid)"; RND3="$(new_uuid)"; RND4="$(new_uuid)"; WRSEAT2="$(new_uuid)"
 WORKERS=()
 # Every worker's output lives in ONE run-specific directory that cleanup removes (no temp files are left behind).
 OUT_DIR="$(mktemp -d)"
@@ -65,7 +65,7 @@ OUT_DIR="$(mktemp -d)"
 cleanup() {
   rm -rf "$OUT_DIR"
   psqlq -c "select pg_terminate_backend(pid) from pg_stat_activity where application_name like '$APP-%' and pid <> pg_backend_pid()" >/dev/null 2>&1 || true
-  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI')" >/dev/null 2>&1 || true
+  psqlq -c "delete from public.games where id in ('$GA', '$GB', '$GC', '$GD', '$GE', '$GF', '$GG', '$GH', '$GI', '$GJ')" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -84,6 +84,12 @@ reap() { # pid, description
 
 # The gate: held by a separate session for the whole case; a session that wants to keep its locks open does so by
 # waiting on it, and the test releases it by ending that holder.
+# The worker must be blocked BY the named holder of this run (pg_blocking_pids), not merely waiting on some heavyweight
+# lock: an unrelated relation lock wait would otherwise satisfy the check without the row lock under test.
+wait_blocked() { # description, waiter app suffix, blocker app suffix
+  wait_for "$1" "select exists (select 1 from pg_stat_activity w join pg_stat_activity b on b.pid = any (pg_blocking_pids(w.pid)) where w.application_name = '$APP-$2' and b.application_name = '$APP-$3')"
+}
+
 start_gate() {
   PGAPPNAME="$APP-gate" psql "$DB" -X -q -c "select pg_advisory_lock($GATE); select pg_sleep(120)" >/dev/null 2>&1 &
   GATE_PID=$!
@@ -113,7 +119,7 @@ wait_for "join holds its uncommitted insert" "select exists (select 1 from pg_st
 OUT_A="$OUT_DIR/out_a"
 PGAPPNAME="$APP-end" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GA', '$HOST', null, 1, false)->>'status'" >"$OUT_A" 2>&1 &
 END_PID=$!
-wait_for "end_game_if_host_alone waits on the join" "select exists (select 1 from pg_stat_activity where application_name = '$APP-end' and wait_event_type = 'Lock')"
+wait_blocked "end_game_if_host_alone waits on the join" end join
 [ "$(psqlq -c "select status from public.games where id = '$GA'")" = "waiting" ] || fail "the lobby was finished while a join was in flight"
 open_gate
 # Wait for the client processes themselves (not just the backends) before reading what they wrote.
@@ -138,7 +144,7 @@ SETTLE_PID=$!
 wait_for "settle holds its locks" "select exists (select 1 from pg_stat_activity where application_name = '$APP-settle' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 PGAPPNAME="$APP-del" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "delete from public.players where id = '$OTHER'" >/dev/null 2>&1 &
 DEL_PID=$!
-wait_for "the nominee's DELETE waits for the nomination" "select exists (select 1 from pg_stat_activity where application_name = '$APP-del' and wait_event_type = 'Lock')"
+wait_blocked "the nominee's DELETE waits for the nomination" del settle
 open_gate
 reap "$SETTLE_PID" "settle (case B): $(cat "$OUT_S")"
 reap "$DEL_PID" "nominee delete"
@@ -162,7 +168,7 @@ SETTLE2_PID=$!
 wait_for "settle holds its locks (case C)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-settle2' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 PGAPPNAME="$APP-flag" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "update public.players set spectator = true where id = '$OTHER2'" >/dev/null 2>&1 &
 FLAG_PID=$!
-wait_for "the spectator-flag UPDATE waits for the nomination" "select exists (select 1 from pg_stat_activity where application_name = '$APP-flag' and wait_event_type = 'Lock')"
+wait_blocked "the spectator-flag UPDATE waits for the nomination" flag settle2
 [ "$(psqlq -c "select spectator from public.players where id = '$OTHER2'")" = "f" ] || fail "case C: the flag changed while the nomination was in flight"
 open_gate
 reap "$SETTLE2_PID" "settle (case C): $(cat "$OUT_S2")"
@@ -186,7 +192,7 @@ wait_for "the finish holds its uncommitted update" "select exists (select 1 from
 OUT_R="$OUT_DIR/out_r"
 PGAPPNAME="$APP-remove" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_player_if_game_open('$GD', '$SEATED')->>'status'" >"$OUT_R" 2>&1 &
 REMOVE_PID=$!
-wait_for "the removal waits for the finish" "select exists (select 1 from pg_stat_activity where application_name = '$APP-remove' and wait_event_type = 'Lock')"
+wait_blocked "the removal waits for the finish" remove finish
 [ "$(psqlq -c "select count(*) from public.players where id = '$SEATED'")" = "1" ] || fail "case D: the seat was deleted while a finish was in flight"
 open_gate
 reap "$FINISH_PID" "finish"
@@ -213,7 +219,7 @@ SETTLE3_PID=$!
 wait_for "settle holds its locks (case E)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-settle3' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 PGAPPNAME="$APP-flag2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "update public.players set spectator = true where id = '$NOMINEE'" >/dev/null 2>&1 &
 FLAG2_PID=$!
-wait_for "the spectator update of the nominee waits for the settlement" "select exists (select 1 from pg_stat_activity where application_name = '$APP-flag2' and wait_event_type = 'Lock')"
+wait_blocked "the spectator update of the nominee waits for the settlement" flag2 settle3
 [ "$(psqlq -c "select spectator from public.players where id = '$NOMINEE'")" = "f" ] || fail "case E: the nominee's flag changed while the settlement was in flight"
 open_gate
 reap "$SETTLE3_PID" "settle (case E): $(cat "$OUT_E")"
@@ -251,11 +257,11 @@ PGAPPNAME="$APP-start" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "
       'submitter_player_id', '$TTSUB', 'status', 'active', 'ttl_metadata', '{\"statements\":[\"a\",\"b\",\"c\"],\"lie_index\":null}'::jsonb)),
     jsonb_build_array(jsonb_build_object('round_number', 1, 'lie_index', 1)), 1, 1)->>'status'" >"$OUT_START" 2>&1 &
 START_PID=$!
-wait_for "the start is stuck on the submitter row" "select exists (select 1 from pg_stat_activity where application_name = '$APP-start' and wait_event_type = 'Lock')"
+wait_blocked "the start is stuck on the submitter row" start blocker
 OUT_F="$OUT_DIR/out_f"
 PGAPPNAME="$APP-endf" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.end_game_if_host_alone('$GF', '$TTHOST', '$SESSION_TS', 1, false)->>'status'" >"$OUT_F" 2>&1 &
 ENDF_PID=$!
-wait_for "end_game_if_host_alone waits for the start" "select exists (select 1 from pg_stat_activity where application_name = '$APP-endf' and wait_event_type = 'Lock')"
+wait_blocked "end_game_if_host_alone waits for the start" endf start
 [ "$(psqlq -c "select status from public.games where id = '$GF'")" = "waiting" ] || fail "case F: the game changed while the start was in flight"
 open_gate
 reap "$BLOCKER_PID" "blocker"
@@ -287,7 +293,7 @@ wait_for "the removal holds its uncommitted delete" "select exists (select 1 fro
 OUT_G="$OUT_DIR/out_g"
 PGAPPNAME="$APP-restore" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.word_rush_restore_roster_member('$GG', '$WRSESS', '$WRSEAT', 0, false, null, null, 0)->>'status'" >"$OUT_G" 2>&1 &
 RESTORE_PID=$!
-wait_for "the restore waits for the removal (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-restore' and wait_event_type = 'Lock')"
+wait_blocked "the restore waits for the removal (the games row lock)" restore rm
 open_gate
 reap "$RM_PID" "removal (case G)"
 reap "$RESTORE_PID" "restore (case G): $(cat "$OUT_G")"
@@ -322,7 +328,7 @@ wait_for "the restore holds its uncommitted roster write" "select exists (select
 OUT_H="$OUT_DIR/out_h"
 PGAPPNAME="$APP-rm2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.remove_player_if_game_open('$GH', '$WRSEAT2')->>'status'" >"$OUT_H" 2>&1 &
 RM2_PID=$!
-wait_for "the seat delete waits for the restore (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-rm2' and wait_event_type = 'Lock')"
+wait_blocked "the seat delete waits for the restore (the games row lock)" rm2 restore2
 open_gate
 reap "$RESTORE2_PID" "restore (case H)"
 reap "$RM2_PID" "removal (case H): $(cat "$OUT_H")"
@@ -349,7 +355,7 @@ ACTIVATE_PID=$!
 wait_for "the activation holds its uncommitted write" "select exists (select 1 from pg_stat_activity where application_name = '$APP-activate' and wait_event_type = 'Lock' and wait_event = 'advisory')"
 PGAPPNAME="$APP-fin" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "update public.games set status = 'finished', finished_at = now() where id = '$GI'" >/dev/null 2>&1 &
 FIN_PID=$!
-wait_for "the finish waits for the activation (the games row lock)" "select exists (select 1 from pg_stat_activity where application_name = '$APP-fin' and wait_event_type = 'Lock')"
+wait_blocked "the finish waits for the activation (the games row lock)" fin activate
 open_gate
 reap "$ACTIVATE_PID" "activation (case I)"
 reap "$FIN_PID" "finish (case I)"
@@ -358,5 +364,31 @@ reap "$FIN_PID" "finish (case I)"
 [ "$(psqlq -c "select public.activate_ttl_round('$GI', '$RND2', 2)->>'status'")" = "not_active" ] || fail "case I: a round was activated in a finished game"
 [ "$(psqlq -c "select status from public.rounds where id = '$RND2'")" = "pending" ] || fail "case I: the second round was opened after the finish"
 [ "$(psqlq -c "select jsonb_array_length(public.finish_rounds_of_finished_session('$GI', (select finished_at from public.games where id = '$GI'))->'round_ids') ")" = "1" ] || fail "case I: the cleanup did not close exactly the activated round"
+
+# ---- Case J: two concurrent activations serialise on the games row (no lock-upgrade deadlock) ----------------------
+# activate_ttl_round() takes the games row FOR NO KEY UPDATE first, so the second activation WAITS for the first before it
+# touches any round; once the first committed it answers round_active (one active round) and writes nothing.
+psqlq <<SQL
+insert into public.games (id, title, host_token, game_type, status) values ('$GJ', 'lock test J', 'tok-$RUN-j', 'two_truths', 'active');
+insert into public.rounds (id, game_id, round_number, status, participant_ids) values
+  ('$RND3', '$GJ', 1, 'pending', '{}'), ('$RND4', '$GJ', 2, 'pending', '{}');
+SQL
+start_gate
+PGAPPNAME="$APP-act1" psql "$DB" -v ON_ERROR_STOP=1 -X -q -c "
+  begin;
+  select public.activate_ttl_round('$GJ', '$RND3', 1);
+  select pg_advisory_xact_lock($GATE);
+  commit;" >/dev/null 2>&1 &
+ACT1_PID=$!
+wait_for "the first activation holds its uncommitted write" "select exists (select 1 from pg_stat_activity where application_name = '$APP-act1' and wait_event_type = 'Lock' and wait_event = 'advisory')"
+OUT_J="$OUT_DIR/out_j"
+PGAPPNAME="$APP-act2" psql "$DB" -v ON_ERROR_STOP=1 -X -q -t -A -c "select public.activate_ttl_round('$GJ', '$RND4', 2)->>'status'" >"$OUT_J" 2>&1 &
+ACT2_PID=$!
+wait_blocked "the second activation waits for the first (the games row lock)" act2 act1
+open_gate
+reap "$ACT1_PID" "first activation (case J)"
+reap "$ACT2_PID" "second activation (case J)"
+[ "$(tr -d '[:space:]' <"$OUT_J")" = "round_active" ] || fail "case J: the second activation did not see the first round active (got $(cat "$OUT_J"))"
+[ "$(psqlq -c "select status from public.rounds where id = '$RND4'")" = "pending" ] || fail "case J: the second round was opened"
 
 echo "ok"

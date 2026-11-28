@@ -1893,7 +1893,12 @@ export async function DELETE(req: NextRequest) {
       { status: res.status }
     )
   }
-  if (settled === 'retained_clear_failed' || ctx.seatRetained) {
+  if (
+    settled === 'retained_clear_failed' ||
+    // `ctx.seatRetained` was recorded BEFORE the settlement: a reopened (Play Again) and re-left game may have deleted the
+    // seat since, and then a "try again" would be advice the resume token can no longer honour. Re-check the seat.
+    (ctx.seatRetained && (await seatPresence(ctx.handoff.gameId, ctx.handoff.playerId)) === 'present')
+  ) {
     // The seat is KNOWN to still exist (a retained leave): the resume token still works, so this one really can be
     // repeated, and nothing is claimed about the handoff beyond that.
     return NextResponse.json({ error: 'Could not finish leaving the game — try again' }, { status: 500 })
@@ -2061,13 +2066,22 @@ async function endGameIfHostAlone(h: HostHandoff): Promise<'finished' | 'closed'
  * remove_player_if_game_open): this owes the finish what any host-left finish owes (its bookkeeping and the session-bound
  * cleanup), bound to the finish the database just wrote.
  */
-async function completeHostEndedByRemoval(h: HostHandoff | null, gameId: string, finishedAt: string) {
+async function completeHostEndedByRemoval(
+  h: HostHandoff | null,
+  gameId: string,
+  finishedAt: string
+): Promise<string | null> {
   const admin = getSupabaseAdmin()
   // The finish wrote the durable bookkeeping marker itself (tracked): resuming is a lease claim on it.
   if (h) await resumeHostLeftBookkeeping(admin, gameId)
   const cleanup = await completeHostLeftCleanup(admin, gameId, { finishedAt })
   if (cleanup.error) console.error(`players: cleanup after host-left finish failed for ${gameId}`, cleanup.error)
+  // The seat was KEPT, so a failed cleanup can be retried by the host leaving again (the finished-game branch reruns
+  // it): the caller answers an error instead of a success that would stop anyone from repeating it.
+  return cleanup.error
 }
+
+const CLEANUP_RETRY_ERROR = 'Could not finish leaving the game — try again'
 
 /** A leave of a finished game keeps the seat (the result stays intact); the leaver just stops being pushed to. */
 async function retainedLeaveResponse(ctx: { seatRetained: boolean }, gameId: string, playerId: string) {
@@ -2323,10 +2337,11 @@ async function removePlayer(
       playerId,
       ctx.handoff ? { session: ctx.handoff.session, trackBookkeeping: true } : undefined
     )
-    if (hostEnded) await completeHostEndedByRemoval(ctx.handoff, id, hostEnded.finishedAt)
+    const hostEndedError = hostEnded ? await completeHostEndedByRemoval(ctx.handoff, id, hostEnded.finishedAt) : null
     // The game finished after this request read it: the seat belongs to a result and was NOT deleted (a definite answer).
     if (!error && gameFinished) {
       ctx.seatMayBeRemoved = false
+      if (hostEndedError) return NextResponse.json({ error: CLEANUP_RETRY_ERROR }, { status: 500 })
       return retainedLeaveResponse(ctx, id, playerId)
     }
     if (error) return NextResponse.json({ error }, { status: 500 })
@@ -2468,6 +2483,13 @@ async function removePlayer(
     }
     const sync = await syncWordRushAfterPlayerRemoved(admin, id, playerId)
     if (sync.error) {
+      // The roster change may already be written (the reconciliation failed AFTER it, ending the round): the player
+      // still has their seat, so put them back before answering (session-bound, arbitrated by the database).
+      const pending = sync.rollback ?? wordRushRollback
+      if (pending) {
+        const restored = await revertWordRushRosterAfterFailedPlayerDelete(admin, id, pending)
+        if (restored === 'failed') console.error(`players: could not restore the Word Rush roster for ${id}`)
+      }
       return NextResponse.json({ error: sync.error }, { status: sync.internal ? 500 : 400 })
     }
     // A retry's sync may find the player already off the roster (no new rollback): the earlier one still describes this
@@ -2518,7 +2540,9 @@ async function removePlayer(
     if (removal.sessionChanged) {
       return NextResponse.json({ error: 'The game changed while you were leaving — try again' }, { status: 500 })
     }
-    if (removal.hostEnded) await completeHostEndedByRemoval(ctx.handoff, id, removal.hostEnded.finishedAt)
+    const hostEndedError = removal.hostEnded
+      ? await completeHostEndedByRemoval(ctx.handoff, id, removal.hostEnded.finishedAt)
+      : null
     let seat: 'deleted' | 'retained' | 'unknown' = 'deleted'
     // Word Rush: the roster change made for this removal is put back by ONE database step that also decides, under the
     // games + session row locks, whether the seat survived (`restored`), was deleted (`no_seat`: nothing to restore),
@@ -2566,6 +2590,7 @@ async function removePlayer(
       if (seat === 'unknown') {
         return NextResponse.json({ error: 'Could not confirm that you left the game' }, { status: 500 })
       }
+      if (hostEndedError) return NextResponse.json({ error: CLEANUP_RETRY_ERROR }, { status: 500 })
       return retainedLeaveResponse(ctx, id, playerId)
     }
   }

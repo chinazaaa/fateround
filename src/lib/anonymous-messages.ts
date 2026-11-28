@@ -240,13 +240,20 @@ async function finishAndClearSession(
   if (!won) {
     const { data: current, error: currentError } = await supabase
       .from('games')
-      .select('status, finished_at')
+      .select('status, finished_at, session_started_at')
       .eq('id', gameId)
       .maybeSingle()
     if (currentError)
       return { error: null, won, cleanupError: internalErrorMessage('anonymous-messages', currentError) }
     if (current?.status !== 'finished' || !current.finished_at) {
       return { error: null, won, cleanupError: null, currentStatus: current?.status ?? null }
+    }
+    // The caller named the session it saw expire: a finished room that is in a LATER session (replayed and finished
+    // again) is not the finish this request lost to, and its wipe is not this request's to run or to report on.
+    if (onlySessionStartedAt !== undefined) {
+      const ours = onlySessionStartedAt === null ? null : Date.parse(onlySessionStartedAt)
+      const theirs = current.session_started_at ? Date.parse(current.session_started_at as string) : null
+      if (ours !== theirs) return { error: null, won, cleanupError: null, currentStatus: 'superseded_session' }
     }
     wipeUpTo = current.finished_at as string
   }

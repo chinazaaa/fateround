@@ -125,6 +125,7 @@ describe('syncWordRushAfterPlayerRemoved snapshot', () => {
       created_at: '2026-01-01T00:00:00.000Z',
     }
     const client = {
+      rpc: async () => ({ data: { status: 'applied' }, error: null }),
       from: (table: string) => {
         // Any chained query verb returns the same chainable; the reads resolve to the session / empty lists.
         const api: unknown = new Proxy(
@@ -192,6 +193,12 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
   const sessionUpdateFilters: Array<Array<[string, unknown]>> = []
   /** The patch of each update to word_rush_sessions, index-aligned with sessionUpdateFilters. */
   const sessionUpdatePatches: Array<Record<string, unknown>> = []
+  /** Every word_rush_remove_roster_member call (the compare-and-swap roster write). */
+  const rosterCalls: Array<Record<string, unknown>> = []
+  /** What the next roster compare-and-swap answers (`applied`, or `roster_changed` when a restore committed meanwhile). */
+  /** The round's answers cannot be read. */
+  let failAnswers = false
+  let rosterAnswer: { status?: string; error?: boolean } = { status: 'applied' }
   const clientFor = (
     session: Record<string, unknown>,
     claimWins: boolean,
@@ -202,12 +209,20 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
     let gameReads = 0
     sessionUpdateFilters.length = 0
     sessionUpdatePatches.length = 0
+    rosterCalls.length = 0
+    failAnswers = false
+    rosterAnswer = { status: staleRoster ? 'roster_changed' : 'applied' }
     return {
-      rpc: async () => ({ data: 'applied', error: null }),
+      rpc: async (fn: string, args: Record<string, unknown>) => {
+        if (fn !== 'word_rush_remove_roster_member') return { data: 'applied', error: null }
+        rosterCalls.push(args)
+        return rosterAnswer.error
+          ? { data: null, error: { message: 'boom' } }
+          : { data: { status: rosterAnswer.status }, error: null }
+      },
       from: (table: string) => {
         let updating = false
         let clearing = false
-        let rosterWrite = false
         const filters: Array<[string, unknown]> = []
         const api: unknown = new Proxy(
           {},
@@ -228,7 +243,6 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
                 return (patch: Record<string, unknown>) => {
                   updating = true
                   clearing = patch.round_finalize === null
-                  rosterWrite = 'roster' in patch
                   if (table === 'word_rush_sessions') {
                     sessionUpdateFilters.push(filters)
                     sessionUpdatePatches.push(patch)
@@ -243,11 +257,13 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
               if (prop === 'then')
                 return (resolve: (v: unknown) => void) =>
                   resolve({
-                    data:
-                      updating && table === 'word_rush_sessions' && (claimWins || (rosterWrite && !staleRoster))
-                        ? [{ id: 'S-1' }]
-                        : [],
-                    error: failClear && clearing ? { message: 'clear failed' } : null,
+                    data: updating && table === 'word_rush_sessions' && claimWins ? [{ id: 'S-1' }] : [],
+                    error:
+                      table === 'word_rush_answers' && failAnswers
+                        ? { message: 'answers unreadable' }
+                        : failClear && clearing
+                          ? { message: 'clear failed' }
+                          : null,
                   })
               return () => api
             },
@@ -296,6 +312,78 @@ describe('syncWordRushAfterPlayerRemoved: a finish THIS removal caused', () => {
       expect(result.ownFinish).toBe(true)
     } finally {
       finish.bookkeeping = 'none'
+    }
+  })
+
+  it('the roster write is a compare-and-swap on the roster the call READ (a restore that committed meanwhile is never overwritten)', async () => {
+    await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true), 'GAME', 'b')
+    expect(rosterCalls[0]).toMatchObject({
+      p_session_id: 'S-1',
+      p_expected_roster: ['a', 'b'],
+      p_expected_turn_index: 2,
+      p_expected_phase: 'playing',
+      p_expected_setter: 'a',
+      p_new_roster: ['a'],
+    })
+  })
+
+  it('a roster that changed since the read (`roster_changed`) writes nothing and is read again, then reported', async () => {
+    const result = await syncWordRushAfterPlayerRemoved(clientFor(individualSession(), true, false, true), 'GAME', 'b')
+    expect(rosterCalls).toHaveLength(3)
+    expect(result.rollback).toBeUndefined()
+    expect(result.error).toMatch(/changed while you were leaving/i)
+  })
+
+  it('unreadable answers after the roster write are an error carrying the rollback (never "nobody answered")', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      // Another answerer remains, so only the answers decide whether the round is over.
+      const client = clientFor(individualSession({ roster: ['a', 'b', 'c'] }), true)
+      failAnswers = true
+      const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
+      expect(result.internal).toBe(true)
+      expect(result.rollback).toMatchObject({ session_id: 'S-1', removed_player_id: 'b' })
+      expect(result.ownFinish).toBeUndefined()
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('a failed roster write is an internal error (nothing proceeds)', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const client = clientFor(individualSession(), true)
+      rosterAnswer = { error: true }
+      const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
+      expect(result.internal).toBe(true)
+      expect(result.rollback).toBeUndefined()
+    } finally {
+      log.mockRestore()
+    }
+  })
+
+  it('an unreadable game is an error, never "not active" (the roster would be left unreconciled)', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const client = {
+        rpc: async () => ({ data: { status: 'applied' }, error: null }),
+        from: () => {
+          const api: unknown = new Proxy(
+            {},
+            {
+              get: (_t, prop) =>
+                prop === 'maybeSingle' ? async () => ({ data: null, error: { message: 'down' } }) : () => api,
+            }
+          )
+          return api
+        },
+      } as unknown as SupabaseClient
+      const result = await syncWordRushAfterPlayerRemoved(client, 'GAME', 'b')
+      expect(result.internal).toBe(true)
+      expect(result.error).toBeDefined()
+      expect(result.rollback).toBeUndefined()
+    } finally {
+      log.mockRestore()
     }
   })
 
