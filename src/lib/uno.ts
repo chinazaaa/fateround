@@ -565,7 +565,9 @@ function activePlayerCount(session: UnoSession, hands: UnoPlayerHand[]): number 
 }
 
 export function anyPlayerCanPlay(hands: UnoPlayerHand[], session: UnoSession): boolean {
+  const left = new Set<string>(unoLeftPlayerIds(session))
   for (const row of hands) {
+    if (left.has(row.player_id)) continue
     const cards = (row.cards as UnoCard[]) ?? []
     if (cards.length === 0) continue
     if (hasPlayableCard(cards, session)) return true
@@ -1143,8 +1145,9 @@ function playerOutPatch(
   }
 
   const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
+  const leftIds = unoLeftPlayerIds(session)
   const remaining = (session.turn_order ?? []).filter(
-    (id) => id !== playerId && !eliminated.has(id) && unoHandCount(hands, id) > 0
+    (id) => id !== playerId && !eliminated.has(id) && !leftIds.includes(id) && unoHandCount(hands, id) > 0
   )
 
   if (gameDurationSeconds <= 0 || remaining.length < 2) {
@@ -1494,6 +1497,7 @@ function planMercyKnockout(input: {
     turn_order?: string[] | null
     eliminated_player_ids?: string[] | null
     finish_order?: string[] | null
+    left_player_ids?: string[] | null
     draw_pile?: UnoCard[] | null
     status_message?: string | null
   }
@@ -1516,7 +1520,8 @@ function planMercyKnockout(input: {
   // Standing players = seated - eliminated - already-finished (emptied their hand).
   const seated = new Set<string>(state.turn_order ?? [])
   const finished = new Set<string>(state.finish_order ?? [])
-  const standing = [...seated].filter((id) => !nextEliminated.includes(id) && !finished.has(id))
+  const leftIds = new Set<string>(state.left_player_ids ?? [])
+  const standing = [...seated].filter((id) => !nextEliminated.includes(id) && !finished.has(id) && !leftIds.has(id))
 
   const endsRound =
     winCondition === 'last_standing' && standing.length <= 1 && (finished.size === 0 || standing.length === 0)
@@ -1598,6 +1603,7 @@ async function commitMoveWithKnockouts(
     turn_order: session.turn_order,
     eliminated_player_ids: session.eliminated_player_ids,
     finish_order: session.finish_order,
+    left_player_ids: unoLeftPlayerIds(session),
     draw_pile: (patch.draw_pile ?? session.draw_pile) as UnoCard[] | null,
     status_message: patch.status_message ?? session.status_message,
   }
@@ -1722,7 +1728,11 @@ export function rotateActiveHands(
   direction: number
 ): { playerId: string; cards: UnoCard[] }[] {
   const eliminated = new Set<string>((session.eliminated_player_ids as string[] | null) ?? [])
-  const seq = (session.turn_order ?? []).filter((id) => !eliminated.has(id) && (handMap.get(id)?.length ?? 0) > 0)
+  // A marked Team-Up leaver is out of the rotation as soon as the marker commits (their hand row may still exist).
+  const left = new Set<string>(unoLeftPlayerIds(session))
+  const seq = (session.turn_order ?? []).filter(
+    (id) => !eliminated.has(id) && !left.has(id) && (handMap.get(id)?.length ?? 0) > 0
+  )
   const n = seq.length
   if (n < 2) return seq.map((id) => ({ playerId: id, cards: handMap.get(id) ?? [] }))
   const H = seq.map((id) => handMap.get(id) ?? [])
@@ -1826,7 +1836,10 @@ export async function processUnoPlay(
   const isZero = rules.zeroSeven && card.kind === 'number' && card.value === 0 && !wentOut
   // Only enter the swap phase if there's actually another player to swap with — otherwise a
   // no-timer game would hang on the picker. Without a target the 7 just plays as a number.
-  const sevenHasTarget = (session.turn_order ?? []).some((id) => id !== playerId && unoHandCount(hands, id) > 0)
+  const leftSeats = unoLeftPlayerIds(session)
+  const sevenHasTarget = (session.turn_order ?? []).some(
+    (id) => id !== playerId && !leftSeats.includes(id) && unoHandCount(hands, id) > 0
+  )
   const isSeven = rules.zeroSeven && card.kind === 'number' && card.value === 7 && !wentOut && sevenHasTarget
   let rotatedWrites: { playerId: string; cards: UnoCard[] }[] | null = null
 
@@ -2257,8 +2270,10 @@ export async function processUnoPlayMulti(
   }
   if (missed && patch.status_message) patch.status_message = `${patch.status_message} · ${missed.note}`
 
+  // The call counts only if the mover is STILL on one card after an auto-resolved draw that came back to them.
+  const finalOwesUno = autoDraw && autoDraw.playerId === playerId ? autoDraw.hand.length === 1 : owesUno
   const moverStats = foldUnoPlay(currentUnoStats(hands, playerId), cards, hand, wentOut, {
-    calledUno: owesUno && callUno,
+    calledUno: finalOwesUno && callUno,
     caught: !!missed,
     stackedDraw2:
       session.draw_penalty_kind === 'draw2' && (session.draw_penalty ?? 0) > 0 && cards.some((c) => c.kind === 'draw2'),
@@ -2469,6 +2484,7 @@ export async function processUnoDraw(
             turn_order: session.turn_order,
             eliminated_player_ids: session.eliminated_player_ids,
             finish_order: session.finish_order,
+            left_player_ids: unoLeftPlayerIds(session),
             draw_pile: drawPile,
             status_message: session.status_message,
           },
@@ -3326,7 +3342,9 @@ export async function processUnoSwap(
   const currentId = currentPlayerId(session)
   if (currentId !== playerId) return { error: 'Not your turn' }
   if (targetId === playerId) return { error: 'Pick another player to swap with' }
-  if (!(session.turn_order ?? []).includes(targetId)) return { error: 'That player is not in the game' }
+  if (!(session.turn_order ?? []).includes(targetId) || unoLeftPlayerIds(session).includes(targetId)) {
+    return { error: 'That player is not in the game' }
+  }
   if (((session.eliminated_player_ids as string[] | null) ?? []).includes(targetId)) {
     return { error: 'That player is knocked out' }
   }
@@ -3541,7 +3559,10 @@ async function expireUnoTurn(
 
   if (session.phase === 'swap_target') {
     // Auto-swap with the first other active player on timeout.
-    const targetId = (session.turn_order ?? []).find((id) => id !== currentId && unoHandCount(hands, id) > 0)
+    const leftNow = unoLeftPlayerIds(session)
+    const targetId = (session.turn_order ?? []).find(
+      (id) => id !== currentId && !leftNow.includes(id) && unoHandCount(hands, id) > 0
+    )
     if (targetId) return settle(await processUnoSwap(supabase, gameId, currentId, targetId, expectedUpdatedAt))
     // No one to swap with — just resume play.
     const direction = session.direction < 0 ? -1 : 1
@@ -3699,11 +3720,14 @@ async function removeUnoPlayerOnce(
   }
 
   if (session && removedIndex >= 0 && session.phase !== 'finished') {
-    const { data: gameRow } = await supabase
+    const { data: gameRow, error: gameError } = await supabase
       .from('games')
       .select('timer_seconds, uno_team_mode')
       .eq('id', gameId)
       .maybeSingle()
+    // A failed settings read is not "not Team-Up": the ordinary branch would shrink a four-seat Team-Up turn order to
+    // three and delete the leaver's rows, bypassing the team path. Stop before choosing a branch.
+    if (gameError) return { error: internalErrorMessage('uno', gameError) }
     const timerSeconds = gameRow?.timer_seconds ?? 0
     const teamMode = gameRow?.uno_team_mode === true
     const { data: playerRows } = await supabase.from('players').select('id, name').eq('game_id', gameId)
@@ -3716,6 +3740,22 @@ async function removeUnoPlayerOnce(
     // in, pause for that teammate to choose continue-solo vs forfeit; if the whole team is
     // gone, the other team wins. ────────────────────────────────────────────────────────
     if (teamMode && order.length === UNO_TEAM_PLAYERS) {
+      // A retry of a departure that already COMMITTED (the marker is in left_player_ids) is cleanup only: it must not
+      // claim the session again, and above all must not reopen a teammate decision that was already resolved.
+      if (unoLeftPlayerIds(session).includes(playerId)) {
+        const { error: handDeleteError } = await supabase
+          .from('uno_player_hands')
+          .delete()
+          .eq('game_id', gameId)
+          .eq('player_id', playerId)
+        if (handDeleteError) return { error: internalErrorMessage('uno', handDeleteError) }
+        const { error: playerDeleteError } = await supabase
+          .from('players')
+          .delete()
+          .eq('id', playerId)
+          .eq('game_id', gameId)
+        return { error: playerDeleteError ? internalErrorMessage('uno', playerDeleteError) : null }
+      }
       const { data: handRows, error: handError } = await supabase
         .from('uno_player_hands')
         .select('player_id, cards')

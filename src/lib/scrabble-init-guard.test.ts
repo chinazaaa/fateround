@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { initializeScrabbleGame } from './scrabble'
 import { INTERNAL_ERROR_MESSAGE } from './api-errors'
+import { SCRABBLE_DEFAULT_DICTIONARY } from './scrabble-dictionary-meta'
+import { tileSetForDictionary } from './scrabble-rulesets'
 
 // Dealing a round is ONE database call (`deal_scrabble_session`): the function owns the decisions that used to be
 // scattered app-side statements. It refuses to re-deal a session that is still `playing` (a live game's scores must
@@ -10,7 +12,7 @@ import { INTERNAL_ERROR_MESSAGE } from './api-errors'
 
 type Outcome = { status: string; reason?: string }
 
-function makeMockSupabase(outcome: Outcome | { rpcError: string }) {
+function makeMockSupabase(outcome: Outcome | { rpcError: string }, opts: { failSettings?: boolean } = {}) {
   const rpcCalls: { name: string; args: Record<string, unknown> }[] = []
   const tableOps: string[] = []
 
@@ -24,10 +26,19 @@ function makeMockSupabase(outcome: Outcome | { rpcError: string }) {
     return p
   }
 
+  function chainError(): Promise<{ data: null; error: { message: string } }> & Record<string, unknown> {
+    const result = { data: null, error: { message: 'boom' } }
+    const p = Promise.resolve(result) as Promise<typeof result> & Record<string, unknown>
+    p.eq = () => chainError()
+    p.maybeSingle = () => Promise.resolve(result)
+    return p
+  }
+
   const supabase = {
     from(table: string) {
       return {
         select() {
+          if (table === 'games' && opts.failSettings) return chainError()
           if (table === 'games') return chain({ timer_seconds: 0, scrabble_dictionary_id: null })
           if (table === 'players')
             return chain([
@@ -77,14 +88,39 @@ describe('initializeScrabbleGame — one transactional deal', () => {
     expect(tableOps).toEqual([])
   })
 
+  it('the remaining bag is part of the deal: bag + racks are exactly the tile distribution (no missing, no duplicated tile)', async () => {
+    const { supabase, rpcCalls } = makeMockSupabase({ status: 'dealt' })
+    await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])
+    const row = rpcCalls[0].args.p_session_row as { bag?: string[] }
+    const states = rpcCalls[0].args.p_state_rows as { rack: string[] }[]
+    expect(Array.isArray(row.bag)).toBe(true)
+    const dealt = [...(row.bag ?? []), ...states.flatMap((s) => s.rack)].sort()
+    const distribution = tileSetForDictionary(SCRABBLE_DEFAULT_DICTIONARY).distribution
+    const expected = Object.entries(distribution)
+      .flatMap(([letter, n]) => Array.from({ length: n as number }, () => letter))
+      .sort()
+    expect(dealt).toEqual(expected)
+  })
+
   it('refuses to re-deal a round that is still playing (score-wipe guard, overlapping starts)', async () => {
     const { supabase } = makeMockSupabase({ status: 'in_progress' })
+    expect(await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).toEqual({ error: 'Game already in progress' })
+  })
+
+  it('a stale start on a game that is no longer waiting is refused', async () => {
+    const { supabase } = makeMockSupabase({ status: 'not_waiting' })
     expect(await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).toEqual({ error: 'Game already in progress' })
   })
 
   it('a seat whose player row is gone (a leave cleaning up the lobby) fails the deal', async () => {
     const { supabase } = makeMockSupabase({ status: 'invalid', reason: 'state_row' })
     expect((await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).error).toBeTruthy()
+  })
+
+  it('a failed settings read stops the deal: no defaults are dealt (wrong clock, dictionary or timer)', async () => {
+    const { supabase, rpcCalls } = makeMockSupabase({ status: 'dealt' }, { failSettings: true })
+    expect((await initializeScrabbleGame(supabase, 'GAME1', ['A', 'B'])).error).toBe(INTERNAL_ERROR_MESSAGE)
+    expect(rpcCalls).toHaveLength(0)
   })
 
   it('a database failure is the generic error', async () => {

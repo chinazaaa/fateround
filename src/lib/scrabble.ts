@@ -121,7 +121,9 @@ async function finalizeScrabbleSession(
     const { data: playersRaw } = await supabase.from('players').select('id,name').eq('game_id', gameId)
     const names = new Map((playersRaw ?? []).map((p) => [p.id as string, p.name as string]))
 
-    const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
+    const settings = await loadScrabbleSettings(supabase, gameId)
+    if (settings.error) return { error: settings.error }
+    const tileSet = tileSetForDictionary(settings.dictionaryId)
     const result = finalizeScores(states, names, null, tileSet.values)
     finished = await finishScrabbleRound(supabase, gameId, session, {
       patch: {
@@ -270,28 +272,34 @@ function computeDeadline(timerSeconds: number, now: number): string | null {
   return timerSeconds > 0 ? new Date(now + timerSeconds * 1000).toISOString() : null
 }
 
-async function loadTimerSeconds(supabase: SupabaseClient, gameId: string): Promise<number> {
-  const { data } = await supabase.from('games').select('timer_seconds').eq('id', gameId).maybeSingle()
-  return data?.timer_seconds ?? 0
-}
-
-async function loadDictionaryId(supabase: SupabaseClient, gameId: string): Promise<string> {
-  const { data } = await supabase.from('games').select('scrabble_dictionary_id').eq('id', gameId).maybeSingle()
-  return data?.scrabble_dictionary_id ?? SCRABBLE_DEFAULT_DICTIONARY
-}
-
-async function loadClockConfig(
+/**
+ * The game's settings in ONE read. A failed read is reported as `error` and callers stop: falling back to defaults would
+ * deal / score / time a game with the wrong clock, dictionary or turn timer (a chess-clock lobby dealt as a standard
+ * game, tile values from the default edition).
+ */
+async function loadScrabbleSettings(
   supabase: SupabaseClient,
   gameId: string
-): Promise<{ mode: ScrabbleClockMode; clockSeconds: number }> {
-  const { data } = await supabase
+): Promise<{
+  error?: string
+  timerSeconds: number
+  dictionaryId: string
+  clockMode: ScrabbleClockMode
+  clockSeconds: number
+}> {
+  const { data, error } = await supabase
     .from('games')
-    .select('scrabble_clock_mode, scrabble_clock_seconds')
+    .select('timer_seconds, scrabble_dictionary_id, scrabble_clock_mode, scrabble_clock_seconds')
     .eq('id', gameId)
     .maybeSingle()
-  const mode = parseScrabbleClockMode(data?.scrabble_clock_mode)
-  const clockSeconds = mode === 'chess' ? clampScrabbleClockSeconds(data?.scrabble_clock_seconds) : 0
-  return { mode, clockSeconds }
+  const clockMode = parseScrabbleClockMode(data?.scrabble_clock_mode)
+  return {
+    error: error ? internalErrorMessage('scrabble', error) : undefined,
+    timerSeconds: data?.timer_seconds ?? 0,
+    dictionaryId: data?.scrabble_dictionary_id ?? SCRABBLE_DEFAULT_DICTIONARY,
+    clockMode,
+    clockSeconds: clockMode === 'chess' ? clampScrabbleClockSeconds(data?.scrabble_clock_seconds) : 0,
+  }
 }
 
 /** Players still on the clock (not flagged out). Everyone in standard mode. */
@@ -543,9 +551,10 @@ export async function initializeScrabbleGame(
     return { error: `Need ${SCRABBLE_MIN_PLAYERS}-${SCRABBLE_MAX_PLAYERS} players to start` }
   }
 
-  const timerSeconds = await loadTimerSeconds(supabase, gameId)
-  const { mode: clockMode, clockSeconds } = await loadClockConfig(supabase, gameId)
-  const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
+  const settings = await loadScrabbleSettings(supabase, gameId)
+  if (settings.error) return { error: settings.error }
+  const { timerSeconds, clockMode, clockSeconds } = settings
+  const tileSet = tileSetForDictionary(settings.dictionaryId)
   const names = await loadPlayerNames(supabase, gameId)
 
   const turnOrder = shuffle(playerIds)
@@ -594,7 +603,7 @@ export async function initializeScrabbleGame(
   })
   if (error) return { error: internalErrorMessage('scrabble', error) }
   const outcome = (data ?? {}) as { status?: string; reason?: string }
-  if (outcome.status === 'in_progress') return { error: 'Game already in progress' }
+  if (outcome.status === 'in_progress' || outcome.status === 'not_waiting') return { error: 'Game already in progress' }
   if (outcome.status !== 'dealt') {
     return {
       error: internalErrorMessage(
@@ -638,7 +647,9 @@ export async function processScrabblePlay(
     remaining.splice(idx, 1)
   }
 
-  const dictId = await loadDictionaryId(supabase, gameId)
+  const settings = await loadScrabbleSettings(supabase, gameId)
+  if (settings.error) return { error: settings.error }
+  const dictId = settings.dictionaryId
   const tileSet = tileSetForDictionary(dictId)
 
   // Every placed letter — including the letter chosen for a blank — must belong to
@@ -661,7 +672,7 @@ export async function processScrabblePlay(
   }
 
   const names = await loadPlayerNames(supabase, gameId)
-  const timerSeconds = await loadTimerSeconds(supabase, gameId)
+  const timerSeconds = settings.timerSeconds
   const now = Date.now()
 
   // Apply the move: place tiles, refill the rack from the bag, award the score.
@@ -788,7 +799,9 @@ async function advanceScorelessTurn(
   // and written together with the finish (or, for a non-finishing move, right after the claim).
   newRack?: string[]
 ): Promise<{ error?: string; won: boolean; finished?: boolean }> {
-  const timerSeconds = await loadTimerSeconds(supabase, gameId)
+  const settings = await loadScrabbleSettings(supabase, gameId)
+  if (settings.error) return { won: false, error: settings.error }
+  const timerSeconds = settings.timerSeconds
   const now = Date.now()
   const isChess = session.clock_mode === 'chess'
 
@@ -817,7 +830,7 @@ async function advanceScorelessTurn(
     // An empty tally would publish a round with no winner ("Winner wins with -Infinity points!").
     if (states.length === 0)
       return { won: false, error: internalErrorMessage('scrabble', 'no seated players to finalize') }
-    const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
+    const tileSet = tileSetForDictionary(settings.dictionaryId)
     const result = finalizeScores(states, names, null, tileSet.values)
 
     const finished = await finishScrabbleRound(supabase, gameId, session, {
@@ -998,7 +1011,9 @@ async function processScrabbleChessTimeout(
 
   if (nextIndex === -1) {
     // Everyone has flagged out — end the game (standard rack penalty, winner by score).
-    const tileSet = tileSetForDictionary(await loadDictionaryId(supabase, gameId))
+    const settings = await loadScrabbleSettings(supabase, gameId)
+    if (settings.error) return { error: settings.error }
+    const tileSet = tileSetForDictionary(settings.dictionaryId)
     const result = finalizeScores(states, names, null, tileSet.values)
     const finished = await finishScrabbleRound(supabase, gameId, session, {
       patch: {
@@ -1189,7 +1204,9 @@ async function removeScrabblePlayerOnce(
       update.turn_started_at = new Date().toISOString()
       update.turn_deadline_at = null
     } else {
-      const timerSeconds = await loadTimerSeconds(supabase, gameId)
+      const settings = await loadScrabbleSettings(supabase, gameId)
+      if (settings.error) return { error: settings.error }
+      const timerSeconds = settings.timerSeconds
       const nextPlayerId = turnOrder[currentTurnIndex]
       update.status_message = `${removedName} left. ${turnMessage(names, nextPlayerId)}`
       update.turn_deadline_at = computeDeadline(timerSeconds, Date.now())

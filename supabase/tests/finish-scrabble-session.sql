@@ -341,6 +341,13 @@ begin
   perform pg_temp.assert_eq('6g in progress', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'in_progress');
   perform pg_temp.assert_eq('6g in progress: scores untouched', (pg_temp.st('GSG', 17, 1)).score, 10);
   update public.scrabble_sessions set phase = 'finished' where game_id = 'GSG';
+  -- a deal is only allowed while the game is `waiting`: a stale start that reaches the lock after another start already
+  -- ran the round (the game is active / finished) must not re-deal the finished round
+  perform pg_temp.assert_eq('6g game active: refused', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'not_waiting');
+  update public.games set status = 'finished' where id = 'GSG';
+  perform pg_temp.assert_eq('6g game finished: refused', public.deal_scrabble_session('GSG', v_row, v_states)->>'status', 'not_waiting');
+  perform pg_temp.assert_eq('6g refused: previous result intact', ((pg_temp.st('GSG', 17, 1)).score, (pg_temp.sess('GSG')).phase)::text, '(10,finished)');
+  update public.games set status = 'waiting' where id = 'GSG';
   -- malformed deals change nothing (the previous result stays intact)
   perform pg_temp.assert_eq('6g turn_order seat without a state row', public.deal_scrabble_session('GSG',
     v_row || jsonb_build_object('turn_order', jsonb_build_array(pg_temp.pid(171), pg_temp.pid(172), pg_temp.pid(173))), v_states)->>'status', 'invalid');

@@ -346,6 +346,7 @@ set search_path = public, pg_temp
 as $$
 declare
   v_id text;
+  v_status text;
   v_session public.scrabble_sessions%rowtype;
   v_exists boolean;
   v_bad text;
@@ -359,15 +360,22 @@ begin
   end if;
   v_id := upper(p_game_id);
 
-  perform 1 from public.games where id = v_id for update;
+  select status into v_status from public.games where id = v_id for update;
   if not found then
     return jsonb_build_object('status', 'invalid', 'reason', 'game_missing');
   end if;
   select * into v_session from public.scrabble_sessions where game_id = v_id for update;
   v_exists := found;
-  -- Never re-deal a round in progress (it would reset every score); a finished round is re-dealt by a rematch.
+  -- Never re-deal a round in progress (it would reset every score).
   if v_exists and v_session.phase = 'playing' then
     return jsonb_build_object('status', 'in_progress');
+  end if;
+  -- PERMITTED GAME STATE: a deal is only allowed while the game is `waiting` (a first start, or a rematch: Play Again puts
+  -- the game back to `waiting` and keeps the finished session row until it is re-dealt). Every start deals BEFORE it
+  -- flips the game to `active`. A stale start that read `waiting` earlier, and reaches this lock after another start
+  -- finished the round (the game is `active` / `finished`), is refused here instead of re-dealing a finished round.
+  if v_status is distinct from 'waiting' then
+    return jsonb_build_object('status', 'not_waiting');
   end if;
 
   if jsonb_typeof(p_session_row) <> 'object' or jsonb_typeof(p_state_rows) <> 'array'
